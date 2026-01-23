@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Users, 
   Calendar, 
@@ -14,12 +14,18 @@ import {
   UserPlus,
   Zap,
   Star,
-  DollarSign
+  DollarSign,
+  Loader2,
+  PlusCircle
 } from 'lucide-react';
 import { Reservation, Table, NEXUS_COLORS } from '../types';
+import { supabase } from '../lib/supabase';
 
 const ReserveModule: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'timeline' | 'floorplan' | 'waitlist'>('timeline');
+  const [loading, setLoading] = useState(true);
+  const [openingId, setOpeningId] = useState<number | null>(null);
+  const [tables, setTables] = useState<Table[]>([]);
   const [reservations, setReservations] = useState<Reservation[]>([
     { 
       id: 'R1', customer: 'Andrés Pastrana', pax: 4, time: '20:30', plan: 'Aniversario / Vista Ventana', 
@@ -37,15 +43,61 @@ const ReserveModule: React.FC = () => {
     },
   ]);
 
-  const [tables] = useState<Table[]>(
-    Array.from({ length: 12 }, (_, i) => ({ 
-      id: i + 1, 
-      status: i < 3 ? 'occupied' : 'free', 
-      capacity: i % 2 === 0 ? 2 : 4, 
-      ritualStep: 0,
-      zone: i < 4 ? 'Cava VIP' : i < 8 ? 'Salón Principal' : 'Terraza'
-    }))
-  );
+  // Función reutilizable para cargar mesas
+  const fetchTables = async () => {
+    setLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from('tables')
+        .select('*')
+        .order('id', { ascending: true });
+      
+      if (error) throw error;
+      if (data) setTables(data);
+    } catch (err) {
+      console.error("Error fetching tables from Supabase:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchTables();
+  }, []);
+
+  // Función para abrir mesa (Crear orden + Actualizar estado de mesa)
+  const handleOpenTable = async (tableId: number) => {
+    setOpeningId(tableId);
+    try {
+      // 1. Insertar orden en Supabase
+      const { error: orderError } = await supabase
+        .from('orders')
+        .insert([{ 
+          table_id: tableId, 
+          status: 'open', 
+          opened_at: new Date().toISOString(), 
+          total_amount: 0 
+        }]);
+
+      if (orderError) throw orderError;
+
+      // 2. Actualizar estado de la mesa a 'occupied'
+      const { error: tableError } = await supabase
+        .from('tables')
+        .update({ status: 'occupied' })
+        .eq('id', tableId);
+
+      if (tableError) throw tableError;
+
+      // 3. Recargar datos para refrescar la UI
+      await fetchTables();
+    } catch (err) {
+      console.error("Error al abrir la mesa:", err);
+      alert("No se pudo abrir la mesa. Revisa la consola para más detalles.");
+    } finally {
+      setOpeningId(null);
+    }
+  };
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
@@ -65,7 +117,12 @@ const ReserveModule: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
         <div className="lg:col-span-3 space-y-8">
-          {activeTab === 'timeline' && (
+          {loading && tables.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-24 bg-[#111114] rounded-[3rem] border border-white/5">
+              <Loader2 className="text-blue-500 animate-spin mb-4" size={48} />
+              <p className="text-[10px] font-black uppercase tracking-widest text-gray-500">Sincronizando con Supabase...</p>
+            </div>
+          ) : activeTab === 'timeline' && (
             <div className="bg-[#111114] border border-white/5 rounded-[3rem] p-8 shadow-2xl">
               <div className="flex items-center justify-between mb-8">
                 <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
@@ -84,7 +141,7 @@ const ReserveModule: React.FC = () => {
                           </div>
                           <div>
                             <h4 className="font-black uppercase text-sm group-hover:text-blue-500 transition-colors">{res.customer}</h4>
-                            <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500 uppercase">
+                            <div className="flex items-center gap-2 text-[10px] font-bold text-gray-500 uppercase mt-1">
                                <span className={res.type === 'VIP' ? 'text-blue-400' : ''}>{res.type}</span>
                                <span>•</span>
                                <span>{res.pax} Personas</span>
@@ -115,36 +172,54 @@ const ReserveModule: React.FC = () => {
                <div className="grid grid-cols-3 gap-8 text-center border-b border-white/5 pb-6">
                   <div className="flex flex-col">
                      <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest italic">CAVA VIP</span>
-                     <span className="text-[8px] text-gray-600 font-bold uppercase mt-1">Nivel Silencio | Mesas 1-4</span>
+                     <span className="text-[8px] text-gray-600 font-bold uppercase mt-1">Nivel Silencio</span>
                   </div>
                   <div className="flex flex-col">
                      <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest italic">SALÓN PRINCIPAL</span>
-                     <span className="text-[8px] text-gray-600 font-bold uppercase mt-1">Ambiente OMM | Mesas 5-8</span>
+                     <span className="text-[8px] text-gray-600 font-bold uppercase mt-1">Ambiente OMM</span>
                   </div>
                   <div className="flex flex-col">
                      <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest italic">TERRAZA</span>
-                     <span className="text-[8px] text-gray-600 font-bold uppercase mt-1">Outdoor / DJ | Mesas 9-12</span>
+                     <span className="text-[8px] text-gray-600 font-bold uppercase mt-1">Outdoor / DJ</span>
                   </div>
                </div>
 
-               <div className="grid grid-cols-3 gap-12 flex-1 items-center">
+               <div className="grid grid-cols-3 gap-12 flex-1 items-start">
                   {/* Cava VIP Column */}
-                  <div className="flex flex-col gap-8 items-center bg-blue-600/5 p-6 rounded-[2rem] border border-blue-500/10">
+                  <div className="flex flex-col gap-8 items-center bg-blue-600/5 p-6 rounded-[2rem] border border-blue-500/10 min-h-[400px]">
                     {tables.filter(t => t.zone === 'Cava VIP').map(table => (
-                       <FloorTable key={table.id} table={table} />
+                       <FloorTable 
+                        key={table.id} 
+                        table={table} 
+                        onOpenTable={handleOpenTable}
+                        isOpening={openingId === table.id}
+                       />
                     ))}
+                    {tables.filter(t => t.zone === 'Cava VIP').length === 0 && !loading && <p className="text-[8px] text-gray-700 uppercase font-black">Sin mesas</p>}
                   </div>
                   {/* Salón Column */}
-                  <div className="flex flex-col gap-8 items-center bg-white/5 p-6 rounded-[2rem] border border-white/5">
+                  <div className="flex flex-col gap-8 items-center bg-white/5 p-6 rounded-[2rem] border border-white/5 min-h-[400px]">
                     {tables.filter(t => t.zone === 'Salón Principal').map(table => (
-                       <FloorTable key={table.id} table={table} />
+                       <FloorTable 
+                        key={table.id} 
+                        table={table} 
+                        onOpenTable={handleOpenTable}
+                        isOpening={openingId === table.id}
+                       />
                     ))}
+                    {tables.filter(t => t.zone === 'Salón Principal').length === 0 && !loading && <p className="text-[8px] text-gray-700 uppercase font-black">Sin mesas</p>}
                   </div>
                   {/* Terraza Column */}
-                  <div className="flex flex-col gap-8 items-center bg-orange-600/5 p-6 rounded-[2rem] border border-orange-500/10">
+                  <div className="flex flex-col gap-8 items-center bg-orange-600/5 p-6 rounded-[2rem] border border-orange-500/10 min-h-[400px]">
                     {tables.filter(t => t.zone === 'Terraza').map(table => (
-                       <FloorTable key={table.id} table={table} />
+                       <FloorTable 
+                        key={table.id} 
+                        table={table} 
+                        onOpenTable={handleOpenTable}
+                        isOpening={openingId === table.id}
+                       />
                     ))}
+                    {tables.filter(t => t.zone === 'Terraza').length === 0 && !loading && <p className="text-[8px] text-gray-700 uppercase font-black">Sin mesas</p>}
                   </div>
                </div>
             </div>
@@ -166,7 +241,7 @@ const ReserveModule: React.FC = () => {
               </div>
               <div className="p-6 space-y-4">
                  <div className="bg-white/5 p-4 rounded-3xl text-[11px] leading-relaxed italic border border-white/5">
-                   Asignando reservas automáticas... La Mesa 04 ha sido reservada para 'Andrés Pastrana' por ser su lugar favorito en Cava VIP.
+                   {openingId ? `Abriendo mesa ${openingId}... registrando orden en Supabase.` : `Sincronizando disponibilidad real con Supabase... ${tables.length} mesas activas en el sistema.`}
                  </div>
               </div>
            </div>
@@ -176,26 +251,39 @@ const ReserveModule: React.FC = () => {
   );
 };
 
-// Fixed: defined FloorTable as React.FC to correctly handle the 'key' prop in map calls
-const FloorTable: React.FC<{ table: Table }> = ({ table }) => (
-  <div className="flex flex-col items-center gap-2 group">
-     <div className={`w-24 h-24 rounded-[1.8rem] border-2 flex flex-col items-center justify-center transition-all shadow-xl ${
-       table.status === 'occupied' 
+const FloorTable: React.FC<{ table: Table, onOpenTable: (id: number) => void, isOpening: boolean }> = ({ table, onOpenTable, isOpening }) => (
+  <div className="flex flex-col items-center gap-3 group w-full">
+     <div className={`w-full h-24 rounded-[1.8rem] border-2 flex flex-col items-center justify-center transition-all shadow-xl relative ${
+       table.status === 'occupied' || table.status === 'calling'
         ? (table.zone === 'Cava VIP' ? 'bg-blue-600/20 border-blue-500' : table.zone === 'Terraza' ? 'bg-orange-600/20 border-orange-500' : 'bg-white/20 border-white/40') 
-        : 'bg-[#16161a] border-white/5 hover:border-white/20'
+        : 'bg-[#16161a] border-white/5 hover:border-white/10'
      }`}>
-        <span className="text-[8px] font-black text-gray-500 uppercase tracking-tighter mb-1">MESA</span>
+        <span className="text-[7px] font-black text-gray-600 uppercase tracking-tighter mb-1">
+          {table.name || `MESA ${table.id}`}
+        </span>
         <span className="text-2xl font-black italic leading-none">{table.id.toString().padStart(2, '0')}</span>
+        <span className="text-[6px] font-black uppercase text-gray-500 mt-1">{table.zone}</span>
      </div>
-     <div className="flex gap-1">
+     
+     <div className="flex gap-1 mb-1">
         {Array.from({ length: table.capacity }).map((_, i) => (
-          <div key={i} className={`w-1.5 h-1.5 rounded-full ${table.status === 'occupied' ? 'bg-blue-500' : 'bg-white/10'}`}></div>
+          <div key={i} className={`w-1.5 h-1.5 rounded-full ${table.status === 'occupied' || table.status === 'calling' ? 'bg-blue-500' : 'bg-white/10'}`}></div>
         ))}
      </div>
+
+     {table.status !== 'occupied' && table.status !== 'calling' && (
+       <button 
+        disabled={isOpening}
+        onClick={() => onOpenTable(table.id)}
+        className="w-full bg-[#111114] hover:bg-blue-600 text-[8px] font-black uppercase py-2.5 rounded-xl border border-white/10 transition-all flex items-center justify-center gap-2 group/btn shadow-lg disabled:opacity-50"
+       >
+         {isOpening ? <Loader2 size={12} className="animate-spin" /> : <PlusCircle size={12} className="text-blue-500 group-hover/btn:text-white" />}
+         {isOpening ? 'ABRIENDO...' : 'ABRIR MESA'}
+       </button>
+     )}
   </div>
 );
 
-// Fixed: defined TabButton as React.FC for type consistency and to handle any potential React-specific props
 const TabButton: React.FC<{ active: boolean, onClick: () => void, icon: any, label: string }> = ({ active, onClick, icon, label }) => (
   <button 
     onClick={onClick}

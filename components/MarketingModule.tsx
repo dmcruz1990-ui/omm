@@ -28,8 +28,7 @@ const MarketingModule: React.FC = () => {
   useEffect(() => {
     const generateOpportunities = async () => {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-      // Prompt específico para los 3 motores de oportunidad de Grupo Seratta
-      const systemPrompt = `
+      const systemInstruction = `
         Actúa como un CTO y Product Lead especializado en Hospitality Stack para Grupo Seratta.
         Infiere 3 oportunidades accionables cruzando:
         1. Yield Management: Bajas reservas los Martes + Tag CRM "Business".
@@ -43,10 +42,14 @@ const MarketingModule: React.FC = () => {
       try {
         const response = await ai.models.generateContent({
           model: 'gemini-3-flash-preview',
-          contents: systemPrompt,
-          config: { responseMimeType: "application/json" }
+          contents: "Genera el análisis de oportunidades para OMM.",
+          config: { 
+            systemInstruction,
+            responseMimeType: "application/json" 
+          }
         });
         
+        // Uso correcto de .text como propiedad
         const data = JSON.parse(response.text || "[]");
         setOpportunities(data);
       } catch (e) {
@@ -95,7 +98,6 @@ const MarketingModule: React.FC = () => {
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto animate-in fade-in duration-700">
-      {/* Header Estratégico Grupo Seratta */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 pb-8">
         <div>
           <h2 className="text-3xl font-black italic tracking-tighter flex items-center gap-3">
@@ -112,7 +114,6 @@ const MarketingModule: React.FC = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-        {/* Panel de Tarjetas de Oportunidad */}
         <div className="lg:col-span-2 space-y-8">
           <div className="flex items-center justify-between">
             <h3 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] flex items-center gap-2">
@@ -131,7 +132,6 @@ const MarketingModule: React.FC = () => {
             <div className="space-y-6">
               {opportunities.map((opp, idx) => (
                 <div key={idx} className="bg-[#16161a] border border-white/5 rounded-[2.5rem] p-8 relative overflow-hidden group hover:border-blue-500/40 transition-all shadow-2xl">
-                  {/* Badge de Score Dinámico */}
                   <div className="absolute top-0 right-0 p-8">
                     <div className="bg-black/60 backdrop-blur-md px-4 py-2 rounded-2xl border border-white/10 flex flex-col items-center">
                        <span className="text-[8px] text-gray-500 font-black uppercase">Oportunidad</span>
@@ -192,7 +192,6 @@ const MarketingModule: React.FC = () => {
           )}
         </div>
 
-        {/* Barra Lateral: Stack de Datos & ROI Real-time */}
         <div className="space-y-8">
           <div className="bg-[#16161a] p-8 rounded-[3rem] border border-white/5 shadow-2xl sticky top-24">
             <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em] mb-8 flex items-center gap-2">
@@ -219,21 +218,6 @@ const MarketingModule: React.FC = () => {
                  Ver Reporte Detallado
                </button>
             </div>
-          </div>
-
-          <div className="bg-gradient-to-br from-blue-600/10 to-transparent p-8 rounded-[3rem] border border-blue-500/10">
-             <div className="flex items-center gap-2 mb-4">
-                <Clock className="text-blue-500" size={16} />
-                <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Últimas Acciones</span>
-             </div>
-             <div className="space-y-4">
-                <p className="text-[10px] text-gray-400 border-l-2 border-blue-500 pl-3 leading-relaxed">
-                   <span className="text-white font-bold uppercase">Meta Ads Flash</span> lanzado a las 18:42 para Mesa 01 - 05.
-                </p>
-                <p className="text-[10px] text-gray-400 border-l-2 border-gray-800 pl-3 leading-relaxed">
-                   <span className="text-white font-bold uppercase">Push SevenRooms</span> enviada a 12 clientes VIP.
-                </p>
-             </div>
           </div>
         </div>
       </div>

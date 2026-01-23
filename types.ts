@@ -14,47 +14,84 @@ export enum ModuleType {
   STAFF_HUB = 'STAFF_HUB'
 }
 
-export type UserRole = 'ADMIN' | 'MANAGER' | 'STAFF';
+export type TableStatus = 'free' | 'occupied' | 'calling' | 'ordered' | 'cleaning';
 
-export interface User {
+export interface Profile {
   id: string;
+  email: string;
+  role: 'admin' | 'mesero' | 'chef' | 'hostess';
+  full_name?: string;
+}
+
+export interface MenuItem {
+  category: string;
   name: string;
-  role: UserRole;
-  venueId: string;
+  price: number;
+  note: string;
 }
 
 export interface Table {
   id: number;
-  status: 'free' | 'occupied' | 'calling' | 'ordered' | 'cleaning';
+  name?: string;
+  status: TableStatus;
   capacity: number;
   zone: 'Cava VIP' | 'Salón Principal' | 'Terraza';
-  welcomeTimerStart?: number;
-  ritualStep: number;
+  ritual_step: number;
+  ritualStep?: number;
+  welcome_timer_start?: string | null;
+}
+
+export interface Customer {
+  id: string;
+  name: string;
+  phone: string;
+  vip_status: boolean;
+  notes?: string;
+}
+
+export interface Order {
+  id: string;
+  table_id: number;
+  status: 'open' | 'preparing' | 'delivered' | 'paid';
+  total_amount: number;
+  opened_at: string;
+}
+
+export interface Reservation {
+  id: string;
+  customer?: string;
+  customer_id?: string;
+  table_id?: number;
+  assignedTable?: number;
+  reservation_time?: string;
+  time?: string;
+  pax: number;
+  plan?: string;
+  type?: string;
+  status: string;
+  noShowProbability?: number;
+  duration?: number;
+  upsellSuggested?: string;
 }
 
 export interface ServiceRecord {
-  tableId: number;
+  table_id: number;
   type: string;
-  durationSeconds: number;
-  timestamp: number;
-  staffId: string;
+  duration_seconds: number;
+  timestamp: string;
+  staff_id: string;
 }
 
 export interface RitualTask {
   id: string;
-  tableId: number;
-  ritualLabel: string;
+  table_id?: number;
+  tableId?: number;
+  ritual_label?: string;
+  ritualLabel?: string;
   responsible: 'MESERO' | 'COCINA' | 'BAR' | 'SOMMELIER';
-  startTime: number;
+  start_time?: string;
+  startTime?: number;
   status: 'pending' | 'active' | 'completed';
-}
-
-export interface MenuItem {
-  id: string;
-  name: string;
-  price: number;
-  category: string;
-  description: string;
 }
 
 export const NEXUS_COLORS = {
@@ -67,8 +104,21 @@ export const NEXUS_COLORS = {
 };
 
 export enum GameStatus { IDLE = 'IDLE', PLAYING = 'PLAYING', PAUSED = 'PAUSED', ENDED = 'ENDED' }
-export enum CutDirection { UP = 'UP', DOWN = 'DOWN', LEFT = 'LEFT', RIGHT = 'RIGHT', ANY = 'ANY' }
 export type HandType = 'left' | 'right';
+export interface HandPositions {
+  left: THREE.Vector3 | null;
+  right: THREE.Vector3 | null;
+  leftVelocity: THREE.Vector3;
+  rightVelocity: THREE.Vector3;
+}
+
+export enum CutDirection {
+  UP = 'UP',
+  DOWN = 'DOWN',
+  LEFT = 'LEFT',
+  RIGHT = 'RIGHT',
+  ANY = 'ANY'
+}
 
 export interface NoteData {
   id: string;
@@ -82,31 +132,10 @@ export interface NoteData {
   hitTime?: number;
 }
 
-export interface HandPositions {
-  left: THREE.Vector3 | null;
-  right: THREE.Vector3 | null;
-  leftVelocity: THREE.Vector3;
-  rightVelocity: THREE.Vector3;
-}
-
-export const COLORS = { left: '#ef4444', right: '#2563eb' };
-
-export interface Experience {
-  id: string;
-  title: string;
-  category: 'Cata' | 'DJ Set' | 'Degustación' | 'Celebración';
-  price: number;
-  availability: number;
-  impact: number;
-  actionLabel: string;
-}
-
-export interface PlanType {
-  id: string;
-  label: string;
-  icon: string;
-  description: string;
-}
+export const COLORS = {
+  left: '#ef4444',
+  right: '#2563eb',
+};
 
 export interface Opportunity {
   id: string;
@@ -118,84 +147,7 @@ export interface Opportunity {
   aiReasoning: string;
 }
 
-export interface MarketingAction { id: string; label: string; }
-
-export interface ServiceIncident {
-  id: string;
-  tableId: number;
-  type: string;
-  severity: Severity;
-  timeElapsed: number;
-  customerLTV: number;
-  status: string;
-}
-
-export type Severity = 'Baja' | 'Media' | 'Alta' | 'Crítica';
-
-export interface SupplyItem {
-  id: string;
-  name: string;
-  theoretical: number;
-  real: number;
-  unit: string;
-  category: string;
-  costPerUnit: number;
-  lastCostIncrease: number;
-  expirationDate: string;
-  status: string;
-}
-
-export interface PurchaseOrder {
-  id: string;
-  provider: string;
-  total: number;
-  itemsCount: number;
-  status: string;
-  aiSuggested: boolean;
-}
-
-export interface KitchenOrder {
-  id: string;
-  tableId: number;
-  items: string[];
-  station: string;
-  startTime: number;
-  priority: string;
-  status: string;
-  ritualSync: string;
-}
-
-export interface StationSaturation {
-  station: string;
-  load: number;
-  avgPrepTime: number;
-  bottleneckRisk: boolean;
-}
-
-export interface FinancialAnomaly {
-  id: string;
-  title: string;
-  severity: string;
-  description: string;
-  impact: number;
-}
-
-export interface CashflowPoint {
-  date: string;
-  actual: number;
-  predicted: number;
-}
-
-export interface Transaction {
-  id: string;
-  timestamp: number;
-  type: string;
-  amount: number;
-  tax: number;
-  paymentMethod: string;
-  brand: string;
-  status: string;
-}
+export type MarketingAction = string;
 
 export interface InventoryItem {
   name: string;
@@ -208,22 +160,25 @@ export interface StaffMember {
   id: string;
   name: string;
   role: string;
-  status: 'active' | 'break' | 'off';
+  status: string;
   shift: string;
 }
 
-export interface Reservation {
+export interface Experience {
   id: string;
-  customer: string;
-  pax: number;
-  time: string;
-  plan: string;
-  type: string;
-  status: string;
-  noShowProbability: number;
-  assignedTable?: number;
-  duration: number;
-  upsellSuggested?: string;
+  title: string;
+  category: string;
+  price: number;
+  availability: number;
+  impact: number;
+  actionLabel: string;
+}
+
+export interface PlanType {
+  id: string;
+  label: string;
+  icon: string;
+  description: string;
 }
 
 export interface CustomerProfile {
@@ -238,4 +193,76 @@ export interface CustomerProfile {
   nextVisitPrediction: string;
   churnRisk: number;
   walletBalance: string;
+}
+
+export interface KitchenOrder {
+  id: string;
+  tableId: number;
+  items: string[];
+  status: 'pending' | 'preparing' | 'ready';
+  timestamp: number;
+}
+
+export interface StationSaturation {
+  station: string;
+  load: number;
+}
+
+export interface SupplyItem {
+  id: string;
+  name: string;
+  theoretical: number;
+  real: number;
+  unit: string;
+  category: string;
+  costPerUnit: number;
+  lastCostIncrease: number;
+  expirationDate: string;
+  status: 'optimal' | 'low' | 'critical' | 'waste_risk';
+}
+
+export interface PurchaseOrder {
+  id: string;
+  provider: string;
+  total: number;
+  itemsCount: number;
+  status: 'pending' | 'approved' | 'received';
+  aiSuggested: boolean;
+}
+
+export type Severity = 'Crítica' | 'Alta' | 'Media' | 'Baja';
+
+export interface ServiceIncident {
+  id: string;
+  tableId: number;
+  type: string;
+  severity: Severity;
+  timeElapsed: number;
+  customerLTV: number;
+  status: 'active' | 'resolved';
+}
+
+export interface Transaction {
+  id: string;
+  timestamp: number;
+  type: string;
+  amount: number;
+  tax: number;
+  paymentMethod: string;
+  brand: string;
+  status: 'conciliado' | 'pendiente' | 'error';
+}
+
+export interface FinancialAnomaly {
+  id: string;
+  title: string;
+  severity: 'alta' | 'media' | 'baja';
+  description: string;
+  impact: number;
+}
+
+export interface CashflowPoint {
+  date: string;
+  actual: number;
+  predicted: number;
 }
