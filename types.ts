@@ -34,7 +34,7 @@ export interface Table {
   id: number;
   name?: string;
   status: TableStatus;
-  capacity: number;
+  seats: number;
   zone: 'Cava VIP' | 'Salón Principal' | 'Terraza';
   ritual_step: number;
   ritualStep?: number;

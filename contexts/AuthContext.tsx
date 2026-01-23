@@ -23,78 +23,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     let mounted = true;
 
-    // Obtener sesión inicial de forma robusta
     const initAuth = async () => {
       try {
-        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
-        if (error) throw error;
+        // Obtenemos la sesión lo más rápido posible
+        const { data: { session: initialSession } } = await supabase.auth.getSession();
         
         if (mounted) {
           setSession(initialSession);
           setUser(initialSession?.user ?? null);
+          
           if (initialSession?.user) {
-            await fetchAndSyncProfile(initialSession.user);
-          } else {
-            setLoading(false);
+            // Sincronización en segundo plano para no bloquear el Main
+            fetchAndSyncProfile(initialSession.user);
           }
+          
+          // Liberamos el loading lo antes posible
+          setLoading(false);
         }
       } catch (err) {
-        console.error("Auth initialization error:", err);
+        console.error("Auth error:", err);
         if (mounted) setLoading(false);
       }
     };
 
     initAuth();
 
-    // Escuchar cambios
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
       if (!mounted) return;
-      
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
-      
-      if (currentSession?.user) {
-        await fetchAndSyncProfile(currentSession.user);
-      } else {
-        setProfile(null);
-        setLoading(false);
-      }
+      if (currentSession?.user) fetchAndSyncProfile(currentSession.user);
     });
-
-    // Timeout de emergencia: si en 3 segundos no cargó, liberar la UI
-    const timeout = setTimeout(() => {
-      if (mounted && loading) {
-        console.warn("Auth loading timed out. Proceeding...");
-        setLoading(false);
-      }
-    }, 3000);
 
     return () => {
       mounted = false;
       subscription.unsubscribe();
-      clearTimeout(timeout);
     };
   }, []);
 
   const fetchAndSyncProfile = async (user: User) => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .upsert({ 
-          id: user.id, 
-          email: user.email, 
-          role: 'mesero' 
-        }, { onConflict: 'id' })
-        .select()
-        .single();
+      // Perfil virtual inmediato para no esperar a la DB
+      const virtualProfile: Profile = { id: user.id, email: user.email || '', role: 'mesero' };
+      setProfile(virtualProfile);
 
-      if (error) throw error;
-      setProfile(data as Profile);
+      // Upsert silencioso en background
+      await supabase
+        .from('profiles')
+        .upsert({ id: user.id, email: user.email, role: 'mesero' }, { onConflict: 'id' });
+        
     } catch (err) {
-      console.warn("Profile sync issue (using virtual profile):", err);
-      setProfile({ id: user.id, email: user.email || '', role: 'mesero' });
-    } finally {
-      setLoading(false);
+      console.warn("Background profile sync failed.");
     }
   };
 
@@ -111,8 +90,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (context === undefined) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };

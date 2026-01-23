@@ -1,27 +1,34 @@
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import { 
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
-  Truck, DollarSign, Globe, Zap, Settings, Bell, Search, 
-  LogOut, Contact, Music, User as UserIcon, ShieldCheck,
-  Compass
+  Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
+  ShieldCheck, Compass, Loader2
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
-import DiscoverModule from './components/DiscoverModule'; 
-import ReserveModule from './components/ReserveModule';
-import RelationshipModule from './components/RelationshipModule';
-import ServiceOSModule from './components/POSModule'; 
-import FlowModule from './components/FlowModule';
-import SupplyModule from './components/SupplyModule';
-import CareModule from './components/CareModule';
-import FinanceModule from './components/FinanceModule';
-import CommandModule from './components/CommandModule';
-import PersonalModule from './components/PersonalModule';
-import SurveillanceModule from './components/SurveillanceModule';
-import Login from './components/Login';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { ModuleType, Table, ServiceRecord, RitualTask } from './types';
+import { ModuleType, Table, RitualTask } from './types';
 import { useMediaPipe } from './hooks/useMediaPipe';
+import Login from './components/Login';
+
+// Módulos cargados de forma perezosa (Lazy Loading)
+const DiscoverModule = lazy(() => import('./components/DiscoverModule'));
+const ReserveModule = lazy(() => import('./components/ReserveModule'));
+const RelationshipModule = lazy(() => import('./components/RelationshipModule'));
+const ServiceOSModule = lazy(() => import('./components/POSModule'));
+const FlowModule = lazy(() => import('./components/FlowModule'));
+const SupplyModule = lazy(() => import('./components/SupplyModule'));
+const CareModule = lazy(() => import('./components/CareModule'));
+const FinanceModule = lazy(() => import('./components/FinanceModule'));
+const CommandModule = lazy(() => import('./components/CommandModule'));
+const SurveillanceModule = lazy(() => import('./components/SurveillanceModule'));
+
+const ModuleLoader = () => (
+  <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
+    <Loader2 className="text-blue-600 animate-spin mb-4" size={32} />
+    <p className="text-[10px] font-black uppercase tracking-widest italic">Cargando Módulo Inteligente...</p>
+  </div>
+);
 
 const Dashboard: React.FC = () => {
   const { user, profile, signOut } = useAuth();
@@ -32,12 +39,10 @@ const Dashboard: React.FC = () => {
   const [activeStation, setActiveStation] = useState(1);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  
   const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
 
   useEffect(() => {
     const fetchData = async () => {
-      setDashboardLoading(true);
       try {
         const { data: tablesData, error } = await supabase
           .from('tables')
@@ -45,20 +50,9 @@ const Dashboard: React.FC = () => {
           .order('id', { ascending: true });
 
         if (error) throw error;
-        if (tablesData && tablesData.length > 0) {
-          setTables(tablesData);
-        } else {
-          throw new Error("No tables found");
-        }
+        setTables(tablesData || []);
       } catch (err) {
-        console.warn("Supabase connection failed. Using mock tables.", err);
-        setTables(Array.from({ length: 12 }, (_, i) => ({ 
-          id: i + 1, 
-          status: i < 5 ? 'occupied' : 'free', 
-          capacity: i % 2 === 0 ? 2 : 4, 
-          ritual_step: 0,
-          zone: i < 4 ? 'Cava VIP' : i < 8 ? 'Salón Principal' : 'Terraza'
-        })));
+        console.warn("Supabase fetch fallback.");
       } finally {
         setDashboardLoading(false);
       }
@@ -68,36 +62,24 @@ const Dashboard: React.FC = () => {
 
     const channel = supabase
       .channel('schema-db-changes')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'tables' },
-        (payload) => {
-          setTables((prev) => {
-            if (payload.eventType === 'INSERT') return [...prev, payload.new as Table];
-            if (payload.eventType === 'UPDATE') {
-              return prev.map((t) => (t.id === payload.new.id ? { ...t, ...payload.new } : t));
-            }
-            if (payload.eventType === 'DELETE') {
-              return prev.filter((t) => t.id !== payload.old.id);
-            }
-            return prev;
-          });
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (payload) => {
+        setTables((prev) => {
+          if (payload.eventType === 'INSERT') return [...prev, payload.new as Table];
+          if (payload.eventType === 'UPDATE') {
+            return prev.map((t) => (t.id === payload.new.id ? { ...t, ...payload.new } : t));
+          }
+          if (payload.eventType === 'DELETE') return prev.filter((t) => t.id !== payload.old.id);
+          return prev;
+        });
+      })
       .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const handleUpdateTable = async (tableId: number, updates: Partial<Table>) => {
     setTables(prev => prev.map(t => t.id === tableId ? { ...t, ...updates } : t));
-    try {
-      await supabase.from('tables').update(updates).eq('id', tableId);
-    } catch (err) {
-      console.error("Persist failed:", err);
-    }
+    try { await supabase.from('tables').update(updates).eq('id', tableId); } catch (err) {}
   };
 
   const handleCheckService = async (tableId: number) => {
@@ -124,7 +106,7 @@ const Dashboard: React.FC = () => {
   if (dashboardLoading) return (
     <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
        <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
-       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Sincronizando Dashboard OMM...</p>
+       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Iniciando Ecosistema Nexum...</p>
     </div>
   );
 
@@ -181,13 +163,8 @@ const Dashboard: React.FC = () => {
             </div>
             <Settings size={18} className="text-gray-600 group-hover:text-white transition-colors" />
           </div>
-
-          <button 
-            onClick={signOut}
-            className="flex items-center gap-3 px-6 text-gray-600 hover:text-red-500 transition-all text-[10px] font-black uppercase tracking-[0.2em] w-full"
-          >
-            <LogOut size={16} />
-            CERRAR SESIÓN
+          <button onClick={signOut} className="flex items-center gap-3 px-6 text-gray-600 hover:text-red-500 transition-all text-[10px] font-black uppercase tracking-[0.2em] w-full">
+            <LogOut size={16} /> CERRAR SESIÓN
           </button>
         </div>
       </nav>
@@ -196,9 +173,7 @@ const Dashboard: React.FC = () => {
         <header className="h-24 border-b border-white/5 flex items-center justify-between px-12 z-40 bg-[#0a0a0c]/80 backdrop-blur-xl">
           <div className="flex items-center gap-4">
              <div className="w-2.5 h-2.5 rounded-full bg-[#22c55e] animate-pulse"></div>
-             <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.5em] italic">
-               OMM | OPERATIONAL_INTEL_NODE
-             </h2>
+             <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.5em] italic">OMM | OPERATIONAL_INTEL_NODE</h2>
           </div>
           <div className="flex items-center gap-10">
             <div className="bg-white/5 border border-white/10 px-6 py-3 rounded-2xl flex items-center gap-4">
@@ -206,50 +181,32 @@ const Dashboard: React.FC = () => {
                   <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest">Operator Active</span>
                   <span className="text-[10px] font-black italic text-blue-500">{user?.email}</span>
                </div>
-               <div className="w-10 h-10 bg-blue-600/10 rounded-xl flex items-center justify-center text-blue-500 border border-blue-500/20">
-                  <ShieldCheck size={20} />
-               </div>
+               <div className="w-10 h-10 bg-blue-600/10 rounded-xl flex items-center justify-center text-blue-500 border border-blue-500/20"><ShieldCheck size={20} /></div>
             </div>
           </div>
         </header>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-12 relative z-10">
-          {activeModule === ModuleType.COMMAND && (
-            <CommandModule 
-              onSimulateEvent={(type) => {
-                if (type === 'hand') triggerTableAlert(Math.floor(Math.random() * 3) + 1);
-              }} 
-            />
-          )}
-          {activeModule === ModuleType.DISCOVER && <DiscoverModule />}
-          {activeModule === ModuleType.RESERVE && <ReserveModule />}
-          {activeModule === ModuleType.RELATIONSHIP && <RelationshipModule />}
-          {activeModule === ModuleType.SERVICE_OS && (
-            <div className="space-y-12">
-              <SurveillanceModule 
-                videoRef={videoRef} 
-                isCameraReady={isCameraReady} 
-                resultsRef={lastResultsRef}
-                tables={tables}
-                onCheckService={handleCheckService}
-                activeStation={activeStation}
-                setActiveStation={setActiveStation}
-                onManualTrigger={triggerTableAlert}
-              />
-              <ServiceOSModule 
-                tables={tables} 
-                onUpdateTable={handleUpdateTable}
-                tasks={ritualTasks}
-              />
-            </div>
-          )}
-          {activeModule === ModuleType.FLOW && <FlowModule orders={[]} tasks={ritualTasks} onCompleteTask={()=>{}} />}
-          {activeModule === ModuleType.SUPPLY && <SupplyModule />}
-          {activeModule === ModuleType.CARE && <CareModule />}
-          {activeModule === ModuleType.FINANCE && <FinanceModule />}
+          <Suspense fallback={<ModuleLoader />}>
+            {activeModule === ModuleType.COMMAND && (
+              <CommandModule onSimulateEvent={(type) => { if (type === 'hand') triggerTableAlert(Math.floor(Math.random() * 3) + 1); }} />
+            )}
+            {activeModule === ModuleType.DISCOVER && <DiscoverModule />}
+            {activeModule === ModuleType.RESERVE && <ReserveModule />}
+            {activeModule === ModuleType.RELATIONSHIP && <RelationshipModule />}
+            {activeModule === ModuleType.SERVICE_OS && (
+              <div className="space-y-12">
+                <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onCheckService={handleCheckService} activeStation={activeStation} setActiveStation={setActiveStation} onManualTrigger={triggerTableAlert} />
+                <ServiceOSModule tables={tables} onUpdateTable={handleUpdateTable} tasks={ritualTasks} />
+              </div>
+            )}
+            {activeModule === ModuleType.FLOW && <FlowModule orders={[]} tasks={ritualTasks} onCompleteTask={()=>{}} />}
+            {activeModule === ModuleType.SUPPLY && <SupplyModule />}
+            {activeModule === ModuleType.CARE && <CareModule />}
+            {activeModule === ModuleType.FINANCE && <FinanceModule />}
+          </Suspense>
         </div>
       </main>
-
       <video ref={videoRef} className="absolute opacity-0 pointer-events-none" playsInline muted autoPlay />
     </div>
   );
@@ -257,20 +214,13 @@ const Dashboard: React.FC = () => {
 
 const Main: React.FC = () => {
   const { session, loading } = useAuth();
-
-  if (loading) {
-    return (
-      <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
-        <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Accediendo al Nodo de Seguridad...</p>
-      </div>
-    );
-  }
-
-  if (!session) {
-    return <Login />;
-  }
-
+  if (loading) return (
+    <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
+      <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
+      <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Validando Credenciales...</p>
+    </div>
+  );
+  if (!session) return <Login />;
   return <Dashboard />;
 };
 

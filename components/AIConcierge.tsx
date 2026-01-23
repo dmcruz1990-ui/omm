@@ -47,32 +47,24 @@ const AIConcierge: React.FC<AIConciergeProps> = ({ onBack }) => {
       const startIndex = responseText.indexOf("CONFIRMAR_RESERVA");
       const confirmSegment = responseText.substring(startIndex).split('\n')[0];
       
-      // 2. Split por comas como solicita la tarea (5 partes totales esperadas)
+      // 2. Split por comas (Mapeo: Prefix+Nombre, Telefono, FechaHora, Personas, Plan)
       const dataArray = confirmSegment.split(",").map(s => s.trim().replace(/[\[\]]/g, ''));
 
       if (dataArray.length < 5) {
         throw new Error(`Formato insuficiente: se detectaron ${dataArray.length} partes, se requieren 5.`);
       }
 
-      /**
-       * Mapeo según Instrucción:
-       * dataArray[0] -> "CONFIRMAR_RESERVA: Nombre"
-       * dataArray[1] -> Telefono
-       * dataArray[2] -> Fecha y Hora (Juntas)
-       * dataArray[3] -> Personas (Parse Int)
-       * dataArray[4] -> Plan
-       */
-
-      // Extraer nombre del primer segmento (limpiando el prefijo)
+      // Extraer nombre del primer segmento (limpiando el prefijo "CONFIRMAR_RESERVA:")
       const namePart = dataArray[0];
       const name = namePart.includes(":") ? namePart.split(":")[1].trim() : namePart.replace("CONFIRMAR_RESERVA", "").trim();
       
       const phone = dataArray[1];
-      const dateInfo = dataArray[2];
+      const dateInfo = dataArray[2]; // Texto descriptivo como "Mañana 8PM"
       const paxStr = dataArray[3];
       const plan = dataArray[4];
       
-      const numPax = parseInt(paxStr) || 2;
+      // REQUISITO: Asegurar conversión a número entero
+      const numPax = parseInt(paxStr, 10) || 2;
 
       // A. Buscar o Crear Cliente
       let { data: customer } = await supabase
@@ -95,44 +87,62 @@ const AIConcierge: React.FC<AIConciergeProps> = ({ onBack }) => {
         customerId = customer.id;
       }
 
-      // B. Buscar Mesa Libre con Capacidad (Lógica: capacity >= numPax)
-      const { data: table } = await supabase
+      // B. REQUISITO: Buscar Mesa Libre con Capacidad Simplificada (Cambiado capacity por seats)
+      // Filtramos únicamente por status='free' y seats >= numPax
+      console.log("Buscando mesa para:", numPax);
+      
+      const { data: foundTable, error: tableError } = await supabase
         .from('tables')
-        .select('id, zone')
+        .select('id, seats, zone') 
         .eq('status', 'free')
-        .gte('capacity', numPax)
-        .order('capacity', { ascending: true })
+        .gte('seats', numPax)    
+        .order('seats', { ascending: true }) 
         .limit(1)
         .maybeSingle();
 
+      if (tableError) {
+        console.error("Error al buscar mesa:", tableError);
+      }
+
+      // REQUISITO: Debug visible en consola
+      console.log("Buscando mesa para:", numPax, "Mesas libres:", foundTable);
+
       // C. Guardar Reserva (Mesa encontrada vs Lista de Espera)
-      const isWaitlist = !table;
+      const isWaitlist = !foundTable;
+      const reservationStatus = isWaitlist ? 'waiting_list' : 'confirmed';
       
       const { data: reservation, error: resError } = await supabase
         .from('reservations')
         .insert([{
           customer_id: customerId,
-          table_id: table ? table.id : null,
-          reservation_time: dateInfo,
+          table_id: foundTable ? foundTable.id : null,
+          // Se usa ISO String para compatibilidad con DB
+          reservation_time: new Date().toISOString(), 
           pax: numPax,
-          plan: plan,
-          status: isWaitlist ? 'waiting_list' : 'confirmed',
+          plan: `${plan} (Info: ${dateInfo})`,
+          status: reservationStatus,
           type: (plan || "").toLowerCase().includes('master') ? 'VIP' : 'Normal'
         }])
         .select()
         .single();
 
-      if (resError) throw resError;
+      if (resError) {
+        console.log("Error de inserción Supabase:", resError);
+        throw resError;
+      }
 
-      // D. Actualizar Estado de Mesa (Solo si se asignó)
-      if (table) {
-        await supabase.from('tables').update({ status: 'reserved' }).eq('id', table.id);
+      // D. REQUISITO: Actualizar Estado de Mesa a 'reserved' si se encontró
+      if (foundTable) {
+        await supabase
+          .from('tables')
+          .update({ status: 'reserved' })
+          .eq('id', foundTable.id);
       }
 
       // E. Éxito
       setReservationDetails({
-        id: table ? table.id : 'Waitlist',
-        zone: table ? table.zone : 'Fila Virtual',
+        id: foundTable ? foundTable.id : 'Waitlist',
+        zone: foundTable ? foundTable.zone : 'Fila Virtual',
         name,
         time: dateInfo,
         pax: numPax,
@@ -147,9 +157,9 @@ const AIConcierge: React.FC<AIConciergeProps> = ({ onBack }) => {
       setMessages(prev => [...prev, { role: 'model', text: finalMsg }]);
 
     } catch (error: any) {
-      console.error("Critical Reservation Error:", error);
+      console.log("CRITICAL RESERVATION ERROR LOG:", error);
       setBookingStatus('error');
-      setDebugInfo(`${error.message} | Segmento: ${responseText.substring(responseText.indexOf("CONFIRMAR_RESERVA"))}`);
+      setDebugInfo(`${error.message || "Error desconocido durante la transacción"}`);
     }
   };
 
@@ -197,7 +207,7 @@ const AIConcierge: React.FC<AIConciergeProps> = ({ onBack }) => {
              {reservationDetails.isWaitlist ? 'NEXUM Queue Management' : 'NEXUM Cloud Sync Complete'}
            </p>
            
-           <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-8 w-full max-w-sm mb-12 space-y-4">
+           <div className="bg-white/5 border border-white/10 rounded-[2.5rem] p-8 w-full max-sm mb-12 space-y-4">
               <div className="flex justify-between items-center border-b border-white/5 pb-4">
                  <span className="text-[10px] text-gray-500 font-black uppercase">Estado</span>
                  <span className={`text-xl font-black italic ${reservationDetails.isWaitlist ? 'text-amber-500' : 'text-blue-500'}`}>
@@ -284,7 +294,7 @@ const AIConcierge: React.FC<AIConciergeProps> = ({ onBack }) => {
                 <div className="w-8 h-8 rounded-xl bg-[#1a1a1e] border border-white/10 flex items-center justify-center">
                   <Zap size={14} className="text-blue-500 animate-pulse" />
                 </div>
-                <div className="bg-[#1a1a1e] px-6 py-4 rounded-[2rem] rounded-bl-none border border-white/5 flex items-center gap-3">
+                <div className="bg-[#1a1a1e] px-6 py-4 rounded-2xl rounded-bl-none border border-white/5 flex items-center gap-3">
                    <Loader2 size={14} className="animate-spin text-blue-500" />
                    <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest italic">NEXUM está procesando...</span>
                 </div>
