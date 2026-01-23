@@ -14,7 +14,7 @@ export enum ModuleType {
   STAFF_HUB = 'STAFF_HUB'
 }
 
-export type TableStatus = 'free' | 'occupied' | 'calling' | 'ordered' | 'cleaning';
+export type TableStatus = 'free' | 'occupied' | 'calling' | 'ordered' | 'cleaning' | 'reserved';
 
 export interface Profile {
   id: string;

@@ -21,24 +21,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // 1. Obtener sesión inicial con manejo de errores
-    supabase.auth.getSession()
-      .then(({ data: { session } }) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        if (session?.user) {
-          fetchAndSyncProfile(session.user);
-        } else {
-          setLoading(false);
-        }
-      })
-      .catch((err) => {
-        console.error("Auth initialization error:", err);
-        setLoading(false);
-      });
+    let mounted = true;
 
-    // 2. Escuchar cambios de autenticación
+    // Obtener sesión inicial de forma robusta
+    const initAuth = async () => {
+      try {
+        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        if (error) throw error;
+        
+        if (mounted) {
+          setSession(initialSession);
+          setUser(initialSession?.user ?? null);
+          if (initialSession?.user) {
+            await fetchAndSyncProfile(initialSession.user);
+          } else {
+            setLoading(false);
+          }
+        }
+      } catch (err) {
+        console.error("Auth initialization error:", err);
+        if (mounted) setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    // Escuchar cambios
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, currentSession) => {
+      if (!mounted) return;
+      
       setSession(currentSession);
       setUser(currentSession?.user ?? null);
       
@@ -50,12 +61,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     });
 
-    // Seguridad: Reducido a 2.5s para no bloquear al usuario si el servidor está lento
+    // Timeout de emergencia: si en 3 segundos no cargó, liberar la UI
     const timeout = setTimeout(() => {
-      setLoading(false);
-    }, 2500);
+      if (mounted && loading) {
+        console.warn("Auth loading timed out. Proceeding...");
+        setLoading(false);
+      }
+    }, 3000);
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
       clearTimeout(timeout);
     };

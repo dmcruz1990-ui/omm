@@ -3,7 +3,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
   Truck, DollarSign, Globe, Zap, Settings, Bell, Search, 
-  LogOut, Contact, Music, User as UserIcon, ShieldCheck
+  LogOut, Contact, Music, User as UserIcon, ShieldCheck,
+  Compass
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import DiscoverModule from './components/DiscoverModule'; 
@@ -24,20 +25,19 @@ import { useMediaPipe } from './hooks/useMediaPipe';
 
 const Dashboard: React.FC = () => {
   const { user, profile, signOut } = useAuth();
-  const [activeModule, setActiveModule] = useState(ModuleType.COMMAND);
+  const [activeModule, setActiveModule] = useState(ModuleType.DISCOVER);
   const [tables, setTables] = useState<Table[]>([]);
   const [ritualTasks, setRitualTasks] = useState<RitualTask[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
   const [activeStation, setActiveStation] = useState(1);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   
-  // SOLO ACTIVAMOS IA CUANDO ESTAMOS EN SERVICE OS
   const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
 
   useEffect(() => {
     const fetchData = async () => {
-      setLoading(true);
+      setDashboardLoading(true);
       try {
         const { data: tablesData, error } = await supabase
           .from('tables')
@@ -45,7 +45,11 @@ const Dashboard: React.FC = () => {
           .order('id', { ascending: true });
 
         if (error) throw error;
-        if (tablesData) setTables(tablesData);
+        if (tablesData && tablesData.length > 0) {
+          setTables(tablesData);
+        } else {
+          throw new Error("No tables found");
+        }
       } catch (err) {
         console.warn("Supabase connection failed. Using mock tables.", err);
         setTables(Array.from({ length: 12 }, (_, i) => ({ 
@@ -56,7 +60,7 @@ const Dashboard: React.FC = () => {
           zone: i < 4 ? 'Cava VIP' : i < 8 ? 'Salón Principal' : 'Terraza'
         })));
       } finally {
-        setLoading(false);
+        setDashboardLoading(false);
       }
     };
 
@@ -105,6 +109,7 @@ const Dashboard: React.FC = () => {
   };
 
   const modules = [
+    { type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'SHOWCASE & PLANES', icon: <Compass size={22} /> },
     { type: ModuleType.COMMAND, label: 'COMMAND CENTER', sub: 'ESTRATEGIA & PRUEBAS', icon: <Globe size={22} /> },
     { type: ModuleType.SERVICE_OS, label: 'SERVICE OS', sub: 'POS & RITUALES', icon: <ShoppingCart size={22} /> },
     { type: ModuleType.RESERVE, label: 'RESERVE', sub: 'GESTIÓN DE RESERVAS', icon: <CalendarDays size={22} /> },
@@ -116,10 +121,10 @@ const Dashboard: React.FC = () => {
     { type: ModuleType.FINANCE, label: 'FINANCE PILOT', sub: 'CONTABILIDAD LIVE', icon: <DollarSign size={22} /> },
   ];
 
-  if (loading) return (
+  if (dashboardLoading) return (
     <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
        <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
-       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Iniciando Ecosistema OMM...</p>
+       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Sincronizando Dashboard OMM...</p>
     </div>
   );
 
@@ -257,7 +262,7 @@ const Main: React.FC = () => {
     return (
       <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
         <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Autenticando Nodo...</p>
+        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Accediendo al Nodo de Seguridad...</p>
       </div>
     );
   }
