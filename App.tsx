@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import { 
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
   Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
-  ShieldCheck, Compass, Loader2, MonitorPlay, Sparkles
+  ShieldCheck, Compass, Loader2, MonitorPlay, Sparkles, Palette
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -24,6 +24,7 @@ const CommandModule = lazy(() => import('./components/CommandModule'));
 const SurveillanceModule = lazy(() => import('./components/SurveillanceModule'));
 const KitchenModule = lazy(() => import('./components/KitchenModule'));
 const StaffHubModule = lazy(() => import('./components/StaffHubModule'));
+const BrandStudio = lazy(() => import('./components/BrandStudio'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -116,6 +117,7 @@ const Dashboard: React.FC = () => {
     { type: ModuleType.SUPPLY, label: 'SUPPLY INTEL', sub: 'INVENTARIO IA', icon: <Truck size={22} /> },
     { type: ModuleType.CARE, label: 'CARE', sub: 'RECUPERACIÓN CX', icon: <HeartPulse size={22} /> },
     { type: ModuleType.FINANCE, label: 'FINANCE PILOT', sub: 'CONTABILIDAD LIVE', icon: <DollarSign size={22} /> },
+    { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'CMS DE DISEÑO', icon: <Palette size={22} /> },
   ];
 
   if (dashboardLoading) return (
@@ -237,6 +239,7 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.CARE && <CareModule />}
             {activeModule === ModuleType.FINANCE && <FinanceModule />}
             {activeModule === ModuleType.STAFF_HUB && <StaffHubModule />}
+            {activeModule === ModuleType.BRAND_STUDIO && <BrandStudio />}
           </Suspense>
         </div>
       </main>

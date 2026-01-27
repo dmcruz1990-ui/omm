@@ -17,7 +17,8 @@ export enum ModuleType {
   FINANCE = 'FINANCE',
   COMMAND = 'COMMAND',
   STAFF_HUB = 'STAFF_HUB',
-  KITCHEN_KDS = 'KITCHEN_KDS'
+  KITCHEN_KDS = 'KITCHEN_KDS',
+  BRAND_STUDIO = 'BRAND_STUDIO'
 }
 
 export type TableStatus = 'free' | 'occupied' | 'calling' | 'ordered' | 'cleaning' | 'reserved';
@@ -88,8 +89,16 @@ export interface RitualTask {
   started_at: string;
   completed_at?: string;
   status: 'active' | 'completed';
-  // Added missing responsible property to fix typing errors in FlowModule and PersonalModule
   responsible: string;
+}
+
+export interface Brand {
+  id: string;
+  name: string;
+  logo_url: string;
+  primary_color: string;
+  secondary_color: string;
+  settings?: any;
 }
 
 export const NEXUS_COLORS = {
@@ -241,7 +250,6 @@ export interface CashflowPoint {
   predicted: number;
 }
 
-// Fix: Adding OmmEvent interface
 export interface OmmEvent {
   id: string;
   title: string;
@@ -252,7 +260,6 @@ export interface OmmEvent {
   image_url: string;
 }
 
-// Fix: Adding EventTicket interface
 export interface EventTicket {
   id: string;
   event_id: string;
