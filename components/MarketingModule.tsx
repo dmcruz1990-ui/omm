@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { 
@@ -18,7 +17,8 @@ import {
   CheckCircle,
   Clock
 } from 'lucide-react';
-import { Opportunity, MarketingAction, NEXUS_COLORS } from '../types';
+/* Fix: Removed non-existent export MarketingAction and unused NEXUS_COLORS from types import */
+import { Opportunity } from '../types';
 
 const MarketingModule: React.FC = () => {
   const [loading, setLoading] = useState(true);

@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import { 
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
   Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
-  ShieldCheck, Compass, Loader2
+  ShieldCheck, Compass, Loader2, MonitorPlay
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -11,7 +11,6 @@ import { ModuleType, Table, RitualTask } from './types';
 import { useMediaPipe } from './hooks/useMediaPipe';
 import Login from './components/Login';
 
-// Módulos cargados de forma perezosa (Lazy Loading)
 const DiscoverModule = lazy(() => import('./components/DiscoverModule'));
 const ReserveModule = lazy(() => import('./components/ReserveModule'));
 const RelationshipModule = lazy(() => import('./components/RelationshipModule'));
@@ -22,6 +21,9 @@ const CareModule = lazy(() => import('./components/CareModule'));
 const FinanceModule = lazy(() => import('./components/FinanceModule'));
 const CommandModule = lazy(() => import('./components/CommandModule'));
 const SurveillanceModule = lazy(() => import('./components/SurveillanceModule'));
+const KitchenModule = lazy(() => import('./components/KitchenModule'));
+const StaffHubModule = lazy(() => import('./components/StaffHubModule'));
+const EventStaffModule = lazy(() => import('./components/EventStaffModule'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -33,53 +35,68 @@ const ModuleLoader = () => (
 const Dashboard: React.FC = () => {
   const { user, profile, signOut } = useAuth();
   const [activeModule, setActiveModule] = useState(ModuleType.DISCOVER);
-  const [tables, setTables] = useState<Table[]>([]);
+  const [tables, setTables] = useState<any[]>([]); // Usamos any para permitir los joins de datos
   const [ritualTasks, setRitualTasks] = useState<RitualTask[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);
+  
+  // TAREA: Garantizar que activeStation inicie en 1 para evitar PGRST204
   const [activeStation, setActiveStation] = useState(1);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
 
+  const fetchData = async () => {
+    try {
+      // Consulta enriquecida: Traemos la mesa + reservas confirmadas/sentadas + nombre del cliente
+      const { data: tablesData, error } = await supabase
+        .from('tables')
+        .select(`
+          *,
+          reservations(id, status, customer_id, customers(name))
+        `)
+        .order('id', { ascending: true });
+
+      if (error) throw error;
+      
+      // Filtramos la reserva activa para cada mesa para facilitar el acceso en los componentes
+      const processedTables = tablesData?.map(table => {
+        const activeRes = table.reservations?.find((r: any) => 
+          r.status === 'confirmed' || r.status === 'reserved' || r.status === 'seated'
+        );
+        return {
+          ...table,
+          active_customer: activeRes?.customers?.name || null,
+          active_reservation_id: activeRes?.id || null
+        };
+      });
+
+      setTables(processedTables || []);
+    } catch (err) {
+      console.warn("Supabase fetch fallback.");
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const { data: tablesData, error } = await supabase
-          .from('tables')
-          .select('*')
-          .order('id', { ascending: true });
-
-        if (error) throw error;
-        setTables(tablesData || []);
-      } catch (err) {
-        console.warn("Supabase fetch fallback.");
-      } finally {
-        setDashboardLoading(false);
-      }
-    };
-
     fetchData();
 
     const channel = supabase
-      .channel('schema-db-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, (payload) => {
-        setTables((prev) => {
-          if (payload.eventType === 'INSERT') return [...prev, payload.new as Table];
-          if (payload.eventType === 'UPDATE') {
-            return prev.map((t) => (t.id === payload.new.id ? { ...t, ...payload.new } : t));
-          }
-          if (payload.eventType === 'DELETE') return prev.filter((t) => t.id !== payload.old.id);
-          return prev;
-        });
-      })
+      .channel('schema-db-changes-v5')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => fetchData())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
   }, []);
 
   const handleUpdateTable = async (tableId: number, updates: Partial<Table>) => {
-    setTables(prev => prev.map(t => t.id === tableId ? { ...t, ...updates } : t));
-    try { await supabase.from('tables').update(updates).eq('id', tableId); } catch (err) {}
+    try { 
+      await supabase.from('tables').update(updates).eq('id', tableId); 
+      // El realtime trigger refetcherá los datos
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleCheckService = async (tableId: number) => {
@@ -87,6 +104,7 @@ const Dashboard: React.FC = () => {
   };
 
   const triggerTableAlert = async (tableId: number) => {
+    if (!tableId) return;
     await handleUpdateTable(tableId, { status: 'calling', welcome_timer_start: new Date().toISOString() });
   };
 
@@ -94,9 +112,10 @@ const Dashboard: React.FC = () => {
     { type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'SHOWCASE & PLANES', icon: <Compass size={22} /> },
     { type: ModuleType.COMMAND, label: 'COMMAND CENTER', sub: 'ESTRATEGIA & PRUEBAS', icon: <Globe size={22} /> },
     { type: ModuleType.SERVICE_OS, label: 'SERVICE OS', sub: 'POS & RITUALES', icon: <ShoppingCart size={22} /> },
+    { type: ModuleType.KITCHEN_KDS, label: 'KITCHEN KDS', sub: 'PANTALLA DE COCINA', icon: <MonitorPlay size={22} /> },
     { type: ModuleType.RESERVE, label: 'RESERVE', sub: 'GESTIÓN DE RESERVAS', icon: <CalendarDays size={22} /> },
     { type: ModuleType.RELATIONSHIP, label: 'RELATIONSHIP', sub: 'CRM & CLIENTES', icon: <Users size={22} /> },
-    { type: ModuleType.STAFF_HUB, label: 'STAFF HUB', sub: 'LISTA DE TRABAJO', icon: <Contact size={22} /> },
+    { type: ModuleType.STAFF_HUB, label: 'STAFF HUB', sub: 'INTELIGENCIA DE EQUIPO', icon: <Contact size={22} /> },
     { type: ModuleType.FLOW, label: 'FLOW', sub: 'COCINA & BAR', icon: <ChefHat size={22} /> },
     { type: ModuleType.SUPPLY, label: 'SUPPLY INTEL', sub: 'INVENTARIO IA', icon: <Truck size={22} /> },
     { type: ModuleType.CARE, label: 'CARE', sub: 'RECUPERACIÓN CX', icon: <HeartPulse size={22} /> },
@@ -189,21 +208,32 @@ const Dashboard: React.FC = () => {
         <div className="flex-1 overflow-y-auto custom-scrollbar p-12 relative z-10">
           <Suspense fallback={<ModuleLoader />}>
             {activeModule === ModuleType.COMMAND && (
-              <CommandModule onSimulateEvent={(type) => { if (type === 'hand') triggerTableAlert(Math.floor(Math.random() * 3) + 1); }} />
+              <CommandModule onSimulateEvent={(type) => { if (type === 'hand') triggerTableAlert(activeStation); }} />
             )}
             {activeModule === ModuleType.DISCOVER && <DiscoverModule />}
             {activeModule === ModuleType.RESERVE && <ReserveModule />}
             {activeModule === ModuleType.RELATIONSHIP && <RelationshipModule />}
             {activeModule === ModuleType.SERVICE_OS && (
               <div className="space-y-12">
-                <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onCheckService={handleCheckService} activeStation={activeStation} setActiveStation={setActiveStation} onManualTrigger={triggerTableAlert} />
+                <SurveillanceModule 
+                  videoRef={videoRef} 
+                  isCameraReady={isCameraReady} 
+                  resultsRef={lastResultsRef} 
+                  tables={tables} 
+                  onCheckService={handleCheckService} 
+                  activeStation={activeStation} 
+                  setActiveStation={setActiveStation} 
+                  onManualTrigger={triggerTableAlert} 
+                />
                 <ServiceOSModule tables={tables} onUpdateTable={handleUpdateTable} tasks={ritualTasks} />
               </div>
             )}
+            {activeModule === ModuleType.KITCHEN_KDS && <KitchenModule />}
             {activeModule === ModuleType.FLOW && <FlowModule orders={[]} tasks={ritualTasks} onCompleteTask={()=>{}} />}
             {activeModule === ModuleType.SUPPLY && <SupplyModule />}
             {activeModule === ModuleType.CARE && <CareModule />}
             {activeModule === ModuleType.FINANCE && <FinanceModule />}
+            {activeModule === ModuleType.STAFF_HUB && <StaffHubModule />}
           </Suspense>
         </div>
       </main>

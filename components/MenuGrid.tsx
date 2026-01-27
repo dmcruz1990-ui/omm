@@ -1,8 +1,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { MenuItem, NEXUS_COLORS } from '../types';
-import { Plus, Loader2, CheckCircle2, ShoppingCart, AlertCircle } from 'lucide-react';
+import { MenuItem } from '../types';
+import { Plus, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface MenuGridProps {
   selectedTableId: number;
@@ -27,7 +27,7 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
         .order('category', { ascending: true });
 
       if (error) {
-        console.error("Error fetching menu:", error);
+        console.error("❌ Error cargando el menú:", error);
       } else {
         setMenuItems(data || []);
       }
@@ -38,9 +38,11 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
   }, []);
 
   const handleAddItem = async (item: MenuItem) => {
-    setAddingId(item.name); // Usamos el nombre como ID temporal para el feedback
+    console.log("🚀 [POS] Intentando agregar:", item.name, "a mesa:", selectedTableId);
+    setAddingId(item.name); 
+    
     try {
-      // 1. Buscar orden abierta para la mesa
+      // 1. Buscar si la mesa tiene una orden abierta (open)
       let { data: order, error: orderError } = await supabase
         .from('orders')
         .select('id, total_amount')
@@ -48,8 +50,11 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
         .eq('status', 'open')
         .maybeSingle();
 
-      // 2. Si no hay orden, crearla
+      if (orderError) throw orderError;
+
+      // 2. Si no hay orden abierta, creamos una nueva comanda
       if (!order) {
+        console.log(`[POS] 🛠️ Creando nueva comanda para Mesa ${selectedTableId}...`);
         const { data: newOrder, error: createError } = await supabase
           .from('orders')
           .insert([{ 
@@ -64,37 +69,39 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
         if (createError) throw createError;
         order = newOrder;
         
-        // Actualizar estado de la mesa a occupied por si acaso
+        // Actualizar la mesa a estado 'occupied'
         await supabase.from('tables').update({ status: 'occupied' }).eq('id', selectedTableId);
       }
 
-      // 3. Insertar en order_items (Asumimos que la tabla existe)
+      // 3. Insertar el ítem en la tabla order_items
       const { error: itemError } = await supabase
         .from('order_items')
         .insert([{
           order_id: order.id,
-          menu_item_id: (item as any).id, // Usar ID real de la DB
+          menu_item_id: (item as any).id, 
           quantity: 1,
-          price_at_time: item.price
+          price_at_time: item.price,
+          status: 'pending' // Esto dispara la alerta en Cocina (KDS)
         }]);
 
-      // Nota: Si la tabla order_items no existe aún en la DB del usuario,
-      // el sistema fallará aquí, pero la lógica es la correcta según el prompt.
+      if (itemError) throw itemError;
 
-      // 4. Actualizar total de la orden
-      const { error: updateError } = await supabase
+      console.log("✅ [POS] Pedido enviado al ticket de la Mesa:", selectedTableId);
+
+      // 4. Actualizar el total acumulado de la orden en la base de datos
+      const newTotal = (order.total_amount || 0) + item.price;
+      await supabase
         .from('orders')
-        .update({ total_amount: (order.total_amount || 0) + item.price })
+        .update({ total_amount: newTotal })
         .eq('id', order.id);
 
-      if (updateError) throw updateError;
-
-      // Feedback exitoso
+      // Feedback visual de éxito
       setSuccessId(item.name);
-      setTimeout(() => setSuccessId(null), 2000);
-    } catch (err) {
-      console.error("Error adding item:", err);
-      alert("Error al procesar la orden. Asegúrate de que la mesa esté abierta.");
+      setTimeout(() => setSuccessId(null), 1500);
+      
+    } catch (err: any) {
+      console.error("❌ [POS] ERROR AL PROCESAR PEDIDO:", err);
+      alert(`Error al añadir al ticket: ${err.message}`);
     } finally {
       setAddingId(null);
     }
@@ -104,7 +111,7 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
     return (
       <div className="flex flex-col items-center justify-center py-20 opacity-40">
         <Loader2 className="animate-spin text-blue-500 mb-4" size={32} />
-        <p className="text-[10px] font-black uppercase tracking-widest">Sincronizando Catálogo OMM...</p>
+        <p className="text-[10px] font-black uppercase tracking-widest">Sincronizando Menú OMM...</p>
       </div>
     );
   }
@@ -130,11 +137,11 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
                 key={idx}
                 className="bg-[#16161a] border border-white/5 p-6 rounded-[2.2rem] hover:border-blue-500/30 transition-all group relative overflow-hidden flex flex-col justify-between h-44 shadow-xl"
               >
-                {/* Status Overlay */}
+                {/* Overlay de Confirmación */}
                 {successId === item.name && (
                   <div className="absolute inset-0 bg-blue-600/90 backdrop-blur-md z-20 flex flex-col items-center justify-center animate-in fade-in zoom-in duration-300">
                     <CheckCircle2 size={32} className="text-white mb-2" />
-                    <span className="text-[10px] font-black uppercase tracking-widest text-white">AÑADIDO</span>
+                    <span className="text-[10px] font-black uppercase tracking-widest text-white">¡AÑADIDO!</span>
                   </div>
                 )}
 
@@ -147,8 +154,8 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
                       $ {item.price.toLocaleString()}
                     </span>
                   </div>
-                  <p className="text-[10px] text-gray-600 font-bold uppercase leading-relaxed line-clamp-2">
-                    {item.note || 'Descripción no disponible'}
+                  <p className="text-[9px] text-gray-600 font-bold uppercase leading-relaxed line-clamp-2">
+                    {item.note || 'OMM Signature Experience'}
                   </p>
                 </div>
 
@@ -162,7 +169,7 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
                   ) : (
                     <>
                       <Plus size={14} className="text-blue-500 group-hover:text-white" />
-                      <span className="text-[9px] font-black uppercase tracking-widest">AGREGAR AL TICKET</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest">PEDIR A MESA</span>
                     </>
                   )}
                 </button>
@@ -171,13 +178,6 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
           </div>
         </section>
       ))}
-      
-      {menuItems.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-20 bg-white/5 rounded-[3rem] border border-dashed border-white/10 opacity-30">
-          <AlertCircle size={40} className="mb-4 text-gray-500" />
-          <p className="text-xs font-black uppercase tracking-widest">No hay ítems en la tabla menu_items</p>
-        </div>
-      )}
     </div>
   );
 };

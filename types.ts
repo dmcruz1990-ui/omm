@@ -11,7 +11,8 @@ export enum ModuleType {
   CARE = 'CARE',
   FINANCE = 'FINANCE',
   COMMAND = 'COMMAND',
-  STAFF_HUB = 'STAFF_HUB'
+  STAFF_HUB = 'STAFF_HUB',
+  KITCHEN_KDS = 'KITCHEN_KDS'
 }
 
 export type TableStatus = 'free' | 'occupied' | 'calling' | 'ordered' | 'cleaning' | 'reserved';
@@ -74,24 +75,14 @@ export interface Reservation {
   upsellSuggested?: string;
 }
 
-export interface ServiceRecord {
-  table_id: number;
-  type: string;
-  duration_seconds: number;
-  timestamp: string;
-  staff_id: string;
-}
-
 export interface RitualTask {
   id: string;
-  table_id?: number;
-  tableId?: number;
-  ritual_label?: string;
-  ritualLabel?: string;
-  responsible: 'MESERO' | 'COCINA' | 'BAR' | 'SOMMELIER';
-  start_time?: string;
-  startTime?: number;
-  status: 'pending' | 'active' | 'completed';
+  table_id: number;
+  step_label: string;
+  staff_id: string;
+  started_at: string;
+  completed_at?: string;
+  status: 'active' | 'completed';
 }
 
 export const NEXUS_COLORS = {
@@ -147,8 +138,6 @@ export interface Opportunity {
   aiReasoning: string;
 }
 
-export type MarketingAction = string;
-
 export interface InventoryItem {
   name: string;
   current: number;
@@ -162,23 +151,6 @@ export interface StaffMember {
   role: string;
   status: string;
   shift: string;
-}
-
-export interface Experience {
-  id: string;
-  title: string;
-  category: string;
-  price: number;
-  availability: number;
-  impact: number;
-  actionLabel: string;
-}
-
-export interface PlanType {
-  id: string;
-  label: string;
-  icon: string;
-  description: string;
 }
 
 export interface CustomerProfile {
@@ -201,11 +173,6 @@ export interface KitchenOrder {
   items: string[];
   status: 'pending' | 'preparing' | 'ready';
   timestamp: number;
-}
-
-export interface StationSaturation {
-  station: string;
-  load: number;
 }
 
 export interface SupplyItem {
@@ -265,4 +232,29 @@ export interface CashflowPoint {
   date: string;
   actual: number;
   predicted: number;
+}
+
+// Fix: Adding OmmEvent interface
+export interface OmmEvent {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  price: number;
+  category: string;
+  image_url: string;
+}
+
+// Fix: Adding EventTicket interface
+export interface EventTicket {
+  id: string;
+  event_id: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email: string;
+  ticket_code: string;
+  is_paid: boolean;
+  checked_in: boolean;
+  checked_in_at?: string | null;
+  created_at?: string;
 }

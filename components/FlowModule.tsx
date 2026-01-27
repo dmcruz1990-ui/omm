@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   ChefHat, 
@@ -18,7 +17,8 @@ import {
   Coffee,
   Martini
 } from 'lucide-react';
-import { KitchenOrder, StationSaturation, RitualTask, NEXUS_COLORS } from '../types';
+/* Fix: Removed non-existent export StationSaturation and unused NEXUS_COLORS from types import */
+import { KitchenOrder, RitualTask } from '../types';
 
 interface FlowProps {
   orders: KitchenOrder[];
@@ -47,7 +47,7 @@ const FlowModule: React.FC<FlowProps> = ({ orders, tasks, onCompleteTask }) => {
            </div>
         </div>
         <div className="flex bg-[#111114] p-1.5 rounded-2xl border border-white/5">
-          <TabButton active={activeStation === 'ALL'} onClick={() => setActiveStation('ALL')} label="Global" icon={<Activity size={14} />} />
+          <TabButton active={activeStation === 'ALL'} onClick={() => setActiveStation('ALL'} label="Global" icon={<Activity size={14} />} />
           <TabButton active={activeStation === 'COCINA'} onClick={() => setActiveStation('COCINA')} label="Cocina" icon={<Flame size={14} />} />
           <TabButton active={activeStation === 'BAR'} onClick={() => setActiveStation('BAR')} label="Bar" icon={<Martini size={14} />} />
           <TabButton active={activeStation === 'SOMMELIER'} onClick={() => setActiveStation('SOMMELIER')} label="Cava" icon={<Wine size={14} />} />

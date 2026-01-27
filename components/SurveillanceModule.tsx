@@ -1,16 +1,18 @@
-
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { HandLandmarkerResult } from '@mediapipe/tasks-vision';
 import { 
   Monitor, 
-  Target,
   Zap,
-  PlayCircle,
   Activity,
   ShieldCheck,
-  Maximize2
+  Hand,
+  BellRing,
+  AlertTriangle,
+  CheckCircle,
+  Video
 } from 'lucide-react';
 import { Table } from '../types';
+import { supabase } from '../lib/supabase';
 
 interface SurveillanceProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -28,9 +30,78 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
 }) => {
   const canvasRefs = useRef<Array<HTMLCanvasElement | null>>([null, null, null, null]);
   
+  const [detectionCount, setDetectionCount] = useState<number>(0);
+  const [isDetecting, setIsDetecting] = useState<boolean>(false);
+  const [lastAction, setLastAction] = useState<string>('Sistema Listo');
+  const [showGlobalAlert, setShowGlobalAlert] = useState<{show: boolean, tableId: number}>({show: false, tableId: 0});
+
+  const internalCounter = useRef<number>(0);
+  const lastAlertTimestamp = useRef<number>(0);
+
   const testTables = tables.filter(t => t.id <= 3);
-  const activeTable = testTables.find(t => t.id === activeStation) || testTables[0];
+  const activeTable = testTables.find(t => t.id === activeStation);
   const sideTables = testTables.filter(t => t.id !== activeStation);
+
+  // Función para desactivar la alarma localmente y en DB
+  const handleClearAlarm = (tableId: number) => {
+    console.log(`[SYNC] Desactivando Alarma Mesa ${tableId}`);
+    // Resetear lógica de detección local
+    internalCounter.current = 0;
+    setDetectionCount(0);
+    setIsDetecting(false);
+    // Bloquear re-disparo por 10 segundos adicionales para dar tiempo al staff
+    lastAlertTimestamp.current = Date.now() + 5000; 
+    setLastAction("ALARMA SILENCIADA");
+    
+    // Llamar al handler del padre que actualiza Supabase
+    onCheckService(tableId);
+  };
+
+  const triggerAlert = async (retries = 1): Promise<void> => {
+    if (!activeStation) {
+      console.error("❌ ERROR: ID de mesa no asignado.");
+      return;
+    }
+
+    const tableId = activeStation;
+    const now = Date.now();
+    
+    // Throttle: Si se atendió hace poco o se alertó hace poco, no disparar
+    if (now - lastAlertTimestamp.current < 5000) return;
+
+    setLastAction(`SYNC M${tableId}...`);
+    
+    try {
+      console.log(`[SYNC] Intentando alertar Mesa ${tableId}. Reintentos restantes: ${retries}`);
+      
+      const { error } = await supabase
+        .from('tables')
+        .update({ 
+          status: 'calling',
+          welcome_timer_start: new Date().toISOString()
+        })
+        .eq('id', tableId);
+
+      if (error) {
+        if (retries > 0) {
+          console.warn(`⚠️ Error en Supabase, reintentando... (${error.message})`);
+          return triggerAlert(retries - 1);
+        }
+        throw error;
+      }
+
+      setLastAction(`M${tableId} ALERTADA OK`);
+      lastAlertTimestamp.current = now;
+      setShowGlobalAlert({ show: true, tableId });
+      setTimeout(() => setShowGlobalAlert({ show: false, tableId: 0 }), 3000);
+      
+      onManualTrigger(tableId);
+
+    } catch (err: any) {
+      console.error("❌ ERROR CRÍTICO SYNC:", err);
+      setLastAction("RECONECTANDO DB...");
+    }
+  };
 
   useEffect(() => {
     if (!isCameraReady) return;
@@ -52,51 +123,45 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
             canvas.height = video.videoHeight;
             
             const isMaster = table.id === activeStation;
-            ctx.filter = isMaster ? 'contrast(1.1) saturate(1.1)' : 'grayscale(40%) brightness(50%)';
+            ctx.filter = isMaster ? 'contrast(1.1) saturate(1.1)' : 'grayscale(60%) brightness(40%)';
             ctx.drawImage(video, 0, 0);
             ctx.filter = 'none';
 
             if (isMaster && resultsRef.current?.landmarks) {
+              let handIsRaised = false;
+
               resultsRef.current.landmarks.forEach(landmarks => {
-                const tip = landmarks[8];
-                const x = tip.x * canvas.width;
-                const y = tip.y * canvas.height;
-
-                ctx.strokeStyle = '#3b82f6';
-                ctx.lineWidth = 4;
-                ctx.setLineDash([5, 5]);
-                ctx.beginPath();
-                landmarks.forEach(p => {
-                  ctx.moveTo(p.x * canvas.width, p.y * canvas.height);
-                  ctx.arc(p.x * canvas.width, p.y * canvas.height, 3, 0, 2 * Math.PI);
-                });
-                ctx.stroke();
-                ctx.setLineDash([]);
-
+                const tip = landmarks[8]; 
                 if (tip.y < 0.35) {
+                   handIsRaised = true;
                    ctx.fillStyle = '#ef4444';
                    ctx.beginPath();
-                   ctx.arc(x, y, 20, 0, 2 * Math.PI);
+                   ctx.arc(tip.x * canvas.width, tip.y * canvas.height, 15, 0, 2 * Math.PI);
                    ctx.fill();
-                   ctx.font = 'bold 16px Inter';
-                   ctx.fillText("GESTO_DETECTADO", x + 30, y);
                 }
               });
+
+              // Solo incrementar si NO estamos en estado de enfriamiento/atendido
+              if (handIsRaised && (Date.now() - lastAlertTimestamp.current > 5000)) {
+                internalCounter.current += 1;
+                setIsDetecting(true);
+                if (internalCounter.current > 60) {
+                  if (table.status !== 'calling') triggerAlert();
+                  internalCounter.current = 0;
+                }
+              } else {
+                internalCounter.current = 0;
+                setIsDetecting(false);
+              }
+              
+              if (animationFrameId % 5 === 0) setDetectionCount(internalCounter.current);
             }
 
             if (table.status === 'calling') {
-              const pulse = Math.floor(Date.now() / 300) % 2 === 0;
+              const pulse = Math.floor(Date.now() / 250) % 2 === 0;
               ctx.strokeStyle = '#ef4444';
-              ctx.lineWidth = isMaster ? 25 : 12;
+              ctx.lineWidth = isMaster ? 30 : 15;
               if (pulse) ctx.strokeRect(0, 0, canvas.width, canvas.height);
-              
-              if (isMaster) {
-                ctx.fillStyle = 'rgba(239, 68, 68, 0.9)';
-                ctx.fillRect(40, 40, 420, 70);
-                ctx.fillStyle = 'white';
-                ctx.font = 'black 24px Inter';
-                ctx.fillText("⚠️ SERVICIO SOLICITADO", 70, 85);
-              }
             }
           }
         }
@@ -110,114 +175,96 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700">
-      {/* Header Estilo Master Control */}
-      <div className="flex items-center justify-between bg-[#111114] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl">
-        <div className="flex items-center gap-5">
-           <div className="p-4 bg-blue-600 rounded-3xl shadow-xl shadow-blue-600/30">
-              <Monitor className="text-white" size={28} />
-           </div>
-           <div>
-              <h3 className="text-2xl font-black italic tracking-tighter uppercase leading-none">NEXUM Service Vision</h3>
-              <p className="text-[10px] text-blue-400 font-bold uppercase tracking-[0.3em] mt-2">IA Engine: YOLOv8-Pose | Estación {activeStation} en Foco</p>
-           </div>
+      {showGlobalAlert.show && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[500] bg-red-600 text-white px-10 py-5 rounded-[2.5rem] font-black italic text-xl uppercase tracking-tighter shadow-[0_0_60px_rgba(239,68,68,0.5)] flex items-center gap-4 border-2 border-white animate-in zoom-in slide-in-from-top-4">
+          <Video size={28} className="animate-pulse" />
+          ¡VIGILANCIA MESA {showGlobalAlert.tableId} ACTIVA!
         </div>
-        <div className="flex gap-2 bg-black/40 p-2 rounded-2xl">
-          {testTables.map(t => (
-            <button
-              key={t.id}
-              onClick={() => setActiveStation(t.id)}
-              className={`px-6 py-2 rounded-xl text-xs font-black transition-all ${
-                activeStation === t.id ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-500 hover:text-white'
-              }`}
-            >
-              MESA {t.id}
-            </button>
-          ))}
+      )}
+
+      <div className="flex flex-col md:flex-row gap-6">
+        <div className="flex-1 bg-[#111114] p-6 rounded-[2.5rem] border border-white/5 shadow-2xl flex items-center justify-between">
+          <div className="flex items-center gap-5">
+            <div className={`p-4 rounded-3xl transition-all ${isDetecting ? 'bg-red-600 shadow-red-600/30' : 'bg-blue-600 shadow-blue-600/30'} shadow-xl`}>
+              <Monitor className="text-white" size={28} />
+            </div>
+            <div>
+              <h3 className="text-xl font-black italic tracking-tighter uppercase leading-none">NEXUM Service Vision</h3>
+              <div className="flex items-center gap-3 mt-2">
+                <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-full ${isDetecting ? 'bg-red-500 text-white' : 'bg-green-500/20 text-green-500'}`}>
+                  {isDetecting ? 'IA_TRIGGER_READY' : 'IA_SCANNING'}
+                </span>
+                <span className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">
+                  Estación: <span className="text-blue-500 font-mono">{activeStation}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          <button 
+            onClick={() => triggerAlert()}
+            disabled={!activeStation}
+            className="bg-yellow-500 hover:bg-yellow-400 text-black px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-xl transition-all active:scale-95"
+          >
+            <Zap size={16} fill="currentColor" /> TEST SYNC M{activeStation}
+          </button>
+        </div>
+
+        <div className="bg-[#111114] p-6 rounded-[2.5rem] border border-white/5 min-w-[200px] flex flex-col justify-center">
+          <span className="text-[8px] text-gray-600 font-black uppercase tracking-widest block mb-1">Network Sincro</span>
+          <div className="flex items-center gap-2">
+             <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+             <span className="text-[10px] font-black text-white italic uppercase">{lastAction}</span>
+          </div>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-        {/* Feed Principal (Hero) */}
         <div className="lg:col-span-3">
           <div className={`relative rounded-[3.5rem] overflow-hidden border-4 transition-all duration-500 shadow-2xl bg-black ${
-            activeTable.status === 'calling' ? 'border-red-500 ring-8 ring-red-500/10' : 'border-blue-500/30'
+            activeTable?.status === 'calling' ? 'border-red-500 ring-8 ring-red-500/10' : 'border-blue-500/30'
           }`}>
              <div className="absolute top-8 left-8 z-20 flex flex-col gap-3">
                <div className="flex items-center gap-3 bg-black/80 backdrop-blur-xl px-5 py-2 rounded-full border border-white/10">
-                  <div className={`w-3 h-3 rounded-full ${activeTable.status === 'calling' ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
-                  <span className="text-xs font-black text-white italic">FEED_MASTER_MESA_{activeStation}</span>
+                  <div className={`w-3 h-3 rounded-full ${activeTable?.status === 'calling' ? 'bg-red-500 animate-pulse' : 'bg-green-500'}`}></div>
+                  <span className="text-xs font-black text-white italic tracking-widest uppercase">MESA_{activeStation}_CAM_V4</span>
+               </div>
+               <div className="w-48 h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className={`h-full bg-blue-500 transition-all`} style={{ width: `${(detectionCount / 60) * 100}%` }}></div>
                </div>
             </div>
 
             <div className="aspect-video relative">
+               {/* Fix: replaced 'table.id' with 'activeStation' as 'table' was undefined in this scope */}
                <canvas ref={el => { if (el) canvasRefs.current[activeStation] = el; }} className="w-full h-full object-cover" />
-               
-               {activeTable.status === 'calling' && (
+               {activeTable?.status === 'calling' && (
                  <div className="absolute inset-0 bg-red-600/10 flex flex-col items-center justify-center p-12 text-center animate-in zoom-in">
                     <div className="bg-red-600 p-8 rounded-full shadow-[0_0_60px_rgba(239,68,68,0.4)] mb-8 animate-bounce">
-                       <Zap className="text-white" size={48} />
+                       <BellRing size={64} className="text-white" />
                     </div>
-                    <h4 className="text-5xl font-black italic text-white uppercase mb-6 tracking-tighter">ALERTA ACTIVA</h4>
+                    <h4 className="text-6xl font-black italic text-white uppercase mb-4 tracking-tighter">SERVICIO SOLICITADO</h4>
                     <button 
-                      onClick={() => onCheckService(activeStation)}
-                      className="bg-white text-red-600 px-12 py-5 rounded-[2rem] font-black text-sm uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform"
+                      onClick={() => handleClearAlarm(activeStation)} 
+                      className="bg-white text-red-600 px-12 py-5 rounded-[2rem] font-black text-sm uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform flex items-center gap-3"
                     >
-                      MARCAR ATENDIDO
+                      <CheckCircle size={20} /> MARCAR ATENDIDO
                     </button>
                  </div>
                )}
             </div>
-
-            <div className="absolute bottom-8 left-8 flex gap-4 z-20">
-               <button 
-                onClick={() => onManualTrigger(activeStation)}
-                className="bg-yellow-500 text-black px-6 py-3 rounded-2xl font-black text-[10px] uppercase tracking-widest flex items-center gap-2 shadow-xl hover:bg-yellow-400 transition-all"
-               >
-                 <PlayCircle size={16} /> TEST IA GESTURE
-               </button>
-            </div>
           </div>
         </div>
 
-        {/* Feeds Laterales */}
         <div className="flex flex-col gap-6">
-          <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5 pb-2">Canales Secundarios</h4>
+          <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5 pb-3 italic">Multichannel Vision</h4>
           {sideTables.map(table => (
-            <div 
-              key={table.id}
-              onClick={() => setActiveStation(table.id)}
-              className={`relative cursor-pointer group rounded-3xl overflow-hidden border-2 transition-all ${
-                table.status === 'calling' ? 'border-red-500' : 'border-white/5 opacity-70 hover:opacity-100'
-              }`}
-            >
-              <div className="absolute top-3 left-3 z-10 bg-black/60 px-2 py-1 rounded text-[8px] font-black text-white">MESA {table.id}</div>
+            <div key={table.id} onClick={() => setActiveStation(table.id)} className={`relative cursor-pointer group rounded-[2.5rem] overflow-hidden border-2 transition-all ${table.status === 'calling' ? 'border-red-500 shadow-lg animate-pulse' : 'border-white/5 opacity-60 hover:opacity-100'}`}>
+              <div className="absolute top-4 left-4 z-10 bg-black/70 px-3 py-1 rounded-xl text-[9px] font-black text-white uppercase tracking-widest">MESA {table.id}</div>
               <div className="aspect-video bg-gray-900">
                 <canvas ref={el => { if (el) canvasRefs.current[table.id] = el; }} className="w-full h-full object-cover" />
               </div>
-              <div className="p-3 bg-black flex items-center justify-between">
-                 <span className={`text-[8px] font-black uppercase ${table.status === 'calling' ? 'text-red-500' : 'text-green-500'}`}>
-                   {table.status === 'calling' ? '⚠️ CALLING' : 'OK_MONITORING'}
-                 </span>
-                 <button 
-                  onClick={(e) => { e.stopPropagation(); onManualTrigger(table.id); }}
-                  className="bg-white/5 hover:bg-yellow-500 hover:text-black p-1.5 rounded-lg text-[8px] font-black"
-                 >
-                   TEST
-                 </button>
-              </div>
             </div>
           ))}
-          
-          <div className="mt-auto bg-blue-600/5 p-6 rounded-3xl border border-blue-500/10 space-y-4">
-             <div className="flex items-center gap-3">
-                <ShieldCheck size={18} className="text-green-500" />
-                <span className="text-[10px] font-bold text-gray-400 uppercase">BoT-SORT Active</span>
-             </div>
-             <div className="flex items-center gap-3">
-                <Activity size={18} className="text-blue-500" />
-                <span className="text-[10px] font-bold text-gray-400 uppercase">FPS: 24.2 | 18ms</span>
-             </div>
-          </div>
         </div>
       </div>
     </div>

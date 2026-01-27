@@ -1,15 +1,15 @@
-
 import React, { useState } from 'react';
-import { StaffMember, RitualTask, ServiceRecord } from '../types';
+/* Fix: Removed non-existent export ServiceRecord from types import */
+import { StaffMember, RitualTask } from '../types';
 import { User, ShieldCheck, Clock, CheckCircle2, Timer, ListChecks, PlayCircle, ChefHat, GlassWater as Bottle, Martini } from 'lucide-react';
 
 interface PersonalProps {
-  serviceRecords: ServiceRecord[];
+  /* Fix: Removed non-existent type ServiceRecord from props */
   tasks: RitualTask[];
   onCompleteTask: (taskId: string) => void;
 }
 
-const PersonalModule: React.FC<PersonalProps> = ({ serviceRecords, tasks, onCompleteTask }) => {
+const PersonalModule: React.FC<PersonalProps> = ({ tasks, onCompleteTask }) => {
   const staff: StaffMember[] = [
     { id: '1', name: 'Carlos Mendoza', role: 'CHEF', status: 'active', shift: '08:00 - 17:00' },
     { id: '2', name: 'Laura Restrepo', role: 'MESERO', status: 'active', shift: '11:00 - 20:00' },
