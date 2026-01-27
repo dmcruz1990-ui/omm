@@ -3,7 +3,7 @@ import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import { 
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
   Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
-  ShieldCheck, Compass, Loader2, MonitorPlay
+  ShieldCheck, Compass, Loader2, MonitorPlay, Sparkles
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -11,6 +11,7 @@ import { ModuleType, Table, RitualTask } from './types';
 import { useMediaPipe } from './hooks/useMediaPipe';
 import Login from './components/Login';
 
+const OhYeahPage = lazy(() => import('./components/OhYeahPage'));
 const DiscoverModule = lazy(() => import('./components/DiscoverModule'));
 const ReserveModule = lazy(() => import('./components/ReserveModule'));
 const RelationshipModule = lazy(() => import('./components/RelationshipModule'));
@@ -23,7 +24,6 @@ const CommandModule = lazy(() => import('./components/CommandModule'));
 const SurveillanceModule = lazy(() => import('./components/SurveillanceModule'));
 const KitchenModule = lazy(() => import('./components/KitchenModule'));
 const StaffHubModule = lazy(() => import('./components/StaffHubModule'));
-const EventStaffModule = lazy(() => import('./components/EventStaffModule'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -35,11 +35,10 @@ const ModuleLoader = () => (
 const Dashboard: React.FC = () => {
   const { user, profile, signOut } = useAuth();
   const [activeModule, setActiveModule] = useState(ModuleType.DISCOVER);
-  const [tables, setTables] = useState<any[]>([]); // Usamos any para permitir los joins de datos
+  const [tables, setTables] = useState<any[]>([]);
   const [ritualTasks, setRitualTasks] = useState<RitualTask[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   
-  // TAREA: Garantizar que activeStation inicie en 1 para evitar PGRST204
   const [activeStation, setActiveStation] = useState(1);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -47,7 +46,6 @@ const Dashboard: React.FC = () => {
 
   const fetchData = async () => {
     try {
-      // Consulta enriquecida: Traemos la mesa + reservas confirmadas/sentadas + nombre del cliente
       const { data: tablesData, error } = await supabase
         .from('tables')
         .select(`
@@ -58,7 +56,6 @@ const Dashboard: React.FC = () => {
 
       if (error) throw error;
       
-      // Filtramos la reserva activa para cada mesa para facilitar el acceso en los componentes
       const processedTables = tablesData?.map(table => {
         const activeRes = table.reservations?.find((r: any) => 
           r.status === 'confirmed' || r.status === 'reserved' || r.status === 'seated'
@@ -93,7 +90,6 @@ const Dashboard: React.FC = () => {
   const handleUpdateTable = async (tableId: number, updates: Partial<Table>) => {
     try { 
       await supabase.from('tables').update(updates).eq('id', tableId); 
-      // El realtime trigger refetcherá los datos
     } catch (err) {
       console.error(err);
     }
@@ -130,7 +126,7 @@ const Dashboard: React.FC = () => {
   );
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0c] text-white font-sans">
+    <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0c] text-white font-sans text-left">
       <nav className="w-[280px] bg-[#0a0a0c] border-r border-white/5 flex flex-col px-6 py-8 z-50 overflow-y-auto custom-scrollbar">
         <div className="flex items-center gap-4 mb-12">
           <div className="w-12 h-12 bg-[#2563eb] rounded-2xl flex items-center justify-center shadow-[0_0_20px_rgba(37,99,235,0.4)]">
@@ -140,12 +136,12 @@ const Dashboard: React.FC = () => {
             <h1 className="text-2xl font-black tracking-tighter italic leading-none flex items-center gap-1">
               NEXUM <span className="text-[#2563eb]">V4</span>
             </h1>
-            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-1">Hospitality OS</p>
+            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-1 text-left">Hospitality OS</p>
           </div>
         </div>
 
         <div className="mb-6">
-          <p className="text-[10px] text-gray-600 font-black uppercase tracking-[0.2em] mb-8">MENÚ DEL SISTEMA</p>
+          <p className="text-[10px] text-gray-600 font-black uppercase tracking-[0.2em] mb-8 text-left">MENÚ DEL SISTEMA</p>
           <div className="flex flex-col gap-2">
             {modules.map((m) => (
               <button
@@ -172,24 +168,31 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div className="mt-auto pt-8 border-t border-white/5">
+          <button 
+            onClick={() => window.location.hash = '#/oh-yeah'}
+            className="w-full bg-blue-600/10 hover:bg-blue-600/20 text-blue-500 py-4 rounded-2xl font-black italic text-[10px] uppercase tracking-widest mb-6 flex items-center justify-center gap-2 border border-blue-500/20"
+          >
+            <Sparkles size={14} /> VER WEB PÚBLICA
+          </button>
+          
           <div className="bg-[#111114] rounded-[1.8rem] p-5 flex items-center justify-between border border-white/5 mb-6 group cursor-pointer hover:border-white/10 transition-all">
             <div className="flex items-center gap-4">
               <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#6366f1] to-[#2563eb] flex items-center justify-center text-sm font-black italic shadow-lg uppercase">{profile?.role?.charAt(0) || user?.email?.charAt(0)}</div>
               <div>
-                <p className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-0.5">{profile?.role || 'User'}</p>
-                <p className="text-xs font-black italic tracking-tight truncate max-w-[120px]">{user?.email?.split('@')[0]}</p>
+                <p className="text-[8px] text-gray-500 font-black uppercase tracking-widest mb-0.5 text-left">{profile?.role || 'User'}</p>
+                <p className="text-xs font-black italic tracking-tight truncate max-w-[120px] text-left">{user?.email?.split('@')[0]}</p>
               </div>
             </div>
             <Settings size={18} className="text-gray-600 group-hover:text-white transition-colors" />
           </div>
-          <button onClick={signOut} className="flex items-center gap-3 px-6 text-gray-600 hover:text-red-500 transition-all text-[10px] font-black uppercase tracking-[0.2em] w-full">
+          <button onClick={signOut} className="flex items-center gap-3 px-6 text-gray-600 hover:text-red-500 transition-all text-[10px] font-black uppercase tracking-[0.2em] w-full text-left">
             <LogOut size={16} /> CERRAR SESIÓN
           </button>
         </div>
       </nav>
 
       <main className="flex-1 flex flex-col overflow-hidden relative">
-        <header className="h-24 border-b border-white/5 flex items-center justify-between px-12 z-40 bg-[#0a0a0c]/80 backdrop-blur-xl">
+        <header className="h-24 border-b border-white/5 flex items-center justify-between px-12 z-40 bg-[#0a0a0c]/80 backdrop-blur-xl shrink-0">
           <div className="flex items-center gap-4">
              <div className="w-2.5 h-2.5 rounded-full bg-[#22c55e] animate-pulse"></div>
              <h2 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.5em] italic">OMM | OPERATIONAL_INTEL_NODE</h2>
@@ -205,7 +208,7 @@ const Dashboard: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-12 relative z-10">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-12 relative z-10 text-left">
           <Suspense fallback={<ModuleLoader />}>
             {activeModule === ModuleType.COMMAND && (
               <CommandModule onSimulateEvent={(type) => { if (type === 'hand') triggerTableAlert(activeStation); }} />
@@ -244,6 +247,22 @@ const Dashboard: React.FC = () => {
 
 const Main: React.FC = () => {
   const { session, loading } = useAuth();
+  const [route, setRoute] = useState(window.location.hash);
+
+  useEffect(() => {
+    const handleHashChange = () => setRoute(window.location.hash);
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
+
+  if (route === '#/oh-yeah') {
+    return (
+      <Suspense fallback={<ModuleLoader />}>
+        <OhYeahPage />
+      </Suspense>
+    );
+  }
+
   if (loading) return (
     <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
       <Zap className="text-blue-600 animate-pulse mb-4" size={48} />

@@ -1,4 +1,9 @@
 
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+*/
+
 import * as THREE from 'three';
 
 export enum ModuleType {
@@ -83,6 +88,8 @@ export interface RitualTask {
   started_at: string;
   completed_at?: string;
   status: 'active' | 'completed';
+  // Added missing responsible property to fix typing errors in FlowModule and PersonalModule
+  responsible: string;
 }
 
 export const NEXUS_COLORS = {

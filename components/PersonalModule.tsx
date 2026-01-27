@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 /* Fix: Removed non-existent export ServiceRecord from types import */
 import { StaffMember, RitualTask } from '../types';
@@ -27,7 +28,8 @@ const PersonalModule: React.FC<PersonalProps> = ({ tasks, onCompleteTask }) => {
         <div className="flex gap-4 bg-[#111114] p-3 rounded-2xl border border-white/5">
            <div className="text-center px-4 border-r border-white/5">
               <span className="text-[8px] text-gray-600 font-black uppercase block">Tareas Pendientes</span>
-              <span className="text-xl font-black italic text-blue-500">{tasks.filter(t => t.status === 'pending').length}</span>
+              {/* Fix: RitualTask status is 'active' | 'completed', mapped 'pending' to 'active' */}
+              <span className="text-xl font-black italic text-blue-500">{tasks.filter(t => t.status === 'active').length}</span>
            </div>
            <div className="text-center px-4">
               <span className="text-[8px] text-gray-600 font-black uppercase block">Atendidos Hoy</span>
@@ -67,8 +69,9 @@ const PersonalModule: React.FC<PersonalProps> = ({ tasks, onCompleteTask }) => {
                    staffTasks.map(task => (
                      <div key={task.id} className="bg-white/5 border border-white/5 p-4 rounded-2xl flex justify-between items-center group">
                         <div>
-                           <span className="text-[7px] text-blue-500 font-black uppercase block">MESA {task.tableId}</span>
-                           <span className="text-[10px] font-black italic uppercase">{task.ritualLabel}</span>
+                           {/* Fix: changed task.tableId to task.table_id and task.ritualLabel to task.step_label */}
+                           <span className="text-[7px] text-blue-500 font-black uppercase block">MESA {task.table_id}</span>
+                           <span className="text-[10px] font-black italic uppercase">{task.step_label}</span>
                         </div>
                         <button 
                           onClick={() => onCompleteTask(task.id)}

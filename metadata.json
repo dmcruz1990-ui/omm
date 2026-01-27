@@ -1,5 +1,5 @@
 {
-  "name": "OMM Simple",
+  "name": "OMM",
   "description": "Sistema unificado de gestión para OMM con IA, POS, Reservas y Detección de Gestos.",
   "requestFramePermissions": [
     "camera",
