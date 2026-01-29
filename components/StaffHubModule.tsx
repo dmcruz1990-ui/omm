@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Trophy, 
@@ -29,7 +28,7 @@ import {
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import jsQR from 'https://esm.sh/jsqr';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase.ts';
 import { RitualTask, OmmEvent, EventTicket } from '../types';
 
 interface StaffKPIs {

@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import { 
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
@@ -6,27 +5,27 @@ import {
   ShieldCheck, Compass, Loader2, MonitorPlay, Sparkles, Palette,
   BarChart4
 } from 'lucide-react';
-import { supabase } from './lib/supabase';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import { ModuleType, Table, RitualTask } from './types';
-import { useMediaPipe } from './hooks/useMediaPipe';
-import Login from './components/Login';
+import { supabase } from './lib/supabase.ts';
+import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
+import { ModuleType, Table, RitualTask } from './types.ts';
+import { useMediaPipe } from './hooks/useMediaPipe.ts';
+import Login from './components/Login.tsx';
 
-const OhYeahPage = lazy(() => import('./components/OhYeahPage'));
-const DiscoverModule = lazy(() => import('./components/DiscoverModule'));
-const ReserveModule = lazy(() => import('./components/ReserveModule'));
-const RelationshipModule = lazy(() => import('./components/RelationshipModule'));
-const ServiceOSModule = lazy(() => import('./components/POSModule'));
-const FlowModule = lazy(() => import('./components/FlowModule'));
-const SupplyModule = lazy(() => import('./components/SupplyModule'));
-const CareModule = lazy(() => import('./components/CareModule'));
-const FinanceModule = lazy(() => import('./components/FinanceModule'));
-const FinanceAutopilot = lazy(() => import('./components/FinanceAutopilot'));
-const CommandModule = lazy(() => import('./components/CommandModule'));
-const SurveillanceModule = lazy(() => import('./components/SurveillanceModule'));
-const KitchenModule = lazy(() => import('./components/KitchenModule'));
-const StaffHubModule = lazy(() => import('./components/StaffHubModule'));
-const BrandStudio = lazy(() => import('./components/BrandStudio'));
+const OhYeahPage = lazy(() => import('./components/OhYeahPage.tsx'));
+const DiscoverModule = lazy(() => import('./components/DiscoverModule.tsx'));
+const ReserveModule = lazy(() => import('./components/ReserveModule.tsx'));
+const RelationshipModule = lazy(() => import('./components/RelationshipModule.tsx'));
+const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
+const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
+const SupplyModule = lazy(() => import('./components/SupplyModule.tsx'));
+const CareModule = lazy(() => import('./components/CareModule.tsx'));
+const FinanceModule = lazy(() => import('./components/FinanceModule.tsx'));
+const FinanceAutopilot = lazy(() => import('./components/FinanceAutopilot.tsx'));
+const CommandModule = lazy(() => import('./components/CommandModule.tsx'));
+const SurveillanceModule = lazy(() => import('./components/SurveillanceModule.tsx'));
+const KitchenModule = lazy(() => import('./components/KitchenModule.tsx'));
+const StaffHubModule = lazy(() => import('./components/StaffHubModule.tsx'));
+const BrandStudio = lazy(() => import('./components/BrandStudio.tsx'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -37,11 +36,10 @@ const ModuleLoader = () => (
 
 const Dashboard: React.FC = () => {
   const { user, profile, signOut } = useAuth();
-  const [activeModule, setActiveModule] = useState(ModuleType.DISCOVER);
+  const [activeModule, setActiveModule] = useState<ModuleType>(ModuleType.DISCOVER);
   const [tables, setTables] = useState<any[]>([]);
   const [ritualTasks, setRitualTasks] = useState<RitualTask[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);
-  
   const [activeStation, setActiveStation] = useState(1);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -71,6 +69,13 @@ const Dashboard: React.FC = () => {
       });
 
       setTables(processedTables || []);
+
+      const { data: tasksData } = await supabase
+        .from('ritual_tasks')
+        .select('*')
+        .eq('status', 'active');
+      setRitualTasks(tasksData || []);
+
     } catch (err) {
       console.warn("Supabase fetch fallback.");
     } finally {
@@ -82,9 +87,10 @@ const Dashboard: React.FC = () => {
     fetchData();
 
     const channel = supabase
-      .channel('schema-db-changes-v5')
+      .channel('dashboard-main-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => fetchData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ritual_tasks' }, () => fetchData())
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
@@ -107,6 +113,10 @@ const Dashboard: React.FC = () => {
     await handleUpdateTable(tableId, { status: 'calling', welcome_timer_start: new Date().toISOString() });
   };
 
+  const handleCompleteTask = async (taskId: string) => {
+    await supabase.from('ritual_tasks').update({ status: 'completed', completed_at: new Date().toISOString() }).eq('id', taskId);
+  };
+
   const modules = [
     { type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'SHOWCASE & PLANES', icon: <Compass size={22} /> },
     { type: ModuleType.FINANCE_AUTOPILOT, label: 'VERDAD FINANCIERA', sub: 'BENCHMARKS & SEMÁFOROS', icon: <BarChart4 size={22} /> },
@@ -120,13 +130,13 @@ const Dashboard: React.FC = () => {
     { type: ModuleType.SUPPLY, label: 'SUPPLY INTEL', sub: 'INVENTARIO IA', icon: <Truck size={22} /> },
     { type: ModuleType.CARE, label: 'CARE', sub: 'RECUPERACIÓN CX', icon: <HeartPulse size={22} /> },
     { type: ModuleType.FINANCE, label: 'FINANCE PILOT', sub: 'CONTABILIDAD LIVE', icon: <DollarSign size={22} /> },
-    { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'CMS DE DISEÑO', icon: <Palette size={22} /> },
+    { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'CMS DE DISEÑO', icon: <Palette size={22} /> }
   ];
 
   if (dashboardLoading) return (
     <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
        <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
-       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500">Iniciando Ecosistema Nexum...</p>
+       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic">Iniciando Ecosistema Nexum...</p>
     </div>
   );
 
@@ -237,7 +247,7 @@ const Dashboard: React.FC = () => {
               </div>
             )}
             {activeModule === ModuleType.KITCHEN_KDS && <KitchenModule />}
-            {activeModule === ModuleType.FLOW && <FlowModule orders={[]} tasks={ritualTasks} onCompleteTask={()=>{}} />}
+            {activeModule === ModuleType.FLOW && <FlowModule orders={[]} tasks={ritualTasks} onCompleteTask={handleCompleteTask} />}
             {activeModule === ModuleType.SUPPLY && <SupplyModule />}
             {activeModule === ModuleType.CARE && <CareModule />}
             {activeModule === ModuleType.FINANCE && <FinanceModule />}
@@ -262,7 +272,7 @@ const Main: React.FC = () => {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  if (route === '#/oh-yeah') {
+  if (route.startsWith('#/oh-yeah')) {
     return (
       <Suspense fallback={<ModuleLoader />}>
         <OhYeahPage />
