@@ -8,7 +8,6 @@ import {
   ChevronRight,
   MapPin,
   Star,
-  Play,
   UtensilsCrossed,
   MessageSquare,
   Calendar

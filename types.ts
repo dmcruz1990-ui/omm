@@ -15,6 +15,7 @@ export enum ModuleType {
   SUPPLY = 'SUPPLY',
   CARE = 'CARE',
   FINANCE = 'FINANCE',
+  FINANCE_AUTOPILOT = 'FINANCE_AUTOPILOT',
   COMMAND = 'COMMAND',
   STAFF_HUB = 'STAFF_HUB',
   KITCHEN_KDS = 'KITCHEN_KDS',
@@ -271,4 +272,16 @@ export interface EventTicket {
   checked_in: boolean;
   checked_in_at?: string | null;
   created_at?: string;
+}
+
+export interface ExpenseRecord {
+  id: string;
+  description: string;
+  amount: number;
+  account: string;
+  category: string;
+  type: 'COSTO' | 'GASTO';
+  is_recurring: boolean;
+  is_ai_classified: boolean;
+  date: string;
 }

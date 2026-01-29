@@ -3,7 +3,8 @@ import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import { 
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
   Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
-  ShieldCheck, Compass, Loader2, MonitorPlay, Sparkles, Palette
+  ShieldCheck, Compass, Loader2, MonitorPlay, Sparkles, Palette,
+  BarChart4
 } from 'lucide-react';
 import { supabase } from './lib/supabase';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -20,6 +21,7 @@ const FlowModule = lazy(() => import('./components/FlowModule'));
 const SupplyModule = lazy(() => import('./components/SupplyModule'));
 const CareModule = lazy(() => import('./components/CareModule'));
 const FinanceModule = lazy(() => import('./components/FinanceModule'));
+const FinanceAutopilot = lazy(() => import('./components/FinanceAutopilot'));
 const CommandModule = lazy(() => import('./components/CommandModule'));
 const SurveillanceModule = lazy(() => import('./components/SurveillanceModule'));
 const KitchenModule = lazy(() => import('./components/KitchenModule'));
@@ -107,6 +109,7 @@ const Dashboard: React.FC = () => {
 
   const modules = [
     { type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'SHOWCASE & PLANES', icon: <Compass size={22} /> },
+    { type: ModuleType.FINANCE_AUTOPILOT, label: 'VERDAD FINANCIERA', sub: 'BENCHMARKS & SEMÁFOROS', icon: <BarChart4 size={22} /> },
     { type: ModuleType.COMMAND, label: 'COMMAND CENTER', sub: 'ESTRATEGIA & PRUEBAS', icon: <Globe size={22} /> },
     { type: ModuleType.SERVICE_OS, label: 'SERVICE OS', sub: 'POS & RITUALES', icon: <ShoppingCart size={22} /> },
     { type: ModuleType.KITCHEN_KDS, label: 'KITCHEN KDS', sub: 'PANTALLA DE COCINA', icon: <MonitorPlay size={22} /> },
@@ -238,6 +241,7 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.SUPPLY && <SupplyModule />}
             {activeModule === ModuleType.CARE && <CareModule />}
             {activeModule === ModuleType.FINANCE && <FinanceModule />}
+            {activeModule === ModuleType.FINANCE_AUTOPILOT && <FinanceAutopilot />}
             {activeModule === ModuleType.STAFF_HUB && <StaffHubModule />}
             {activeModule === ModuleType.BRAND_STUDIO && <BrandStudio />}
           </Suspense>
