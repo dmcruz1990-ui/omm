@@ -18,7 +18,7 @@ import {
   AlertTriangle,
   Receipt
 } from 'lucide-react';
-import { Transaction, FinancialAnomaly, CashflowPoint } from '../types';
+import { Transaction, FinancialAnomaly, CashflowPoint } from '../types.ts';
 import { GoogleGenAI } from "@google/genai";
 
 const FinanceModule: React.FC = () => {
@@ -69,7 +69,7 @@ const FinanceModule: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-8 animate-in fade-in duration-700 text-left">
       {/* Header Estilo Terminal Financiera */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/5 pb-8">
         <div className="flex items-center gap-4">

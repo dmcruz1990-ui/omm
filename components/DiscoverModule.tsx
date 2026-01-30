@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   Sparkles, 
@@ -35,7 +36,7 @@ const DiscoverModule: React.FC = () => {
     }
 
     return (
-        <div className="space-y-16 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-1000 pb-20">
+        <div className="space-y-16 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-1000 pb-20 text-left">
             <section className="relative h-[450px] flex flex-col items-center justify-center text-center overflow-hidden rounded-[4rem] border border-white/5 bg-[#0d0d0f]">
                 <div className="absolute top-0 left-0 w-full h-full">
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/10 blur-[120px] rounded-full"></div>

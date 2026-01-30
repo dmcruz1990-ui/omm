@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
-// Added ChevronRight to the import list to fix the undefined name error
+import { supabase } from '../lib/supabase.ts';
 import { 
   Palette, 
   Image as ImageIcon, 
@@ -17,7 +16,7 @@ import {
   Globe,
   ChevronRight
 } from 'lucide-react';
-import { Brand } from '../types';
+import { Brand } from '../types.ts';
 
 const BrandStudio: React.FC = () => {
   const [brand, setBrand] = useState<Brand | null>(null);
@@ -79,7 +78,7 @@ const BrandStudio: React.FC = () => {
        setTimeout(() => {
          setSaving(false);
          setSuccess(true);
-         setTimeout(() => setSuccess(null), 3000);
+         setTimeout(() => setSuccess(false), 3000);
        }, 1500);
        return;
     }
@@ -116,7 +115,7 @@ const BrandStudio: React.FC = () => {
   );
 
   return (
-    <div className="max-w-7xl mx-auto animate-in fade-in duration-700 pb-20">
+    <div className="max-w-7xl mx-auto animate-in fade-in duration-700 pb-20 text-left">
       
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/5 pb-10 mb-10">
         <div>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Trophy, 
@@ -29,7 +30,7 @@ import {
 import { GoogleGenAI } from "@google/genai";
 import jsQR from 'https://esm.sh/jsqr';
 import { supabase } from '../lib/supabase.ts';
-import { RitualTask, OmmEvent, EventTicket } from '../types';
+import { RitualTask, OmmEvent, EventTicket } from '../types.ts';
 
 interface StaffKPIs {
   staffId: string;
@@ -246,7 +247,7 @@ const StaffHubModule: React.FC = () => {
   );
 
   return (
-    <div className="space-y-12 animate-in fade-in duration-700 max-w-7xl mx-auto pb-20">
+    <div className="space-y-12 animate-in fade-in duration-700 max-w-7xl mx-auto pb-20 text-left">
       <div className="flex justify-center mb-8">
         <div className="bg-[#111114] p-2 rounded-[2rem] border border-white/5 flex gap-2">
            <button 
@@ -351,7 +352,7 @@ const StaffHubModule: React.FC = () => {
                        <Unlock size={32} />
                     </div>
                     <div>
-                       <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none">Event Scanner</h2>
+                       <h2 className="text-4xl font-black italic uppercase leading-none">Event Scanner</h2>
                     </div>
                  </div>
                  <select 
@@ -445,15 +446,5 @@ const StaffHubModule: React.FC = () => {
     </div>
   );
 };
-
-const StatMiniCard = ({ label, value, icon }: { label: string, value: string, icon: any }) => (
-  <div className="bg-[#111114] border border-white/5 px-6 py-3 rounded-2xl flex items-center gap-3">
-     <div className="text-blue-500">{icon}</div>
-     <div>
-        <span className="text-[8px] text-gray-600 font-black uppercase block">{label}</span>
-        <span className="text-xs font-black italic">{value}</span>
-     </div>
-  </div>
-);
 
 export default StaffHubModule;

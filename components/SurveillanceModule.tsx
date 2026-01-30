@@ -1,3 +1,4 @@
+
 import React, { useEffect, useRef, useState } from 'react';
 import { HandLandmarkerResult } from '@mediapipe/tasks-vision';
 import { 
@@ -11,8 +12,8 @@ import {
   CheckCircle,
   Video
 } from 'lucide-react';
-import { Table } from '../types';
-import { supabase } from '../lib/supabase';
+import { Table } from '../types.ts';
+import { supabase } from '../lib/supabase.ts';
 
 interface SurveillanceProps {
   videoRef: React.RefObject<HTMLVideoElement | null>;
@@ -174,7 +175,7 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
   }, [isCameraReady, videoRef, resultsRef, activeStation, testTables]);
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-8 animate-in fade-in duration-700 text-left">
       {showGlobalAlert.show && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 z-[500] bg-red-600 text-white px-10 py-5 rounded-[2.5rem] font-black italic text-xl uppercase tracking-tighter shadow-[0_0_60px_rgba(239,68,68,0.5)] flex items-center gap-4 border-2 border-white animate-in zoom-in slide-in-from-top-4">
           <Video size={28} className="animate-pulse" />
@@ -235,7 +236,6 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
             </div>
 
             <div className="aspect-video relative">
-               {/* Fix: replaced 'table.id' with 'activeStation' as 'table' was undefined in this scope */}
                <canvas ref={el => { if (el) canvasRefs.current[activeStation] = el; }} className="w-full h-full object-cover" />
                {activeTable?.status === 'calling' && (
                  <div className="absolute inset-0 bg-red-600/10 flex flex-col items-center justify-center p-12 text-center animate-in zoom-in">
@@ -256,7 +256,7 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
         </div>
 
         <div className="flex flex-col gap-6">
-          <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5 pb-3 italic">Multichannel Vision</h4>
+          <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5 pb-3 italic text-left">Multichannel Vision</h4>
           {sideTables.map(table => (
             <div key={table.id} onClick={() => setActiveStation(table.id)} className={`relative cursor-pointer group rounded-[2.5rem] overflow-hidden border-2 transition-all ${table.status === 'calling' ? 'border-red-500 shadow-lg animate-pulse' : 'border-white/5 opacity-60 hover:opacity-100'}`}>
               <div className="absolute top-4 left-4 z-10 bg-black/70 px-3 py-1 rounded-xl text-[9px] font-black text-white uppercase tracking-widest">MESA {table.id}</div>

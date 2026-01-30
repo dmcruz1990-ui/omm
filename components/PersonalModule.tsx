@@ -1,11 +1,9 @@
 
 import React, { useState } from 'react';
-/* Fix: Removed non-existent export ServiceRecord from types import */
-import { StaffMember, RitualTask } from '../types';
+import { StaffMember, RitualTask } from '../types.ts';
 import { User, ShieldCheck, Clock, CheckCircle2, Timer, ListChecks, PlayCircle, ChefHat, GlassWater as Bottle, Martini } from 'lucide-react';
 
 interface PersonalProps {
-  /* Fix: Removed non-existent type ServiceRecord from props */
   tasks: RitualTask[];
   onCompleteTask: (taskId: string) => void;
 }
@@ -19,7 +17,7 @@ const PersonalModule: React.FC<PersonalProps> = ({ tasks, onCompleteTask }) => {
   ];
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-8 animate-in fade-in duration-700 text-left">
       <div className="flex items-center justify-between mb-8">
         <div>
           <h2 className="text-3xl font-black italic uppercase tracking-tighter">SINCRO DE PERSONAL OMM</h2>
@@ -28,7 +26,6 @@ const PersonalModule: React.FC<PersonalProps> = ({ tasks, onCompleteTask }) => {
         <div className="flex gap-4 bg-[#111114] p-3 rounded-2xl border border-white/5">
            <div className="text-center px-4 border-r border-white/5">
               <span className="text-[8px] text-gray-600 font-black uppercase block">Tareas Pendientes</span>
-              {/* Fix: RitualTask status is 'active' | 'completed', mapped 'pending' to 'active' */}
               <span className="text-xl font-black italic text-blue-500">{tasks.filter(t => t.status === 'active').length}</span>
            </div>
            <div className="text-center px-4">
@@ -69,7 +66,6 @@ const PersonalModule: React.FC<PersonalProps> = ({ tasks, onCompleteTask }) => {
                    staffTasks.map(task => (
                      <div key={task.id} className="bg-white/5 border border-white/5 p-4 rounded-2xl flex justify-between items-center group">
                         <div>
-                           {/* Fix: changed task.tableId to task.table_id and task.ritualLabel to task.step_label */}
                            <span className="text-[7px] text-blue-500 font-black uppercase block">MESA {task.table_id}</span>
                            <span className="text-[10px] font-black italic uppercase">{task.step_label}</span>
                         </div>

@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   Send, 
@@ -15,9 +14,9 @@ import {
   Ticket,
   QrCode
 } from 'lucide-react';
-import { askNexumAI } from '../lib/ai/brain';
-import { supabase } from '../lib/supabase';
-import { OmmEvent } from '../types';
+import { askNexumAI } from '../lib/ai/brain.ts';
+import { supabase } from '../lib/supabase.ts';
+import { OmmEvent } from '../types.ts';
 
 interface Message {
   role: 'user' | 'model';
@@ -196,7 +195,7 @@ const AIConcierge: React.FC<AIConciergeProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto bg-[#111114] border border-white/5 rounded-[3.5rem] overflow-hidden flex flex-col h-[700px] shadow-2xl relative animate-in zoom-in duration-500">
+    <div className="w-full max-w-3xl mx-auto bg-[#111114] border border-white/5 rounded-[3.5rem] overflow-hidden flex flex-col h-[700px] shadow-2xl relative animate-in zoom-in duration-500 text-left">
       
       {/* HUD de Éxito de Evento */}
       {bookingStatus === 'event_success' && reservationDetails && (

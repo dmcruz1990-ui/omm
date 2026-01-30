@@ -1,16 +1,16 @@
 
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase.ts';
 import { 
   Loader2, 
   ChefHat, 
   Flame, 
   CheckCircle2, 
   Clock, 
-  AlertCircle,
-  TrendingUp,
   Zap,
-  Play
+  Play,
+  History,
+  Timer
 } from 'lucide-react';
 
 interface OrderItem {
@@ -37,39 +37,24 @@ const KitchenModule: React.FC = () => {
   const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 60000);
+    const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
 
   const fetchKitchenOrders = async () => {
-    console.log("🔄 KDS: Buscando comandas activas...");
     try {
-      const { data: ordersData, error: ordersError } = await supabase
+      const { data: ordersData } = await supabase
         .from('orders')
         .select('*')
         .eq('status', 'open')
         .order('opened_at', { ascending: true });
 
-      if (ordersError) {
-        console.error("❌ KDS Error órdenes:", ordersError);
-        throw ordersError;
-      }
-
       if (ordersData && ordersData.length > 0) {
         const orderIds = ordersData.map(o => o.id);
-        
-        // UNIÓN DE DATOS EN LA QUERY: Traemos nombre y categoría
-        const { data: itemsData, error: itemsError } = await supabase
+        const { data: itemsData } = await supabase
           .from('order_items')
           .select('*, menu_items(name, category)')
           .in('order_id', orderIds);
-
-        if (itemsError) {
-          console.error("❌ KDS Error items:", itemsError);
-          throw itemsError;
-        }
-
-        console.log(`📦 KDS: ${itemsData?.length} items recibidos para ${orderIds.length} comandas.`);
 
         const mappedOrders = ordersData.map(order => ({
           ...order,
@@ -78,11 +63,10 @@ const KitchenModule: React.FC = () => {
 
         setOrders(mappedOrders);
       } else {
-        console.log("ℹ️ KDS: No hay órdenes abiertas en este momento.");
         setOrders([]);
       }
-    } catch (err: any) {
-      console.error("❌ KDS ERROR CRÍTICO:", err);
+    } catch (err) {
+      console.error("KDS Sync Error");
     } finally {
       setLoading(false);
     }
@@ -90,158 +74,115 @@ const KitchenModule: React.FC = () => {
 
   useEffect(() => {
     fetchKitchenOrders();
-
-    console.log("📡 KDS: Activando suscripción Real-time para 'order_items'...");
-    const channel = supabase
-      .channel('kds-realtime-v4')
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'order_items' 
-      }, (payload) => {
-        console.log("⚡ KDS REALTIME: Cambio en order_items detectado:", payload.eventType);
-        fetchKitchenOrders();
-      })
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'orders' 
-      }, (payload) => {
-        console.log("⚡ KDS REALTIME: Cambio en órdenes detectado:", payload.eventType);
-        fetchKitchenOrders();
-      })
-      .subscribe((status) => {
-        console.log(`📡 KDS SYNC STATUS: ${status}`);
-      });
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const channel = supabase.channel('kds-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchKitchenOrders())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchKitchenOrders())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const updateItemStatus = async (itemId: string, newStatus: 'pending' | 'preparing' | 'served') => {
-    try {
-      const { error } = await supabase
-        .from('order_items')
-        .update({ status: newStatus })
-        .eq('id', itemId);
-      
-      if (error) throw error;
-      console.log(`✅ Item ${itemId} actualizado a: ${newStatus}`);
-    } catch (err) {
-      console.error("❌ Error actualizando status de item:", err);
-    }
+    await supabase.from('order_items').update({ status: newStatus }).eq('id', itemId);
+    fetchKitchenOrders();
   };
 
   const getElapsedTime = (isoString: string) => {
-    const diff = Math.floor((now - new Date(isoString).getTime()) / 60000);
-    return diff;
+    const diff = Math.floor((now - new Date(isoString).getTime()) / 1000);
+    const mins = Math.floor(diff / 60);
+    const secs = diff % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  if (loading) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center bg-black">
-        <Loader2 className="animate-spin text-blue-500 mb-4" size={48} />
-        <p className="text-xl font-black uppercase tracking-[0.5em] text-gray-500 italic">Sincronizando KDS OMM...</p>
-      </div>
-    );
-  }
+  if (loading) return (
+    <div className="h-full flex flex-col items-center justify-center opacity-40">
+      <Loader2 className="animate-spin text-blue-500 mb-4" size={48} />
+      <p className="text-xl font-black uppercase tracking-[0.5em] text-gray-500 italic">Sincronizando Comandas...</p>
+    </div>
+  );
 
   return (
-    <div className="min-h-full bg-black text-white p-8 animate-in fade-in duration-500">
-      <header className="flex items-center justify-between mb-12 border-b border-white/10 pb-8">
+    <div className="min-h-full bg-[#0a0a0c] text-white animate-in fade-in duration-500 text-left">
+      <header className="flex items-center justify-between mb-12 border-b border-white/5 pb-8">
         <div className="flex items-center gap-6">
-          <div className="w-16 h-16 bg-blue-600 rounded-[2rem] flex items-center justify-center shadow-[0_0_30px_rgba(37,99,235,0.4)]">
+          <div className="w-16 h-16 bg-blue-600 rounded-[2rem] flex items-center justify-center shadow-2xl shadow-blue-600/20">
             <ChefHat size={32} />
           </div>
           <div>
-            <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">NEXUM FLOW | KDS</h2>
-            <p className="text-[11px] text-gray-500 font-black uppercase tracking-[0.4em] mt-3 flex items-center gap-2">
-               <Zap size={14} className="text-blue-500" /> Monitor de Producción Live
-            </p>
+            <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none">Kitchen OS | KDS</h2>
+            <p className="text-[11px] text-gray-500 font-black uppercase tracking-[0.4em] mt-3">Monitor de Tiempos OMM_V4</p>
           </div>
         </div>
-        <div className="flex items-center gap-8">
-           <div className="bg-white/5 border border-white/10 px-6 py-3 rounded-2xl flex flex-col items-end">
-              <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">Comandas Activas</span>
-              <span className="text-2xl font-black italic text-blue-500">{orders.length}</span>
+        <div className="flex items-center gap-8 bg-[#111114] p-4 rounded-3xl border border-white/5">
+           <div className="flex flex-col items-end border-r border-white/5 pr-6">
+              <span className="text-[9px] text-gray-600 font-black uppercase tracking-widest">En Fuego</span>
+              <span className="text-2xl font-black italic text-orange-500">{orders.length}</span>
+           </div>
+           <div className="flex flex-col items-end">
+              <span className="text-[9px] text-gray-600 font-black uppercase tracking-widest">SLA Objetivo</span>
+              <span className="text-2xl font-black italic text-blue-500">12:00</span>
            </div>
         </div>
       </header>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-        {orders.map((order) => (
-          <div 
-            key={order.id} 
-            className="bg-[#050505] border-2 border-white/5 rounded-[3rem] overflow-hidden flex flex-col h-full shadow-2xl animate-in zoom-in"
-          >
-            <div className={`p-8 border-b-4 flex flex-col items-center gap-2 ${
-              getElapsedTime(order.opened_at) > 15 ? 'bg-red-600/20 border-red-500' : 'bg-blue-600/10 border-blue-600/50'
-            }`}>
-              <div className="flex justify-between w-full items-center mb-2">
-                 <span className="text-[10px] font-black uppercase tracking-widest text-gray-500">Mesa</span>
-                 <div className="flex items-center gap-2">
-                    <Clock size={14} className={getElapsedTime(order.opened_at) > 15 ? 'text-red-500 animate-pulse' : 'text-blue-500'} />
-                    <span className={`text-sm font-black italic ${getElapsedTime(order.opened_at) > 15 ? 'text-red-500' : 'text-blue-500'}`}>
-                      Hace {getElapsedTime(order.opened_at)}m
-                    </span>
-                 </div>
-              </div>
-              <h3 className="text-7xl font-black italic tracking-tighter leading-none mb-2">
-                M{order.table_id.toString().padStart(2, '0')}
-              </h3>
-              <p className="text-[10px] font-bold text-gray-600 uppercase tracking-[0.2em]">{String(order.id).split('-')[0]}</p>
-            </div>
+        {orders.map((order) => {
+          const timeMins = Math.floor((now - new Date(order.opened_at).getTime()) / 60000);
+          const isLate = timeMins >= 12;
 
-            <div className="flex-1 p-8 space-y-6 overflow-y-auto max-h-[400px] custom-scrollbar">
-              {order.items.map((item) => (
-                <div key={item.id} className="flex flex-col gap-4 border-b border-white/5 pb-6 last:border-0">
-                  <div className="flex justify-between items-start">
-                    <div className="flex flex-col">
-                      <h4 className={`text-2xl font-black italic leading-tight uppercase ${
-                        item.status === 'preparing' ? 'text-blue-400' : 'text-white'
-                      }`}>
-                        {item.quantity}x {item.menu_items?.name}
-                      </h4>
-                      <span className="text-[8px] text-gray-600 font-black uppercase tracking-widest">{item.menu_items?.category}</span>
-                      <span className={`text-[10px] font-black uppercase mt-2 px-3 py-1 rounded-full w-fit ${
-                        item.status === 'pending' ? 'bg-orange-500/10 text-orange-500' : 'bg-blue-600/10 text-blue-500'
-                      }`}>
-                        {item.status === 'pending' ? 'PENDIENTE' : 'PREPARANDO'}
-                      </span>
+          return (
+            <div key={order.id} className={`bg-[#111114] border-2 rounded-[3.5rem] overflow-hidden flex flex-col h-full shadow-2xl transition-all ${isLate ? 'border-red-500/50' : 'border-white/5'}`}>
+              <div className={`p-8 border-b-2 flex flex-col items-center gap-2 ${isLate ? 'bg-red-600/10 border-red-500/30' : 'bg-blue-600/5 border-blue-500/20'}`}>
+                <div className="flex justify-between w-full items-center">
+                   <span className="text-[10px] font-black uppercase text-gray-500">Mesa</span>
+                   <div className={`flex items-center gap-2 font-mono ${isLate ? 'text-red-500 animate-pulse' : 'text-blue-500'}`}>
+                      <Timer size={14} />
+                      <span className="text-sm font-black italic">{getElapsedTime(order.opened_at)}</span>
+                   </div>
+                </div>
+                <h3 className="text-7xl font-black italic tracking-tighter leading-none mb-1">M{order.table_id}</h3>
+              </div>
+
+              <div className="flex-1 p-8 space-y-4 overflow-y-auto max-h-[400px] custom-scrollbar">
+                {order.items.map((item) => (
+                  <div key={item.id} className="bg-black/40 border border-white/5 rounded-2xl p-5 group">
+                    <div className="flex justify-between items-start mb-4">
+                       <div>
+                          <h4 className="text-xl font-black italic uppercase leading-none text-white">{item.quantity}x {item.menu_items?.name}</h4>
+                          <span className="text-[8px] text-gray-600 font-bold uppercase tracking-widest mt-1 block">{item.menu_items?.category}</span>
+                       </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                       {item.status === 'pending' ? (
+                         <button 
+                           onClick={() => updateItemStatus(item.id, 'preparing')}
+                           className="flex-1 bg-white/5 hover:bg-orange-600 text-gray-500 hover:text-white py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2"
+                         >
+                           <Play size={14} /> PREPARAR
+                         </button>
+                       ) : (
+                         <button 
+                           onClick={() => updateItemStatus(item.id, 'served')}
+                           className="flex-1 bg-blue-600 hover:bg-green-600 text-white py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg"
+                         >
+                           <CheckCircle2 size={14} /> SERVIR
+                         </button>
+                       )}
                     </div>
                   </div>
-
-                  <div className="flex gap-3">
-                    {item.status === 'pending' ? (
-                      <button 
-                        onClick={() => updateItemStatus(item.id, 'preparing')}
-                        className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg"
-                      >
-                        <Play size={16} fill="white" /> PREPARAR
-                      </button>
-                    ) : (
-                      <button 
-                        onClick={() => updateItemStatus(item.id, 'served')}
-                        className="flex-1 bg-green-600 hover:bg-green-500 text-white py-4 rounded-2xl text-xs font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-lg"
-                      >
-                        <CheckCircle2 size={16} /> SERVIR
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-
-        {orders.length === 0 && (
-          <div className="col-span-full py-40 flex flex-col items-center justify-center text-center opacity-20 border-4 border-dashed border-white/5 rounded-[4rem]">
-             <Flame size={80} className="mb-8" />
-             <h4 className="text-4xl font-black italic uppercase tracking-widest">Esperando Comandas</h4>
-          </div>
-        )}
+          );
+        })}
       </div>
+
+      {orders.length === 0 && (
+        <div className="py-40 flex flex-col items-center justify-center text-center opacity-10">
+           <Zap size={80} className="mb-6" />
+           <h4 className="text-4xl font-black italic uppercase tracking-[0.2em]">Pista Despejada</h4>
+        </div>
+      )}
     </div>
   );
 };

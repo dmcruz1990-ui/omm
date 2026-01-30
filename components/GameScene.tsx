@@ -9,10 +9,10 @@ import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { Environment, Grid, PerspectiveCamera, Stars } from '@react-three/drei';
 import * as THREE from 'three';
-import { GameStatus, NoteData, HandPositions, COLORS, CutDirection } from '../types';
-import { PLAYER_Z, SPAWN_Z, MISS_Z, NOTE_SPEED, DIRECTION_VECTORS, NOTE_SIZE, LANE_X_POSITIONS, LAYER_Y_POSITIONS, SONG_BPM } from '../constants';
-import Note from './Note';
-import Saber from './Saber';
+import { GameStatus, NoteData, HandPositions, COLORS, CutDirection } from '../types.ts';
+import { PLAYER_Z, SPAWN_Z, MISS_Z, NOTE_SPEED, DIRECTION_VECTORS, NOTE_SIZE, LANE_X_POSITIONS, LAYER_Y_POSITIONS, SONG_BPM } from '../constants.ts';
+import Note from './Note.tsx';
+import Saber from './Saber.tsx';
 
 // Define intrinsic elements as components to bypass missing JSX types
 const Color = 'color' as any;

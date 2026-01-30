@@ -14,20 +14,20 @@ export enum ModuleType {
   FLOW = 'FLOW',
   SUPPLY = 'SUPPLY',
   CARE = 'CARE',
-  FINANCE = 'FINANCE',
-  FINANCE_AUTOPILOT = 'FINANCE_AUTOPILOT',
+  FINANCE_HUB = 'FINANCE_HUB', // Unificado
   COMMAND = 'COMMAND',
   STAFF_HUB = 'STAFF_HUB',
   KITCHEN_KDS = 'KITCHEN_KDS',
   BRAND_STUDIO = 'BRAND_STUDIO'
 }
 
-export type TableStatus = 'free' | 'occupied' | 'calling' | 'ordered' | 'cleaning' | 'reserved';
+// Roles solicitados para el restaurante real
+export type UserRole = 'admin' | 'desarrollo' | 'gerencia' | 'mesero' | 'chef';
 
 export interface Profile {
   id: string;
   email: string;
-  role: 'admin' | 'mesero' | 'chef' | 'hostess';
+  role: UserRole;
   full_name?: string;
 }
 
@@ -49,38 +49,7 @@ export interface Table {
   welcome_timer_start?: string | null;
 }
 
-export interface Customer {
-  id: string;
-  name: string;
-  phone: string;
-  vip_status: boolean;
-  notes?: string;
-}
-
-export interface Order {
-  id: string;
-  table_id: number;
-  status: 'open' | 'preparing' | 'delivered' | 'paid';
-  total_amount: number;
-  opened_at: string;
-}
-
-export interface Reservation {
-  id: string;
-  customer?: string;
-  customer_id?: string;
-  table_id?: number;
-  assignedTable?: number;
-  reservation_time?: string;
-  time?: string;
-  pax: number;
-  plan?: string;
-  type?: string;
-  status: string;
-  noShowProbability?: number;
-  duration?: number;
-  upsellSuggested?: string;
-}
+export type TableStatus = 'free' | 'occupied' | 'calling' | 'ordered' | 'cleaning' | 'reserved';
 
 export interface RitualTask {
   id: string;
@@ -102,14 +71,63 @@ export interface Brand {
   settings?: any;
 }
 
-export const NEXUS_COLORS = {
-  primary: '#2563eb',
-  secondary: '#10b981',
-  danger: '#ef4444',
-  warning: '#f59e0b',
-  bg: '#0a0a0c',
-  card: '#111114'
-};
+export interface OmmEvent {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  price: number;
+  category: string;
+  image_url: string;
+}
+
+export interface EventTicket {
+  id: string;
+  event_id: string;
+  customer_name: string;
+  customer_phone: string;
+  customer_email: string;
+  ticket_code: string;
+  is_paid: boolean;
+  checked_in: boolean;
+  checked_in_at?: string | null;
+  created_at?: string;
+}
+
+export interface Opportunity {
+  id: string;
+  title: string;
+  type: 'TRAFFIC' | 'EVENT' | 'COMPETITOR' | 'WEATHER';
+  score: number;
+  description: string;
+  potentialRevenue: number;
+  aiReasoning: string;
+}
+
+export interface Transaction {
+  id: string;
+  timestamp: number;
+  type: string;
+  amount: number;
+  tax: number;
+  paymentMethod: string;
+  brand: string;
+  status: 'conciliado' | 'pendiente' | 'error';
+}
+
+export interface FinancialAnomaly {
+  id: string;
+  title: string;
+  severity: 'alta' | 'media' | 'baja';
+  description: string;
+  impact: number;
+}
+
+export interface CashflowPoint {
+  date: string;
+  actual: number;
+  predicted: number;
+}
 
 export enum GameStatus { IDLE = 'IDLE', PLAYING = 'PLAYING', PAUSED = 'PAUSED', ENDED = 'ENDED' }
 export type HandType = 'left' | 'right';
@@ -145,16 +163,22 @@ export const COLORS = {
   right: '#2563eb',
 };
 
-export interface Opportunity {
-  id: string;
-  title: string;
-  type: 'TRAFFIC' | 'EVENT' | 'COMPETITOR' | 'WEATHER';
-  score: number;
-  description: string;
-  potentialRevenue: number;
-  aiReasoning: string;
-}
+// --- Added missing exports to resolve build errors ---
 
+/**
+ * @description Standard color palette for the NEXUM system
+ */
+export const NEXUS_COLORS = {
+  primary: '#2563eb',
+  secondary: '#0a0a0c',
+  accent: '#10b981',
+  error: '#ef4444',
+  warning: '#f59e0b',
+};
+
+/**
+ * @description Representation of an item in the inventory for KPI tracking
+ */
 export interface InventoryItem {
   name: string;
   current: number;
@@ -162,20 +186,68 @@ export interface InventoryItem {
   unit: string;
 }
 
+/**
+ * @description Representation of a staff member within the hub
+ */
 export interface StaffMember {
   id: string;
   name: string;
   role: string;
-  status: string;
+  status: 'active' | 'inactive';
   shift: string;
 }
+
+/**
+ * @description Single item within a kitchen order
+ */
+export interface KitchenOrderItem {
+  id: string;
+  order_id: string;
+  status: 'pending' | 'preparing' | 'served';
+  quantity: number;
+  menu_items: {
+    name: string;
+    category: string;
+  };
+}
+
+/**
+ * @description Full kitchen order for KDS and Flow modules
+ */
+export interface KitchenOrder {
+  id: string;
+  table_id: number;
+  opened_at: string;
+  items: KitchenOrderItem[];
+}
+
+/**
+ * @description Base item in the supply chain / inventory
+ */
+export interface SupplyItem {
+  id: string;
+  name: string;
+  category: string;
+  theoretical: number;
+  real: number;
+  unit: string;
+  costPerUnit: number;
+  lastCostIncrease: number;
+  expirationDate: string;
+  status: 'optimal' | 'low' | 'critical';
+}
+
+/**
+ * @description Severity levels for service incidents
+ */
+export type Severity = 'Crítica' | 'Alta' | 'Media' | 'Baja';
 
 export interface CustomerProfile {
   id: string;
   name: string;
   phone: string;
   segment: string;
-  totalSpend: number;
+  total_spend: number;
   lastVisit: string;
   preferredRest: string;
   tastes: string[];
@@ -183,38 +255,6 @@ export interface CustomerProfile {
   churnRisk: number;
   walletBalance: string;
 }
-
-export interface KitchenOrder {
-  id: string;
-  tableId: number;
-  items: string[];
-  status: 'pending' | 'preparing' | 'ready';
-  timestamp: number;
-}
-
-export interface SupplyItem {
-  id: string;
-  name: string;
-  theoretical: number;
-  real: number;
-  unit: string;
-  category: string;
-  costPerUnit: number;
-  lastCostIncrease: number;
-  expirationDate: string;
-  status: 'optimal' | 'low' | 'critical' | 'waste_risk';
-}
-
-export interface PurchaseOrder {
-  id: string;
-  provider: string;
-  total: number;
-  itemsCount: number;
-  status: 'pending' | 'approved' | 'received';
-  aiSuggested: boolean;
-}
-
-export type Severity = 'Crítica' | 'Alta' | 'Media' | 'Baja';
 
 export interface ServiceIncident {
   id: string;
@@ -224,64 +264,4 @@ export interface ServiceIncident {
   timeElapsed: number;
   customerLTV: number;
   status: 'active' | 'resolved';
-}
-
-export interface Transaction {
-  id: string;
-  timestamp: number;
-  type: string;
-  amount: number;
-  tax: number;
-  paymentMethod: string;
-  brand: string;
-  status: 'conciliado' | 'pendiente' | 'error';
-}
-
-export interface FinancialAnomaly {
-  id: string;
-  title: string;
-  severity: 'alta' | 'media' | 'baja';
-  description: string;
-  impact: number;
-}
-
-export interface CashflowPoint {
-  date: string;
-  actual: number;
-  predicted: number;
-}
-
-export interface OmmEvent {
-  id: string;
-  title: string;
-  description: string;
-  date: string;
-  price: number;
-  category: string;
-  image_url: string;
-}
-
-export interface EventTicket {
-  id: string;
-  event_id: string;
-  customer_name: string;
-  customer_phone: string;
-  customer_email: string;
-  ticket_code: string;
-  is_paid: boolean;
-  checked_in: boolean;
-  checked_in_at?: string | null;
-  created_at?: string;
-}
-
-export interface ExpenseRecord {
-  id: string;
-  description: string;
-  amount: number;
-  account: string;
-  category: string;
-  type: 'COSTO' | 'GASTO';
-  is_recurring: boolean;
-  is_ai_classified: boolean;
-  date: string;
 }

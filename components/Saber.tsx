@@ -8,7 +8,7 @@
 import React, { useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { HandType, COLORS } from '../types';
+import { HandType, COLORS } from '../types.ts';
 
 // Define intrinsic elements as components to bypass missing JSX types
 const Group = 'group' as any;

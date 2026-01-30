@@ -15,7 +15,7 @@ import {
   PieChart,
   Target
 } from 'lucide-react';
-import { CustomerProfile } from '../types';
+import { CustomerProfile } from '../types.ts';
 
 const RelationshipModule: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -41,7 +41,7 @@ const RelationshipModule: React.FC = () => {
   ]);
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-8 animate-in fade-in duration-700 text-left">
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
          <StatItem label="NPS OMM" value="9.6/10" icon={<Heart className="text-red-500" />} trend="+0.2" />
          <StatItem label="Retención 30d" value="72%" icon={<Zap className="text-yellow-500" />} trend="+5%" />

@@ -1,14 +1,13 @@
-
 import React, { useState } from 'react';
-import { Table, RitualTask } from '../types';
+import { Table, RitualTask } from '../types.ts';
 import { 
   Zap, ChevronRight, 
   Flame, Coffee, Receipt, Martini, 
   BellRing, CheckCircle, UserCheck, GlassWater as Bottle,
   LayoutGrid, UtensilsCrossed, Wine, Sparkles
 } from 'lucide-react';
-import MenuGrid from './MenuGrid';
-import OrderTicket from './OrderTicket';
+import MenuGrid from './MenuGrid.tsx';
+import OrderTicket from './OrderTicket.tsx';
 
 interface POSProps {
   tables: any[]; 
@@ -34,7 +33,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, tasks }) =
 
   if (!selectedTableId) {
     return (
-      <div className="space-y-12 animate-in fade-in duration-700">
+      <div className="space-y-12 animate-in fade-in duration-700 text-left">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div>
             <h2 className="text-4xl font-black italic tracking-tighter uppercase">Service OS | Planta</h2>
@@ -70,7 +69,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, tasks }) =
   }
 
   return (
-    <div className="flex flex-col lg:flex-row gap-8 h-full animate-in fade-in duration-700 overflow-hidden">
+    <div className="flex flex-col lg:flex-row gap-8 h-full animate-in fade-in duration-700 overflow-hidden text-left">
       {/* Sidebar de Navegación Rápida de Mesas */}
       <div className="w-full lg:w-[280px] flex flex-col gap-4 shrink-0 overflow-y-auto custom-scrollbar pr-2">
         <button 

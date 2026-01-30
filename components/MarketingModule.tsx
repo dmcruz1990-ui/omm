@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { 
@@ -17,8 +18,7 @@ import {
   CheckCircle,
   Clock
 } from 'lucide-react';
-/* Fix: Removed non-existent export MarketingAction and unused NEXUS_COLORS from types import */
-import { Opportunity } from '../types';
+import { Opportunity } from '../types.ts';
 
 const MarketingModule: React.FC = () => {
   const [loading, setLoading] = useState(true);
@@ -49,7 +49,6 @@ const MarketingModule: React.FC = () => {
           }
         });
         
-        // Uso correcto de .text como propiedad
         const data = JSON.parse(response.text || "[]");
         setOpportunities(data);
       } catch (e) {
@@ -97,10 +96,10 @@ const MarketingModule: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 max-w-7xl mx-auto animate-in fade-in duration-700">
+    <div className="space-y-8 max-w-7xl mx-auto animate-in fade-in duration-700 text-left">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/5 pb-8">
         <div>
-          <h2 className="text-3xl font-black italic tracking-tighter flex items-center gap-3">
+          <h2 className="text-3xl font-black italic tracking-tighter flex items-center gap-3 text-white">
             <Sparkles className="text-blue-500" /> CENTRO DE COMANDO ESTRATÉGICO
           </h2>
           <p className="text-gray-500 text-xs font-bold mt-2 uppercase tracking-[0.3em]">Integración Middleware: <span className="text-blue-400">POS Seratta + SevenRooms</span></p>
@@ -151,20 +150,20 @@ const MarketingModule: React.FC = () => {
 
                     <div className="flex-1">
                       <div className="mb-4">
-                        <h4 className="text-2xl font-black italic tracking-tight mb-2 uppercase">{opp.title}</h4>
-                        <div className="flex items-center gap-3 text-xs text-gray-500">
-                          <span className="flex items-center gap-1 font-bold"><AlertTriangle size={12} className="text-yellow-500" /> Problema Detectado</span>
+                        <h4 className="text-2xl font-black italic tracking-tight mb-2 uppercase text-white">{opp.title}</h4>
+                        <div className="flex items-center gap-3 text-xs text-gray-500 text-left">
+                          <span className="flex items-center gap-1 font-bold text-yellow-500"><AlertTriangle size={12} /> Problema Detectado</span>
                           <span className="w-1 h-1 bg-gray-800 rounded-full"></span>
                           <p>{opp.description}</p>
                         </div>
                       </div>
                       
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-                         <div className="bg-black/40 p-4 rounded-2xl border border-white/5">
+                         <div className="bg-black/40 p-4 rounded-2xl border border-white/5 text-left">
                             <span className="text-[9px] text-blue-400 font-black uppercase block mb-1">Solución Propuesta IA</span>
                             <p className="text-xs text-gray-500 leading-relaxed font-medium italic">"{opp.aiReasoning}"</p>
                          </div>
-                         <div className="bg-blue-600/5 p-4 rounded-2xl border border-blue-500/10 flex flex-col justify-center">
+                         <div className="bg-blue-600/5 p-4 rounded-2xl border border-blue-500/10 flex flex-col justify-center text-left">
                             <span className="text-[9px] text-gray-400 font-black uppercase block mb-1">Revenue Estimado</span>
                             <span className="text-lg font-black text-blue-500 italic">+${(opp.potentialRevenue / 1000000).toFixed(1)}M COP</span>
                          </div>
@@ -193,7 +192,7 @@ const MarketingModule: React.FC = () => {
         </div>
 
         <div className="space-y-8">
-          <div className="bg-[#16161a] p-8 rounded-[3rem] border border-white/5 shadow-2xl sticky top-24">
+          <div className="bg-[#16161a] p-8 rounded-[3rem] border border-white/5 shadow-2xl sticky top-24 text-left">
             <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.3em] mb-8 flex items-center gap-2">
                <Target className="text-blue-500" /> Hospitality Stack
             </h3>

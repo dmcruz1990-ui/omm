@@ -9,8 +9,8 @@ import React, { useMemo, useRef } from 'react';
 import { Extrude, Octahedron } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { NoteData, COLORS } from '../types';
-import { LANE_X_POSITIONS, LAYER_Y_POSITIONS, NOTE_SIZE } from '../constants';
+import { NoteData, COLORS } from '../types.ts';
+import { LANE_X_POSITIONS, LAYER_Y_POSITIONS, NOTE_SIZE } from '../constants.ts';
 
 // Define intrinsic elements as components to bypass missing JSX types
 const Group = 'group' as any;

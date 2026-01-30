@@ -18,8 +18,7 @@ import {
   Coffee,
   Martini
 } from 'lucide-react';
-/* Fix: Removed non-existent export StationSaturation and unused NEXUS_COLORS from types import */
-import { KitchenOrder, RitualTask } from '../types';
+import { KitchenOrder, RitualTask } from '../types.ts';
 
 interface FlowProps {
   orders: KitchenOrder[];
@@ -36,7 +35,7 @@ const FlowModule: React.FC<FlowProps> = ({ orders, tasks, onCompleteTask }) => {
   );
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-8 animate-in fade-in duration-700 text-left">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/5 pb-8">
         <div className="flex items-center gap-4">
            <div className="w-12 h-12 bg-blue-600 rounded-[1.5rem] flex items-center justify-center shadow-lg shadow-blue-600/20">
@@ -48,7 +47,7 @@ const FlowModule: React.FC<FlowProps> = ({ orders, tasks, onCompleteTask }) => {
            </div>
         </div>
         <div className="flex bg-[#111114] p-1.5 rounded-2xl border border-white/5">
-          <TabButton active={activeStation === 'ALL'} onClick={() => setActiveStation('ALL')} label="Global" icon={<Activity size={14} />} />
+          <TabButton active={activeStation === 'ALL'} onClick={() => setActiveStation('ALL'} label="Global" icon={<Activity size={14} />} />
           <TabButton active={activeStation === 'COCINA'} onClick={() => setActiveStation('COCINA')} label="Cocina" icon={<Flame size={14} />} />
           <TabButton active={activeStation === 'BAR'} onClick={() => setActiveStation('BAR')} label="Bar" icon={<Martini size={14} />} />
           <TabButton active={activeStation === 'SOMMELIER'} onClick={() => setActiveStation('SOMMELIER')} label="Cava" icon={<Wine size={14} />} />
@@ -66,24 +65,20 @@ const FlowModule: React.FC<FlowProps> = ({ orders, tasks, onCompleteTask }) => {
                 <div className="flex justify-between items-start mb-6">
                    <div className="flex items-center gap-3">
                       <div className="bg-white/5 px-4 py-2 rounded-2xl font-black italic text-xl">
-                        {/* Fix: changed task.tableId to task.table_id */}
                         M{task.table_id}
                       </div>
                       <div>
                          <span className="text-[10px] text-gray-500 font-black uppercase block">{task.responsible}</span>
-                         {/* Fix: changed task.ritualLabel to task.step_label */}
                          <span className="text-[9px] font-bold text-blue-400 uppercase tracking-widest italic leading-none">{task.step_label}</span>
                       </div>
                    </div>
                    <div className="text-right">
-                      {/* Fix: TaskTimer expects startTime as number, converted started_at string to timestamp */}
                       <TaskTimer startTime={new Date(task.started_at).getTime()} />
                    </div>
                 </div>
 
                 <div className="bg-black/40 p-4 rounded-2xl border border-white/5 mb-8">
                    <span className="text-[8px] text-gray-600 font-black uppercase block mb-1">Status Sincro Ritual</span>
-                   {/* Fix: changed task.ritualLabel to task.step_label */}
                    <p className="text-[11px] text-gray-300 font-bold italic leading-relaxed uppercase">Esperando salida para etapa: {task.step_label}</p>
                 </div>
 

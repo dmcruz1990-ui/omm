@@ -1,14 +1,13 @@
-
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
+import { supabase } from '../lib/supabase.ts';
 import { 
   Receipt, Loader2, ShoppingBag, CreditCard, Clock, 
   CheckCircle2, TrendingUp, AlertCircle, PlayCircle,
   Timer, ChevronRight, Zap
 } from 'lucide-react';
-import { RitualTask, Table } from '../types';
-import { useAuth } from '../contexts/AuthContext';
-import CheckoutModal from './CheckoutModal';
+import { RitualTask, Table } from '../types.ts';
+import { useAuth } from '../contexts/AuthContext.tsx';
+import CheckoutModal from './CheckoutModal.tsx';
 
 interface OrderItemWithDetails {
   id: string;
@@ -172,7 +171,7 @@ const OrderTicket: React.FC<OrderTicketProps> = ({ table, onUpdateTable, onPayme
   );
 
   return (
-    <div className="flex flex-col h-full gap-6 animate-in slide-in-from-right duration-500">
+    <div className="flex flex-col h-full gap-6 animate-in slide-in-from-right duration-500 text-left">
       
       {/* TICKET DE CONSUMO */}
       <div className="flex flex-col bg-[#111114] border border-white/5 rounded-[2.5rem] overflow-hidden shadow-2xl">
@@ -274,7 +273,7 @@ const OrderTicket: React.FC<OrderTicketProps> = ({ table, onUpdateTable, onPayme
                <button 
                 onClick={advanceRitualStep}
                 disabled={isRitualLoading}
-                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-[1.8rem] font-black italic text-xs uppercase tracking-[0.2em] shadow-xl shadow-blue-600/20 flex items-center justify-center gap-3 transition-all active:scale-95"
+                className="w-full bg-blue-600 hover:bg-blue-500 text-white py-5 rounded-[1.8rem] font-black italic text-xs uppercase tracking-[0.2em] shadow-xl shadow-red-600/20 flex items-center justify-center gap-3 transition-all active:scale-95"
               >
                 <ChevronRight size={20} /> AVANZAR PASO
               </button>

@@ -20,7 +20,7 @@ import {
   Gift,
   PhoneCall
 } from 'lucide-react';
-import { ServiceIncident, Severity, NEXUS_COLORS } from '../types';
+import { ServiceIncident, Severity, NEXUS_COLORS } from '../types.ts';
 import { GoogleGenAI } from "@google/genai";
 
 const CareModule: React.FC = () => {
@@ -60,7 +60,7 @@ const CareModule: React.FC = () => {
   }, [selectedIncidentId]);
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-700">
+    <div className="space-y-8 animate-in fade-in duration-700 text-left">
       {/* Header Estratégico Care */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/5 pb-8">
         <div className="flex items-center gap-4">
@@ -160,7 +160,7 @@ const CareModule: React.FC = () => {
                      </div>
                   </div>
 
-                  <button className="w-full mt-8 bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all text-white shadow-xl shadow-blue-600/20">
+                  <button className="w-full mt-8 bg-blue-600 hover:bg-blue-500 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all text-white shadow-xl shadow-red-600/20">
                      NOTIFICAR RESOLUCIÓN
                   </button>
                </div>
