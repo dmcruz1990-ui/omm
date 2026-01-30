@@ -10,10 +10,10 @@ import {
   Info,
   Maximize2
 } from 'lucide-react';
-import GameScene from './GameScene';
-import WebcamPreview from './WebcamPreview';
-import { GameStatus, NoteData } from '../types';
-import { DEMO_CHART, SONG_URL } from '../constants';
+import GameScene from './GameScene.tsx';
+import WebcamPreview from './WebcamPreview.tsx';
+import { GameStatus, NoteData } from '../types.ts';
+import { DEMO_CHART, SONG_URL } from '../constants.ts';
 
 interface ExperienceBeatsProps {
   isCameraReady: boolean;

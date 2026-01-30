@@ -1,10 +1,11 @@
+
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
 */
 
 
-import { CutDirection, NoteData } from "./types";
+import { CutDirection, NoteData } from "./types.ts";
 import * as THREE from 'three';
 
 // Game World Config

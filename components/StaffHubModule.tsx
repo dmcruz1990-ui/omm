@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Trophy, 
@@ -8,24 +7,24 @@ import {
   TrendingUp, 
   Calendar, 
   Star, 
-  Award,
-  Loader2,
-  ChevronRight,
-  Sparkles,
-  ShieldCheck,
-  RefreshCcw,
-  Scan,
-  Ticket,
-  Lock,
-  Unlock,
-  Users,
-  Camera,
-  CameraOff,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Clock,
-  Ban
+  Award, 
+  Loader2, 
+  ChevronRight, 
+  Sparkles, 
+  ShieldCheck, 
+  RefreshCcw, 
+  Scan, 
+  Ticket, 
+  Lock, 
+  Unlock, 
+  Users, 
+  Camera, 
+  CameraOff, 
+  CheckCircle2, 
+  XCircle, 
+  AlertTriangle, 
+  Clock, 
+  Ban 
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import jsQR from 'https://esm.sh/jsqr';

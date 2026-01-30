@@ -22,7 +22,7 @@ export enum ModuleType {
   CONFIG = 'CONFIG'
 }
 
-export type BusinessDNA = 'FINE_DINING' | 'BAR' | 'CASUAL';
+export type BusinessDNA = 'FINE_DINING' | 'BAR_NIGHTLIFE' | 'CASUAL_DINING' | 'QSR_FAST_CASUAL' | 'CASUAL_PREMIUM';
 export type AIAgencyLevel = 'ADVISORY' | 'CO_PILOT' | 'AUTONOMOUS';
 
 export interface OperationalSettings {
@@ -120,12 +120,16 @@ export interface Opportunity {
 export interface Transaction {
   id: string;
   timestamp: number;
-  type: string;
+  type: 'Venta' | 'Gasto' | 'Costo' | 'Cortesía';
   amount: number;
   tax: number;
   paymentMethod: string;
   brand: string;
-  status: 'conciliado' | 'pendiente' | 'error';
+  status: 'conciliado' | 'pendiente' | 'error' | 'esperando_validacion';
+  category?: string;
+  provider?: string;
+  is_ai_classified?: boolean;
+  cufe?: string;
 }
 
 export interface FinancialAnomaly {
@@ -228,6 +232,8 @@ export interface SupplyItem {
   lastCostIncrease: number;
   expirationDate: string;
   status: 'optimal' | 'low' | 'critical';
+  pending_invoice?: boolean;
+  received_quantity?: number;
 }
 
 export type Severity = 'Crítica' | 'Alta' | 'Media' | 'Baja';

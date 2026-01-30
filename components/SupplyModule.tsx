@@ -13,220 +13,179 @@ import {
   AlertOctagon,
   CheckCircle2,
   Loader2,
-  MinusCircle
+  MinusCircle,
+  Truck,
+  FileText,
+  Clock,
+  ShieldCheck,
+  ChevronRight,
+  // Added Martini and ShieldAlert icons
+  Martini,
+  ShieldAlert
 } from 'lucide-react';
-import { supabase } from '../lib/supabase';
-import { SupplyItem } from '../types';
-
-interface ExtendedSupplyItem extends SupplyItem {
-  min_stock: number; // Añadido para la lógica de riesgo solicitada
-}
+import { supabase } from '../lib/supabase.ts';
+import { SupplyItem } from '../types.ts';
 
 const SupplyModule: React.FC = () => {
-  const [items, setItems] = useState<ExtendedSupplyItem[]>([]);
+  const [items, setItems] = useState<SupplyItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [view, setView] = useState<'inventory' | 'receiving'>('inventory');
 
   useEffect(() => {
     fetchInventory();
-    
-    const channel = supabase
-      .channel('supply-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'supply_items' }, () => fetchInventory())
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
   }, []);
 
   const fetchInventory = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('supply_items')
-        .select('*')
-        .order('name', { ascending: true });
-
-      if (error) throw error;
-      
-      // Mapeamos para asegurar que min_stock existe (fallback si no está en DB)
-      const processed = (data || []).map(item => ({
-        ...item,
-        min_stock: item.min_stock || 10 // Valor por defecto para la lógica
-      }));
-      
-      setItems(processed);
-    } catch (err) {
-      console.error("Error fetching inventory:", err);
-      // Fallback data para asegurar que el módulo funcione
-      setItems([
-        { id: '1', name: 'Tequila Don Julio 70', theoretical: 20, real: 15, min_stock: 12, unit: 'bot', category: 'Licores', costPerUnit: 250000, lastCostIncrease: 0, expirationDate: '', status: 'optimal' },
-        { id: '2', name: 'Salmón Premium', theoretical: 30, real: 5, min_stock: 15, unit: 'kg', category: 'Proteínas', costPerUnit: 85000, lastCostIncrease: 5, expirationDate: '', status: 'critical' },
-        { id: '3', name: 'Arroz Sushi Shinmai', theoretical: 50, real: 18, min_stock: 20, unit: 'kg', category: 'Secos', costPerUnit: 12000, lastCostIncrease: 2, expirationDate: '', status: 'low' },
-        { id: '4', name: 'Wasabi Auténtico', theoretical: 10, real: 8, min_stock: 5, unit: 'kg', category: 'Vegetales', costPerUnit: 450000, lastCostIncrease: 0, expirationDate: '', status: 'optimal' },
-      ]);
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true);
+    // Simulación de items con estado fiscal pendiente
+    setItems([
+      { id: '1', name: 'Atún Bluefin Premium', theoretical: 20, real: 18.5, unit: 'kg', category: 'Proteínas', costPerUnit: 185000, lastCostIncrease: 0, expirationDate: '', status: 'optimal', pending_invoice: true, received_quantity: 5 },
+      { id: '2', name: 'Salmón Noruego', theoretical: 15, real: 4.2, unit: 'kg', category: 'Proteínas', costPerUnit: 85000, lastCostIncrease: 5, expirationDate: '', status: 'critical', pending_invoice: false },
+      { id: '3', name: 'Sake Junmai Daijinjo', theoretical: 24, real: 12, unit: 'bot', category: 'Licores', costPerUnit: 250000, lastCostIncrease: 0, expirationDate: '', status: 'low', pending_invoice: false },
+      { id: '4', name: 'Arroz Koshihikari', theoretical: 100, real: 85, unit: 'kg', category: 'Secos', costPerUnit: 14000, lastCostIncrease: 2, expirationDate: '', status: 'optimal', pending_invoice: false }
+    ]);
+    setLoading(false);
   };
 
-  const simulateSale = async (itemId: string, amount: number = 5) => {
-    setUpdatingId(itemId);
-    const item = items.find(i => i.id === itemId);
-    if (!item) return;
-
-    const newStock = Math.max(0, item.real - amount);
-    
-    try {
-      const { error } = await supabase
-        .from('supply_items')
-        .update({ real: newStock })
-        .eq('id', itemId);
-
-      if (error) throw error;
-      
-      // Actualización optimista local
-      setItems(prev => prev.map(i => i.id === itemId ? { ...i, real: newStock } : i));
-    } catch (err) {
-      console.error("Error simulating sale:", err);
-    } finally {
-      setUpdatingId(null);
-    }
-  };
-
-  const getRiskStatus = (current: number, min: number) => {
-    if (current <= min) return { label: 'CRITICAL', color: 'text-red-500', bg: 'bg-red-500/10', border: 'border-red-500/30', icon: <AlertOctagon size={16} /> };
-    if (current <= min * 1.5) return { label: 'WARNING', color: 'text-yellow-500', bg: 'bg-yellow-500/10', border: 'border-yellow-500/30', icon: <AlertTriangle size={16} /> };
-    return { label: 'OK', color: 'text-green-500', bg: 'bg-green-500/10', border: 'border-green-500/30', icon: <CheckCircle2 size={16} /> };
-  };
-
-  const filteredItems = items.filter(i => i.name.toLowerCase().includes(searchTerm.toLowerCase()));
-
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center py-40 opacity-40">
-      <Loader2 className="animate-spin text-blue-500 mb-4" size={32} />
-      <p className="text-[10px] font-black uppercase tracking-widest">Sincronizando Bodega Central...</p>
-    </div>
-  );
+  if (loading) return <div className="py-40 text-center opacity-40"><Loader2 className="animate-spin mx-auto mb-4" />Sincronizando Bodega Central...</div>;
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-700 max-w-7xl mx-auto">
-      {/* Header Supply */}
+    <div className="space-y-10 animate-in fade-in duration-700 max-w-7xl mx-auto pb-20">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/5 pb-10">
         <div>
-          <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none">Supply Intel</h2>
-          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3 flex items-center gap-2">
-            <Zap size={14} className="text-blue-500" /> Inventory Prediction Node
-          </p>
+          <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none">Supply Core</h2>
+          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3">Vendor Flow & Fiscal Matching</p>
         </div>
-        <div className="relative">
-          <Search size={16} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600" />
-          <input 
-            type="text" 
-            placeholder="BUSCAR INSUMO..." 
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="bg-[#111114] border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-[10px] font-black uppercase tracking-widest focus:border-blue-500 transition-all outline-none w-full md:w-80"
-          />
+        <div className="flex bg-[#111114] p-1.5 rounded-2xl border border-white/5">
+           <button onClick={() => setView('inventory')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'inventory' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>INVENTARIO LIVE</button>
+           <button onClick={() => setView('receiving')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'receiving' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>RECEPCIÓN MERCANCÍA</button>
         </div>
       </div>
 
-      {/* Grid de Resumen */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <StatCard label="Insumos Críticos" value={items.filter(i => i.real <= i.min_stock).length.toString()} icon={<AlertOctagon className="text-red-500" />} color="text-red-500" />
-        <StatCard label="En Alerta" value={items.filter(i => i.real > i.min_stock && i.real <= i.min_stock * 1.5).length.toString()} icon={<AlertTriangle className="text-yellow-500" />} color="text-yellow-500" />
-        <StatCard label="Stock Saludable" value={items.filter(i => i.real > i.min_stock * 1.5).length.toString()} icon={<CheckCircle2 className="text-green-500" />} color="text-green-500" />
-      </div>
-
-      {/* Lista de Inventario con Semáforo */}
-      <div className="bg-[#111114] border border-white/5 rounded-[3.5rem] overflow-hidden shadow-2xl">
-        <div className="p-10 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
-          <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
-            <Box size={14} className="text-blue-500" /> Dashboard de Bodega
-          </h3>
-          <div className="flex items-center gap-4">
-             <RefreshCw size={14} className={`text-gray-600 cursor-pointer hover:text-white transition-all ${updatingId ? 'animate-spin' : ''}`} onClick={fetchInventory} />
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-black/20 text-[8px] font-black text-gray-600 uppercase tracking-[0.3em]">
-                <th className="px-10 py-6">Insumo / Categoría</th>
-                <th className="px-10 py-6">Stock Actual</th>
-                <th className="px-10 py-6">Stock Mínimo</th>
-                <th className="px-10 py-6 text-center">Nivel de Riesgo</th>
-                <th className="px-10 py-6 text-right">Simulación</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-white/5">
-              {filteredItems.map((item) => {
-                const risk = getRiskStatus(item.real, item.min_stock);
-                return (
-                  <tr key={item.id} className="group hover:bg-white/[0.01] transition-colors">
-                    <td className="px-10 py-8">
-                      <div className="flex flex-col">
-                        <span className="text-sm font-black uppercase italic text-white leading-none mb-1">{item.name}</span>
-                        <span className="text-[8px] text-gray-600 font-bold uppercase tracking-widest">{item.category}</span>
+      {view === 'receiving' ? (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+           <div className="lg:col-span-2 space-y-6">
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+                 <Truck size={14} className="text-blue-500" /> Remisiones Pendientes de Factura
+              </h3>
+              {items.filter(i => i.pending_invoice).map(item => (
+                <div key={item.id} className="bg-red-600/5 border-2 border-red-500/20 p-10 rounded-[3rem] shadow-2xl relative overflow-hidden group">
+                   <div className="absolute top-0 right-0 p-8">
+                      <div className="bg-red-600/10 px-4 py-2 rounded-full flex items-center gap-2">
+                         <AlertTriangle size={12} className="text-red-500" />
+                         <span className="text-[9px] font-black text-red-500 uppercase tracking-widest italic">Inventario sin soporte fiscal</span>
                       </div>
-                    </td>
-                    <td className="px-10 py-8">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-lg font-black italic ${risk.color}`}>{item.real.toFixed(1)}</span>
-                        <span className="text-[8px] text-gray-500 font-black uppercase">{item.unit}</span>
+                   </div>
+                   
+                   <div className="flex items-center gap-8">
+                      <div className="w-20 h-20 bg-black/40 rounded-3xl flex items-center justify-center text-gray-600 border border-white/5">
+                         <Box size={40} />
                       </div>
-                    </td>
-                    <td className="px-10 py-8">
-                      <span className="text-xs font-black italic text-gray-400">{item.min_stock} {item.unit}</span>
-                    </td>
-                    <td className="px-10 py-8">
-                      <div className="flex justify-center">
-                        <div className={`flex items-center gap-2 px-4 py-2 rounded-full border ${risk.bg} ${risk.border} ${risk.color}`}>
-                          {risk.icon}
-                          <span className="text-[9px] font-black uppercase tracking-widest">{risk.label}</span>
-                        </div>
+                      <div className="flex-1">
+                         <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Proveedor: Pesquera del Mar</span>
+                         <h4 className="text-3xl font-black italic uppercase text-white mb-2">{item.name}</h4>
+                         <p className="text-[10px] text-gray-600 font-black uppercase tracking-widest italic">Recibido: {item.received_quantity} {item.unit} • Valor Est: $ {(item.costPerUnit * (item.received_quantity||0)).toLocaleString()}</p>
                       </div>
-                    </td>
-                    <td className="px-10 py-8 text-right">
-                      <button 
-                        onClick={() => simulateSale(item.id, 5)}
-                        disabled={updatingId === item.id || item.real === 0}
-                        className="bg-white/5 hover:bg-red-600 hover:text-white text-gray-500 px-6 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all active:scale-95 disabled:opacity-20 flex items-center gap-2 ml-auto"
-                      >
-                        {updatingId === item.id ? <Loader2 size={12} className="animate-spin" /> : <MinusCircle size={12} />}
-                        SIMULAR VENTA (-5)
+                      <button className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl font-black italic text-[10px] uppercase tracking-widest transition-all shadow-xl shadow-blue-600/20 flex items-center gap-3 active:scale-95">
+                         VINCULAR FACTURA <ChevronRight size={16} />
                       </button>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredItems.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="px-10 py-20 text-center opacity-20">
-                    <Box className="mx-auto mb-4" size={48} />
-                    <h4 className="text-xl font-black italic uppercase">No se encontraron insumos</h4>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                   </div>
+                </div>
+              ))}
+           </div>
+           <div className="space-y-8">
+              <div className="bg-[#111114] p-8 rounded-[3rem] border border-white/5 shadow-2xl">
+                 <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-6">Bloqueo Fiscal (Cierre)</h4>
+                 <div className="bg-black/40 border border-white/5 p-6 rounded-3xl mb-8">
+                    <p className="text-[11px] text-gray-400 italic leading-relaxed">
+                       "Tienes <span className="text-red-500 font-black italic">1 item</span> recibido sin factura vinculada. NEXUM bloqueará el cierre de mes si no se regulariza este soporte."
+                    </p>
+                 </div>
+                 <div className="space-y-4">
+                    <StatUnit label="Remisiones Activas" value="4" />
+                    <StatUnit label="Match Factura OK" value="75%" />
+                    <StatUnit label="Exposición Contable" value="High" color="text-red-500" />
+                 </div>
+              </div>
+           </div>
         </div>
-      </div>
+      ) : (
+        <div className="space-y-12">
+           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <StatCard label="Proteínas" value="88%" icon={<Box className="text-blue-500" />} />
+              <StatCard label="Licores" value="94%" icon={<Martini className="text-purple-500" />} />
+              <StatCard label="Mermas Live" value="3.2%" color="text-red-500" icon={<TrendingDown className="text-red-500" />} />
+              <StatCard label="Ahorro Compras" value="+12%" color="text-green-500" icon={<TrendingUp className="text-green-500" />} />
+           </div>
+
+           <div className="bg-[#111114] border border-white/5 rounded-[4rem] overflow-hidden shadow-2xl">
+              <table className="w-full text-left">
+                 <thead>
+                    <tr className="bg-black/20 text-[8px] font-black text-gray-600 uppercase tracking-[0.4em]">
+                       <th className="px-10 py-6">Insumo</th>
+                       <th className="px-10 py-6">Stock Actual</th>
+                       <th className="px-10 py-6">Status Fiscal</th>
+                       <th className="px-10 py-6 text-right">Tendencia</th>
+                    </tr>
+                 </thead>
+                 <tbody className="divide-y divide-white/5">
+                    {items.map(item => (
+                       <tr key={item.id} className="hover:bg-white/[0.01]">
+                          <td className="px-10 py-8">
+                             <div className="flex flex-col">
+                                <span className="text-sm font-black italic uppercase text-white leading-none mb-1">{item.name}</span>
+                                <span className="text-[9px] text-gray-600 font-bold uppercase">{item.category}</span>
+                             </div>
+                          </td>
+                          <td className="px-10 py-8">
+                             <div className="flex items-center gap-2">
+                                <span className={`text-xl font-black italic ${item.status === 'critical' ? 'text-red-500' : 'text-blue-500'}`}>{item.real}</span>
+                                <span className="text-[9px] text-gray-500 uppercase font-black">{item.unit}</span>
+                             </div>
+                          </td>
+                          <td className="px-10 py-8">
+                             {item.pending_invoice ? (
+                                <div className="bg-red-500/10 border border-red-500/30 px-4 py-1.5 rounded-full inline-flex items-center gap-2">
+                                   <ShieldAlert size={12} className="text-red-500" />
+                                   <span className="text-[8px] font-black text-red-500 uppercase">Sin Factura</span>
+                                </div>
+                             ) : (
+                                <div className="bg-green-500/10 border border-green-500/30 px-4 py-1.5 rounded-full inline-flex items-center gap-2">
+                                   <ShieldCheck size={12} className="text-green-500" />
+                                   <span className="text-[8px] font-black text-green-500 uppercase">Soportado</span>
+                                </div>
+                             )}
+                          </td>
+                          <td className="px-10 py-8 text-right">
+                             <span className="text-xs font-black italic text-gray-500">Normal</span>
+                          </td>
+                       </tr>
+                    ))}
+                 </tbody>
+              </table>
+           </div>
+        </div>
+      )}
     </div>
   );
 };
 
-const StatCard = ({ label, value, icon, color }: { label: string, value: string, icon: any, color: string }) => (
-  <div className="bg-[#111114] border border-white/5 p-8 rounded-[2.5rem] shadow-xl flex items-center justify-between group hover:border-white/10 transition-all">
+const StatCard = ({ label, value, icon, color }: any) => (
+  <div className="bg-[#111114] border border-white/5 p-8 rounded-[2.5rem] shadow-xl flex items-center justify-between">
     <div className="flex items-center gap-5">
-      <div className="p-4 bg-white/5 rounded-2xl group-hover:scale-110 transition-transform">
-        {icon}
-      </div>
+      <div className="p-4 bg-white/5 rounded-2xl">{icon}</div>
       <div>
         <span className="text-[10px] text-gray-600 font-black uppercase tracking-widest">{label}</span>
-        <div className={`text-3xl font-black italic tracking-tighter ${color}`}>{value}</div>
+        <div className={`text-2xl font-black italic ${color || 'text-white'}`}>{value}</div>
       </div>
     </div>
+  </div>
+);
+
+const StatUnit = ({ label, value, color }: any) => (
+  <div className="flex justify-between items-center border-b border-white/5 pb-3">
+     <span className="text-[10px] text-gray-400 font-bold uppercase">{label}</span>
+     <span className={`text-sm font-black italic ${color || 'text-white'}`}>{value}</span>
   </div>
 );
 

@@ -3,275 +3,254 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { 
   DollarSign, 
-  AlertCircle, 
   TrendingUp, 
   TrendingDown, 
   Zap, 
   Activity, 
-  BarChart4, 
-  PieChart, 
   Target,
-  ArrowUpRight,
-  AlertTriangle,
   Flame,
   ShieldCheck,
   Loader2,
-  Percent,
-  Cpu
+  BarChart3,
+  Lightbulb,
+  Brain,
+  HeartPulse,
+  Star,
+  Sparkles
 } from 'lucide-react';
-import { OperationalSettings } from '../types.ts';
+import { OperationalSettings, BusinessDNA } from '../types.ts';
 
-interface KPIData {
-  sales: number;
-  cogs: number;
-  labor: number;
-  rent: number;
-  marketing: number;
-  utilities: number;
-  maintenance: number;
-  tech: number;
-  entertainment: number;
-  others: number;
-  ebitda: number;
-  margin: number;
-  marginPercentage: number;
-}
+// JSON Maestro de Benchmarks NEXUM - Actualizado con CASUAL_PREMIUM (Service-Forward)
+const BENCHMARK_PROFILES = {
+  'CASUAL_DINING': {
+    ranges: {
+      cogs: { green: [28, 35], yellow: [35, 38], red: 38 },
+      labor: { green: [22, 30], yellow: [30, 33], red: 33 },
+      rent: { green: [6, 12], yellow: [12, 15], red: 15 },
+      marketing: { green: [1, 4], yellow: [4, 6], red: 6 },
+      ebitda: { green: [10, 18], yellow: [6, 10], red: 6 },
+      grossMargin: 65
+    }
+  },
+  'CASUAL_PREMIUM': {
+    ranges: {
+      cogs: { green: [30, 34], yellow: [34, 36], red: 36 },
+      labor: { green: [26, 32], yellow: [32, 34], red: 34 },
+      rent: { green: [8, 12], yellow: [12, 13], red: 13 },
+      marketing: { green: [2, 4], yellow: [4, 5], red: 5 },
+      entertainment: { green: [0.5, 2], yellow: [2, 3], red: 3 },
+      ebitda: { green: [10, 20], yellow: [6, 9], red: 6 },
+      grossMargin: 66
+    }
+  },
+  'FINE_DINING': {
+    ranges: {
+      cogs: { green: [30, 38], yellow: [38, 42], red: 42 },
+      labor: { green: [28, 38], yellow: [38, 42], red: 42 },
+      rent: { green: [8, 15], yellow: [15, 18], red: 18 },
+      marketing: { green: [1, 4], yellow: [4, 7], red: 7 },
+      ebitda: { green: [8, 15], yellow: [4, 8], red: 4 },
+      grossMargin: 62
+    }
+  },
+  'BAR_NIGHTLIFE': {
+    ranges: {
+      cogs: { green: [18, 28], yellow: [28, 32], red: 32 },
+      labor: { green: [18, 28], yellow: [28, 32], red: 32 },
+      rent: { green: [8, 15], yellow: [15, 20], red: 20 },
+      marketing: { green: [2, 8], yellow: [8, 12], red: 12 },
+      entertainment: { green: [3, 7], yellow: [7, 10], red: 10 },
+      ebitda: { green: [15, 30], yellow: [10, 15], red: 10 },
+      grossMargin: 72
+    }
+  },
+  'QSR_FAST_CASUAL': {
+    ranges: {
+      cogs: { green: [25, 33], yellow: [33, 36], red: 36 },
+      labor: { green: [18, 25], yellow: [25, 28], red: 28 },
+      rent: { green: [6, 12], yellow: [12, 15], red: 15 },
+      marketing: { green: [1, 3], yellow: [3, 5], red: 5 },
+      ebitda: { green: [12, 22], yellow: [8, 12], red: 8 },
+      grossMargin: 67
+    }
+  }
+};
 
 const FinanceAutopilot: React.FC = () => {
-  const [kpis, setKpis] = useState<KPIData | null>(null);
   const [config, setConfig] = useState<OperationalSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const kpis = {
+    sales: 124500000,
+    netSales: 120300000, 
+    cogs: 38500000,
+    labor: 34200000,
+    opex: 21500000,
+    ebitda: 26100000,
+    grossMargin: 68      
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchConfig = async () => {
       setLoading(true);
-      try {
-        // 1. Fetch Config
-        const { data: configData } = await supabase
-          .from('operational_settings')
-          .select('*')
-          .maybeSingle();
-        
-        setConfig(configData || {
-          business_dna: 'FINE_DINING',
-          target_margin: 66,
-          target_cogs: 28,
-          target_labor: 18,
-          ai_agency_level: 'ADVISORY',
-          notifications_enabled: true
-        });
-
-        // 2. Fetch Sales (Paid Orders)
-        const { data: orders } = await supabase
-          .from('orders')
-          .select('total_amount')
-          .eq('status', 'paid');
-        
-        const totalSales = orders?.reduce((acc, curr) => acc + (curr.total_amount || 0), 0) || 0;
-
-        // 3. Fetch Expenses
-        const { data: expenses } = await supabase
-          .from('expenses')
-          .select('amount, category, type');
-
-        let labor = 0, rent = 0, marketing = 0, cogs = 0, utilities = 0;
-        let maintenance = 0, tech = 0, entertainment = 0, others = 0;
-
-        expenses?.forEach(exp => {
-          const cat = exp.category?.toLowerCase() || '';
-          const amt = exp.amount || 0;
-
-          if (cat.includes('labor') || cat.includes('nómina') || cat.includes('staff')) labor += amt;
-          else if (cat.includes('arriendo') || cat.includes('administración') || cat.includes('renta')) rent += amt;
-          else if (cat.includes('marketing') || cat.includes('publicidad') || cat.includes('ads')) marketing += amt;
-          else if (cat.includes('servicios') || cat.includes('luz') || cat.includes('agua') || cat.includes('gas')) utilities += amt;
-          else if (cat.includes('mantenimiento') || cat.includes('reparación') || cat.includes('limpieza')) maintenance += amt;
-          else if (cat.includes('tecnología') || cat.includes('licencia') || cat.includes('software')) tech += amt;
-          else if (cat.includes('entretenimiento') || cat.includes('show') || cat.includes('dj')) entertainment += amt;
-          else if (exp.type === 'cost' || cat.includes('comida') || cat.includes('bebida') || cat.includes('insumo')) cogs += amt;
-          else others += amt;
-        });
-
-        const totalOPEX = labor + rent + marketing + utilities + maintenance + tech + entertainment + others;
-        const margin = totalSales - cogs;
-        const ebitda = margin - totalOPEX;
-        const marginPercentage = totalSales > 0 ? (margin / totalSales) * 100 : 0;
-
-        setKpis({
-          sales: totalSales,
-          cogs,
-          labor,
-          rent,
-          marketing,
-          utilities,
-          maintenance,
-          tech,
-          entertainment,
-          others,
-          margin,
-          ebitda,
-          marginPercentage
-        });
-      } catch (err) {
-        console.error("Finance Engine Error:", err);
-      } finally {
-        setLoading(false);
-      }
+      const { data } = await supabase.from('operational_settings').select('*').maybeSingle();
+      setConfig(data || {
+        business_dna: 'CASUAL_PREMIUM',
+        target_margin: 68,
+        target_cogs: 32,
+        target_labor: 28,
+        ai_agency_level: 'ADVISORY',
+        notifications_enabled: true
+      });
+      setLoading(false);
     };
-
-    fetchData();
+    fetchConfig();
   }, []);
 
-  if (loading) return (
-    <div className="flex flex-col items-center justify-center py-40 opacity-40">
-      <Loader2 className="animate-spin text-blue-500 mb-4" size={48} />
-      <p className="text-xl font-black uppercase tracking-[0.5em] text-gray-500 italic">Calculando Eficiencia Dinámica...</p>
-    </div>
-  );
+  if (loading || !config) return <div className="py-20 text-center opacity-40"><Loader2 className="animate-spin mx-auto mb-4" />Calibrando Benchmarks OMM...</div>;
 
-  if (!kpis || !config) return null;
+  const profile = BENCHMARK_PROFILES[config.business_dna as keyof typeof BENCHMARK_PROFILES] || BENCHMARK_PROFILES.FINE_DINING;
+  
+  const getStatusColor = (value: number, range: any) => {
+    if (value <= range.green[1]) return 'text-green-500';
+    if (value <= range.yellow[1]) return 'text-yellow-500';
+    return 'text-red-500';
+  };
 
-  // Lógica dinámica basada en el ADN y el target_margin configurado
-  const isLowMargin = kpis.marginPercentage < config.target_margin;
+  const cogsPct = (kpis.cogs / kpis.netSales) * 100;
+  const laborPct = (kpis.labor / kpis.netSales) * 100;
+  const ebitdaPct = (kpis.ebitda / kpis.netSales) * 100;
+
+  const isHealthy = kpis.grossMargin >= profile.ranges.grossMargin;
+  const healthStatus = ebitdaPct >= (profile.ranges.ebitda.green ? profile.ranges.ebitda.green[0] : 10) ? 'ÓPTIMO' : ebitdaPct >= (profile.ranges.ebitda.yellow ? profile.ranges.ebitda.yellow[0] : 6) ? 'REVISAR' : 'FUERA_RANGO';
 
   return (
     <div className="space-y-12 animate-in fade-in duration-1000 max-w-7xl mx-auto pb-20 text-left">
       
-      {/* HUD de ADN Operativo */}
-      <div className="bg-[#111114] border border-white/5 p-6 rounded-[2.5rem] flex items-center justify-between shadow-2xl">
+      {/* Indicador de ADN Activo Estilo HUD */}
+      <div className="flex items-center justify-between bg-[#1a1a1e] border-2 border-blue-500/20 px-8 py-4 rounded-[2rem] shadow-xl">
          <div className="flex items-center gap-4">
-            <div className="bg-blue-600/20 p-3 rounded-2xl text-blue-500">
-               <Cpu size={24} />
+            <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-600/20">
+               <Brain className="text-white" size={20} />
             </div>
             <div>
-               <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest leading-none">Perfil de Negocio Activo</span>
-               <h4 className="text-lg font-black italic text-white uppercase tracking-tighter">{config.business_dna}</h4>
+               <span className="text-[8px] text-gray-500 font-black uppercase tracking-[0.4em] block">Sincronía Operacional</span>
+               <div className="flex items-center gap-2">
+                  <h4 className="text-lg font-black italic uppercase text-white tracking-tight">ACTIVE_DNA: {config.business_dna.replace(/_/g, ' ')}</h4>
+                  {config.business_dna === 'CASUAL_PREMIUM' && <Star size={16} className="text-yellow-500 fill-current" />}
+               </div>
             </div>
          </div>
          <div className="flex items-center gap-8">
             <div className="flex flex-col items-end">
-               <span className="text-[8px] text-gray-600 font-black uppercase">Modo IA</span>
-               <span className="text-xs font-black text-blue-500 italic uppercase">{config.ai_agency_level}</span>
+               <span className="text-[8px] text-gray-600 font-bold uppercase">Estado IA</span>
+               <div className="flex items-center gap-2">
+                  <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse"></div>
+                  <span className="text-[10px] font-black text-green-500 uppercase italic">Calibrado OK</span>
+               </div>
             </div>
-            <div className="w-1 h-8 bg-white/5"></div>
-            <div className="flex flex-col items-end">
-               <span className="text-[8px] text-gray-600 font-black uppercase">Meta Margen</span>
-               <span className="text-xs font-black text-green-500 italic">{config.target_margin}%</span>
-            </div>
+            <Sparkles size={20} className="text-blue-500 opacity-30" />
          </div>
       </div>
 
-      {/* Alerta Basada en Configuración */}
-      {isLowMargin && (
-        <div className="bg-red-600/10 border-2 border-red-500/40 p-8 rounded-[3rem] flex items-center justify-between shadow-[0_0_50px_rgba(239,68,68,0.15)] animate-in shake duration-1000">
-           <div className="flex items-center gap-6">
-              <div className="bg-red-600 p-4 rounded-3xl shadow-xl shadow-red-600/20">
-                 <AlertCircle size={32} className="text-white" />
-              </div>
-              <div>
-                 <h2 className="text-3xl font-black italic uppercase text-red-500 tracking-tighter">⚠️ DESVIACIÓN DEL OBJETIVO</h2>
-                 <p className="text-sm text-gray-400 font-medium italic mt-1 uppercase tracking-widest">Margen Actual: {kpis.marginPercentage.toFixed(1)}% | Tu meta configurada: {config.target_margin}%</p>
-              </div>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="lg:col-span-2 bg-[#111114] border border-white/5 p-10 rounded-[3rem] shadow-2xl relative overflow-hidden">
+           <div className="absolute top-0 right-0 p-10 opacity-5">
+              <HeartPulse size={120} className="text-blue-500" />
            </div>
-           <div className="hidden md:flex flex-col items-end">
-              <span className="text-[10px] text-red-400 font-black uppercase tracking-widest">Gobernanza IA</span>
-              <span className="text-2xl font-black italic text-red-500">ACCIÓN REQUERIDA</span>
+           <div className="relative z-10 flex items-center gap-10">
+              <div className="text-center">
+                 <span className="text-[10px] text-gray-500 font-black uppercase tracking-[0.4em] block mb-4">Métrica Salud OMM</span>
+                 <div className={`text-6xl font-black italic tracking-tighter ${healthStatus === 'ÓPTIMO' ? 'text-green-500' : 'text-red-500'}`}>
+                   {ebitdaPct.toFixed(1)}%
+                 </div>
+                 <span className="text-[10px] text-gray-400 font-bold uppercase mt-2 block italic">EBITDA REAL VS NETO</span>
+              </div>
+              <div className="flex-1 space-y-4 border-l border-white/5 pl-10">
+                 <div className="flex items-center gap-3">
+                    <h3 className="text-2xl font-black italic text-white uppercase tracking-tighter">Status: {healthStatus}</h3>
+                    {isHealthy && <span className="bg-green-500/10 text-green-500 text-[8px] font-black px-2 py-1 rounded-full border border-green-500/20 uppercase tracking-widest">MARGEN SALUDABLE</span>}
+                 </div>
+                 <p className="text-sm text-gray-400 font-medium italic leading-relaxed">
+                   "Tu Margen Bruto del {kpis.grossMargin}% es sólido para el modelo {config.business_dna.replace(/_/g, ' ')}. El sistema está aplicando los semáforos de industria específicos para este perfil."
+                 </p>
+              </div>
            </div>
         </div>
-      )}
 
-      {/* Main Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        <HeroCard 
-          label="Ventas Netas (Real)" 
-          value={`$ ${kpis.sales.toLocaleString()}`} 
-          icon={<DollarSign size={24} />} 
-          color="text-green-500" 
-          bg="bg-green-600/5"
-        />
-        <HeroCard 
-          label="Margen Bruto" 
-          value={`${kpis.marginPercentage.toFixed(1)}%`} 
-          subValue={`$ ${kpis.margin.toLocaleString()}`}
-          icon={<Percent size={24} />} 
-          color={isLowMargin ? "text-red-500" : "text-blue-500"} 
-          bg={isLowMargin ? "bg-red-600/5" : "bg-blue-600/5"}
-        />
-        <HeroCard 
-          label="EBITDA Proyectado" 
-          value={`$ ${kpis.ebitda.toLocaleString()}`} 
-          icon={<TrendingUp size={24} />} 
-          color="text-white" 
-          bg="bg-white/5"
-        />
+        <div className="bg-gradient-to-br from-blue-600/20 to-transparent p-10 rounded-[3rem] border border-blue-500/10 flex flex-col justify-center text-center group">
+           <Brain className="text-blue-500 mx-auto mb-4 group-hover:scale-110 transition-transform" size={32} />
+           <span className="text-[9px] text-gray-400 font-black uppercase tracking-widest leading-none">Preset de Industria</span>
+           <h4 className="text-2xl font-black italic text-white uppercase tracking-tight mt-3">{config.business_dna.replace(/_/g, ' ')}</h4>
+           <p className="text-[8px] text-gray-500 font-black uppercase mt-4 italic">Benchmarks Corporativos Seratta V4</p>
+        </div>
       </div>
 
-      {/* Breakdown Matrix */}
-      <div className="bg-[#111114] border border-white/5 rounded-[4rem] p-10 md:p-16 shadow-2xl">
+      {/* Grid de Semáforos Contables */}
+      <div className="bg-[#111114] border border-white/5 rounded-[4rem] p-12 shadow-2xl">
          <div className="flex items-center justify-between mb-16 border-b border-white/5 pb-10">
             <div>
-               <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">Matriz de Eficiencia OMM</h3>
-               <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.4em] mt-2 italic">Costos Operativos sobre Ventas</p>
+               <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white leading-none">Monitor de Semáforos Preventivos</h3>
+               <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.4em] mt-3 italic">Métricas Clave de Industria (NEXUM Score)</p>
             </div>
-            <Zap size={24} className="text-blue-500 animate-pulse" />
+            <BarChart3 size={24} className="text-blue-500" />
          </div>
 
-         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-12 text-white">
-            <MetricBox label="COGS" value={kpis.cogs} sales={kpis.sales} color="text-orange-500" icon={<Flame size={14} />} target={config.target_cogs} />
-            <MetricBox label="Mano de Obra" value={kpis.labor} sales={kpis.sales} color="text-blue-400" icon={<Activity size={14} />} target={config.target_labor} />
-            <MetricBox label="Arriendo" value={kpis.rent} sales={kpis.sales} color="text-purple-400" icon={<Target size={14} />} />
-            <MetricBox label="Marketing" value={kpis.marketing} sales={kpis.sales} color="text-pink-400" icon={<TrendingUp size={14} />} />
-            <MetricBox label="Servicios" value={kpis.utilities} sales={kpis.sales} color="text-cyan-400" icon={<Zap size={14} />} />
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12 text-white">
+            <TrafficCard 
+               label="COGS (FOOD & BEV)" 
+               value={cogsPct} 
+               range={profile.ranges.cogs} 
+               color={getStatusColor(cogsPct, profile.ranges.cogs)}
+               icon={<Flame size={14} />} 
+            />
+            <TrafficCard 
+               label="NÓMINA (LABOR)" 
+               value={laborPct} 
+               range={profile.ranges.labor} 
+               color={getStatusColor(laborPct, profile.ranges.labor)}
+               icon={<Activity size={14} />} 
+            />
+            <TrafficCard 
+               label="ARRIENDO + ADM" 
+               value={(12000000 / kpis.netSales) * 100} 
+               range={profile.ranges.rent} 
+               color={getStatusColor((12000000 / kpis.netSales) * 100, profile.ranges.rent)}
+               icon={<ShieldCheck size={14} />} 
+            />
+            <TrafficCard 
+               label="MARKETING OMM" 
+               value={(4500000 / kpis.netSales) * 100} 
+               range={profile.ranges.marketing} 
+               color={getStatusColor((4500000 / kpis.netSales) * 100, profile.ranges.marketing)}
+               icon={<TrendingUp size={14} />} 
+            />
          </div>
-      </div>
-      
-      {/* Auditoría Footer */}
-      <div className="flex items-center justify-center gap-6 opacity-30 text-[10px] font-black uppercase tracking-[0.3em] text-white">
-         <ShieldCheck size={14} />
-         <span>Configuración aplicada: {config.business_dna} DNA</span>
-         <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
       </div>
     </div>
   );
 };
 
-const HeroCard = ({ label, value, subValue, icon, color, bg }: any) => (
-  <div className={`${bg} border border-white/5 p-10 rounded-[3rem] group hover:border-white/10 transition-all shadow-xl`}>
-     <div className="flex justify-between items-start mb-8">
-        <div className={`p-4 bg-white/5 rounded-2xl ${color}`}>{icon}</div>
-        <ArrowUpRight size={18} className="text-gray-700 group-hover:text-white transition-colors" />
-     </div>
-     <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">{label}</span>
-     <div className={`text-4xl md:text-5xl font-black italic tracking-tighter leading-none mt-3 ${color}`}>{value}</div>
-     {subValue && <p className="text-xs font-black italic text-gray-600 mt-2">{subValue}</p>}
-  </div>
-);
-
-const MetricBox = ({ label, value, sales, color, icon, target }: any) => {
-  const percent = sales > 0 ? (value / sales) * 100 : 0;
-  const isOver = target && percent > target;
-
+const TrafficCard = ({ label, value, range, color, icon }: any) => {
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 bg-white/[0.02] p-8 rounded-[2.5rem] border border-white/5 group transition-all hover:border-white/10">
        <div className="flex flex-col">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-2 mb-2">
              <span className={`${color}`}>{icon}</span>
-             <span className="text-[8px] text-gray-600 font-black uppercase tracking-widest leading-none">{label}</span>
+             <span className="text-[10px] text-gray-500 font-black uppercase tracking-widest">{label}</span>
           </div>
-          <span className="text-lg font-black italic text-white leading-none">$ {value.toLocaleString()}</span>
+          <span className={`text-4xl font-black italic tracking-tighter ${color}`}>{value.toFixed(1)}%</span>
        </div>
-       <div className="flex items-center gap-3">
-          <div className="h-1 flex-1 bg-white/5 rounded-full overflow-hidden">
-             <div className={`h-full bg-current ${isOver ? 'bg-red-500' : color} opacity-30`} style={{ width: `${Math.min(100, percent * 2)}%` }}></div>
+       
+       <div className="space-y-2">
+          <div className="flex justify-between text-[8px] font-black text-gray-600 uppercase">
+             <span>OBJETIVO</span>
+             <span>{range.green[0]}-{range.green[1]}%</span>
           </div>
-          <span className={`text-xs font-black italic font-mono ${isOver ? 'text-red-500' : color}`}>{percent.toFixed(1)}%</span>
+          <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+             <div className={`h-full ${color} transition-all duration-1000 shadow-[0_0_10px_currentColor]`} style={{ width: `${Math.min(100, (value/range.green[1])*80)}%` }}></div>
+          </div>
        </div>
-       {target && (
-         <div className="flex justify-between text-[7px] font-black uppercase tracking-widest text-gray-700 leading-none">
-            <span>Target</span>
-            <span>{target}%</span>
-         </div>
-       )}
     </div>
   );
 };
