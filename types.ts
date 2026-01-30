@@ -14,14 +14,27 @@ export enum ModuleType {
   FLOW = 'FLOW',
   SUPPLY = 'SUPPLY',
   CARE = 'CARE',
-  FINANCE_HUB = 'FINANCE_HUB', // Unificado
+  FINANCE_HUB = 'FINANCE_HUB',
   COMMAND = 'COMMAND',
   STAFF_HUB = 'STAFF_HUB',
   KITCHEN_KDS = 'KITCHEN_KDS',
-  BRAND_STUDIO = 'BRAND_STUDIO'
+  BRAND_STUDIO = 'BRAND_STUDIO',
+  CONFIG = 'CONFIG'
 }
 
-// Roles solicitados para el restaurante real
+export type BusinessDNA = 'FINE_DINING' | 'BAR' | 'CASUAL';
+export type AIAgencyLevel = 'ADVISORY' | 'CO_PILOT' | 'AUTONOMOUS';
+
+export interface OperationalSettings {
+  id?: string;
+  business_dna: BusinessDNA;
+  target_margin: number;
+  target_cogs: number;
+  target_labor: number;
+  ai_agency_level: AIAgencyLevel;
+  notifications_enabled: boolean;
+}
+
 export type UserRole = 'admin' | 'desarrollo' | 'gerencia' | 'mesero' | 'chef';
 
 export interface Profile {
@@ -163,11 +176,6 @@ export const COLORS = {
   right: '#2563eb',
 };
 
-// --- Added missing exports to resolve build errors ---
-
-/**
- * @description Standard color palette for the NEXUM system
- */
 export const NEXUS_COLORS = {
   primary: '#2563eb',
   secondary: '#0a0a0c',
@@ -176,9 +184,6 @@ export const NEXUS_COLORS = {
   warning: '#f59e0b',
 };
 
-/**
- * @description Representation of an item in the inventory for KPI tracking
- */
 export interface InventoryItem {
   name: string;
   current: number;
@@ -186,9 +191,6 @@ export interface InventoryItem {
   unit: string;
 }
 
-/**
- * @description Representation of a staff member within the hub
- */
 export interface StaffMember {
   id: string;
   name: string;
@@ -197,9 +199,6 @@ export interface StaffMember {
   shift: string;
 }
 
-/**
- * @description Single item within a kitchen order
- */
 export interface KitchenOrderItem {
   id: string;
   order_id: string;
@@ -211,9 +210,6 @@ export interface KitchenOrderItem {
   };
 }
 
-/**
- * @description Full kitchen order for KDS and Flow modules
- */
 export interface KitchenOrder {
   id: string;
   table_id: number;
@@ -221,9 +217,6 @@ export interface KitchenOrder {
   items: KitchenOrderItem[];
 }
 
-/**
- * @description Base item in the supply chain / inventory
- */
 export interface SupplyItem {
   id: string;
   name: string;
@@ -237,9 +230,6 @@ export interface SupplyItem {
   status: 'optimal' | 'low' | 'critical';
 }
 
-/**
- * @description Severity levels for service incidents
- */
 export type Severity = 'Crítica' | 'Alta' | 'Media' | 'Baja';
 
 export interface CustomerProfile {
@@ -248,10 +238,16 @@ export interface CustomerProfile {
   phone: string;
   segment: string;
   total_spend: number;
-  lastVisit: string;
-  preferredRest: string;
-  tastes: string[];
-  nextVisitPrediction: string;
+  order_count: number;
+  visit_count: number;
+  rating: number;
+  avatar_url: string;
+  lastVisit: {
+    venue: string;
+    total: number;
+    items: Array<{ qty: number; name: string; price: number }>;
+  };
+  tags: Array<{ label: string; type: 'red' | 'yellow' | 'blue' | 'pink' | 'teal' | 'orange' }>;
   churnRisk: number;
   walletBalance: string;
 }

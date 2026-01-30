@@ -26,6 +26,7 @@ const SurveillanceModule = lazy(() => import('./components/SurveillanceModule.ts
 const KitchenModule = lazy(() => import('./components/KitchenModule.tsx'));
 const StaffHubModule = lazy(() => import('./components/StaffHubModule.tsx'));
 const BrandStudio = lazy(() => import('./components/BrandStudio.tsx'));
+const SettingsModule = lazy(() => import('./components/SettingsModule.tsx'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -52,8 +53,8 @@ const Dashboard: React.FC = () => {
       case 'desarrollo':
         return Object.values(ModuleType);
       case 'gerencia':
-        // Gerencia ve todo excepto los dos principales de configuración crítica
-        return Object.values(ModuleType).filter(m => m !== ModuleType.COMMAND && m !== ModuleType.BRAND_STUDIO);
+        // Gerencia ve todo excepto los de configuración crítica de bajo nivel
+        return Object.values(ModuleType).filter(m => m !== ModuleType.COMMAND && m !== ModuleType.CONFIG);
       case 'mesero':
         return [ModuleType.DISCOVER, ModuleType.SERVICE_OS, ModuleType.RESERVE, ModuleType.RELATIONSHIP, ModuleType.STAFF_HUB];
       case 'chef':
@@ -66,7 +67,6 @@ const Dashboard: React.FC = () => {
   const visibleModulesList = getVisibleModules(profile?.role);
 
   useEffect(() => {
-    // Si el módulo por defecto no está permitido para este rol, cambiar al primero disponible
     if (!visibleModulesList.includes(activeModule)) {
       setActiveModule(visibleModulesList[0]);
     }
@@ -130,7 +130,8 @@ const Dashboard: React.FC = () => {
     { type: ModuleType.FLOW, label: 'FLOW', sub: 'ESTACIONES', icon: <ChefHat size={22} /> },
     { type: ModuleType.SUPPLY, label: 'SUPPLY', sub: 'STOCK IA', icon: <Truck size={22} /> },
     { type: ModuleType.CARE, label: 'CARE', sub: 'SOPORTE CX', icon: <HeartPulse size={22} /> },
-    { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'DISEÑO CMS', icon: <Palette size={22} /> }
+    { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'DISEÑO CMS', icon: <Palette size={22} /> },
+    { type: ModuleType.CONFIG, label: 'CEREBRO', sub: 'ADN & IA', icon: <Settings size={22} /> }
   ];
 
   if (dashboardLoading) return (
@@ -219,6 +220,7 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.SUPPLY && <SupplyModule />}
             {activeModule === ModuleType.CARE && <CareModule />}
             {activeModule === ModuleType.BRAND_STUDIO && <BrandStudio />}
+            {activeModule === ModuleType.CONFIG && <SettingsModule />}
           </Suspense>
         </div>
       </main>

@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { 
@@ -15,8 +16,10 @@ import {
   Flame,
   ShieldCheck,
   Loader2,
-  Percent
+  Percent,
+  Cpu
 } from 'lucide-react';
+import { OperationalSettings } from '../types.ts';
 
 interface KPIData {
   sales: number;
@@ -36,13 +39,29 @@ interface KPIData {
 
 const FinanceAutopilot: React.FC = () => {
   const [kpis, setKpis] = useState<KPIData | null>(null);
+  const [config, setConfig] = useState<OperationalSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchFinancialData = async () => {
+    const fetchData = async () => {
       setLoading(true);
       try {
-        // 1. Fetch Sales (Paid Orders)
+        // 1. Fetch Config
+        const { data: configData } = await supabase
+          .from('operational_settings')
+          .select('*')
+          .maybeSingle();
+        
+        setConfig(configData || {
+          business_dna: 'FINE_DINING',
+          target_margin: 66,
+          target_cogs: 28,
+          target_labor: 18,
+          ai_agency_level: 'ADVISORY',
+          notifications_enabled: true
+        });
+
+        // 2. Fetch Sales (Paid Orders)
         const { data: orders } = await supabase
           .from('orders')
           .select('total_amount')
@@ -50,7 +69,7 @@ const FinanceAutopilot: React.FC = () => {
         
         const totalSales = orders?.reduce((acc, curr) => acc + (curr.total_amount || 0), 0) || 0;
 
-        // 2. Fetch Expenses
+        // 3. Fetch Expenses
         const { data: expenses } = await supabase
           .from('expenses')
           .select('amount, category, type');
@@ -100,24 +119,49 @@ const FinanceAutopilot: React.FC = () => {
       }
     };
 
-    fetchFinancialData();
+    fetchData();
   }, []);
 
   if (loading) return (
     <div className="flex flex-col items-center justify-center py-40 opacity-40">
       <Loader2 className="animate-spin text-blue-500 mb-4" size={48} />
-      <p className="text-xl font-black uppercase tracking-[0.5em] text-gray-500 italic">Sincronizando Verdad Financiera...</p>
+      <p className="text-xl font-black uppercase tracking-[0.5em] text-gray-500 italic">Calculando Eficiencia Dinámica...</p>
     </div>
   );
 
-  if (!kpis) return null;
+  if (!kpis || !config) return null;
 
-  const isLowMargin = kpis.marginPercentage < 66;
+  // Lógica dinámica basada en el ADN y el target_margin configurado
+  const isLowMargin = kpis.marginPercentage < config.target_margin;
 
   return (
     <div className="space-y-12 animate-in fade-in duration-1000 max-w-7xl mx-auto pb-20 text-left">
       
-      {/* Alerta Regla de Oro */}
+      {/* HUD de ADN Operativo */}
+      <div className="bg-[#111114] border border-white/5 p-6 rounded-[2.5rem] flex items-center justify-between shadow-2xl">
+         <div className="flex items-center gap-4">
+            <div className="bg-blue-600/20 p-3 rounded-2xl text-blue-500">
+               <Cpu size={24} />
+            </div>
+            <div>
+               <span className="text-[8px] text-gray-500 font-black uppercase tracking-widest leading-none">Perfil de Negocio Activo</span>
+               <h4 className="text-lg font-black italic text-white uppercase tracking-tighter">{config.business_dna}</h4>
+            </div>
+         </div>
+         <div className="flex items-center gap-8">
+            <div className="flex flex-col items-end">
+               <span className="text-[8px] text-gray-600 font-black uppercase">Modo IA</span>
+               <span className="text-xs font-black text-blue-500 italic uppercase">{config.ai_agency_level}</span>
+            </div>
+            <div className="w-1 h-8 bg-white/5"></div>
+            <div className="flex flex-col items-end">
+               <span className="text-[8px] text-gray-600 font-black uppercase">Meta Margen</span>
+               <span className="text-xs font-black text-green-500 italic">{config.target_margin}%</span>
+            </div>
+         </div>
+      </div>
+
+      {/* Alerta Basada en Configuración */}
       {isLowMargin && (
         <div className="bg-red-600/10 border-2 border-red-500/40 p-8 rounded-[3rem] flex items-center justify-between shadow-[0_0_50px_rgba(239,68,68,0.15)] animate-in shake duration-1000">
            <div className="flex items-center gap-6">
@@ -125,13 +169,13 @@ const FinanceAutopilot: React.FC = () => {
                  <AlertCircle size={32} className="text-white" />
               </div>
               <div>
-                 <h2 className="text-3xl font-black italic uppercase text-red-500 tracking-tighter">⚠️ MARGEN BRUTO BAJO</h2>
-                 <p className="text-sm text-gray-400 font-medium italic mt-1 uppercase tracking-widest">Margen Actual: {kpis.marginPercentage.toFixed(1)}% | Mínimo requerido: 66%</p>
+                 <h2 className="text-3xl font-black italic uppercase text-red-500 tracking-tighter">⚠️ DESVIACIÓN DEL OBJETIVO</h2>
+                 <p className="text-sm text-gray-400 font-medium italic mt-1 uppercase tracking-widest">Margen Actual: {kpis.marginPercentage.toFixed(1)}% | Tu meta configurada: {config.target_margin}%</p>
               </div>
            </div>
            <div className="hidden md:flex flex-col items-end">
-              <span className="text-[10px] text-red-400 font-black uppercase tracking-widest">Impacto en EBITDA</span>
-              <span className="text-2xl font-black italic text-red-500">ALTA PRESIÓN</span>
+              <span className="text-[10px] text-red-400 font-black uppercase tracking-widest">Gobernanza IA</span>
+              <span className="text-2xl font-black italic text-red-500">ACCIÓN REQUERIDA</span>
            </div>
         </div>
       )}
@@ -173,22 +217,18 @@ const FinanceAutopilot: React.FC = () => {
          </div>
 
          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-12 text-white">
-            <MetricBox label="COGS" value={kpis.cogs} sales={kpis.sales} color="text-orange-500" icon={<Flame size={14} />} />
-            <MetricBox label="Mano de Obra" value={kpis.labor} sales={kpis.sales} color="text-blue-400" icon={<Activity size={14} />} />
+            <MetricBox label="COGS" value={kpis.cogs} sales={kpis.sales} color="text-orange-500" icon={<Flame size={14} />} target={config.target_cogs} />
+            <MetricBox label="Mano de Obra" value={kpis.labor} sales={kpis.sales} color="text-blue-400" icon={<Activity size={14} />} target={config.target_labor} />
             <MetricBox label="Arriendo" value={kpis.rent} sales={kpis.sales} color="text-purple-400" icon={<Target size={14} />} />
             <MetricBox label="Marketing" value={kpis.marketing} sales={kpis.sales} color="text-pink-400" icon={<TrendingUp size={14} />} />
             <MetricBox label="Servicios" value={kpis.utilities} sales={kpis.sales} color="text-cyan-400" icon={<Zap size={14} />} />
-            <MetricBox label="Mantenimiento" value={kpis.maintenance} sales={kpis.sales} color="text-gray-400" icon={<AlertTriangle size={14} />} />
-            <MetricBox label="Tecnología" value={kpis.tech} sales={kpis.sales} color="text-yellow-500" icon={<PieChart size={14} />} />
-            <MetricBox label="Show & Ent." value={kpis.entertainment} sales={kpis.sales} color="text-indigo-400" icon={<Activity size={14} />} />
-            <MetricBox label="Otros OPEX" value={kpis.others} sales={kpis.sales} color="text-gray-600" icon={<BarChart4 size={14} />} />
          </div>
       </div>
       
       {/* Auditoría Footer */}
       <div className="flex items-center justify-center gap-6 opacity-30 text-[10px] font-black uppercase tracking-[0.3em] text-white">
          <ShieldCheck size={14} />
-         <span>Auditoría Live Sincronizada con NEXUM_CLOUD_V4</span>
+         <span>Configuración aplicada: {config.business_dna} DNA</span>
          <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
       </div>
     </div>
@@ -207,8 +247,10 @@ const HeroCard = ({ label, value, subValue, icon, color, bg }: any) => (
   </div>
 );
 
-const MetricBox = ({ label, value, sales, color, icon }: any) => {
+const MetricBox = ({ label, value, sales, color, icon, target }: any) => {
   const percent = sales > 0 ? (value / sales) * 100 : 0;
+  const isOver = target && percent > target;
+
   return (
     <div className="space-y-4">
        <div className="flex flex-col">
@@ -220,10 +262,16 @@ const MetricBox = ({ label, value, sales, color, icon }: any) => {
        </div>
        <div className="flex items-center gap-3">
           <div className="h-1 flex-1 bg-white/5 rounded-full overflow-hidden">
-             <div className={`h-full bg-current ${color} opacity-30`} style={{ width: `${Math.min(100, percent * 2)}%` }}></div>
+             <div className={`h-full bg-current ${isOver ? 'bg-red-500' : color} opacity-30`} style={{ width: `${Math.min(100, percent * 2)}%` }}></div>
           </div>
-          <span className={`text-xs font-black italic font-mono ${color}`}>{percent.toFixed(1)}%</span>
+          <span className={`text-xs font-black italic font-mono ${isOver ? 'text-red-500' : color}`}>{percent.toFixed(1)}%</span>
        </div>
+       {target && (
+         <div className="flex justify-between text-[7px] font-black uppercase tracking-widest text-gray-700 leading-none">
+            <span>Target</span>
+            <span>{target}%</span>
+         </div>
+       )}
     </div>
   );
 };

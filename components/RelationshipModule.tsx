@@ -13,7 +13,9 @@ import {
   Send,
   Wallet,
   PieChart,
-  Target
+  Target,
+  MoreVertical,
+  Bell
 } from 'lucide-react';
 import { CustomerProfile } from '../types.ts';
 
@@ -21,174 +23,255 @@ const RelationshipModule: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [customers] = useState<CustomerProfile[]>([
     { 
-      id: 'C1', name: 'Margarita Rosa', phone: '+57 310 444 5566', segment: 'Héroe', 
-      totalSpend: 15400000, lastVisit: '2025-05-15', preferredRest: 'OMM',
-      tastes: ['Vinos Blancos', 'Trufa', 'Mesas VIP'], nextVisitPrediction: 'Viernes, 20:30',
-      churnRisk: 5, walletBalance: 'Mesa 01 Prioritaria'
+      id: 'C1', 
+      name: 'Margarita Rosa', 
+      phone: '+57 310 444 5566', 
+      segment: 'Héroe', 
+      total_spend: 15400000, 
+      order_count: 42,
+      visit_count: 28,
+      rating: 5,
+      avatar_url: 'https://i.pravatar.cc/150?u=margarita',
+      lastVisit: {
+        venue: 'OMM Bogotá - Salón Principal',
+        total: 485000,
+        items: [
+          { qty: 1, name: 'Sake Junmai Ginjo', price: 185000 },
+          { qty: 2, name: 'Kaori Lobster Roll', price: 140000 },
+          { qty: 3, name: 'Nigiri Hamachi', price: 160000 }
+        ]
+      },
+      tags: [
+        { label: 'Alergia Trufa', type: 'red' },
+        { label: '⭐ VIP', type: 'yellow' },
+        { label: 'Big Spender', type: 'blue' },
+        { label: 'Cumpleaños Mayo', type: 'pink' },
+        { label: 'Regular', type: 'teal' }
+      ],
+      churnRisk: 5, 
+      walletBalance: 'Mesa 01 Prioritaria'
     },
     { 
-      id: 'C2', name: 'Julián Román', phone: '+57 300 222 1100', segment: 'En Riesgo', 
-      totalSpend: 2100000, lastVisit: '2025-04-10', preferredRest: 'OMM',
-      tastes: ['Mixología', 'DJ Sets'], nextVisitPrediction: 'Sábado, 22:00',
-      churnRisk: 78, walletBalance: 'Coctel de Bienvenida'
+      id: 'C2', 
+      name: 'Julián Román', 
+      phone: '+57 300 222 1100', 
+      segment: 'En Riesgo', 
+      total_spend: 2100000, 
+      order_count: 8,
+      visit_count: 12,
+      rating: 4,
+      avatar_url: 'https://i.pravatar.cc/150?u=julian',
+      lastVisit: {
+        venue: 'OMM Bogotá - Terraza Pagoda',
+        total: 215000,
+        items: [
+          { qty: 2, name: 'Coctel Zen Tonic', price: 90000 },
+          { qty: 1, name: 'Gyozas de Cerdo', price: 45000 },
+          { qty: 1, name: 'Ramen Tonkotsu', price: 80000 }
+        ]
+      },
+      tags: [
+        { label: 'Mixología', type: 'blue' },
+        { label: 'DJ Lover', type: 'orange' },
+        { label: 'En Riesgo', type: 'red' }
+      ],
+      churnRisk: 78, 
+      walletBalance: 'Coctel de Bienvenida'
     },
     { 
-      id: 'C3', name: 'Elena Poniatowska', phone: '+57 315 999 8877', segment: 'Frecuente', 
-      totalSpend: 8900000, lastVisit: '2025-05-20', preferredRest: 'OMM',
-      tastes: ['Comida Japonesa', 'Tapas', 'Sake'], nextVisitPrediction: 'Domingo, 14:00',
-      churnRisk: 12, walletBalance: 'Degustación de Sashimi'
+      id: 'C3', 
+      name: 'Elena Poniatowska', 
+      phone: '+57 315 999 8877', 
+      segment: 'Frecuente', 
+      total_spend: 8900000, 
+      order_count: 24,
+      visit_count: 21,
+      rating: 5,
+      avatar_url: 'https://i.pravatar.cc/150?u=elena',
+      lastVisit: {
+        venue: 'OMM Bogotá - Cava VIP',
+        total: 1250000,
+        items: [
+          { qty: 1, name: 'Botella Laurent Perrier', price: 850000 },
+          { qty: 1, name: 'Omakase 12 Pasos', price: 400000 }
+        ]
+      },
+      tags: [
+        { label: 'Wine Lover', type: 'purple' as any },
+        { label: 'VIP', type: 'yellow' },
+        { label: 'Sashimi Expert', type: 'teal' }
+      ],
+      churnRisk: 12, 
+      walletBalance: 'Degustación de Sashimi'
     },
   ]);
 
+  const filteredCustomers = customers.filter(c => 
+    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    c.tags.some(t => t.label.toLowerCase().includes(searchTerm.toLowerCase()))
+  );
+
   return (
-    <div className="space-y-8 animate-in fade-in duration-700 text-left">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-         <StatItem label="NPS OMM" value="9.6/10" icon={<Heart className="text-red-500" />} trend="+0.2" />
-         <StatItem label="Retención 30d" value="72%" icon={<Zap className="text-yellow-500" />} trend="+5%" />
-         <StatItem label="LTV Promedio" value="$1.5M" icon={<Star className="text-blue-500" />} trend="+$150k" />
-         <StatItem label="Activaciones" value="28" icon={<Send className="text-green-500" />} trend="88% Conv." />
+    <div className="space-y-10 animate-in fade-in duration-700 text-left">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 border-b border-white/5 pb-8">
+        <div>
+           <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none text-white">NEXUM Relation Brain</h2>
+           <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.4em] mt-3">Sincronización POS & Guest Intelligence</p>
+        </div>
+        <div className="relative">
+           <Search size={16} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600" />
+           <input 
+             type="text" 
+             placeholder="BUSCAR POR NOMBRE O TAG..." 
+             className="bg-[#111114] border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-[10px] font-black uppercase tracking-widest focus:border-blue-500 transition-all outline-none w-full md:w-80"
+             value={searchTerm}
+             onChange={(e) => setSearchTerm(e.target.value)}
+           />
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-6">
-          <div className="bg-[#111114] border border-white/5 rounded-[3rem] p-8 shadow-2xl">
-            <div className="flex items-center justify-between mb-8">
-               <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                  <Users size={14} className="text-blue-500" /> OMM Relationship Brain
-               </h3>
-               <div className="relative">
-                  <Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600" />
-                  <input 
-                    type="text" 
-                    placeholder="BUSCAR CLIENTE O GUSTO..." 
-                    className="bg-black/40 border border-white/10 rounded-2xl py-3 pl-10 pr-6 text-[10px] font-black uppercase tracking-widest focus:border-blue-500 transition-all outline-none w-64"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
+      <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-10">
+        {filteredCustomers.map(customer => (
+          /* Fix: Correctly define the component call with its key and props */
+          <CustomerCard key={customer.id} customer={customer} />
+        ))}
+      </div>
+
+      {/* Panel de Oportunidades CRM */}
+      <div className="bg-[#111114] border border-white/5 rounded-[4rem] p-12 mt-16 shadow-2xl overflow-hidden relative">
+         <div className="absolute top-0 right-0 p-12 opacity-5">
+            <Users size={180} className="text-blue-500" />
+         </div>
+         <div className="relative z-10 space-y-10">
+            <div className="flex items-center justify-between">
+               <div>
+                  <h3 className="text-2xl font-black italic uppercase text-white">Próximas Activaciones IA</h3>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-2">Marketing Predictivo basado en Churn Risk</p>
                </div>
+               <button className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shadow-xl shadow-blue-600/20">
+                  DISPARAR CAMPAÑAS
+               </button>
             </div>
-
-            <div className="space-y-4">
-               {customers.map(customer => (
-                 <div key={customer.id} className="bg-[#16161a] border border-white/5 rounded-3xl p-6 hover:border-blue-500/40 transition-all group">
-                    <div className="flex flex-col md:flex-row md:items-center gap-6">
-                       <div className="flex items-center gap-4 min-w-[240px]">
-                          <div className={`w-14 h-14 rounded-2xl flex items-center justify-center font-black italic text-xl ${
-                            customer.segment === 'Héroe' ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'bg-white/5 text-gray-500'
-                          }`}>
-                            {customer.name.charAt(0)}
-                          </div>
-                          <div>
-                             <h4 className="font-black uppercase text-sm group-hover:text-blue-500 transition-colors">{customer.name}</h4>
-                             <div className="flex items-center gap-2 text-[9px] font-bold text-gray-500 uppercase mt-1">
-                                <span className={customer.segment === 'Héroe' ? 'text-blue-400' : ''}>{customer.segment}</span>
-                                <span>•</span>
-                                <span>{customer.phone}</span>
-                             </div>
-                          </div>
-                       </div>
-
-                       <div className="flex-1 grid grid-cols-2 md:grid-cols-2 gap-4">
-                          <div>
-                             <span className="text-[8px] text-gray-600 font-black uppercase block mb-1">Gasto Total</span>
-                             <span className="text-xs font-black italic text-gray-300">$ {customer.totalSpend.toLocaleString()}</span>
-                          </div>
-                          <div>
-                             <span className="text-[8px] text-gray-600 font-black uppercase block mb-1">Predicción Visita</span>
-                             <span className="text-xs font-black italic text-green-500 uppercase">{customer.nextVisitPrediction}</span>
-                          </div>
-                       </div>
-
-                       <div className="flex items-center gap-2">
-                          <button className="p-3 bg-white/5 hover:bg-blue-600/20 rounded-xl transition-all text-gray-500 hover:text-blue-500">
-                             <Wallet size={16} />
-                          </button>
-                          <button className="p-3 bg-blue-600 hover:bg-blue-500 rounded-xl transition-all text-white shadow-xl shadow-blue-600/20">
-                             <ChevronRight size={16} />
-                          </button>
-                       </div>
-                    </div>
-                    
-                    <div className="mt-4 pt-4 border-t border-white/5 flex flex-wrap gap-2">
-                       {customer.tastes.map((taste, i) => (
-                         <span key={i} className="text-[8px] bg-white/5 px-2 py-1 rounded-full text-gray-500 font-bold uppercase tracking-widest">{taste}</span>
-                       ))}
-                    </div>
-                 </div>
-               ))}
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+               <ActivatorCard label="Clientes en Riesgo" count={filteredCustomers.filter(c => c.churnRisk > 50).length} color="text-red-500" />
+               <ActivatorCard label="VIPs por Regresar" count={12} color="text-yellow-500" />
+               <ActivatorCard label="Cumpleaños esta Semana" count={4} color="text-pink-500" />
             </div>
+         </div>
+      </div>
+    </div>
+  );
+};
+
+/* Fix: Type CustomerCard as React.FC to properly handle standard props like key */
+const CustomerCard: React.FC<{ customer: CustomerProfile }> = ({ customer }) => {
+  return (
+    <div className="bg-white rounded-[2rem] overflow-hidden shadow-2xl transition-all hover:scale-[1.02] duration-300 flex flex-col group">
+      {/* Header & Avatar */}
+      <div className="p-10 pb-6 flex flex-col items-center text-center relative">
+        <div className="absolute top-8 right-8">
+           <button className="p-2 text-gray-200 hover:text-gray-400 transition-colors">
+              <MoreVertical size={20} />
+           </button>
+        </div>
+        
+        <div className="relative mb-6">
+          <div className="w-24 h-24 rounded-full border-4 border-gray-50 overflow-hidden shadow-xl group-hover:border-blue-100 transition-colors">
+            <img src={customer.avatar_url} alt={customer.name} className="w-full h-full object-cover" />
           </div>
+          {customer.churnRisk < 10 && (
+            <div className="absolute bottom-1 right-1 bg-green-500 w-5 h-5 rounded-full border-2 border-white"></div>
+          )}
         </div>
 
-        <div className="space-y-8">
-           <div className="bg-[#111114] rounded-[2.5rem] border border-blue-500/10 p-8 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-8 opacity-5">
-                 <Target size={120} className="text-blue-500" />
-              </div>
-              
-              <div className="relative z-10 space-y-6">
-                 <div className="flex items-center gap-3">
-                    <div className="bg-blue-600 w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/20">
-                       <Send size={20} className="text-white" />
-                    </div>
-                    <div>
-                       <h4 className="text-xs font-black uppercase tracking-widest italic">OMM Ping</h4>
-                       <span className="text-[9px] text-blue-400 font-bold uppercase">Activación IA</span>
-                    </div>
-                 </div>
+        <h3 className="text-2xl font-black text-gray-900 leading-none mb-2">{customer.name}</h3>
+        <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">{customer.segment}</p>
+      </div>
 
-                 <div className="bg-white/5 p-5 rounded-3xl border border-white/5 space-y-4">
-                    <p className="text-[11px] text-gray-300 italic leading-relaxed">
-                      "Hola Margarita Rosa, vimos que tus viernes suelen ser en OMM. Para este 23 de mayo tenemos una mesa VIP lista para ti con vista a la Pagoda..."
-                    </p>
-                    <div className="flex items-center justify-between pt-4 border-t border-white/5">
-                       <span className="text-[9px] text-gray-500 font-black uppercase">Canal: <span className="text-green-500 italic">WhatsApp</span></span>
-                       <button className="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-xl text-[9px] font-black uppercase tracking-widest text-white transition-all">
-                          Enviar
-                       </button>
-                    </div>
-                 </div>
-              </div>
-           </div>
+      {/* Tags Container */}
+      <div className="px-10 flex flex-wrap justify-center gap-2 mb-10">
+        {customer.tags.map((tag, i) => (
+          <span 
+            key={i} 
+            className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-tight ${getTagStyle(tag.type)}`}
+          >
+            {tag.label}
+          </span>
+        ))}
+      </div>
 
-           <div className="bg-[#111114] p-8 rounded-[3rem] border border-white/5">
-              <div className="flex items-center gap-2 mb-6">
-                 <PieChart className="text-blue-500" size={18} />
-                 <h4 className="text-xs font-black uppercase tracking-widest">Tendencias OMM</h4>
-              </div>
-              <div className="space-y-4">
-                 <TasteItem label="Sake & Vinos" value={45} color="bg-red-500" />
-                 <TasteItem label="Mixología Zen" value={35} color="bg-blue-500" />
-                 <TasteItem label="Kaiseki Experience" value={20} color="bg-purple-500" />
-              </div>
+      {/* Stats Row */}
+      <div className="px-10 grid grid-cols-4 gap-2 mb-10">
+        <StatUnit label="GASTO TOTAL" value={`$${(customer.total_spend / 1000).toFixed(0)}k`} />
+        <StatUnit label="PEDIDOS" value={customer.order_count} />
+        <StatUnit label="VISITAS" value={customer.visit_count} />
+        <StatUnit label="RATING" value={'★'.repeat(customer.rating)} className="text-yellow-500 text-[10px]" />
+      </div>
+
+      <div className="mx-10 border-t border-gray-100 mb-8"></div>
+
+      {/* Last Visit Details */}
+      <div className="px-10 pb-10 flex-1 flex flex-col">
+        <div className="flex justify-between items-end mb-6 text-left">
+           <div>
+              <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest leading-none">ÚLTIMA VISITA</span>
+              <p className="text-[13px] font-bold text-gray-600 mt-1">{customer.lastVisit.venue}</p>
            </div>
+           <span className="text-lg font-black text-gray-500 font-mono">${customer.lastVisit.total.toLocaleString()}</span>
+        </div>
+
+        <div className="space-y-3">
+           {customer.lastVisit.items.map((item, idx) => (
+             <div key={idx} className="flex items-center justify-between text-xs">
+                <div className="flex gap-4">
+                   <span className="text-gray-300 font-black w-6">({item.qty})</span>
+                   <span className="text-gray-500 font-bold uppercase tracking-tight">{item.name}</span>
+                </div>
+                <span className="text-gray-400 font-mono font-bold">${item.price.toLocaleString()}</span>
+             </div>
+           ))}
+        </div>
+
+        <div className="mt-auto pt-10">
+           <button className="w-full bg-gray-50 group-hover:bg-blue-600 group-hover:text-white transition-all py-4 rounded-2xl flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-gray-400 shadow-inner">
+              HABLAR CON CLIENTE <ChevronRight size={14} />
+           </button>
         </div>
       </div>
     </div>
   );
 };
 
-const StatItem = ({ label, value, icon, trend }: { label: string, value: string, icon: any, trend: string }) => (
-  <div className="bg-[#111114] border border-white/5 p-6 rounded-[2.5rem] relative overflow-hidden group">
-     <div className="flex justify-between items-start mb-4 relative z-10">
-        <div className="p-3 bg-white/5 rounded-2xl">{icon}</div>
-        <span className="text-[10px] font-black text-green-500 bg-green-500/10 px-2 py-0.5 rounded-full">{trend}</span>
-     </div>
-     <div className="text-2xl font-black italic relative z-10 mb-1 tracking-tighter">{value}</div>
-     <div className="text-[9px] text-gray-500 font-bold uppercase tracking-widest relative z-10">{label}</div>
+const StatUnit = ({ label, value, className = "text-gray-800" }: any) => (
+  <div className="flex flex-col text-center">
+    <span className="text-[8px] text-gray-300 font-black uppercase tracking-tighter mb-1 leading-none">{label}</span>
+    <span className={`text-[13px] font-black italic tracking-tighter leading-none ${className}`}>{value}</span>
   </div>
 );
 
-const TasteItem = ({ label, value, color }: { label: string, value: number, color: string }) => (
-  <div className="space-y-1.5">
-     <div className="flex justify-between text-[8px] font-black text-gray-500 uppercase">
-        <span>{label}</span>
-        <span>{value}%</span>
+const ActivatorCard = ({ label, count, color }: any) => (
+  <div className="bg-black/40 border border-white/5 p-6 rounded-3xl flex items-center justify-between group hover:border-blue-500/30 transition-all">
+     <div>
+        <span className="text-[9px] text-gray-500 font-black uppercase block">{label}</span>
+        <span className={`text-2xl font-black italic ${color}`}>{count}</span>
      </div>
-     <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-        <div className={`h-full ${color}`} style={{ width: `${value}%` }}></div>
+     <div className={`p-3 bg-white/5 rounded-2xl ${color} opacity-40 group-hover:opacity-100 transition-opacity`}>
+        <Target size={20} />
      </div>
   </div>
 );
+
+const getTagStyle = (type: string) => {
+  switch(type) {
+    case 'red': return 'bg-[#fadbd8] text-[#c0392b]';
+    case 'yellow': return 'bg-[#f9e79f] text-[#d4ac0d]';
+    case 'blue': return 'bg-[#aed6f1] text-[#2e86c1]';
+    case 'pink': return 'bg-[#f5b7b1] text-[#c0392b]';
+    case 'teal': return 'bg-[#a2d9ce] text-[#117864]';
+    case 'orange': return 'bg-[#fce8d6] text-[#d35400]';
+    default: return 'bg-[#ebedef] text-[#566573]';
+  }
+};
 
 export default RelationshipModule;
