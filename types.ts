@@ -19,12 +19,14 @@ export enum ModuleType {
   STAFF_HUB = 'STAFF_HUB',
   KITCHEN_KDS = 'KITCHEN_KDS',
   BRAND_STUDIO = 'BRAND_STUDIO',
-  CONFIG = 'CONFIG'
+  CONFIG = 'CONFIG',
+  PAYROLL = 'PAYROLL'
 }
 
 export type BusinessDNA = 'FINE_DINING' | 'BAR_NIGHTLIFE' | 'CASUAL_DINING' | 'QSR_FAST_CASUAL' | 'CASUAL_PREMIUM';
 export type AIAgencyLevel = 'ADVISORY' | 'CO_PILOT' | 'AUTONOMOUS';
-export type LoyaltyLevel = 'BASIC' | 'SILVER' | 'GOLD' | 'VIP';
+// RANGOS GOURMAND SOCIETY
+export type LoyaltyLevel = 'UMBRAL' | 'CONSAGRADO' | 'CATADOR' | 'SUPREMO' | 'ULTRA_VIP';
 
 export interface GuestPreference {
   id: string;
@@ -61,6 +63,28 @@ export interface Profile {
   points?: number;
 }
 
+// --- NÓMINA TYPES ---
+
+export interface PayrollEmployee {
+  id: string;
+  name: string;
+  role: 'COCINA' | 'SERVICIO' | 'ADM' | 'BAR';
+  contract_type: 'INDEFINIDO' | 'FIJO' | 'OBRA_LABOR';
+  salary_base: number;
+  efficiency_score: number;
+  status_dian: 'ENVIADO' | 'PENDIENTE' | 'RECHAZADO';
+  cufe?: string;
+}
+
+export interface ShiftPayroll {
+  id: string;
+  label: string; // Ej: "Almuerzo Martes"
+  sales: number;
+  staff_cost: number;
+  hours_man: number;
+  efficiency: number; // Sales per hour
+}
+
 export interface MenuItem {
   id?: string;
   brand_id?: string;
@@ -68,7 +92,7 @@ export interface MenuItem {
   name: string;
   price: number;
   note: string;
-  is_boosted?: boolean; // Para items que la IA quiere empujar
+  is_boosted?: boolean; 
 }
 
 export interface Table {
@@ -101,7 +125,7 @@ export interface Brand {
   logo_url: string;
   primary_color: string;
   secondary_color: string;
-  occupancy_rate?: number; // Para que Oh Yeah decida visibilidad
+  occupancy_rate?: number; 
   settings?: any;
 }
 

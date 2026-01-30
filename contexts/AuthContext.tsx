@@ -1,7 +1,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase.ts';
-import { Profile, UserRole } from '../types.ts';
+import { Profile, UserRole, LoyaltyLevel } from '../types.ts';
 import type { Session, User } from 'https://esm.sh/@supabase/supabase-js@2.45.1';
 
 interface AuthContextType {
@@ -59,10 +59,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       else if (email.startsWith('dev') || email.startsWith('desarrollo')) assignedRole = 'desarrollo';
       else if (email.startsWith('gerente') || email.startsWith('gerencia')) assignedRole = 'gerencia';
       else if (email.startsWith('chef') || email.startsWith('cocina')) assignedRole = 'chef';
+      else if (email.startsWith('guest')) assignedRole = 'guest';
       
-      const virtualProfile: Profile = { id: user.id, email: email, role: assignedRole, full_name: email.split('@')[0].toUpperCase() };
+      const virtualProfile: Profile = { 
+        id: user.id, 
+        email: email, 
+        role: assignedRole, 
+        full_name: email.split('@')[0].toUpperCase(),
+        loyalty_level: 'UMBRAL' // El nuevo estándar de inicio
+      };
+      
       setProfile(virtualProfile);
-      await supabase.from('profiles').upsert({ id: user.id, email: email, role: assignedRole, full_name: virtualProfile.full_name }, { onConflict: 'id' });
+      await supabase.from('profiles').upsert({ 
+        id: user.id, 
+        email: email, 
+        role: assignedRole, 
+        full_name: virtualProfile.full_name,
+        loyalty_level: 'UMBRAL'
+      }, { onConflict: 'id' });
     } catch (err) { console.warn("Profile sync error"); }
   };
 

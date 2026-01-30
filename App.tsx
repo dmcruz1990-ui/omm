@@ -4,7 +4,7 @@ import {
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
   Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
   ShieldCheck, Compass, Loader2, MonitorPlay, Sparkles, Palette,
-  BarChart4, LayoutDashboard
+  BarChart4, LayoutDashboard, Briefcase
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -27,6 +27,7 @@ const KitchenModule = lazy(() => import('./components/KitchenModule.tsx'));
 const StaffHubModule = lazy(() => import('./components/StaffHubModule.tsx'));
 const BrandStudio = lazy(() => import('./components/BrandStudio.tsx'));
 const SettingsModule = lazy(() => import('./components/SettingsModule.tsx'));
+const PayrollModule = lazy(() => import('./components/PayrollModule.tsx'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -145,6 +146,7 @@ const Dashboard: React.FC = () => {
     { type: ModuleType.SERVICE_OS, label: 'SERVICE OS', sub: 'POS & RITUALES', icon: <ShoppingCart size={22} /> },
     { type: ModuleType.KITCHEN_KDS, label: 'KITCHEN KDS', sub: 'ESTACIÓN COCINA', icon: <MonitorPlay size={22} /> },
     { type: ModuleType.RESERVE, label: 'RESERVE', sub: 'MAPA & AGENDA', icon: <CalendarDays size={22} /> },
+    { type: ModuleType.PAYROLL, label: 'NÓMINA DIAN', sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={22} /> },
     { type: ModuleType.FINANCE_HUB, label: 'FINANCE HUB', sub: 'DINERO & KPI', icon: <DollarSign size={22} /> },
     { type: ModuleType.COMMAND, label: 'COMMAND', sub: 'ESTRATEGIA IA', icon: <Globe size={22} /> },
     { type: ModuleType.RELATIONSHIP, label: 'CLIENTES', sub: 'CRM & VIP', icon: <Users size={22} /> },
@@ -231,6 +233,7 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.KITCHEN_KDS && <KitchenModule />}
             {activeModule === ModuleType.RESERVE && <ReserveModule />}
             {activeModule === ModuleType.FINANCE_HUB && <FinanceHub />}
+            {activeModule === ModuleType.PAYROLL && <PayrollModule />}
             {activeModule === ModuleType.COMMAND && <CommandModule onSimulateEvent={() => {}} />}
             {activeModule === ModuleType.RELATIONSHIP && <RelationshipModule />}
             {activeModule === ModuleType.STAFF_HUB && <StaffHubModule />}
