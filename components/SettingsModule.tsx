@@ -21,7 +21,8 @@ import {
   Star,
   Sparkles,
   Info
-} from 'lucide-center';
+  // Fix: Changed 'lucide-center' to correct package name 'lucide-react'
+} from 'lucide-react';
 import { OperationalSettings, BusinessDNA, AIAgencyLevel } from '../types.ts';
 
 const SettingsModule: React.FC = () => {

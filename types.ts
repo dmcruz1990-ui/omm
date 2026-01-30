@@ -24,6 +24,21 @@ export enum ModuleType {
 
 export type BusinessDNA = 'FINE_DINING' | 'BAR_NIGHTLIFE' | 'CASUAL_DINING' | 'QSR_FAST_CASUAL' | 'CASUAL_PREMIUM';
 export type AIAgencyLevel = 'ADVISORY' | 'CO_PILOT' | 'AUTONOMOUS';
+export type LoyaltyLevel = 'BASIC' | 'SILVER' | 'GOLD' | 'VIP';
+
+export interface GuestPreference {
+  id: string;
+  label: string;
+  type: 'taste' | 'allergy' | 'vibe';
+}
+
+export interface SocialProfile {
+  id: string;
+  name: string;
+  relation: string;
+  preferences: string[];
+  last_gift_received?: string;
+}
 
 export interface OperationalSettings {
   id?: string;
@@ -35,20 +50,25 @@ export interface OperationalSettings {
   notifications_enabled: boolean;
 }
 
-export type UserRole = 'admin' | 'desarrollo' | 'gerencia' | 'mesero' | 'chef';
+export type UserRole = 'admin' | 'desarrollo' | 'gerencia' | 'mesero' | 'chef' | 'guest';
 
 export interface Profile {
   id: string;
   email: string;
   role: UserRole;
   full_name?: string;
+  loyalty_level?: LoyaltyLevel;
+  points?: number;
 }
 
 export interface MenuItem {
+  id?: string;
+  brand_id?: string;
   category: string;
   name: string;
   price: number;
   note: string;
+  is_boosted?: boolean; // Para items que la IA quiere empujar
 }
 
 export interface Table {
@@ -56,9 +76,8 @@ export interface Table {
   name?: string;
   status: TableStatus;
   seats: number;
-  zone: 'Cava VIP' | 'Salón Principal' | 'Terraza';
+  zone: string;
   ritual_step: number;
-  ritualStep?: number;
   welcome_timer_start?: string | null;
 }
 
@@ -78,14 +97,17 @@ export interface RitualTask {
 export interface Brand {
   id: string;
   name: string;
+  slug: string;
   logo_url: string;
   primary_color: string;
   secondary_color: string;
+  occupancy_rate?: number; // Para que Oh Yeah decida visibilidad
   settings?: any;
 }
 
 export interface OmmEvent {
   id: string;
+  brand_id?: string;
   title: string;
   description: string;
   date: string;
@@ -130,20 +152,6 @@ export interface Transaction {
   provider?: string;
   is_ai_classified?: boolean;
   cufe?: string;
-}
-
-export interface FinancialAnomaly {
-  id: string;
-  title: string;
-  severity: 'alta' | 'media' | 'baja';
-  description: string;
-  impact: number;
-}
-
-export interface CashflowPoint {
-  date: string;
-  actual: number;
-  predicted: number;
 }
 
 export enum GameStatus { IDLE = 'IDLE', PLAYING = 'PLAYING', PAUSED = 'PAUSED', ENDED = 'ENDED' }

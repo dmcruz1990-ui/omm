@@ -31,7 +31,7 @@ const SettingsModule = lazy(() => import('./components/SettingsModule.tsx'));
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
     <Loader2 className="text-blue-600 animate-spin mb-4" size={32} />
-    <p className="text-[10px] font-black uppercase tracking-widest italic">Cargando Módulo Inteligente...</p>
+    <p className="text-[10px] font-black uppercase tracking-widest italic">Sincronizando Experiencia OMM...</p>
   </div>
 );
 
@@ -42,18 +42,27 @@ const Dashboard: React.FC = () => {
   const [ritualTasks, setRitualTasks] = useState<RitualTask[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [activeStation, setActiveStation] = useState(1);
+  const [isClientView, setIsClientView] = useState(false);
+
+  // Detectar modo "OH YEAH" independiente vía Hash
+  useEffect(() => {
+    const checkView = () => {
+      setIsClientView(window.location.hash.includes('/oh-yeah'));
+    };
+    checkView();
+    window.addEventListener('hashchange', checkView);
+    return () => window.removeEventListener('hashchange', checkView);
+  }, []);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
 
-  // Definición de permisos por Rol
   const getVisibleModules = (role: UserRole = 'mesero'): ModuleType[] => {
     switch (role) {
       case 'admin':
       case 'desarrollo':
         return Object.values(ModuleType);
       case 'gerencia':
-        // Gerencia ve todo excepto los de configuración crítica de bajo nivel
         return Object.values(ModuleType).filter(m => m !== ModuleType.COMMAND && m !== ModuleType.CONFIG);
       case 'mesero':
         return [ModuleType.DISCOVER, ModuleType.SERVICE_OS, ModuleType.RESERVE, ModuleType.RELATIONSHIP, ModuleType.STAFF_HUB];
@@ -91,13 +100,8 @@ const Dashboard: React.FC = () => {
       });
 
       setTables(processedTables || []);
-
-      const { data: tasksData } = await supabase
-        .from('ritual_tasks')
-        .select('*')
-        .eq('status', 'active');
+      const { data: tasksData } = await supabase.from('ritual_tasks').select('*').eq('status', 'active');
       setRitualTasks(tasksData || []);
-
     } catch (err) {
       console.warn("Sync Error");
     } finally {
@@ -118,6 +122,24 @@ const Dashboard: React.FC = () => {
     await supabase.from('tables').update(updates).eq('id', tableId);
   };
 
+  if (dashboardLoading) return (
+    <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
+       <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
+       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic">Sincronizando Core Intelligence...</p>
+    </div>
+  );
+
+  // VISTA CLIENTE INDEPENDIENTE (OH YEAH)
+  if (isClientView) {
+    return (
+      <div className="h-screen w-full overflow-hidden">
+        <Suspense fallback={<ModuleLoader />}>
+          <OhYeahPage />
+        </Suspense>
+      </div>
+    );
+  }
+
   const allModulesMetadata = [
     { type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'WEB & PLANES', icon: <Compass size={22} /> },
     { type: ModuleType.SERVICE_OS, label: 'SERVICE OS', sub: 'POS & RITUALES', icon: <ShoppingCart size={22} /> },
@@ -134,13 +156,6 @@ const Dashboard: React.FC = () => {
     { type: ModuleType.CONFIG, label: 'CEREBRO', sub: 'ADN & IA', icon: <Settings size={22} /> }
   ];
 
-  if (dashboardLoading) return (
-    <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
-       <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
-       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic">Sincronizando Perfil de Usuario...</p>
-    </div>
-  );
-
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0c] text-white font-sans text-left">
       <nav className="w-[280px] bg-[#0a0a0c] border-r border-white/5 flex flex-col px-6 py-8 z-50 overflow-y-auto custom-scrollbar">
@@ -150,12 +165,12 @@ const Dashboard: React.FC = () => {
           </div>
           <div>
             <h1 className="text-2xl font-black tracking-tighter italic leading-none">NEXUM <span className="text-blue-600">V4</span></h1>
-            <p className="text-[9px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-1">OMM INTELLIGENCE</p>
+            <p className="text-[9px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-1">STAFF INTELLIGENCE</p>
           </div>
         </div>
 
         <div className="mb-6">
-          <p className="text-[10px] text-gray-600 font-black uppercase tracking-[0.2em] mb-6">MÓDULOS PERMITIDOS</p>
+          <p className="text-[10px] text-gray-600 font-black uppercase tracking-[0.2em] mb-6">MÓDULOS DE CONTROL</p>
           <div className="flex flex-col gap-2">
             {allModulesMetadata.filter(m => visibleModulesList.includes(m.type)).map((m) => (
               <button
@@ -178,17 +193,20 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div className="mt-auto pt-8 border-t border-white/5">
-          <div className="bg-[#111114] rounded-[1.8rem] p-5 flex items-center justify-between border border-white/5 mb-6 group">
-            <div className="flex items-center gap-4">
-              <div className="w-10 h-10 rounded-xl bg-blue-600/10 flex items-center justify-center text-sm font-black text-blue-500 uppercase">{profile?.role?.charAt(0)}</div>
-              <div>
-                <p className="text-[8px] text-blue-500 font-black uppercase tracking-widest mb-0.5">{profile?.role}</p>
-                <p className="text-xs font-black italic truncate max-w-[100px]">{user?.email?.split('@')[0]}</p>
+           <button 
+            onClick={() => window.location.hash = '/oh-yeah'} 
+            className="w-full bg-[#111114] border border-blue-500/20 rounded-[1.8rem] p-5 flex flex-col gap-2 mb-6 group hover:bg-blue-600 transition-all shadow-lg shadow-blue-900/10"
+           >
+              <div className="flex items-center gap-3">
+                 <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white group-hover:bg-white group-hover:text-blue-600">
+                    <Sparkles size={16} />
+                 </div>
+                 <span className="text-[10px] font-black uppercase tracking-widest text-white">Ir a OH YEAH!</span>
               </div>
-            </div>
-          </div>
+              <p className="text-[8px] text-gray-500 group-hover:text-blue-100 font-bold uppercase tracking-widest">VISTA CLIENTE B2C</p>
+           </button>
           <button onClick={signOut} className="flex items-center gap-3 px-6 text-gray-600 hover:text-red-500 transition-all text-[10px] font-black uppercase tracking-widest w-full">
-            <LogOut size={16} /> SALIR DEL SISTEMA
+            <LogOut size={16} /> CERRAR SESIÓN
           </button>
         </div>
       </nav>
