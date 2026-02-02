@@ -33,25 +33,21 @@ import {
   UserCheck,
   Stethoscope,
   Plane,
-  LogOut,
-  Cpu,
-  Layers,
-  Terminal,
-  Play
+  LogOut
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { PayrollEmployee, ShiftPayroll } from '../types.ts';
 
 const PayrollModule: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'live' | 'shifts' | 'compliance' | 'simulator' | 'case_study' | 'architecture'>('live');
+  const [activeTab, setActiveTab] = useState<'live' | 'shifts' | 'compliance' | 'simulator' | 'case_study'>('live');
   const [selectedCase, setSelectedCase] = useState<1 | 2>(1);
   const [loading, setLoading] = useState(true);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   
-  // Estado para Nota de Ajuste
-  const [bonusValue, setBonusValue] = useState(120000); 
-  const [incapacityDays, setIncapacityDays] = useState(5); 
+  // Estado para Nota de Ajuste (Casos Juan y Carlos)
+  const [bonusValue, setBonusValue] = useState(120000); // Caso 1
+  const [incapacityDays, setIncapacityDays] = useState(5); // Caso 2
   const [isAdjusting, setIsAdjusting] = useState(false);
 
   // Mock de Empleados
@@ -60,6 +56,11 @@ const PayrollModule: React.FC = () => {
     { id: 'E2', name: 'MARÍA LÓPEZ', role: 'COCINA', contract_type: 'FIJO', salary_base: 2200000, efficiency_score: 88, status_dian: 'ENVIADO', cufe: '1a2b...9d0c' },
     { id: 'E3', name: 'CARLOS RUÍZ', role: 'BAR', contract_type: 'OBRA_LABOR', salary_base: 1600000, efficiency_score: 72, status_dian: 'PENDIENTE' },
     { id: 'E000980', name: 'CARLOS ROJAS', role: 'COCINA', contract_type: 'INDEFINIDO', salary_base: 2400000, efficiency_score: 91, status_dian: 'PENDIENTE' },
+  ]);
+
+  const [shifts] = useState<ShiftPayroll[]>([
+    { id: 'S1', label: 'Almuerzo Mar (12-16h)', sales: 4500000, staff_cost: 1200000, hours_man: 16, efficiency: 281250 },
+    { id: 'S2', label: 'Cena Mar (18-23h)', sales: 12800000, staff_cost: 2100000, hours_man: 25, efficiency: 512000 },
   ]);
 
   useEffect(() => {
@@ -72,11 +73,11 @@ const PayrollModule: React.FC = () => {
     try {
       const response = await ai.models.generateContent({
         model: 'gemini-3-flash-preview',
-        contents: `Analiza este flujo de nómina y proporciona una recomendación estratégica de arquitectura de datos.`,
+        contents: `Analiza este escenario de nómina para un restaurante Casual Premium. Genera una recomendación táctica.`,
       });
       setAiAnalysis(response.text);
     } catch (e) {
-      setAiAnalysis("Sugerencia Arquitectura: Implementar un validador de pre-transmisión que verifique el 'Hash de Integridad' entre el Objeto Canónico y el XML final para evitar rechazos DIAN por redondeo.");
+      setAiAnalysis("Sugerencia IA: El caso de Carlos Rojas (Retiro) impacta el flujo de caja en $3M. Se recomienda provisionar el 8% mensual de la nómina bruta para mitigar picos de liquidaciones finales.");
     } finally {
       setIsAnalyzing(false);
     }
@@ -90,25 +91,33 @@ const PayrollModule: React.FC = () => {
   const c1_totalDevengado = c1_baseSalary + c1_auxTransport + c1_extraHours + c1_sundays + bonusValue;
   const c1_deducciones = 192934;
 
-  // Cálculos Caso 2 (Carlos)
+  // Cálculos Caso 2 (Carlos - Heavy)
   const c2_salaryBase = 2400000;
-  const c2_salaryProportional = 1714286;
+  const c2_salaryProportional = 1714286; // 20 días
   const c2_incapacityValue = ( (c2_salaryBase / 28) * 0.6667 ) * incapacityDays;
-  const c2_vacationsEnjoyed = 342857;
-  const c2_totalDevengado = c2_salaryProportional + c2_incapacityValue + c2_vacationsEnjoyed + 340000 + 340000 + 5780 + 257143;
-  const c2_totalDeducciones = 267428;
+  const c2_vacationsEnjoyed = 342857; // 4 días
+  const c2_vacationsCompensated = 257143; // 3 días
+  const c2_prima = 340000;
+  const c2_cesantias = 340000;
+  const c2_intereses = 5780;
+  const c2_totalDevengado = c2_salaryProportional + c2_incapacityValue + c2_vacationsEnjoyed + c2_vacationsCompensated + c2_prima + c2_cesantias + c2_intereses;
+  const c2_health = 93714;
+  const c2_pension = 93714;
+  const c2_libranza = 80000;
+  const c2_totalDeducciones = c2_health + c2_pension + c2_libranza;
+  const c2_neto = c2_totalDevengado - c2_totalDeducciones;
 
   if (loading) return (
     <div className="h-full flex flex-col items-center justify-center opacity-40">
       <Loader2 className="animate-spin text-blue-500 mb-4" size={48} />
-      <p className="text-[10px] font-black uppercase tracking-widest italic">Cargando Motor Canónico Nexus...</p>
+      <p className="text-[10px] font-black uppercase tracking-widest italic">Accediendo a Nexus Payroll Core...</p>
     </div>
   );
 
   return (
     <div className="space-y-12 animate-in fade-in duration-700 text-left pb-20">
       
-      {/* HEADER PRINCIPAL */}
+      {/* HEADER DE MÓDULO */}
       <div className="flex flex-col xl:flex-row gap-8 justify-between items-start xl:items-center border-b border-white/5 pb-10">
         <div className="flex items-center gap-6">
            <div className="p-5 bg-blue-600 rounded-[2rem] shadow-2xl shadow-blue-600/30">
@@ -117,250 +126,309 @@ const PayrollModule: React.FC = () => {
            <div>
               <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none">Intelligence Payroll</h2>
               <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3 flex items-center gap-2">
-                 <ShieldCheck size={14} className="text-green-500" /> Modelado por Capas UBL 2.1
+                 <ShieldCheck size={14} className="text-green-500" /> Sincronización DIAN & Eficiencia Operativa
               </p>
            </div>
         </div>
 
         <div className="flex bg-[#111114] p-1.5 rounded-2xl border border-white/5 overflow-x-auto">
-          <TabBtn active={activeTab === 'live'} onClick={() => setActiveTab('live')} icon={<Activity size={14} />} label="RESUMEN" />
-          <TabBtn active={activeTab === 'case_study'} onClick={() => setActiveTab('case_study')} icon={<Database size={14} />} label="DOCUMENTOS" />
-          <TabBtn active={activeTab === 'architecture'} onClick={() => setActiveTab('architecture')} icon={<Cpu size={14} />} label="ARQUITECTURA" />
+          <TabBtn active={activeTab === 'live'} onClick={() => setActiveTab('live')} icon={<Activity size={14} />} label="LIQUIDACIÓN" />
+          <TabBtn active={activeTab === 'case_study'} onClick={() => setActiveTab('case_study')} icon={<Database size={14} />} label="EJEMPLOS REALES" />
+          <TabBtn active={activeTab === 'shifts'} onClick={() => setActiveTab('shifts')} icon={<Clock size={14} />} label="POR TURNO" />
           <TabBtn active={activeTab === 'compliance'} onClick={() => setActiveTab('compliance')} icon={<Lock size={14} />} label="DIAN SYNC" />
-          <TabBtn active={activeTab === 'simulator'} onClick={() => setActiveTab('simulator')} icon={<Brain size={14} />} label="SIMULADOR" />
+          <TabBtn active={activeTab === 'simulator'} onClick={() => setActiveTab('simulator')} icon={<Brain size={14} />} label="SIMULADOR IA" />
         </div>
       </div>
 
-      {activeTab === 'architecture' && (
-        <div className="space-y-16 animate-in slide-in-from-bottom-4 duration-700">
-           {/* Visualización Tip 2: Los Bloques */}
-           <div className="bg-[#0d0d0f] border border-white/5 rounded-[4rem] p-16 relative overflow-hidden shadow-2xl">
-              <div className="absolute top-0 right-0 p-16 opacity-5 rotate-12"><Layers size={200} className="text-blue-500" /></div>
-              
-              <div className="relative z-10 space-y-16">
-                 <div className="text-center max-w-2xl mx-auto space-y-4">
-                    <h3 className="text-4xl font-black italic uppercase tracking-tighter">Arquitectura de Flujo NEXUM</h3>
-                    <p className="text-gray-500 italic">"La nómina no es contabilidad, es una tubería de datos modular."</p>
-                 </div>
-
-                 <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-7 gap-4">
-                    <ArchBlock step="1" label="DATOS MAESTROS" sub="Employer / Staff" active />
-                    <ArchBlock step="2" label="NOVEDADES" sub="Events / Days" active />
-                    <ArchBlock step="3" label="MOTOR CÁLCULOS" sub="Rule Engine" active />
-                    <ArchBlock step="4" label="OBJETO CANÓNICO" sub="Internal JSON" active color="border-blue-500 bg-blue-500/10" />
-                    <ArchBlock step="5" label="MAPPER UBL" sub="XML Generator" />
-                    <ArchBlock step="6" label="TRANSMISIÓN" sub="API Provider" />
-                    <ArchBlock step="7" label="RESPUESTA DIAN" sub="CUFE / Status" />
-                 </div>
-
-                 <div className="bg-blue-600/5 border border-blue-500/20 p-10 rounded-[3rem] flex gap-10 items-center">
-                    <Terminal size={32} className="text-blue-500" />
-                    <div className="flex-1">
-                       <h4 className="text-xs font-black uppercase text-blue-400 mb-2">Tip de Ingeniería #1: Objeto Canónico</h4>
-                       <p className="text-gray-400 text-sm italic font-medium leading-relaxed">
-                          NEXUM separa la lógica de negocio de la lógica fiscal. Antes de generar el XML para la DIAN, construimos un **Objeto Canónico** que contiene toda la verdad del mes. Si la DIAN cambia sus reglas, solo cambiamos el "Traductor (Step 5)", no todo el sistema.
-                       </p>
-                    </div>
-                 </div>
-              </div>
-           </div>
-
-           {/* Visualización Tip 5: Máquina de Estados */}
-           <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-              <div className="lg:col-span-2 bg-[#111114] border border-white/5 p-12 rounded-[4rem] shadow-2xl">
-                 <h3 className="text-2xl font-black italic uppercase tracking-tighter mb-10">Máquina de Estados del Documento</h3>
-                 <div className="flex items-center justify-between relative px-4">
-                    <div className="absolute top-1/2 left-0 right-0 h-0.5 bg-white/5 -translate-y-1/2"></div>
-                    <StateNode label="DRAFT" status="complete" />
-                    <StateNode label="VALIDATED" status="complete" />
-                    <StateNode label="APPROVED" status="active" />
-                    <StateNode label="SENT" status="pending" />
-                    <StateNode label="ACCEPTED" status="pending" />
-                    <StateNode label="ADJUSTED" status="pending" />
-                 </div>
-                 <div className="mt-16 bg-black/40 p-8 rounded-3xl border border-white/5">
-                    <p className="text-xs text-gray-500 font-medium italic">
-                       "Un documento en estado **APPROVED** está bloqueado para edición. Cualquier cambio posterior disparará automáticamente una **Nota de Ajuste** manteniendo el rastro de auditoría original." (Tip 6)
-                    </p>
-                 </div>
-              </div>
-
-              <div className="bg-gradient-to-br from-green-600/10 to-transparent border border-green-500/20 p-10 rounded-[4rem] flex flex-col justify-center text-center">
-                 <CheckCircle2 size={48} className="text-green-500 mx-auto mb-6" />
-                 <h4 className="text-xl font-black italic uppercase text-white mb-2">Idempotencia Garantizada</h4>
-                 <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest leading-relaxed">
-                   Cada envío al proveedor tecnológico está firmado con un Hash único basado en el Objeto Canónico. No hay duplicidad posible.
-                 </p>
-              </div>
-           </div>
-        </div>
-      )}
-
       {activeTab === 'case_study' && (
         <div className="space-y-12 animate-in slide-in-from-bottom-4 duration-700">
+           
+           {/* Selector de Casos */}
            <div className="flex gap-4">
-              <button onClick={() => setSelectedCase(1)} className={`flex-1 p-6 rounded-3xl border-2 transition-all ${selectedCase === 1 ? 'bg-blue-600 border-blue-400' : 'bg-[#111114] border-white/5 opacity-50'}`}>
-                 <span className="text-xs font-black uppercase text-white">Juan Pérez (Enero)</span>
-                 <span className="text-[8px] font-bold text-blue-100 uppercase block">Caso Simple: Salario + Recargos</span>
+              <button 
+                onClick={() => setSelectedCase(1)}
+                className={`flex-1 p-6 rounded-3xl border-2 transition-all flex items-center gap-4 ${selectedCase === 1 ? 'bg-blue-600 border-blue-400 shadow-xl' : 'bg-[#111114] border-white/5 opacity-50'}`}
+              >
+                 <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center font-black italic">1</div>
+                 <div className="text-left">
+                    <span className="text-xs font-black uppercase text-white block">Caso Juan Pérez</span>
+                    <span className="text-[8px] font-bold text-blue-100 uppercase">Mesero / Atlantis PV01</span>
+                 </div>
               </button>
-              <button onClick={() => setSelectedCase(2)} className={`flex-1 p-6 rounded-3xl border-2 transition-all ${selectedCase === 2 ? 'bg-purple-600 border-purple-400' : 'bg-[#111114] border-white/5 opacity-50'}`}>
-                 <span className="text-xs font-black uppercase text-white">Carlos Rojas (Febrero)</span>
-                 <span className="text-[8px] font-bold text-purple-100 uppercase block">Caso Heavy: Novedades + Retiro</span>
+              <button 
+                onClick={() => setSelectedCase(2)}
+                className={`flex-1 p-6 rounded-3xl border-2 transition-all flex items-center gap-4 ${selectedCase === 2 ? 'bg-purple-600 border-purple-400 shadow-xl' : 'bg-[#111114] border-white/5 opacity-50'}`}
+              >
+                 <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center font-black italic">2</div>
+                 <div className="text-left">
+                    <span className="text-xs font-black uppercase text-white block">Caso Carlos Rojas (HEAVY)</span>
+                    <span className="text-[8px] font-bold text-purple-100 uppercase">Cocinero / Retiro & Novedades</span>
+                 </div>
               </button>
            </div>
 
-           <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
-              <div className="xl:col-span-2 space-y-10">
-                 {/* Visualización Tip 3: El mes es una suma de Novedades */}
-                 <div className="bg-[#111114] border border-white/5 rounded-[4rem] p-12 shadow-2xl">
-                    <h3 className="text-2xl font-black italic uppercase tracking-tighter mb-10 flex items-center gap-3">
-                       <Activity size={24} className="text-blue-500" /> Línea de Vida del Mes (Tip 3)
-                    </h3>
-                    <div className="space-y-8">
-                       <TimelineBar period={selectedCase === 1 ? 'ENERO 2026' : 'FEBRERO 2026'} days={selectedCase === 1 ? 31 : 28} 
-                        events={selectedCase === 1 ? [
-                          { start: 1, end: 31, label: 'Vinculación Activa', color: 'bg-blue-500' }
-                        ] : [
-                          { start: 1, end: 20, label: 'Vinculación Activa', color: 'bg-purple-500' },
-                          { start: 6, end: 10, label: 'Incapacidad', color: 'bg-red-500' },
-                          { start: 17, end: 20, label: 'Vac. Disfrutadas', color: 'bg-blue-500' }
-                        ]} />
-                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4">
-                          <LegendItem color="bg-blue-500" label="Normal" />
-                          <LegendItem color="bg-red-500" label="Incapacidad" />
-                          <LegendItem color="bg-purple-500" label="Liquidación" />
-                          <LegendItem color="bg-green-500" label="Vacaciones" />
-                       </div>
-                    </div>
-                 </div>
+           {selectedCase === 1 ? (
+             <div className="space-y-12 animate-in fade-in duration-500">
+                <div className="bg-[#1a1a1e] border-2 border-blue-500/20 p-10 rounded-[3.5rem] flex flex-col lg:flex-row gap-10 items-center justify-between shadow-2xl overflow-hidden relative">
+                   <div className="absolute top-0 right-0 p-10 opacity-5"><Building2 size={200} className="text-blue-500" /></div>
+                   <div className="space-y-6 relative z-10 max-w-2xl">
+                      <div className="inline-flex items-center gap-2 bg-blue-600/10 px-4 py-1.5 rounded-full text-[10px] font-black text-blue-400 uppercase tracking-widest italic">
+                         <Building2 size={12} /> Seratta Atlantis S.A.S. - NIT: 901.234.567-1
+                      </div>
+                      <h2 className="text-5xl font-black italic tracking-tighter uppercase leading-none text-white">Juan Pérez <span className="text-blue-500">/ Mesero</span></h2>
+                   </div>
+                   <div className="bg-black/60 p-8 rounded-[3rem] border border-white/10 text-center shrink-0 min-w-[280px]">
+                      <span className="text-[10px] text-gray-500 font-black uppercase block mb-2">Neto Pagado</span>
+                      <span className="text-4xl font-black italic text-green-500 tracking-tighter">$ {(c1_totalDevengado - c1_deducciones).toLocaleString()}</span>
+                   </div>
+                </div>
 
-                 {/* Tip 8: Debugging de Cálculos */}
-                 <div className="bg-black border border-white/5 rounded-[4rem] p-12 shadow-2xl">
-                    <h3 className="text-xl font-black italic uppercase tracking-tighter text-blue-500 mb-8 flex items-center gap-3">
-                       <Terminal size={18} /> Trace de Cálculos Matemáticos (Tip 8)
-                    </h3>
-                    <div className="space-y-4 font-mono text-[11px] text-gray-400">
-                       {selectedCase === 1 ? (
-                         <>
-                           <div className="flex justify-between border-b border-white/5 pb-2">
-                              <span>VALOR_HORA_ORDINARIA</span>
-                              <span className="text-white">1,600,000 / 240 = $ 6,666.67</span>
-                           </div>
-                           <div className="flex justify-between border-b border-white/5 pb-2">
-                              <span>HORAS_EXTRA_DIURNAS (Factor 1.25)</span>
-                              <span className="text-white">8h * (6,666.67 * 1.25) = $ 66,667</span>
-                           </div>
-                           <div className="flex justify-between text-blue-400 font-black">
-                              <span>TOTAL_DEVENGADO_NETO</span>
-                              <span>$ {(c1_totalDevengado).toLocaleString()}</span>
-                           </div>
-                         </>
-                       ) : (
-                         <>
-                           <div className="flex justify-between border-b border-white/5 pb-2">
-                              <span>DIAS_VINCULADOS (Feb 1-20)</span>
-                              <span className="text-white">20 Días</span>
-                           </div>
-                           <div className="flex justify-between border-b border-white/5 pb-2">
-                              <span>LIQUIDACION_VACACIONES_COMPENSADAS</span>
-                              <span className="text-white">(2,400,000 / 28) * 3 Días = $ 257,143</span>
-                           </div>
-                           <div className="flex justify-between text-purple-400 font-black">
-                              <span>NETO_FINAL_LIQUIDACION</span>
-                              <span>$ {Math.round(c2_totalDevengado - c2_totalDeducciones).toLocaleString()}</span>
-                           </div>
-                         </>
-                       )}
-                    </div>
-                 </div>
-              </div>
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
+                   <div className="xl:col-span-2 space-y-10">
+                      <div className="bg-[#111114] border border-white/5 rounded-[4rem] p-12 shadow-2xl">
+                         <div className="flex items-center justify-between mb-12">
+                            <h3 className="text-2xl font-black italic uppercase tracking-tighter">Detalle DSNE (Enero)</h3>
+                            <button 
+                             onClick={() => { setIsAdjusting(true); setTimeout(() => { setBonusValue(150000); setIsAdjusting(false); }, 1000); }}
+                             className="bg-orange-600/10 hover:bg-orange-600 text-orange-500 hover:text-white px-6 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border border-orange-500/20"
+                            >
+                              {isAdjusting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} 
+                              {bonusValue === 150000 ? 'AJUSTE APLICADO' : 'SIMULAR AJUSTE BONO'}
+                            </button>
+                         </div>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
+                            <div className="space-y-6">
+                               <h4 className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-4">Devengados</h4>
+                               <LineItem label="Salario Básico" value={c1_baseSalary} />
+                               <LineItem label="Auxilio Transporte" value={c1_auxTransport} />
+                               <LineItem label="Horas Extra (8h)" value={c1_extraHours} />
+                               <LineItem label="Dominicales/Festivos" value={c1_sundays} />
+                               <LineItem label="Bonificación" value={bonusValue} isHighlighted={bonusValue === 150000} />
+                            </div>
+                            <div className="space-y-6">
+                               <h4 className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-4">Deducciones</h4>
+                               <LineItem label="Salud (4%)" value={71467} isNegative />
+                               <LineItem label="Pensión (4%)" value={71467} isNegative />
+                               <LineItem label="Libranza" value={50000} isNegative />
+                            </div>
+                         </div>
+                      </div>
+                      <CanonicalViewer data={{ document_id: "NE-ATL-2026-01-E001", employee: "JUAN PEREZ", total: c1_totalDevengado - c1_deducciones }} />
+                   </div>
+                   <div className="space-y-8">
+                      <AuditSidebar cufe="8b7f...3e12" hours={138} />
+                   </div>
+                </div>
+             </div>
+           ) : (
+             <div className="space-y-12 animate-in fade-in duration-500">
+                <div className="bg-gradient-to-br from-[#1a1a1e] to-[#0d0d0f] border-2 border-purple-500/20 p-10 rounded-[3.5rem] flex flex-col lg:flex-row gap-10 items-center justify-between shadow-2xl overflow-hidden relative">
+                   <div className="absolute top-0 right-0 p-10 opacity-5"><Building2 size={200} className="text-purple-500" /></div>
+                   <div className="space-y-6 relative z-10 max-w-2xl">
+                      <div className="inline-flex items-center gap-2 bg-purple-600/10 px-4 py-1.5 rounded-full text-[10px] font-black text-purple-400 uppercase tracking-widest italic">
+                         <Building2 size={12} /> Sede Calle 114 - Punto PV03
+                      </div>
+                      <h2 className="text-5xl font-black italic tracking-tighter uppercase leading-none text-white">Carlos Rojas <span className="text-purple-500">/ Cocinero</span></h2>
+                      <p className="text-gray-400 text-sm italic font-medium">Liquidación Final de Contrato Indefinido - Retiro: 20 Feb 2026</p>
+                   </div>
+                   <div className="bg-black/60 p-8 rounded-[3rem] border border-white/10 text-center shrink-0 min-w-[280px]">
+                      <span className="text-[10px] text-gray-500 font-black uppercase block mb-2">Pago Liquidación Final</span>
+                      <span className="text-4xl font-black italic text-green-500 tracking-tighter">$ {Math.round(c2_neto).toLocaleString()}</span>
+                      <div className="mt-4 flex items-center justify-center gap-2 text-[9px] font-black text-purple-400 uppercase">
+                         <LogOut size={12} /> Cierre Contable OK
+                      </div>
+                   </div>
+                </div>
 
-              <div className="space-y-8">
-                 <div className="bg-[#111114] border border-white/5 p-10 rounded-[3.5rem] shadow-2xl">
-                    <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-8">Resumen Fiscal</h4>
-                    <div className="space-y-6">
-                       <LineItem label="Document ID" value={selectedCase === 1 ? "NE-ATL-234" : "LIQ-PV03-980"} isText />
-                       <LineItem label="Estado Motor" value="PROCESADO" isText color="text-green-500" />
-                       <LineItem label="Validación UBL" value="EXITOSA" isText color="text-green-500" />
-                    </div>
-                 </div>
-                 <CanonicalViewer data={{ 
-                    meta: { tip: "Paso 4: Objeto Canónico", version: "4.2" },
-                    data: selectedCase === 1 ? { base: c1_baseSalary, neto: c1_totalDevengado-c1_deducciones } : { base: c2_salaryBase, neto: c2_totalDevengado-c2_totalDeducciones }
-                 }} />
-              </div>
-           </div>
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-10">
+                   <div className="xl:col-span-2 space-y-10">
+                      {/* Línea de Novedades - Diferencial NEXUM */}
+                      <div className="bg-[#111114] border border-white/5 rounded-[4rem] p-12 shadow-2xl">
+                         <h3 className="text-2xl font-black italic uppercase tracking-tighter mb-10 flex items-center gap-3">
+                            <Activity size={24} className="text-purple-500" /> Resolución de Novedades (Feb)
+                         </h3>
+                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <NovedadCard icon={<Stethoscope size={18} />} title="Incapacidad" period="06-10 Feb" days={incapacityDays} color="text-red-400" />
+                            <NovedadCard icon={<Plane size={18} />} title="Vac. Disfrutadas" period="17-20 Feb" days={4} color="text-blue-400" />
+                            <NovedadCard icon={<Plane size={18} />} title="Vac. Compensadas" period="21-23 Feb" days={3} color="text-green-400" isCompensated />
+                         </div>
+                      </div>
+
+                      {/* Desglose Heavy */}
+                      <div className="bg-[#111114] border border-white/5 rounded-[4rem] p-12 shadow-2xl">
+                         <div className="flex items-center justify-between mb-12">
+                            <h3 className="text-2xl font-black italic uppercase tracking-tighter">Desglose Fiscal UBL 2.1</h3>
+                            <button 
+                             onClick={() => { setIsAdjusting(true); setTimeout(() => { setIncapacityDays(6); setIsAdjusting(false); }, 1000); }}
+                             className="bg-purple-600/10 hover:bg-purple-600 text-purple-500 hover:text-white px-6 py-3 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border border-purple-500/20"
+                            >
+                              {isAdjusting ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />} 
+                              {incapacityDays === 6 ? 'AJUSTE APLICADO' : 'AJUSTAR DÍAS INCAPACIDAD'}
+                            </button>
+                         </div>
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
+                            <div className="space-y-6">
+                               <h4 className="text-[10px] font-black text-green-500 uppercase tracking-widest mb-4">Devengados (Liquidación)</h4>
+                               <LineItem label="Salario Prop. (20 d)" value={c2_salaryProportional} />
+                               <LineItem label={`Incapacidad (${incapacityDays} d)`} value={Math.round(c2_incapacityValue)} />
+                               <LineItem label="Vacaciones Disfr. (4 d)" value={c2_vacationsEnjoyed} />
+                               <LineItem label="Vacaciones Comp. (3 d)" value={c2_vacationsCompensated} />
+                               <LineItem label="Prima Proporcional" value={c2_prima} />
+                               <LineItem label="Cesantías Prop." value={c2_cesantias} />
+                               <LineItem label="Int. Cesantías" value={c2_intereses} />
+                            </div>
+                            <div className="space-y-6">
+                               <h4 className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-4">Deducciones Finales</h4>
+                               <LineItem label="Salud (4% s/ base)" value={c2_health} isNegative />
+                               <LineItem label="Pensión (4% s/ base)" value={c2_pension} isNegative />
+                               <LineItem label="Libranza Final" value={c2_libranza} isNegative />
+                               <div className="pt-10 border-t border-white/5">
+                                  <div className="bg-black/40 p-6 rounded-3xl">
+                                     <span className="text-[8px] text-gray-500 font-black uppercase block mb-1">Base Aportes Auditoría</span>
+                                     <span className="text-xl font-black italic text-white">$ {Math.round(c2_salaryProportional + c2_incapacityValue + c2_vacationsEnjoyed).toLocaleString()}</span>
+                                  </div>
+                               </div>
+                            </div>
+                         </div>
+                      </div>
+                      <CanonicalViewer data={{ document_id: "NE-PV03-2026-02-E980", type: "LIQUIDACION_FINAL", employee: "CARLOS ROJAS", neto: Math.round(c2_neto) }} />
+                   </div>
+
+                   <div className="space-y-8">
+                      <div className="bg-[#111114] border border-white/5 p-10 rounded-[3.5rem] shadow-2xl">
+                         <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-8 flex items-center gap-2">
+                            <History size={16} className="text-purple-500" /> Trazabilidad de Retiro
+                         </h4>
+                         <div className="space-y-6">
+                            <div className="flex flex-col gap-2">
+                               <span className="text-[10px] text-gray-500 font-black uppercase">Días Año 2026</span>
+                               <span className="text-xl font-black italic text-white">51 Días</span>
+                            </div>
+                            <div className="flex flex-col gap-2">
+                               <span className="text-[10px] text-gray-500 font-black uppercase">Motivo Retiro</span>
+                               <span className="text-lg font-black italic text-purple-400">RENUNCIA VOLUNTARIA</span>
+                            </div>
+                            <div className="pt-6 border-t border-white/5">
+                               <div className="flex justify-between items-center">
+                                  <span className="text-[10px] text-gray-500 font-black uppercase">Soporte Incapacidad</span>
+                                  <span className="text-[10px] font-black italic text-blue-500 underline cursor-pointer">INC-00031.pdf</span>
+                               </div>
+                            </div>
+                         </div>
+                      </div>
+                      <AuditSidebar cufe="abc_adj_heavy..." hours={102} />
+                   </div>
+                </div>
+             </div>
+           )}
+
         </div>
       )}
 
       {activeTab === 'live' && (
         <div className="space-y-10">
+           {/* Global KPI Stats */}
            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
               <KpiCard label="Nómina Total Mes" value="$34.2M" sub="28.4% Ventas" trend="+1.2%" color="text-blue-500" />
               <KpiCard label="Efficiency Score" value="88%" sub="Media Grupal" trend="+4%" color="text-green-500" />
-              <KpiCard label="Estado Transmisión" value="100%" sub="CUFE OK" trend="Ready" color="text-blue-500" />
-              <KpiCard label="Alertas Fiscales" value="0" sub="Sincronizado" trend="OK" color="text-green-500" />
+              <KpiCard label="Liquidaciones Pend." value="1" sub="Carlos Rojas" trend="!" color="text-purple-500" />
+              <KpiCard label="Deducciones Leg." value="$8.4M" sub="Transmisión OK" trend="0%" color="text-purple-500" />
            </div>
 
-           <div className="lg:col-span-2 space-y-6">
-              <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2 mb-4">
-                 <Users size={14} /> Gestión Operativa de Nómina
-              </h3>
-              <div className="bg-[#111114] border border-white/5 rounded-[3rem] overflow-hidden shadow-2xl">
-                 <table className="w-full text-left">
-                    <thead>
-                       <tr className="bg-black/20 text-[8px] font-black text-gray-600 uppercase tracking-[0.3em]">
-                          <th className="px-8 py-6">Colaborador</th>
-                          <th className="px-8 py-6">Estado Proceso</th>
-                          <th className="px-8 py-6">Neto Estimado</th>
-                          <th className="px-8 py-6 text-right">Detalle</th>
-                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-white/5">
-                       {employees.map(emp => (
-                          <tr key={emp.id} className="group hover:bg-white/[0.01]">
-                             <td className="px-8 py-6">
-                                <div className="flex flex-col">
-                                   <span className="text-xs font-black uppercase italic text-white leading-none mb-1">{emp.name}</span>
-                                   <span className="text-[8px] text-gray-600 font-bold uppercase">{emp.role}</span>
-                                </div>
-                             </td>
-                             <td className="px-8 py-6">
-                                <div className="flex items-center gap-2">
-                                   <div className={`w-1.5 h-1.5 rounded-full ${emp.status_dian === 'ENVIADO' ? 'bg-green-500' : 'bg-orange-500'} animate-pulse`}></div>
-                                   <span className="text-[9px] font-black uppercase text-gray-400">{emp.status_dian}</span>
-                                </div>
-                             </td>
-                             <td className="px-8 py-6">
-                                <span className="text-xs font-black text-white">$ {emp.salary_base.toLocaleString()}</span>
-                             </td>
-                             <td className="px-8 py-6 text-right">
-                                <button 
-                                 onClick={() => { setActiveTab('case_study'); setSelectedCase(emp.id === 'E1' ? 1 : 2); }}
-                                 className="p-3 bg-white/5 rounded-xl hover:bg-blue-600 hover:text-white transition-all"
-                                >
-                                   <ChevronRight size={14} />
-                                </button>
-                             </td>
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+              <div className="lg:col-span-2 space-y-6">
+                 <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+                    <Users size={14} /> Detalle de Liquidación por Colaborador
+                 </h3>
+                 <div className="bg-[#111114] border border-white/5 rounded-[3rem] overflow-hidden shadow-2xl">
+                    <table className="w-full text-left">
+                       <thead>
+                          <tr className="bg-black/20 text-[8px] font-black text-gray-600 uppercase tracking-[0.3em]">
+                             <th className="px-8 py-6">Colaborador</th>
+                             <th className="px-8 py-6">Cargo / Área</th>
+                             <th className="px-8 py-6">Salario Base</th>
+                             <th className="px-8 py-6">Eficiencia</th>
+                             <th className="px-8 py-6 text-right">Acciones</th>
                           </tr>
-                       ))}
-                    </tbody>
-                 </table>
+                       </thead>
+                       <tbody className="divide-y divide-white/5">
+                          {employees.map(emp => (
+                             <tr key={emp.id} className="group hover:bg-white/[0.01] transition-colors">
+                                <td className="px-8 py-6">
+                                   <div className="flex flex-col">
+                                      <span className="text-xs font-black uppercase italic text-white leading-none mb-1">{emp.name}</span>
+                                      <span className="text-[8px] text-gray-600 font-bold uppercase">ID: {emp.id}</span>
+                                   </div>
+                                </td>
+                                <td className="px-8 py-6">
+                                   <span className={`text-[9px] font-black uppercase tracking-widest px-2 py-1 rounded-lg border ${emp.role === 'COCINA' ? 'text-purple-400 bg-purple-400/5 border-purple-400/10' : 'text-blue-400 bg-blue-400/5 border-blue-400/10'}`}>
+                                      {emp.role}
+                                   </span>
+                                </td>
+                                <td className="px-8 py-6">
+                                   <span className="text-xs font-bold text-gray-400">$ {emp.salary_base.toLocaleString()}</span>
+                                </td>
+                                <td className="px-8 py-6">
+                                   <div className="flex items-center gap-3">
+                                      <div className="w-12 h-1.5 bg-white/5 rounded-full overflow-hidden">
+                                         <div className={`h-full ${emp.efficiency_score > 90 ? 'bg-green-500' : 'bg-blue-500'}`} style={{ width: `${emp.efficiency_score}%` }}></div>
+                                      </div>
+                                      <span className="text-[10px] font-black italic">{emp.efficiency_score}%</span>
+                                   </div>
+                                </td>
+                                <td className="px-8 py-6 text-right">
+                                   <button 
+                                    onClick={() => {
+                                      setActiveTab('case_study');
+                                      setSelectedCase(emp.id === 'E1' ? 1 : 2);
+                                    }}
+                                    className="p-3 bg-white/5 rounded-xl hover:bg-blue-600 hover:text-white transition-all"
+                                   >
+                                      <ChevronRight size={14} />
+                                   </button>
+                                </td>
+                             </tr>
+                          ))}
+                       </tbody>
+                    </table>
+                 </div>
+              </div>
+
+              <div className="space-y-8">
+                 <div className="bg-[#111114] border border-white/5 p-8 rounded-[3.5rem] shadow-2xl">
+                    <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-8 flex items-center gap-2">
+                       <AlertTriangle size={16} className="text-orange-500" /> Alertas Operativas
+                    </h3>
+                    <div className="space-y-6">
+                       <AlertRow label="Retiro Detectado" detail="Carlos Rojas (Liquidación Pendiente)" type="critical" />
+                       <AlertRow label="Recargos Nocturnos" detail="Cena Sábado +24% vs Media" type="warning" />
+                       <AlertRow label="Horas Extra" detail="Barista concentrando 12h semanales" type="warning" />
+                    </div>
+                 </div>
+                 <div className="bg-blue-600 p-10 rounded-[4rem] relative overflow-hidden shadow-2xl shadow-blue-600/20 group">
+                    <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:scale-110 transition-transform"><TrendingUp size={120} fill="white" /></div>
+                    <h4 className="text-xs font-black text-white/80 uppercase tracking-widest mb-6 italic">Métrica de Oro OMM</h4>
+                    <span className="text-5xl font-black italic text-white tracking-tighter leading-none">$ 412k</span>
+                    <p className="text-[10px] text-blue-100 font-bold uppercase mt-3 tracking-widest">Ventas / Hora Hombre Hoy</p>
+                 </div>
               </div>
            </div>
         </div>
       )}
 
-      {/* Otras Tabs esqueletos */}
+      {/* Otras tabs permanecen como esqueletos funcionales o completos si es necesario */}
+      {activeTab === 'shifts' && (
+        <div className="py-40 text-center opacity-40"><Clock size={48} className="mx-auto mb-4" /><p className="text-xs font-black uppercase tracking-widest">Análisis de eficiencia por turno en sincronía con SevenRooms...</p></div>
+      )}
       {activeTab === 'compliance' && (
-        <div className="py-40 text-center opacity-40 animate-pulse"><Lock size={48} className="mx-auto mb-4" /><p className="text-xs font-black uppercase tracking-widest italic">Mapeando Objeto Canónico a XML UBL 2.1...</p></div>
+        <div className="py-40 text-center opacity-40"><ShieldCheck size={48} className="mx-auto mb-4" /><p className="text-xs font-black uppercase tracking-widest">Estado de transmisión UBL 2.1 ante la DIAN...</p></div>
       )}
       {activeTab === 'simulator' && (
         <div className="py-40 text-center">
-           <button onClick={runAiSimulation} disabled={isAnalyzing} className="bg-blue-600 px-12 py-6 rounded-[2.5rem] font-black italic text-sm uppercase tracking-widest transition-all shadow-xl">
-             {isAnalyzing ? <Loader2 className="animate-spin mx-auto" /> : 'Sugerencia de Arquitectura IA'}
+           <button onClick={runAiSimulation} disabled={isAnalyzing} className="bg-blue-600 px-12 py-6 rounded-[2.5rem] font-black italic text-sm uppercase tracking-widest transition-all">
+             {isAnalyzing ? <Loader2 className="animate-spin mx-auto" /> : 'ACTIVAR SIMULADOR IA'}
            </button>
-           {aiAnalysis && <div className="mt-12 bg-[#111114] border border-white/5 p-8 rounded-[2rem] max-w-2xl mx-auto"><p className="text-gray-400 italic text-sm">"{aiAnalysis}"</p></div>}
+           {aiAnalysis && <p className="mt-12 text-gray-400 italic max-w-2xl mx-auto">"{aiAnalysis}"</p>}
         </div>
       )}
 
@@ -368,72 +436,35 @@ const PayrollModule: React.FC = () => {
   );
 };
 
-// COMPONENTES AUXILIARES ARQUITECTURA
-const ArchBlock = ({ step, label, sub, active, color }: any) => (
-  <div className={`flex flex-col items-center text-center p-4 rounded-2xl border-2 transition-all ${active ? (color || 'border-white/10 bg-white/5') : 'border-white/5 opacity-20'}`}>
-     <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-black mb-3 shadow-lg">{step}</div>
-     <span className="text-[8px] font-black uppercase text-white mb-1 leading-tight">{label}</span>
-     <span className="text-[7px] font-bold text-gray-500 uppercase">{sub}</span>
-  </div>
-);
-
-const StateNode = ({ label, status }: { label: string, status: 'complete' | 'active' | 'pending' }) => (
-  <div className="flex flex-col items-center relative z-10">
-     <div className={`w-10 h-10 rounded-2xl flex items-center justify-center border-2 transition-all ${status === 'complete' ? 'bg-green-600 border-green-400 text-white' : status === 'active' ? 'bg-blue-600 border-blue-400 text-white animate-pulse' : 'bg-[#1a1a1e] border-white/5 text-gray-600'}`}>
-        {status === 'complete' ? <CheckCircle2 size={18} /> : <Play size={18} />}
-     </div>
-     <span className="text-[8px] font-black uppercase tracking-widest mt-3 text-gray-400">{label}</span>
-  </div>
-);
-
-const TimelineBar = ({ period, days, events }: any) => (
-  <div className="space-y-4">
-     <div className="flex justify-between items-end">
-        <span className="text-xs font-black italic text-gray-400">{period}</span>
-        <span className="text-[10px] font-bold text-gray-600">{days} DÍAS</span>
-     </div>
-     <div className="h-12 w-full bg-white/5 rounded-2xl overflow-hidden flex relative border border-white/10">
-        {events.map((ev: any, idx: number) => (
-          <div 
-            key={idx} 
-            className={`h-full ${ev.color} absolute border-x border-black/20 flex items-center justify-center overflow-hidden group cursor-help`}
-            style={{ 
-              left: `${((ev.start - 1) / days) * 100}%`, 
-              width: `${((ev.end - ev.start + 1) / days) * 100}%` 
-            }}
-          >
-             <span className="text-[8px] font-black uppercase text-white opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap px-2">
-                {ev.label}
-             </span>
-          </div>
-        ))}
-     </div>
-  </div>
-);
-
-const LegendItem = ({ color, label }: any) => (
-  <div className="flex items-center gap-2">
-     <div className={`w-2 h-2 rounded-full ${color}`}></div>
-     <span className="text-[8px] font-black uppercase text-gray-500">{label}</span>
-  </div>
-);
-
+// Componentes Auxiliares
 const TabBtn = ({ active, onClick, icon, label }: any) => (
   <button onClick={onClick} className={`px-8 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 shrink-0 ${active ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'text-gray-500 hover:text-white'}`}>
     {icon} {label}
   </button>
 );
 
-const LineItem = ({ label, value, isNegative, isHighlighted, isText, color }: any) => (
+const LineItem = ({ label, value, isNegative, isHighlighted }: any) => (
   <div className={`flex justify-between items-center ${isHighlighted ? 'bg-blue-600/10 p-2 rounded-lg -mx-2 animate-pulse' : ''}`}>
      <span className="text-[11px] font-bold text-gray-400 uppercase tracking-tight italic">{label}</span>
-     {isText ? (
-       <span className={`text-[10px] font-black italic uppercase ${color || 'text-white'}`}>{value}</span>
-     ) : (
-       <span className={`text-sm font-black font-mono italic ${isNegative ? 'text-red-400' : 'text-white'}`}>
-          {isNegative ? '-' : ''}$ {value.toLocaleString()}
-       </span>
-     )}
+     <span className={`text-sm font-black font-mono italic ${isNegative ? 'text-red-400' : 'text-white'}`}>
+        {isNegative ? '-' : ''}$ {value.toLocaleString()}
+     </span>
+  </div>
+);
+
+const NovedadCard = ({ icon, title, period, days, color, isCompensated }: any) => (
+  <div className="bg-black/40 border border-white/10 p-6 rounded-3xl space-y-4">
+     <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-white/5 ${color}`}>
+        {icon}
+     </div>
+     <div>
+        <h4 className="text-xs font-black uppercase text-white mb-1">{title}</h4>
+        <p className="text-[9px] text-gray-500 font-bold uppercase">{period}</p>
+     </div>
+     <div className="flex justify-between items-center pt-2 border-t border-white/5">
+        <span className="text-[8px] text-gray-600 font-black uppercase">{isCompensated ? 'COMPENSADO' : 'DISFRUTADO'}</span>
+        <span className={`text-xs font-black italic ${color}`}>{days} Días</span>
+     </div>
   </div>
 );
 
@@ -441,12 +472,37 @@ const CanonicalViewer = ({ data }: any) => (
   <div className="bg-black border border-white/5 rounded-[4rem] p-12 shadow-2xl relative group">
      <div className="absolute top-8 right-12 flex gap-4">
         <span className="text-[9px] font-black text-blue-500 uppercase tracking-widest flex items-center gap-2">
-           <FileCode size={14} /> INTERNAL_MODEL_VIEW
+           <FileCode size={14} /> DIAN_UBL_XML_SCHEMA
         </span>
      </div>
-     <h3 className="text-xl font-black italic uppercase tracking-tighter text-gray-500 mb-8 leading-none">Step 4: Canonical Object</h3>
+     <h3 className="text-xl font-black italic uppercase tracking-tighter text-gray-500 mb-8">Canonical Data Object (Internal)</h3>
      <div className="bg-[#050505] p-8 rounded-3xl border border-white/5 font-mono text-[11px] text-blue-300 leading-relaxed overflow-x-auto max-h-[300px] custom-scrollbar">
         <pre>{JSON.stringify(data, null, 2)}</pre>
+     </div>
+  </div>
+);
+
+const AuditSidebar = ({ cufe, hours }: any) => (
+  <div className="bg-[#111114] border border-white/5 p-10 rounded-[3.5rem] shadow-2xl space-y-10">
+     <div>
+        <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest mb-8 flex items-center gap-2">
+           <Clock size={16} className="text-blue-500" /> Resumen Operativo
+        </h4>
+        <div className="space-y-6">
+           <div className="flex justify-between items-center">
+              <span className="text-[10px] text-gray-500 font-black uppercase">Horas Mes</span>
+              <span className="text-xl font-black italic text-white">{hours}h</span>
+           </div>
+           <div className="flex justify-between items-center">
+              <span className="text-[10px] text-gray-500 font-black uppercase">Estado DIAN</span>
+              <span className="bg-green-600/10 text-green-500 px-3 py-1 rounded-full text-[8px] font-black">ACCEPTED</span>
+           </div>
+        </div>
+     </div>
+     <div className="bg-blue-600 p-8 rounded-[3rem] relative overflow-hidden group">
+        <ShieldCheck size={80} className="absolute -bottom-4 -right-4 opacity-10 group-hover:scale-110 transition-transform" />
+        <h4 className="text-[10px] font-black text-white/80 uppercase tracking-widest mb-4">CUFE SYNC</h4>
+        <p className="text-[11px] font-mono text-white/60 break-all">{cufe}</p>
      </div>
   </div>
 );
@@ -459,10 +515,27 @@ const KpiCard = ({ label, value, sub, trend, color }: any) => (
            <span className={`text-4xl font-black italic tracking-tighter ${color} leading-none`}>{value}</span>
            <p className="text-[10px] text-gray-400 font-bold uppercase mt-2 tracking-tight">{sub}</p>
         </div>
-        <span className={`text-[10px] font-black px-2 py-1 rounded-lg bg-white/5 ${trend.includes('+') || trend === 'OK' || trend === 'Ready' ? 'text-green-500' : 'text-orange-500'}`}>
+        <span className={`text-[10px] font-black px-2 py-1 rounded-lg bg-white/5 ${trend.includes('+') || trend === '!' ? 'text-orange-500' : 'text-green-500'}`}>
            {trend}
         </span>
      </div>
+  </div>
+);
+
+const AlertRow = ({ label, detail, type }: any) => (
+  <div className="flex items-center gap-4 group">
+     <div className={`w-2 h-2 rounded-full ${type === 'critical' ? 'bg-red-500 animate-pulse' : type === 'warning' ? 'bg-orange-500' : 'bg-green-500'}`}></div>
+     <div>
+        <span className="text-[10px] font-black text-white uppercase italic leading-none block mb-1">{label}</span>
+        <span className="text-[9px] text-gray-500 font-bold uppercase tracking-tight">{detail}</span>
+     </div>
+  </div>
+);
+
+const ComplianceMetric = ({ label, status }: any) => (
+  <div className="flex justify-between items-center border-b border-white/5 pb-4">
+     <span className="text-[10px] text-gray-500 font-black uppercase italic">{label}</span>
+     <span className="text-xs font-black italic text-green-500">{status}</span>
   </div>
 );
 
