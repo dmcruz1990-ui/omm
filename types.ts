@@ -25,8 +25,43 @@ export enum ModuleType {
 
 export type BusinessDNA = 'FINE_DINING' | 'BAR_NIGHTLIFE' | 'CASUAL_DINING' | 'QSR_FAST_CASUAL' | 'CASUAL_PREMIUM';
 export type AIAgencyLevel = 'ADVISORY' | 'CO_PILOT' | 'AUTONOMOUS';
-// RANGOS GOURMAND SOCIETY
 export type LoyaltyLevel = 'UMBRAL' | 'CONSAGRADO' | 'CATADOR' | 'SUPREMO' | 'ULTRA_VIP';
+
+export interface AttendanceLog {
+  id: string;
+  staff_id: string;
+  name: string;
+  timestamp: string;
+  type: 'IN' | 'OUT';
+  confidence: number;
+  photo_url?: string;
+}
+
+export interface ShiftPrediction {
+  date: string;
+  expected_traffic: 'LOW' | 'MEDIUM' | 'HIGH' | 'EXTREME';
+  recommended_staff: number;
+  reasoning: string;
+  external_event?: string;
+}
+
+export interface RecipeIngredient {
+  supply_item_id: string;
+  name: string;
+  quantity: number;
+  unit: string;
+  cost_contribution: number;
+}
+
+export interface Recipe {
+  id: string;
+  menu_item_id: string;
+  name: string;
+  ingredients: RecipeIngredient[];
+  total_cost: number;
+  target_margin: number;
+  suggested_price: number;
+}
 
 export interface GuestPreference {
   id: string;
@@ -63,8 +98,6 @@ export interface Profile {
   points?: number;
 }
 
-// --- NÓMINA TYPES ---
-
 export interface PayrollEmployee {
   id: string;
   name: string;
@@ -78,11 +111,11 @@ export interface PayrollEmployee {
 
 export interface ShiftPayroll {
   id: string;
-  label: string; // Ej: "Almuerzo Martes"
+  label: string;
   sales: number;
   staff_cost: number;
   hours_man: number;
-  efficiency: number; // Sales per hour
+  efficiency: number;
 }
 
 export interface MenuItem {

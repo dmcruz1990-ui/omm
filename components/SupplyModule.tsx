@@ -19,17 +19,18 @@ import {
   Clock,
   ShieldCheck,
   ChevronRight,
-  // Added Martini and ShieldAlert icons
   Martini,
-  ShieldAlert
+  ShieldAlert,
+  Atom
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.ts';
 import { SupplyItem } from '../types.ts';
+import RecipeManager from './RecipeManager.tsx';
 
 const SupplyModule: React.FC = () => {
   const [items, setItems] = useState<SupplyItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'inventory' | 'receiving'>('inventory');
+  const [view, setView] = useState<'inventory' | 'receiving' | 'recipes'>('inventory');
 
   useEffect(() => {
     fetchInventory();
@@ -37,7 +38,6 @@ const SupplyModule: React.FC = () => {
 
   const fetchInventory = async () => {
     setLoading(true);
-    // Simulación de items con estado fiscal pendiente
     setItems([
       { id: '1', name: 'Atún Bluefin Premium', theoretical: 20, real: 18.5, unit: 'kg', category: 'Proteínas', costPerUnit: 185000, lastCostIncrease: 0, expirationDate: '', status: 'optimal', pending_invoice: true, received_quantity: 5 },
       { id: '2', name: 'Salmón Noruego', theoretical: 15, real: 4.2, unit: 'kg', category: 'Proteínas', costPerUnit: 85000, lastCostIncrease: 5, expirationDate: '', status: 'critical', pending_invoice: false },
@@ -50,22 +50,27 @@ const SupplyModule: React.FC = () => {
   if (loading) return <div className="py-40 text-center opacity-40"><Loader2 className="animate-spin mx-auto mb-4" />Sincronizando Bodega Central...</div>;
 
   return (
-    <div className="space-y-10 animate-in fade-in duration-700 max-w-7xl mx-auto pb-20">
+    <div className="space-y-10 animate-in fade-in duration-700 max-w-7xl mx-auto pb-20 text-left">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/5 pb-10">
         <div>
           <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none">Supply Core</h2>
-          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3">Vendor Flow & Fiscal Matching</p>
+          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3 italic">Vendor Flow & Fiscal Matching</p>
         </div>
-        <div className="flex bg-[#111114] p-1.5 rounded-2xl border border-white/5">
-           <button onClick={() => setView('inventory')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'inventory' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>INVENTARIO LIVE</button>
-           <button onClick={() => setView('receiving')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'receiving' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>RECEPCIÓN MERCANCÍA</button>
+        <div className="flex bg-[#111114] p-1.5 rounded-2xl border border-white/5 overflow-x-auto">
+           <button onClick={() => setView('inventory')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${view === 'inventory' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>INVENTARIO LIVE</button>
+           <button onClick={() => setView('receiving')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${view === 'receiving' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>RECEPCIÓN</button>
+           <button onClick={() => setView('recipes')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 flex items-center gap-2 ${view === 'recipes' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-500 hover:text-white'}`}>
+             <Atom size={14} /> RECETAS ATÓMICAS
+           </button>
         </div>
       </div>
 
-      {view === 'receiving' ? (
+      {view === 'recipes' ? (
+        <RecipeManager />
+      ) : view === 'receiving' ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
            <div className="lg:col-span-2 space-y-6">
-              <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2 mb-4">
+              <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2 mb-4 italic">
                  <Truck size={14} className="text-blue-500" /> Remisiones Pendientes de Factura
               </h3>
               {items.filter(i => i.pending_invoice).map(item => (
@@ -95,7 +100,7 @@ const SupplyModule: React.FC = () => {
            </div>
            <div className="space-y-8">
               <div className="bg-[#111114] p-8 rounded-[3rem] border border-white/5 shadow-2xl">
-                 <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-6">Bloqueo Fiscal (Cierre)</h4>
+                 <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest mb-6 italic">Bloqueo Fiscal (Cierre)</h4>
                  <div className="bg-black/40 border border-white/5 p-6 rounded-3xl mb-8">
                     <p className="text-[11px] text-gray-400 italic leading-relaxed">
                        "Tienes <span className="text-red-500 font-black italic">1 item</span> recibido sin factura vinculada. NEXUM bloqueará el cierre de mes si no se regulariza este soporte."
@@ -147,12 +152,12 @@ const SupplyModule: React.FC = () => {
                              {item.pending_invoice ? (
                                 <div className="bg-red-500/10 border border-red-500/30 px-4 py-1.5 rounded-full inline-flex items-center gap-2">
                                    <ShieldAlert size={12} className="text-red-500" />
-                                   <span className="text-[8px] font-black text-red-500 uppercase">Sin Factura</span>
+                                   <span className="text-[8px] font-black text-red-500 uppercase italic">Sin Factura</span>
                                 </div>
                              ) : (
                                 <div className="bg-green-500/10 border border-green-500/30 px-4 py-1.5 rounded-full inline-flex items-center gap-2">
                                    <ShieldCheck size={12} className="text-green-500" />
-                                   <span className="text-[8px] font-black text-green-500 uppercase">Soportado</span>
+                                   <span className="text-[8px] font-black text-green-500 uppercase italic">Soportado</span>
                                 </div>
                              )}
                           </td>
