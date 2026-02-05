@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { 
   Sparkles, 
@@ -12,7 +11,9 @@ import {
   MessageSquare, 
   Calendar,
   Smartphone,
-  Share2
+  Share2,
+  Headphones,
+  Bot
 } from 'lucide-react';
 import AIConcierge from './AIConcierge.tsx';
 import EventsModule from './EventsModule.tsx';
@@ -23,7 +24,7 @@ const DiscoverModule: React.FC = () => {
 
     if (showConcierge) {
         return (
-            <div className="h-full flex flex-col items-center justify-center animate-in fade-in duration-700">
+            <div className="h-full min-h-[80vh] flex flex-col items-center justify-center animate-in fade-in zoom-in duration-500">
                 <div className="mb-10 text-center">
                     <h2 className="text-4xl font-black italic tracking-tighter uppercase mb-2">
                         Diseña tu noche en <span className="text-blue-500">OMM</span>
@@ -40,29 +41,51 @@ const DiscoverModule: React.FC = () => {
     return (
         <div className="space-y-16 max-w-7xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-1000 pb-20 text-left">
             
-            {/* CTA a Oh Yeah! B2C para el Staff */}
-            <section className="bg-blue-600 p-10 rounded-[3.5rem] shadow-2xl shadow-blue-600/20 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8 group">
-               <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:scale-110 transition-transform">
-                  <Smartphone size={150} fill="white" />
-               </div>
-               <div className="relative z-10 space-y-4 max-w-xl">
-                  <div className="inline-flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full text-[9px] font-black uppercase text-white italic">
-                     <Zap size={12} fill="white" /> Herramienta de Venta Live
+            {/* Cabecera con Acceso a Concierge IA */}
+            <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+               <div className="lg:col-span-2 bg-blue-600 p-10 rounded-[3.5rem] shadow-2xl shadow-blue-600/20 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8 group">
+                  <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:scale-110 transition-transform">
+                     <Smartphone size={150} fill="white" />
                   </div>
-                  <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none text-white">Impulsa el Ticket con Oh Yeah!</h2>
-                  <p className="text-sm text-blue-100 italic leading-relaxed">
-                    Muestra el catálogo B2C a tus clientes para descubrir planes curados por IA y fidelizar su círculo social.
-                  </p>
+                  <div className="relative z-10 space-y-4 max-w-xl">
+                     <div className="inline-flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full text-[9px] font-black uppercase text-white italic">
+                        <Zap size={12} fill="white" /> Herramienta de Venta Live
+                     </div>
+                     <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none text-white">Impulsa el Ticket con Oh Yeah!</h2>
+                     <p className="text-sm text-blue-100 italic leading-relaxed">
+                       Muestra el catálogo B2C a tus clientes para descubrir planes curados por IA y fidelizar su círculo social.
+                     </p>
+                  </div>
+                  <button 
+                    onClick={() => window.location.hash = '/oh-yeah'}
+                    className="bg-white text-blue-600 px-10 py-5 rounded-[2rem] font-black italic text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all hover:scale-105 shadow-xl"
+                  >
+                     <Share2 size={18} /> VER VISTA CLIENTE
+                  </button>
                </div>
-               <button 
-                 onClick={() => window.location.hash = '/oh-yeah'}
-                 className="bg-white text-blue-600 px-10 py-5 rounded-[2rem] font-black italic text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all hover:scale-105 shadow-xl"
-               >
-                  <Share2 size={18} /> VER VISTA CLIENTE
-               </button>
+
+               {/* NUEVA TARJETA DE CONCIERGE IA */}
+               <div className="bg-[#111114] border border-blue-500/30 p-10 rounded-[3.5rem] shadow-2xl flex flex-col justify-between group hover:border-blue-500 transition-all relative overflow-hidden">
+                  <div className="absolute -top-10 -right-10 opacity-5 group-hover:opacity-10 transition-opacity">
+                     <Bot size={150} className="text-blue-500" />
+                  </div>
+                  <div>
+                    <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center text-white mb-6 shadow-lg shadow-blue-600/20">
+                       <MessageSquare size={24} />
+                    </div>
+                    <h3 className="text-2xl font-black italic uppercase tracking-tighter text-white">AI Concierge</h3>
+                    <p className="text-[10px] text-blue-400 font-black uppercase tracking-widest mt-2">Reservas y Eventos</p>
+                  </div>
+                  <button 
+                    onClick={() => setShowConcierge(true)}
+                    className="w-full mt-8 bg-white/5 border border-white/10 hover:bg-blue-600 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em] transition-all flex items-center justify-center gap-3"
+                  >
+                     ABRIR ASISTENTE <ChevronRight size={16} />
+                  </button>
+               </div>
             </section>
 
-            <section className="relative h-[400px] flex flex-col items-center justify-center text-center overflow-hidden rounded-[4rem] border border-white/5 bg-[#0d0d0f]">
+            <section className="relative h-[300px] flex flex-col items-center justify-center text-center overflow-hidden rounded-[4rem] border border-white/5 bg-[#0d0d0f]">
                 <div className="absolute top-0 left-0 w-full h-full">
                     <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-blue-600/10 blur-[120px] rounded-full"></div>
                     <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-[0.03] pointer-events-none"></div>
@@ -72,7 +95,7 @@ const DiscoverModule: React.FC = () => {
                         <Sparkles size={14} className="text-blue-500" />
                         <span className="text-[10px] font-black uppercase tracking-[0.2em] text-blue-400 italic">NEXUM DISCOVERY PLATFORM</span>
                     </div>
-                    <h1 className="text-7xl md:text-8xl font-black italic tracking-tighter uppercase mb-4 leading-none">
+                    <h1 className="text-6xl md:text-7xl font-black italic tracking-tighter uppercase mb-4 leading-none">
                         Gestión <span className="text-blue-500">Discovery</span>
                     </h1>
                 </div>
@@ -96,7 +119,7 @@ const DiscoverModule: React.FC = () => {
             </div>
 
             {view === 'home' ? (
-                <>
+                <div className="space-y-12">
                     <section className="space-y-8">
                         <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-[0.4em] flex items-center gap-3 px-2">
                             <Star size={14} className="text-yellow-500" /> Experiencia Exclusiva (Empujada por IA)
@@ -129,7 +152,7 @@ const DiscoverModule: React.FC = () => {
                             </div>
                         </div>
                     </section>
-                </>
+                </div>
             ) : (
                 <section className="space-y-8">
                     <h3 className="text-[10px] font-black text-gray-600 uppercase tracking-[0.4em] flex items-center gap-3 px-2">

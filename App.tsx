@@ -4,8 +4,9 @@ import {
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
   Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
   ShieldCheck, Compass, Loader2, MonitorPlay, Sparkles, Palette,
-  BarChart4, LayoutDashboard, Briefcase, ChevronDown, Layers,
-  CameraOff, AlertTriangle, RefreshCw
+  ChevronDown, Layers, CameraOff, AlertTriangle, RefreshCw, Music,
+  // Added missing Briefcase import
+  Briefcase
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -33,7 +34,7 @@ const PayrollModule = lazy(() => import('./components/PayrollModule.tsx'));
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
     <Loader2 className="text-blue-600 animate-spin mb-4" size={32} />
-    <p className="text-[10px] font-black uppercase tracking-widest italic">Sincronizando Experiencia OMM...</p>
+    <p className="text-[10px] font-black uppercase tracking-widest italic">Sincronizando Core...</p>
   </div>
 );
 
@@ -178,6 +179,7 @@ const Dashboard: React.FC = () => {
       modules: [
         { type: ModuleType.COMMAND, label: 'COMMAND', sub: 'ESTRATEGIA IA', icon: <Globe size={18} /> },
         { type: ModuleType.FINANCE_HUB, label: 'FINANCE HUB', sub: 'DINERO & KPI', icon: <DollarSign size={18} /> },
+        // Fix: icon now uses imported Briefcase
         { type: ModuleType.PAYROLL, label: 'NÓMINA DIAN', sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
         { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'DISEÑO CMS', icon: <Palette size={18} /> },
         { type: ModuleType.CONFIG, label: 'CEREBRO', sub: 'ADN & IA', icon: <Settings size={18} /> }

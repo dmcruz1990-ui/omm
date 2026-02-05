@@ -87,7 +87,8 @@ export interface Profile {
   loyalty_level: LoyaltyLevel;
 }
 
-/* Game types for ExperienceBeats */
+/* Game types (Remanentes para compatibilidad de tipos si se requieren en otros archivos, 
+   pero el módulo ya no se usará) */
 export enum GameStatus {
   IDLE = 'IDLE',
   PLAYING = 'PLAYING',

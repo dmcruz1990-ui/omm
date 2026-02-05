@@ -21,16 +21,18 @@ import {
   ChevronRight,
   Martini,
   ShieldAlert,
-  Atom
+  Atom,
+  Store
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.ts';
 import { SupplyItem } from '../types.ts';
 import RecipeManager from './RecipeManager.tsx';
+import SupplyMarketplace from './SupplyMarketplace.tsx';
 
 const SupplyModule: React.FC = () => {
   const [items, setItems] = useState<SupplyItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'inventory' | 'receiving' | 'recipes'>('inventory');
+  const [view, setView] = useState<'inventory' | 'receiving' | 'recipes' | 'marketplace'>('inventory');
 
   useEffect(() => {
     fetchInventory();
@@ -38,16 +40,25 @@ const SupplyModule: React.FC = () => {
 
   const fetchInventory = async () => {
     setLoading(true);
+    // Estos datos simulan los que vendrían de la DB, se mantienen para consistencia
     setItems([
       { id: '1', name: 'Atún Bluefin Premium', theoretical: 20, real: 18.5, unit: 'kg', category: 'Proteínas', costPerUnit: 185000, lastCostIncrease: 0, expirationDate: '', status: 'optimal', pending_invoice: true, received_quantity: 5 },
       { id: '2', name: 'Salmón Noruego', theoretical: 15, real: 4.2, unit: 'kg', category: 'Proteínas', costPerUnit: 85000, lastCostIncrease: 5, expirationDate: '', status: 'critical', pending_invoice: false },
       { id: '3', name: 'Sake Junmai Daijinjo', theoretical: 24, real: 12, unit: 'bot', category: 'Licores', costPerUnit: 250000, lastCostIncrease: 0, expirationDate: '', status: 'low', pending_invoice: false },
-      { id: '4', name: 'Arroz Koshihikari', theoretical: 100, real: 85, unit: 'kg', category: 'Secos', costPerUnit: 14000, lastCostIncrease: 2, expirationDate: '', status: 'optimal', pending_invoice: false }
+      { id: '4', name: 'Arroz Koshihikari', theoretical: 100, real: 85, unit: 'kg', category: 'Secos', costPerUnit: 14000, lastCostIncrease: 2, expirationDate: '', status: 'optimal', pending_invoice: false },
+      { id: '5', name: 'Servilletas de Tela OMM', theoretical: 500, real: 420, unit: 'und', category: 'Aseo & Insumos', costPerUnit: 1200, lastCostIncrease: 0, expirationDate: '', status: 'optimal', pending_invoice: false },
+      { id: '6', name: 'Limones Tahití', theoretical: 30, real: 8, unit: 'kg', category: 'Cocina', costPerUnit: 4500, lastCostIncrease: 10, expirationDate: '', status: 'low', pending_invoice: false },
+      { id: '7', name: 'Detergente Industrial', theoretical: 10, real: 2, unit: 'gal', category: 'Aseo & Insumos', costPerUnit: 45000, lastCostIncrease: 0, expirationDate: '', status: 'critical', pending_invoice: false },
     ]);
     setLoading(false);
   };
 
   if (loading) return <div className="py-40 text-center opacity-40"><Loader2 className="animate-spin mx-auto mb-4" />Sincronizando Bodega Central...</div>;
+
+  // Si estamos en modo Marketplace, devolvemos la vista a pantalla completa
+  if (view === 'marketplace') {
+    return <SupplyMarketplace items={items} onBack={() => setView('inventory')} />;
+  }
 
   return (
     <div className="space-y-10 animate-in fade-in duration-700 max-w-7xl mx-auto pb-20 text-left">
@@ -56,11 +67,18 @@ const SupplyModule: React.FC = () => {
           <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none">Supply Core</h2>
           <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3 italic">Vendor Flow & Fiscal Matching</p>
         </div>
-        <div className="flex bg-[#111114] p-1.5 rounded-2xl border border-white/5 overflow-x-auto">
-           <button onClick={() => setView('inventory')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${view === 'inventory' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>INVENTARIO LIVE</button>
-           <button onClick={() => setView('receiving')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${view === 'receiving' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>RECEPCIÓN</button>
-           <button onClick={() => setView('recipes')} className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 flex items-center gap-2 ${view === 'recipes' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-500 hover:text-white'}`}>
-             <Atom size={14} /> RECETAS ATÓMICAS
+        <div className="flex bg-[#111114] p-1.5 rounded-2xl border border-white/5 overflow-x-auto items-center">
+           <button onClick={() => setView('inventory')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${view === 'inventory' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>INVENTARIO LIVE</button>
+           <button onClick={() => setView('receiving')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 ${view === 'receiving' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>RECEPCIÓN</button>
+           <button onClick={() => setView('recipes')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 flex items-center gap-2 ${view === 'recipes' ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-500 hover:text-white'}`}>
+             <Atom size={14} /> RECETAS
+           </button>
+           <div className="w-[1px] h-6 bg-white/10 mx-4"></div>
+           <button 
+            onClick={() => setView('marketplace')} 
+            className="bg-blue-500 hover:bg-blue-400 text-white px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all shrink-0 flex items-center gap-2 shadow-lg shadow-blue-500/20"
+           >
+             <Store size={14} /> HACER PEDIDO
            </button>
         </div>
       </div>

@@ -79,10 +79,6 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
       setLastVerifiedStaff(mockStaff);
       setLastAction(`BIOMETRIC_${mockStaff.type}_OK`);
       internalCounter.current = 0;
-      
-      // Simular push a DB para nómina
-      console.log("Attendance Sync:", mockStaff);
-      
       setTimeout(() => setLastVerifiedStaff(null), 4000);
     }
   };
@@ -109,7 +105,8 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
 
     const render = () => {
       const video = videoRef.current;
-      if (!video || video.readyState < 2) {
+      // Optimización: Si el video no tiene dimensiones, saltamos el frame para evitar errores GL
+      if (!video || video.readyState < 2 || video.videoWidth === 0) {
         animationFrameId = requestAnimationFrame(render);
         return;
       }
@@ -117,17 +114,22 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
       testTables.forEach((table) => {
         const canvas = canvasRefs.current[table.id];
         if (canvas) {
-          const ctx = canvas.getContext('2d');
+          const ctx = canvas.getContext('2d', { alpha: false, desynchronized: true });
           if (ctx) {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
+            // Solo redimensionamos si es necesario para ahorrar CPU
+            if (canvas.width !== video.videoWidth) {
+              canvas.width = video.videoWidth;
+              canvas.height = video.videoHeight;
+            }
+
             const isMaster = table.id === activeStation;
             
-            ctx.filter = isMaster ? 'contrast(1.1) saturate(1.1)' : 'grayscale(60%) brightness(40%)';
-            ctx.drawImage(video, 0, 0);
-            ctx.filter = 'none';
-
+            // Optimización: Solo aplicamos filtros costosos a la cámara principal activa
             if (isMaster) {
+              ctx.filter = 'contrast(1.1) saturate(1.05)';
+              ctx.drawImage(video, 0, 0);
+              ctx.filter = 'none';
+
               if (mode === 'SURVEILLANCE' && resultsRef.current?.landmarks) {
                 let handIsRaised = false;
                 resultsRef.current.landmarks.forEach(landmarks => {
@@ -135,7 +137,7 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
                   if (tip.y < 0.35) {
                      handIsRaised = true;
                      ctx.strokeStyle = '#ef4444';
-                     ctx.lineWidth = 4;
+                     ctx.lineWidth = 6;
                      ctx.strokeRect(tip.x * canvas.width - 50, tip.y * canvas.height - 50, 100, 100);
                   }
                 });
@@ -147,25 +149,29 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
                     if (table.status !== 'calling') triggerAlert();
                     internalCounter.current = 0;
                   }
-                } else { internalCounter.current = 0; setIsDetecting(false); }
+                } else { 
+                  internalCounter.current = Math.max(0, internalCounter.current - 1); 
+                  setIsDetecting(false); 
+                }
               } 
               else if (mode === 'BIOMETRIC') {
-                // Simulación de escaneo facial visual
                 ctx.strokeStyle = '#2563eb';
                 ctx.lineWidth = 2;
                 ctx.strokeRect(canvas.width * 0.3, canvas.height * 0.2, canvas.width * 0.4, canvas.height * 0.6);
-                
-                // Línea de escaneo animada
                 const scanLineY = (Date.now() % 2000 / 2000) * (canvas.height * 0.6) + (canvas.height * 0.2);
                 ctx.beginPath();
                 ctx.moveTo(canvas.width * 0.3, scanLineY);
                 ctx.lineTo(canvas.width * 0.7, scanLineY);
                 ctx.stroke();
-
                 processBiometricCheck();
               }
               
-              if (animationFrameId % 5 === 0) setDetectionCount(internalCounter.current);
+              if (animationFrameId % 10 === 0) setDetectionCount(internalCounter.current);
+            } else {
+              // Cámara secundaria: Renderizado ultra simple para ahorrar GPU
+              ctx.drawImage(video, 0, 0);
+              ctx.fillStyle = 'rgba(0,0,0,0.6)';
+              ctx.fillRect(0,0,canvas.width, canvas.height);
             }
           }
         }
@@ -221,7 +227,6 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
             mode === 'BIOMETRIC' ? 'border-blue-600' : (activeTable?.status === 'calling' ? 'border-red-500' : 'border-white/10')
           }`}>
              
-             {/* HUD de Error de Cámara */}
              {cameraError && (
                <div className="absolute inset-0 z-50 bg-[#0a0a0c]/90 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center animate-in zoom-in duration-500">
                   <div className="w-20 h-20 bg-red-600/20 rounded-full flex items-center justify-center mb-8 border border-red-500/30">
@@ -229,23 +234,16 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
                   </div>
                   <h4 className="text-3xl font-black italic text-white uppercase mb-4 tracking-tighter">Acceso a Cámara Bloqueado</h4>
                   <p className="text-gray-400 text-sm max-w-md italic mb-10 leading-relaxed uppercase">
-                    NEXUM requiere acceso a la cámara para el seguimiento de gestos y biometría. Por favor, revisa los permisos en la barra de direcciones del navegador.
+                    NEXUM requiere acceso a la cámara para el seguimiento de gestos y biometría. Por favor, revisa los permisos.
                   </p>
                   <div className="flex gap-4">
-                     <button 
-                      onClick={onRetryCamera}
-                      className="bg-white text-black px-10 py-5 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl flex items-center gap-3 hover:bg-blue-600 hover:text-white transition-all"
-                     >
+                     <button onClick={onRetryCamera} className="bg-white text-black px-10 py-5 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl flex items-center gap-3 hover:bg-blue-600 hover:text-white transition-all">
                         <RefreshCw size={18} /> REINTENTAR ACCESO
-                     </button>
-                     <button className="bg-white/5 text-gray-500 px-8 py-5 rounded-[2rem] font-black text-[10px] uppercase tracking-widest border border-white/5 transition-all">
-                        MODO MANUAL
                      </button>
                   </div>
                </div>
              )}
 
-             {/* HUD de Biometría */}
              {mode === 'BIOMETRIC' && lastVerifiedStaff && (
                <div className="absolute inset-0 z-50 bg-blue-600/90 backdrop-blur-md flex flex-col items-center justify-center p-12 text-center animate-in zoom-in duration-500">
                   <div className="w-24 h-24 bg-white rounded-full flex items-center justify-center mb-6 shadow-2xl">
@@ -264,22 +262,22 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
                <div className="flex items-center gap-3 bg-black/80 backdrop-blur-xl px-5 py-2 rounded-full border border-white/10">
                   <div className={`w-3 h-3 rounded-full ${mode === 'BIOMETRIC' ? 'bg-blue-500 animate-pulse' : (activeTable?.status === 'calling' ? 'bg-red-500 animate-pulse' : 'bg-green-500')}`}></div>
                   <span className="text-xs font-black text-white italic tracking-widest uppercase">
-                    {mode === 'BIOMETRIC' ? 'BIOMETRIC_CHECKPOINT_01' : `MESA_${activeStation}_CAM_V4`}
+                    {mode === 'BIOMETRIC' ? 'BIOMETRIC_CHECKPOINT' : `MESA_${activeStation}_CAM_V4`}
                   </span>
                </div>
-               <div className="w-48 h-2 bg-white/10 rounded-full overflow-hidden">
-                  <div className={`h-full bg-blue-500 transition-all`} style={{ width: `${(detectionCount / 60) * 100}%` }}></div>
+               <div className="w-48 h-2 bg-white/10 rounded-full overflow-hidden shadow-inner">
+                  <div className={`h-full bg-blue-500 transition-all duration-300`} style={{ width: `${(detectionCount / 60) * 100}%` }}></div>
                </div>
             </div>
 
             <div className="aspect-video relative">
                <canvas ref={el => { if (el) canvasRefs.current[activeStation] = el; }} className="w-full h-full object-cover" />
                {activeTable?.status === 'calling' && mode === 'SURVEILLANCE' && (
-                 <div className="absolute inset-0 bg-red-600/10 flex flex-col items-center justify-center p-12 text-center animate-in zoom-in">
-                    <div className="bg-red-600 p-8 rounded-full shadow-[0_0_60px_rgba(239,68,68,0.4)] mb-8 animate-bounce">
+                 <div className="absolute inset-0 bg-red-600/20 flex flex-col items-center justify-center p-12 text-center animate-in zoom-in">
+                    <div className="bg-red-600 p-8 rounded-full shadow-[0_0_60px_rgba(239,68,68,0.6)] mb-8 animate-bounce">
                        <BellRing size={64} className="text-white" />
                     </div>
-                    <h4 className="text-6xl font-black italic text-white uppercase mb-4 tracking-tighter">SERVICIO SOLICITADO</h4>
+                    <h4 className="text-6xl font-black italic text-white uppercase mb-4 tracking-tighter drop-shadow-2xl">SERVICIO SOLICITADO</h4>
                     <button onClick={() => handleClearAlarm(activeStation)} className="bg-white text-red-600 px-12 py-5 rounded-[2rem] font-black text-sm uppercase tracking-widest shadow-2xl hover:scale-105 transition-transform flex items-center gap-3">
                       <CheckCircle size={20} /> MARCAR ATENDIDO
                     </button>
@@ -292,8 +290,8 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
         <div className="flex flex-col gap-6">
           <h4 className="text-[10px] font-black text-gray-500 uppercase tracking-widest border-b border-white/5 pb-3 italic">Multichannel Vision</h4>
           {sideTables.map(table => (
-            <div key={table.id} onClick={() => setActiveStation(table.id)} className={`relative cursor-pointer group rounded-[2.5rem] overflow-hidden border-2 transition-all ${table.status === 'calling' ? 'border-red-500 shadow-lg animate-pulse' : 'border-white/5 opacity-60 hover:opacity-100'}`}>
-              <div className="absolute top-4 left-4 z-10 bg-black/70 px-3 py-1 rounded-xl text-[9px] font-black text-white uppercase tracking-widest">MESA {table.id}</div>
+            <div key={table.id} onClick={() => setActiveStation(table.id)} className={`relative cursor-pointer group rounded-[2.5rem] overflow-hidden border-2 transition-all ${table.status === 'calling' ? 'border-red-500 shadow-lg animate-pulse' : 'border-white/5 opacity-60 hover:opacity-100 hover:border-white/20'}`}>
+              <div className="absolute top-4 left-4 z-10 bg-black/70 px-3 py-1 rounded-xl text-[9px] font-black text-white uppercase tracking-widest backdrop-blur-md">MESA {table.id}</div>
               <div className="aspect-video bg-gray-900">
                 <canvas ref={el => { if (el) canvasRefs.current[table.id] = el; }} className="w-full h-full object-cover" />
               </div>
