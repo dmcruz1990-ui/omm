@@ -4,7 +4,8 @@ import {
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
   Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
   ShieldCheck, Compass, Loader2, MonitorPlay, Sparkles, Palette,
-  BarChart4, LayoutDashboard, Briefcase
+  BarChart4, LayoutDashboard, Briefcase, ChevronDown, Layers,
+  CameraOff, AlertTriangle, RefreshCw
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -45,7 +46,6 @@ const Dashboard: React.FC = () => {
   const [activeStation, setActiveStation] = useState(1);
   const [isClientView, setIsClientView] = useState(false);
 
-  // Detectar modo "OH YEAH" independiente vía Hash
   useEffect(() => {
     const checkView = () => {
       setIsClientView(window.location.hash.includes('/oh-yeah'));
@@ -56,7 +56,7 @@ const Dashboard: React.FC = () => {
   }, []);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
+  const { isCameraReady, lastResultsRef, error: cameraError, retry: retryCamera } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
 
   const getVisibleModules = (role: UserRole = 'mesero'): ModuleType[] => {
     switch (role) {
@@ -130,7 +130,6 @@ const Dashboard: React.FC = () => {
     </div>
   );
 
-  // VISTA CLIENTE INDEPENDIENTE (OH YEAH)
   if (isClientView) {
     return (
       <div className="h-screen w-full overflow-hidden">
@@ -141,71 +140,111 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  const allModulesMetadata = [
-    { type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'WEB & PLANES', icon: <Compass size={22} /> },
-    { type: ModuleType.SERVICE_OS, label: 'SERVICE OS', sub: 'POS & RITUALES', icon: <ShoppingCart size={22} /> },
-    { type: ModuleType.KITCHEN_KDS, label: 'KITCHEN KDS', sub: 'ESTACIÓN COCINA', icon: <MonitorPlay size={22} /> },
-    { type: ModuleType.RESERVE, label: 'RESERVE', sub: 'MAPA & AGENDA', icon: <CalendarDays size={22} /> },
-    { type: ModuleType.PAYROLL, label: 'NÓMINA DIAN', sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={22} /> },
-    { type: ModuleType.FINANCE_HUB, label: 'FINANCE HUB', sub: 'DINERO & KPI', icon: <DollarSign size={22} /> },
-    { type: ModuleType.COMMAND, label: 'COMMAND', sub: 'ESTRATEGIA IA', icon: <Globe size={22} /> },
-    { type: ModuleType.RELATIONSHIP, label: 'CLIENTES', sub: 'CRM & VIP', icon: <Users size={22} /> },
-    { type: ModuleType.STAFF_HUB, label: 'STAFF HUB', sub: 'RANKING & COACH', icon: <Contact size={22} /> },
-    { type: ModuleType.FLOW, label: 'FLOW', sub: 'ESTACIONES', icon: <ChefHat size={22} /> },
-    { type: ModuleType.SUPPLY, label: 'SUPPLY', sub: 'STOCK IA', icon: <Truck size={22} /> },
-    { type: ModuleType.CARE, label: 'CARE', sub: 'SOPORTE CX', icon: <HeartPulse size={22} /> },
-    { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'DISEÑO CMS', icon: <Palette size={22} /> },
-    { type: ModuleType.CONFIG, label: 'CEREBRO', sub: 'ADN & IA', icon: <Settings size={22} /> }
+  const modulePackages = [
+    {
+      id: 'marketing',
+      label: 'PAQUETE MARKETING',
+      icon: <Sparkles size={14} className="text-blue-500" />,
+      modules: [
+        { type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'WEB & PLANES', icon: <Compass size={18} /> },
+        { type: ModuleType.RESERVE, label: 'RESERVE', sub: 'MAPA & AGENDA', icon: <CalendarDays size={18} /> },
+        { type: ModuleType.RELATIONSHIP, label: 'CLIENTES', sub: 'CRM & VIP', icon: <Users size={18} /> },
+      ]
+    },
+    {
+      id: 'operaciones',
+      label: 'PAQUETE OPERACIONES',
+      icon: <Layers size={14} className="text-orange-500" />,
+      modules: [
+        { type: ModuleType.SERVICE_OS, label: 'SERVICE OS', sub: 'POS & RITUALES', icon: <ShoppingCart size={18} /> },
+        { type: ModuleType.KITCHEN_KDS, label: 'KITCHEN KDS', sub: 'ESTACIÓN COCINA', icon: <MonitorPlay size={18} /> },
+        { type: ModuleType.FLOW, label: 'FLOW', sub: 'ESTACIONES', icon: <ChefHat size={18} /> },
+      ]
+    },
+    {
+      id: 'control',
+      label: 'CONTROL & SUMINISTROS',
+      icon: <ShieldCheck size={14} className="text-green-500" />,
+      modules: [
+        { type: ModuleType.SUPPLY, label: 'SUPPLY', sub: 'STOCK IA', icon: <Truck size={18} /> },
+        { type: ModuleType.CARE, label: 'CARE', sub: 'SOPORTE CX', icon: <HeartPulse size={18} /> },
+        { type: ModuleType.STAFF_HUB, label: 'STAFF HUB', sub: 'RANKING & COACH', icon: <Contact size={18} /> },
+      ]
+    },
+    {
+      id: 'estrategia',
+      label: 'ESTRATEGIA & ADMIN',
+      icon: <Globe size={14} className="text-purple-500" />,
+      modules: [
+        { type: ModuleType.COMMAND, label: 'COMMAND', sub: 'ESTRATEGIA IA', icon: <Globe size={18} /> },
+        { type: ModuleType.FINANCE_HUB, label: 'FINANCE HUB', sub: 'DINERO & KPI', icon: <DollarSign size={18} /> },
+        { type: ModuleType.PAYROLL, label: 'NÓMINA DIAN', sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
+        { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'DISEÑO CMS', icon: <Palette size={18} /> },
+        { type: ModuleType.CONFIG, label: 'CEREBRO', sub: 'ADN & IA', icon: <Settings size={18} /> }
+      ]
+    }
   ];
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0c] text-white font-sans text-left">
-      <nav className="w-[280px] bg-[#0a0a0c] border-r border-white/5 flex flex-col px-6 py-8 z-50 overflow-y-auto custom-scrollbar">
-        <div className="flex items-center gap-4 mb-12">
+      <nav className="w-[300px] bg-[#0a0a0c] border-r border-white/5 flex flex-col px-6 py-8 z-50 overflow-y-auto custom-scrollbar">
+        <div className="flex items-center gap-4 mb-12 px-2">
           <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/30">
             <Zap className="text-white" size={24} fill="currentColor" />
           </div>
           <div>
             <h1 className="text-2xl font-black tracking-tighter italic leading-none">NEXUM <span className="text-blue-600">V4</span></h1>
-            <p className="text-[9px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-1">STAFF INTELLIGENCE</p>
+            <p className="text-[9px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-1">OPERATIONAL CORE</p>
           </div>
         </div>
 
-        <div className="mb-6">
-          <p className="text-[10px] text-gray-600 font-black uppercase tracking-[0.2em] mb-6">MÓDULOS DE CONTROL</p>
-          <div className="flex flex-col gap-2">
-            {allModulesMetadata.filter(m => visibleModulesList.includes(m.type)).map((m) => (
-              <button
-                key={m.type}
-                onClick={() => setActiveModule(m.type)}
-                className={`flex items-center gap-5 w-full px-5 py-4 rounded-[1.4rem] transition-all duration-300 group ${
-                  activeModule === m.type 
-                    ? 'bg-blue-600 text-white shadow-xl' 
-                    : 'text-gray-500 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <div className={`${activeModule === m.type ? 'text-white' : 'text-gray-600 group-hover:text-white'}`}>{m.icon}</div>
-                <div className="text-left">
-                  <p className="text-xs font-black tracking-widest leading-none mb-1">{m.label}</p>
-                  <p className={`text-[8px] font-bold uppercase tracking-wider ${activeModule === m.type ? 'text-blue-100' : 'text-gray-600'}`}>{m.sub}</p>
+        <div className="space-y-10 mb-10">
+          {modulePackages.map((pkg) => {
+            const visiblePkgModules = pkg.modules.filter(m => visibleModulesList.includes(m.type));
+            if (visiblePkgModules.length === 0) return null;
+
+            return (
+              <div key={pkg.id} className="space-y-4">
+                <div className="flex items-center gap-3 px-4 py-1">
+                   <div className="opacity-60">{pkg.icon}</div>
+                   <span className="text-[9px] font-black text-gray-500 uppercase tracking-[0.3em] italic">{pkg.label}</span>
                 </div>
-              </button>
-            ))}
-          </div>
+                <div className="flex flex-col gap-1">
+                  {visiblePkgModules.map((m) => (
+                    <button
+                      key={m.type}
+                      onClick={() => setActiveModule(m.type)}
+                      className={`flex items-center gap-4 w-full px-4 py-3.5 rounded-2xl transition-all duration-300 group ${
+                        activeModule === m.type 
+                          ? 'bg-white/5 border border-white/10 text-white shadow-xl' 
+                          : 'text-gray-500 hover:bg-white/5 hover:text-white border border-transparent'
+                      }`}
+                    >
+                      <div className={`${activeModule === m.type ? 'text-blue-500' : 'text-gray-600 group-hover:text-blue-400'} transition-colors`}>{m.icon}</div>
+                      <div className="text-left">
+                        <p className={`text-[10px] font-black tracking-widest leading-none mb-1 ${activeModule === m.type ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>{m.label}</p>
+                        <p className={`text-[7px] font-bold uppercase tracking-wider ${activeModule === m.type ? 'text-blue-400' : 'text-gray-600'}`}>{m.sub}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
 
         <div className="mt-auto pt-8 border-t border-white/5">
            <button 
             onClick={() => window.location.hash = '/oh-yeah'} 
-            className="w-full bg-[#111114] border border-blue-500/20 rounded-[1.8rem] p-5 flex flex-col gap-2 mb-6 group hover:bg-blue-600 transition-all shadow-lg shadow-blue-900/10"
+            className="w-full bg-blue-600/5 border border-blue-500/20 rounded-[1.8rem] p-5 flex flex-col gap-2 mb-6 group hover:bg-blue-600 transition-all shadow-lg shadow-blue-900/10"
            >
               <div className="flex items-center gap-3">
-                 <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white group-hover:bg-white group-hover:text-blue-600">
+                 <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white group-hover:bg-white group-hover:text-blue-600 shadow-lg">
                     <Sparkles size={16} />
                  </div>
                  <span className="text-[10px] font-black uppercase tracking-widest text-white">Ir a OH YEAH!</span>
               </div>
-              <p className="text-[8px] text-gray-500 group-hover:text-blue-100 font-bold uppercase tracking-widest">VISTA CLIENTE B2C</p>
+              <p className="text-[8px] text-gray-500 group-hover:text-blue-100 font-bold uppercase tracking-widest text-left">VISTA CLIENTE B2C</p>
            </button>
           <button onClick={signOut} className="flex items-center gap-3 px-6 text-gray-600 hover:text-red-500 transition-all text-[10px] font-black uppercase tracking-widest w-full">
             <LogOut size={16} /> CERRAR SESIÓN
@@ -219,6 +258,26 @@ const Dashboard: React.FC = () => {
              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
              <h2 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] italic">OMM_OPERATIONAL_NODE_{profile?.role?.toUpperCase()}</h2>
           </div>
+          
+          {cameraError && (
+             <div className="flex items-center gap-4 bg-red-600/10 border border-red-500/30 px-4 py-2 rounded-xl animate-pulse">
+                <AlertTriangle size={14} className="text-red-500" />
+                <span className="text-[9px] font-black text-red-500 uppercase italic">{cameraError}</span>
+                <button onClick={retryCamera} className="bg-red-600 text-white p-1 rounded hover:bg-red-500 transition-all">
+                   <RefreshCw size={12} />
+                </button>
+             </div>
+          )}
+
+          <div className="flex items-center gap-6">
+             <div className="text-right">
+                <span className="text-[8px] text-gray-600 font-black uppercase block leading-none">Usuario Activo</span>
+                <span className="text-[10px] font-bold italic text-white">{profile?.full_name}</span>
+             </div>
+             <div className="w-10 h-10 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
+                <Users size={18} className="text-blue-500" />
+             </div>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-12 relative z-10 text-left">
@@ -226,7 +285,18 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.DISCOVER && <DiscoverModule />}
             {activeModule === ModuleType.SERVICE_OS && (
               <div className="space-y-12">
-                <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onCheckService={async(id) => handleUpdateTable(id, {status: 'occupied'})} activeStation={activeStation} setActiveStation={setActiveStation} onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} />
+                <SurveillanceModule 
+                  videoRef={videoRef} 
+                  isCameraReady={isCameraReady} 
+                  resultsRef={lastResultsRef} 
+                  tables={tables} 
+                  onCheckService={async(id) => handleUpdateTable(id, {status: 'occupied'})} 
+                  activeStation={activeStation} 
+                  setActiveStation={setActiveStation} 
+                  onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} 
+                  cameraError={cameraError}
+                  onRetryCamera={retryCamera}
+                />
                 <ServiceOSModule tables={tables} onUpdateTable={handleUpdateTable} tasks={ritualTasks} />
               </div>
             )}
@@ -252,7 +322,25 @@ const Dashboard: React.FC = () => {
 
 const Main: React.FC = () => {
   const { session, loading } = useAuth();
-  if (loading) return <div className="h-screen w-full bg-[#0a0a0c]" />;
+  const [internalLoading, setInternalLoading] = useState(true);
+
+  // Asegurar que el estado de carga termine incluso si hay errores de red
+  useEffect(() => {
+    if (!loading) {
+      setInternalLoading(false);
+    } else {
+      const timeout = setTimeout(() => setInternalLoading(false), 5000);
+      return () => clearTimeout(timeout);
+    }
+  }, [loading]);
+
+  if (internalLoading) return (
+    <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
+       <Loader2 className="text-blue-600 animate-spin mb-4" size={48} />
+       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic">Iniciando Núcleo NEXUM...</p>
+    </div>
+  );
+  
   if (!session) return <Login />;
   return <Dashboard />;
 };

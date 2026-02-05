@@ -1,20 +1,28 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
 
-# Run and deploy your AI Studio app
+# NEXUM V4 | Operational Core
 
-This contains everything you need to run your app locally.
+Este repositorio contiene la suite de inteligencia para el grupo OMM, integrando visión artificial, IA generativa y control fiscal en tiempo real.
 
-View your app in AI Studio: https://ai.studio/apps/drive/1vfqrrJtmc9j7IaE11qxk9TmqqJIm4NlC
+## Estructura del Proyecto
+```text
+.
+├── App.tsx                 # Dashboard & Routing Core
+├── types.ts                # Modelos de Datos Maestros
+├── constants.ts            # Configuración Global
+├── lib/
+│   ├── supabase.ts         # Gateway de Base de Datos
+│   └── ai/brain.ts         # Integración Gemini SDK
+├── components/
+│   ├── POSModule.tsx       # Service OS / Punto de Venta
+│   ├── KitchenModule.tsx   # KDS de Cocina
+│   ├── SupplyModule.tsx    # Inventario Atómico
+│   ├── FinanceHub.tsx      # Intelligence Finance
+│   └── Surveillance.tsx    # Vision AI & Biometría
+└── vision_ai_backend.py    # Lógica YOLOv8 (Referencia)
+```
 
-## Run Locally
-
-**Prerequisites:**  Node.js
-
-
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Setup
+1. Clonar repositorio.
+2. `npm install`
+3. Configurar `.env` con `NEXT_PUBLIC_SUPABASE_URL` y `GOOGLE_API_KEY`.
+4. `npm run dev`

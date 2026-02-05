@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { Profile, UserRole, LoyaltyLevel } from '../types.ts';
-import type { Session, User } from 'https://esm.sh/@supabase/supabase-js@2.45.1';
+import type { Session, User } from '@supabase/supabase-js';
 
 interface AuthContextType {
   session: Session | null;
@@ -66,10 +66,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         email: email, 
         role: assignedRole, 
         full_name: email.split('@')[0].toUpperCase(),
-        loyalty_level: 'UMBRAL' // El nuevo estándar de inicio
+        loyalty_level: 'UMBRAL'
       };
       
       setProfile(virtualProfile);
+      // Solo intentamos sincronizar si hay una sesión activa real
       await supabase.from('profiles').upsert({ 
         id: user.id, 
         email: email, 

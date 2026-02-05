@@ -14,7 +14,9 @@ import {
   UserCheck,
   Fingerprint,
   Scan,
-  RefreshCw
+  RefreshCw,
+  CameraOff,
+  Settings
 } from 'lucide-react';
 import { Table, AttendanceLog } from '../types.ts';
 import { supabase } from '../lib/supabase.ts';
@@ -28,10 +30,13 @@ interface SurveillanceProps {
   activeStation: number;
   setActiveStation: (id: number) => void;
   onManualTrigger: (id: number) => void;
+  cameraError?: string | null;
+  onRetryCamera?: () => void;
 }
 
 const SurveillanceModule: React.FC<SurveillanceProps> = ({ 
-  videoRef, isCameraReady, resultsRef, tables, onCheckService, activeStation, setActiveStation, onManualTrigger 
+  videoRef, isCameraReady, resultsRef, tables, onCheckService, activeStation, setActiveStation, onManualTrigger,
+  cameraError, onRetryCamera
 }) => {
   const canvasRefs = useRef<Array<HTMLCanvasElement | null>>([null, null, null, null]);
   
@@ -204,8 +209,8 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
         <div className="bg-[#111114] p-6 rounded-[2.5rem] border border-white/5 min-w-[240px] flex flex-col justify-center relative overflow-hidden">
           <span className="text-[8px] text-gray-600 font-black uppercase tracking-widest block mb-1">Status Sincro</span>
           <div className="flex items-center gap-2">
-             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-             <span className="text-[10px] font-black text-white italic uppercase">{lastAction}</span>
+             <div className={`w-2 h-2 rounded-full animate-pulse ${cameraError ? 'bg-red-500' : 'bg-green-500'}`}></div>
+             <span className="text-[10px] font-black text-white italic uppercase">{cameraError ? 'CAMERA_ERROR' : lastAction}</span>
           </div>
         </div>
       </div>
@@ -216,6 +221,30 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
             mode === 'BIOMETRIC' ? 'border-blue-600' : (activeTable?.status === 'calling' ? 'border-red-500' : 'border-white/10')
           }`}>
              
+             {/* HUD de Error de Cámara */}
+             {cameraError && (
+               <div className="absolute inset-0 z-50 bg-[#0a0a0c]/90 backdrop-blur-xl flex flex-col items-center justify-center p-12 text-center animate-in zoom-in duration-500">
+                  <div className="w-20 h-20 bg-red-600/20 rounded-full flex items-center justify-center mb-8 border border-red-500/30">
+                     <CameraOff size={40} className="text-red-500" />
+                  </div>
+                  <h4 className="text-3xl font-black italic text-white uppercase mb-4 tracking-tighter">Acceso a Cámara Bloqueado</h4>
+                  <p className="text-gray-400 text-sm max-w-md italic mb-10 leading-relaxed uppercase">
+                    NEXUM requiere acceso a la cámara para el seguimiento de gestos y biometría. Por favor, revisa los permisos en la barra de direcciones del navegador.
+                  </p>
+                  <div className="flex gap-4">
+                     <button 
+                      onClick={onRetryCamera}
+                      className="bg-white text-black px-10 py-5 rounded-[2rem] font-black text-[10px] uppercase tracking-widest shadow-xl flex items-center gap-3 hover:bg-blue-600 hover:text-white transition-all"
+                     >
+                        <RefreshCw size={18} /> REINTENTAR ACCESO
+                     </button>
+                     <button className="bg-white/5 text-gray-500 px-8 py-5 rounded-[2rem] font-black text-[10px] uppercase tracking-widest border border-white/5 transition-all">
+                        MODO MANUAL
+                     </button>
+                  </div>
+               </div>
+             )}
+
              {/* HUD de Biometría */}
              {mode === 'BIOMETRIC' && lastVerifiedStaff && (
                <div className="absolute inset-0 z-50 bg-blue-600/90 backdrop-blur-md flex flex-col items-center justify-center p-12 text-center animate-in zoom-in duration-500">

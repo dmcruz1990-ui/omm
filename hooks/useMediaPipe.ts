@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { HandLandmarker, FilesetResolver, HandLandmarkerResult } from '@mediapipe/tasks-vision';
 import * as THREE from 'three';
 
@@ -16,6 +16,7 @@ const mapHandToWorld = (x: number, y: number): THREE.Vector3 => {
 export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>, enabled: boolean = false) => {
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   const handPositionsRef = useRef<{
     left: THREE.Vector3 | null;
@@ -38,6 +39,11 @@ export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>,
   const lastResultsRef = useRef<HandLandmarkerResult | null>(null);
   const landmarkerRef = useRef<HandLandmarker | null>(null);
   const requestRef = useRef<number>(0);
+
+  const retry = useCallback(() => {
+    setError(null);
+    setRetryCount(prev => prev + 1);
+  }, []);
 
   useEffect(() => {
     if (!enabled) return;
@@ -70,10 +76,10 @@ export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>,
         }
 
         landmarkerRef.current = landmarker;
-        startCamera();
+        await startCamera();
       } catch (err: any) {
-        console.error("Error initializing MediaPipe:", err);
-        setError(`Failed to load hand tracking: ${err.message}`);
+        console.error("MediaPipe Init Error:", err);
+        setError(`Error de inicialización: ${err.message}`);
       }
     };
 
@@ -92,13 +98,18 @@ export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>,
           videoRef.current.onloadeddata = () => {
              if (isActive) {
                  setIsCameraReady(true);
+                 setError(null);
                  predictWebcam();
              }
           };
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Camera Error:", err);
-        setError("Could not access camera.");
+        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+          setError("Permiso Denegado: Por favor, activa el acceso a la cámara en tu navegador.");
+        } else {
+          setError(`Error de Cámara: ${err.message || "No se pudo acceder."}`);
+        }
       }
     };
 
@@ -174,7 +185,7 @@ export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>,
       }
       setIsCameraReady(false);
     };
-  }, [enabled, videoRef]);
+  }, [enabled, videoRef, retryCount]);
 
-  return { isCameraReady, handPositionsRef, lastResultsRef, error };
+  return { isCameraReady, handPositionsRef, lastResultsRef, error, retry };
 };
