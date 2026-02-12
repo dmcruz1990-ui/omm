@@ -5,8 +5,9 @@ import {
   Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
   ShieldCheck, Compass, Loader2, MonitorPlay, Sparkles, Palette,
   ChevronDown, Layers, CameraOff, AlertTriangle, RefreshCw, Music,
-  // Added missing Briefcase import
-  Briefcase
+  Briefcase,
+  LayoutPanelLeft,
+  Lock
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -30,6 +31,7 @@ const StaffHubModule = lazy(() => import('./components/StaffHubModule.tsx'));
 const BrandStudio = lazy(() => import('./components/BrandStudio.tsx'));
 const SettingsModule = lazy(() => import('./components/SettingsModule.tsx'));
 const PayrollModule = lazy(() => import('./components/PayrollModule.tsx'));
+const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -46,6 +48,7 @@ const Dashboard: React.FC = () => {
   const [dashboardLoading, setDashboardLoading] = useState(true);
   const [activeStation, setActiveStation] = useState(1);
   const [isClientView, setIsClientView] = useState(false);
+  const [isCockpitOpen, setIsCockpitOpen] = useState(false);
 
   useEffect(() => {
     const checkView = () => {
@@ -179,13 +182,14 @@ const Dashboard: React.FC = () => {
       modules: [
         { type: ModuleType.COMMAND, label: 'COMMAND', sub: 'ESTRATEGIA IA', icon: <Globe size={18} /> },
         { type: ModuleType.FINANCE_HUB, label: 'FINANCE HUB', sub: 'DINERO & KPI', icon: <DollarSign size={18} /> },
-        // Fix: icon now uses imported Briefcase
         { type: ModuleType.PAYROLL, label: 'NÓMINA DIAN', sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
         { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'DISEÑO CMS', icon: <Palette size={18} /> },
         { type: ModuleType.CONFIG, label: 'CEREBRO', sub: 'ADN & IA', icon: <Settings size={18} /> }
       ]
     }
   ];
+
+  const canAccessCockpit = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0c] text-white font-sans text-left">
@@ -199,6 +203,27 @@ const Dashboard: React.FC = () => {
             <p className="text-[9px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-1">OPERATIONAL CORE</p>
           </div>
         </div>
+
+        {/* EXECUTIVE COCKPIT TRIGGER (GATE) */}
+        {canAccessCockpit && (
+          <div className="mb-10 px-2 animate-in fade-in slide-in-from-left duration-700">
+             <button 
+              onClick={() => setIsCockpitOpen(true)}
+              className="w-full bg-gradient-to-br from-blue-600 to-blue-800 p-5 rounded-[1.8rem] flex items-center gap-4 shadow-xl shadow-blue-600/10 group hover:scale-[1.02] transition-all border border-white/10"
+             >
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white">
+                   <LayoutPanelLeft size={20} />
+                </div>
+                <div className="text-left">
+                   <span className="text-[10px] font-black uppercase tracking-widest text-white block">Executive Cockpit</span>
+                   <span className="text-[7px] font-bold uppercase text-blue-200 tracking-wider">Business Intelligence</span>
+                </div>
+                <div className="ml-auto">
+                   <Sparkles size={14} className="text-blue-300 animate-pulse" />
+                </div>
+             </button>
+          </div>
+        )}
 
         <div className="space-y-10 mb-10">
           {modulePackages.map((pkg) => {
@@ -317,6 +342,13 @@ const Dashboard: React.FC = () => {
           </Suspense>
         </div>
       </main>
+
+      <Suspense fallback={null}>
+        {canAccessCockpit && (
+          <ExecutiveCockpit isOpen={isCockpitOpen} onClose={() => setIsCockpitOpen(false)} />
+        )}
+      </Suspense>
+
       <video ref={videoRef} className="absolute opacity-0 pointer-events-none" playsInline muted autoPlay />
     </div>
   );

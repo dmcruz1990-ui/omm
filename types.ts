@@ -23,27 +23,43 @@ export enum ModuleType {
   PAYROLL = 'PAYROLL'
 }
 
-/* UserRole including 'desarrollo' */
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'chef' | 'guest' | 'desarrollo';
 
-/* Recipe interface with all required properties for RecipeManager */
-export interface Recipe {
+/* 12 PYG Categories from Executive Report */
+export type PYGCategory = 
+  | 'Costo de alimentos' 
+  | 'Costo de bebidas' 
+  | 'Empaques y desechables' 
+  | 'Comisiones y plataformas' 
+  | 'Personal operativo' 
+  | 'Arriendo y ocupación' 
+  | 'Servicios públicos y conectividad' 
+  | 'Aseo, mantenimiento y operación' 
+  | 'Marketing y crecimiento' 
+  | 'Tecnología y suscripciones' 
+  | 'Impuestos y tasas no recuperables' 
+  | 'Finanzas, legales y otros';
+
+export type AccountingNature = 'COSTO' | 'GASTO';
+
+/* Employment OS: Credentials & Reputation */
+export interface MicroCredential {
   id: string;
-  menu_item_id: string;
   name: string;
-  ingredients: Array<{
-    supply_item_id: string;
-    name: string;
-    quantity: number;
-    unit: string;
-    cost_contribution: number;
-  }>;
-  total_cost: number;
-  target_margin: number;
-  suggested_price: number;
+  level: 1 | 2 | 3 | 4 | 5;
+  category: 'FOH' | 'BOH' | 'BAR' | 'MGMT';
+  issued_at?: string;
+  evidence_url?: string;
+  status: 'earned' | 'in_progress' | 'not_started';
 }
 
-/* SupplyItem with extended properties */
+export interface SalaryBenchmark {
+  city: string;
+  role: string;
+  avg_base: number;
+  currency: string;
+}
+
 export interface SupplyItem {
   id: string;
   name: string;
@@ -53,21 +69,23 @@ export interface SupplyItem {
   status: 'optimal' | 'low' | 'critical';
   unit: string;
   category: string;
+  pyg_category?: PYGCategory;
+  nature?: AccountingNature;
   lastCostIncrease: number;
   expirationDate: string;
   pending_invoice: boolean;
   received_quantity?: number;
+  cufe?: string;
+  confidence_score?: number; // 0 to 1
+  niif_mapping?: string; // e.g., "IAS 2", "IAS 16"
 }
 
-/* Table interface with extended properties */
 export interface Table {
   id: number;
   status: 'free' | 'occupied' | 'calling' | 'reserved' | 'seated' | 'waiting_list';
   seats: number;
   zone: string;
   name?: string;
-  welcome_timer_start?: string | null;
-  ritual_step?: number;
 }
 
 export interface AttendanceLog {
@@ -87,49 +105,6 @@ export interface Profile {
   loyalty_level: LoyaltyLevel;
 }
 
-/* Game types (Remanentes para compatibilidad de tipos si se requieren en otros archivos, 
-   pero el módulo ya no se usará) */
-export enum GameStatus {
-  IDLE = 'IDLE',
-  PLAYING = 'PLAYING',
-  PAUSED = 'PAUSED',
-}
-
-export enum CutDirection {
-  UP = 'UP',
-  DOWN = 'DOWN',
-  LEFT = 'LEFT',
-  RIGHT = 'RIGHT',
-  ANY = 'ANY',
-}
-
-export interface NoteData {
-  id: string;
-  time: number;
-  lineIndex: number;
-  lineLayer: number;
-  type: 'left' | 'right';
-  cutDirection: CutDirection;
-  hit?: boolean;
-  missed?: boolean;
-  hitTime?: number;
-}
-
-export interface HandPositions {
-  left: THREE.Vector3 | null;
-  right: THREE.Vector3 | null;
-  leftVelocity: THREE.Vector3;
-  rightVelocity: THREE.Vector3;
-}
-
-export const COLORS = {
-  left: '#ef4444',
-  right: '#3b82f6',
-};
-
-export type HandType = 'left' | 'right';
-
-/* Operational types */
 export interface RitualTask {
   id: string;
   table_id: number;
@@ -140,8 +115,6 @@ export interface RitualTask {
   status: 'active' | 'completed';
   responsible?: string;
 }
-
-export type Severity = 'Crítica' | 'Alta' | 'Media' | 'Baja';
 
 export interface ServiceIncident {
   id: string;
@@ -163,19 +136,60 @@ export interface Opportunity {
   aiReasoning: string;
 }
 
+export type LoyaltyLevel = 'UMBRAL' | 'CONSAGRADO' | 'CATADOR' | 'SUPREMO' | 'ULTRA_VIP';
+
+export interface MenuItem { id?: string; name: string; price: number; category: string; }
+export interface OmmEvent { id: string; title: string; date: string; price: number; category: string; image_url: string; }
+export interface EventTicket { id: string; event_id: string; customer_name: string; customer_phone: string; customer_email: string; ticket_code: string; is_paid: boolean; checked_in: boolean; checked_in_at?: string; created_at: string; }
+export interface ShiftPrediction { date: string; expected_traffic: string; reasoning: string; external_event: string; recommended_staff: number; }
+export interface Brand { id: string; name: string; logo_url?: string; primary_color?: string; secondary_color?: string; settings?: any; }
+export interface SocialProfile { id: string; name: string; relation: string; preferences: string[]; }
+export type BusinessDNA = 'FINE_DINING' | 'BAR_NIGHTLIFE' | 'CASUAL_DINING' | 'CASUAL_PREMIUM' | 'QSR_FAST_CASUAL';
+export type AIAgencyLevel = 'ADVISORY' | 'CO_PILOT' | 'AUTONOMOUS';
+
+export interface OperationalSettings { id?: string; business_dna: BusinessDNA; target_margin: number; target_cogs: number; target_labor: number; ai_agency_level: AIAgencyLevel; notifications_enabled: boolean; }
+export interface PayrollEmployee { id: string; name: string; role: string; base_salary: number; efficiency: number; credentials?: MicroCredential[]; reputation_score: number; }
+
+// Fix: Added missing exported types for Experience Beats
+export enum GameStatus { IDLE, PLAYING, PAUSED }
+export enum CutDirection { UP, DOWN, LEFT, RIGHT, ANY }
+export interface NoteData {
+  id: string;
+  time: number;
+  lineIndex: number;
+  lineLayer: number;
+  type: 'left' | 'right';
+  cutDirection: CutDirection;
+  hit?: boolean;
+  missed?: boolean;
+  hitTime?: number;
+}
+export interface HandPositions {
+  left: THREE.Vector3 | null;
+  right: THREE.Vector3 | null;
+  leftVelocity: THREE.Vector3;
+  rightVelocity: THREE.Vector3;
+}
+export const COLORS = {
+  left: '#ef4444', // Red
+  right: '#2563eb' // Blue
+};
+export type HandType = 'left' | 'right';
+
+// Fix: Added missing exported branding colors and interfaces
+export const NEXUS_COLORS = {
+  primary: '#2563eb',
+  success: '#10b981',
+  warning: '#f59e0b',
+  danger: '#ef4444'
+};
+
 export interface InventoryItem {
   name: string;
   current: number;
   minStock: number;
   unit: string;
 }
-
-export const NEXUS_COLORS = {
-  primary: '#2563eb',
-  success: '#10b981',
-  warning: '#f59e0b',
-  danger: '#ef4444',
-};
 
 export interface StaffMember {
   id: string;
@@ -198,16 +212,9 @@ export interface CustomerProfile {
   lastVisit: {
     venue: string;
     total: number;
-    items: Array<{
-      qty: number;
-      name: string;
-      price: number;
-    }>;
+    items: { qty: number; name: string; price: number; }[];
   };
-  tags: Array<{
-    label: string;
-    type: string;
-  }>;
+  tags: { label: string; type: string; }[];
   churnRisk: number;
   walletBalance: string;
 }
@@ -219,92 +226,21 @@ export interface KitchenOrder {
   items: any[];
 }
 
+export type Severity = 'Crítica' | 'Alta' | 'Media' | 'Baja';
+
 export interface Transaction {
   id: string;
   amount: number;
   type: string;
   timestamp: string;
-  description: string;
 }
 
-export type LoyaltyLevel = 'UMBRAL' | 'CONSAGRADO' | 'CATADOR' | 'SUPREMO' | 'ULTRA_VIP';
-
-export interface MenuItem {
-  id?: string;
+export interface Recipe {
+  id: string;
+  menu_item_id: string;
   name: string;
-  price: number;
-  category: string;
-}
-
-export interface OmmEvent {
-  id: string;
-  title: string;
-  date: string;
-  price: number;
-  category: string;
-  image_url: string;
-}
-
-export interface EventTicket {
-  id: string;
-  event_id: string;
-  customer_name: string;
-  customer_phone: string;
-  customer_email: string;
-  ticket_code: string;
-  is_paid: boolean;
-  checked_in: boolean;
-  checked_in_at?: string;
-  created_at: string;
-}
-
-export interface ShiftPrediction {
-  date: string;
-  expected_traffic: string;
-  recommended_staff: number;
-  reasoning: string;
-  external_event: string;
-}
-
-export interface Brand {
-  id: string;
-  name: string;
-  logo_url?: string;
-  primary_color?: string;
-  secondary_color?: string;
-  settings?: any;
-}
-
-export interface SocialProfile {
-  id: string;
-  name: string;
-  relation: string;
-  preferences: string[];
-}
-
-export type BusinessDNA = 'FINE_DINING' | 'BAR_NIGHTLIFE' | 'CASUAL_DINING' | 'CASUAL_PREMIUM' | 'QSR_FAST_CASUAL';
-export type AIAgencyLevel = 'ADVISORY' | 'CO_PILOT' | 'AUTONOMOUS';
-
-export interface OperationalSettings {
-  id?: string;
-  business_dna: BusinessDNA;
+  total_cost: number;
   target_margin: number;
-  target_cogs: number;
-  target_labor: number;
-  ai_agency_level: AIAgencyLevel;
-  notifications_enabled: boolean;
-}
-
-export interface PayrollEmployee {
-  id: string;
-  name: string;
-  role: string;
-  base_salary: number;
-  efficiency: number;
-}
-
-export interface ShiftPayroll {
-  id: string;
-  date: string;
-  employees: PayrollEmployee[];
+  suggested_price: number;
+  ingredients: { supply_item_id: string; name: string; quantity: number; unit: string; cost_contribution: number; }[];
 }
