@@ -25,6 +25,40 @@ export enum ModuleType {
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'chef' | 'guest' | 'desarrollo';
 
+/* CRM & Relationship Brain Types */
+export type RFMSegment = 'CHAMPION' | 'LOYAL' | 'AT_RISK' | 'ABOUT_TO_SLEEP' | 'NEW' | 'POTENTIAL';
+
+export interface CustomerPreference {
+  category: string;
+  item_name: string;
+  weight: number; // 0-1 based on order frequency
+}
+
+export interface NexumMasterTag {
+  id: string;
+  label: string;
+  type: 'behavior' | 'financial' | 'psychographic' | 'alert';
+  color: string;
+}
+
+export interface CustomerProfile {
+  id: string;
+  name: string;
+  phone: string;
+  email?: string;
+  segment: RFMSegment;
+  total_spend: number;
+  order_count: number;
+  visit_count: number;
+  last_visit_at: string;
+  rating: number;
+  avatar_url: string;
+  preferences: CustomerPreference[];
+  tags: NexumMasterTag[];
+  ai_hospitality_note?: string;
+  rfm_scores: { r: number; f: number; m: number };
+}
+
 /* 12 PYG Categories from Executive Report */
 export type PYGCategory = 
   | 'Costo de alimentos' 
@@ -86,6 +120,8 @@ export interface Table {
   seats: number;
   zone: string;
   name?: string;
+  welcome_timer_start?: string | null;
+  ritual_step?: number;
 }
 
 export interface AttendanceLog {
@@ -144,13 +180,23 @@ export interface EventTicket { id: string; event_id: string; customer_name: stri
 export interface ShiftPrediction { date: string; expected_traffic: string; reasoning: string; external_event: string; recommended_staff: number; }
 export interface Brand { id: string; name: string; logo_url?: string; primary_color?: string; secondary_color?: string; settings?: any; }
 export interface SocialProfile { id: string; name: string; relation: string; preferences: string[]; }
+
+/* Business DNA & AI Agency Types */
 export type BusinessDNA = 'FINE_DINING' | 'BAR_NIGHTLIFE' | 'CASUAL_DINING' | 'CASUAL_PREMIUM' | 'QSR_FAST_CASUAL';
 export type AIAgencyLevel = 'ADVISORY' | 'CO_PILOT' | 'AUTONOMOUS';
 
-export interface OperationalSettings { id?: string; business_dna: BusinessDNA; target_margin: number; target_cogs: number; target_labor: number; ai_agency_level: AIAgencyLevel; notifications_enabled: boolean; }
+export interface OperationalSettings {
+  id?: string;
+  business_dna: BusinessDNA;
+  target_margin: number;
+  target_cogs: number;
+  target_labor: number;
+  ai_agency_level: AIAgencyLevel;
+  notifications_enabled: boolean;
+}
+
 export interface PayrollEmployee { id: string; name: string; role: string; base_salary: number; efficiency: number; credentials?: MicroCredential[]; reputation_score: number; }
 
-// Fix: Added missing exported types for Experience Beats
 export enum GameStatus { IDLE, PLAYING, PAUSED }
 export enum CutDirection { UP, DOWN, LEFT, RIGHT, ANY }
 export interface NoteData {
@@ -176,7 +222,6 @@ export const COLORS = {
 };
 export type HandType = 'left' | 'right';
 
-// Fix: Added missing exported branding colors and interfaces
 export const NEXUS_COLORS = {
   primary: '#2563eb',
   success: '#10b981',
@@ -197,26 +242,6 @@ export interface StaffMember {
   role: string;
   status: 'active' | 'inactive';
   shift: string;
-}
-
-export interface CustomerProfile {
-  id: string;
-  name: string;
-  phone: string;
-  segment: string;
-  total_spend: number;
-  order_count: number;
-  visit_count: number;
-  rating: number;
-  avatar_url: string;
-  lastVisit: {
-    venue: string;
-    total: number;
-    items: { qty: number; name: string; price: number; }[];
-  };
-  tags: { label: string; type: string; }[];
-  churnRisk: number;
-  walletBalance: string;
 }
 
 export interface KitchenOrder {

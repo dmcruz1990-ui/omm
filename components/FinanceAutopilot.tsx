@@ -67,7 +67,7 @@ const BENCHMARK_PROFILES = {
   'QSR_FAST_CASUAL': {
     ranges: {
       cogs: { green: [25, 33], yellow: [33, 36], red: 36 },
-      labor: { green: [18, 25], yellow: [25, 28], red: 28 },
+      labor: { green: [18, 25], pointer: 18, yellow: [25, 28], red: 28 },
       rent: { green: [6, 12], yellow: [12, 15], red: 15 },
       marketing: { green: [1, 3], yellow: [3, 5], red: 5 },
       ebitda: { green: [12, 22], yellow: [8, 12], red: 8 },

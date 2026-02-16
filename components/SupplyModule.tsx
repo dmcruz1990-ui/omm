@@ -55,6 +55,7 @@ const SupplyModule: React.FC = () => {
 
   const fetchInventory = async () => {
     setLoading(true);
+    // Mock de inventario inicial
     setItems([
       { id: '1', name: 'Atún Bluefin Premium', theoretical: 20, real: 18.5, unit: 'kg', category: 'Proteínas', pyg_category: 'Costo de alimentos', nature: 'COSTO', costPerUnit: 185000, lastCostIncrease: 0, expirationDate: '', status: 'optimal', pending_invoice: true, received_quantity: 5, cufe: '8b7f...3e21', confidence_score: 0.96, niif_mapping: 'IAS 2 Inventarios' },
       { id: '2', name: 'Salmón Noruego', theoretical: 15, real: 4.2, unit: 'kg', category: 'Proteínas', pyg_category: 'Costo de alimentos', nature: 'COSTO', costPerUnit: 85000, lastCostIncrease: 5, expirationDate: '2025-03-20', status: 'critical', pending_invoice: false, confidence_score: 0.98, niif_mapping: 'IAS 2 Inventarios' },
@@ -68,36 +69,45 @@ const SupplyModule: React.FC = () => {
     e.preventDefault();
     e.stopPropagation();
     
-    let file: File | null = null;
-    if ('files' in e.target && e.target.files) {
-      file = e.target.files[0];
-    } else if ('dataTransfer' in e && e.dataTransfer.files) {
-      file = e.dataTransfer.files[0];
+    let file: File | undefined;
+    
+    // Detectar si viene de un input o de un drag and drop
+    if ('dataTransfer' in e) {
+      file = e.dataTransfer.files?.[0];
+    } else if ('target' in e && e.target instanceof HTMLInputElement) {
+      file = e.target.files?.[0];
     }
 
     if (!file) return;
 
-    // Reset states
+    console.log("📂 Archivo detectado:", file.name);
+
+    // Resetear estados y activar carga visual inmediatamente
     setExtractionError(null);
     setExtractedData(null);
     setIsAnalyzing(true);
     setAnalysisStep(1);
 
-    // Image preview
+    // Generar vista previa
     const reader = new FileReader();
-    reader.onload = (ev) => setUploadPreview(ev.target?.result as string);
+    reader.onload = (ev) => {
+      setUploadPreview(ev.target?.result as string);
+    };
     reader.readAsDataURL(file);
 
-    processInvoiceWithAI(file);
+    // Procesar con la IA
+    await processInvoiceWithAI(file);
   };
 
   const processInvoiceWithAI = async (file: File) => {
+    console.log("🚀 Iniciando procesamiento Gemini...");
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     try {
-      const base64Data = await new Promise<string>((resolve) => {
+      const base64Data = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onloadend = () => resolve((reader.result as string).split(',')[1]);
+        reader.onerror = reject;
         reader.readAsDataURL(file);
       });
 
@@ -165,17 +175,21 @@ const SupplyModule: React.FC = () => {
       });
 
       setAnalysisStep(3); // "Validando cálculos..."
-      const data = JSON.parse(response.text || "{}");
+      const textResponse = response.text;
+      if (!textResponse) throw new Error("La IA no devolvió ninguna respuesta legible.");
       
+      const data = JSON.parse(textResponse);
+      
+      // Delay artificial para estética del escaneo
       setTimeout(() => {
         setExtractedData(data);
         setIsAnalyzing(false);
         setAnalysisStep(0);
-      }, 1000);
+      }, 1500);
 
     } catch (err: any) {
-      console.error("AI Error:", err);
-      setExtractionError(err.message || "Error analizando el documento");
+      console.error("❌ AI Error:", err);
+      setExtractionError(err.message || "Error analizando el documento. Por favor, intente con otra imagen.");
       setIsAnalyzing(false);
     }
   };
@@ -200,11 +214,11 @@ const SupplyModule: React.FC = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 border-b border-white/5 pb-10">
         <div>
           <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none">Intelligence Supply</h2>
-          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3 italic italic">Gateway de Ingesta Fiscal V4</p>
+          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3 italic">Gateway de Ingesta Fiscal V4</p>
         </div>
         <div className="flex bg-[#111114] p-1.5 rounded-2xl border border-white/5 items-center">
            <button onClick={() => setView('inventory')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'inventory' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>INVENTARIO LIVE</button>
-           <button onClick={() => { setView('receiving'); setExtractedData(null); }} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'receiving' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>RECEPCIÓN IA</button>
+           <button onClick={() => { setView('receiving'); setExtractedData(null); setExtractionError(null); }} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${view === 'receiving' ? 'bg-blue-600 text-white' : 'text-gray-500 hover:text-white'}`}>RECEPCIÓN IA</button>
            <div className="w-[1px] h-6 bg-white/10 mx-4"></div>
            <button onClick={() => setView('marketplace')} className="bg-amber-500 hover:bg-amber-400 text-black px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg">
              <Store size={14} fill="black" /> MARKETPLACE
@@ -237,7 +251,7 @@ const SupplyModule: React.FC = () => {
                     </label>
 
                     {extractionError && (
-                      <div className="p-4 bg-red-600/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-500 text-[10px] font-black uppercase tracking-widest">
+                      <div className="p-4 bg-red-600/10 border border-red-500/20 rounded-2xl flex items-center gap-3 text-red-500 text-[10px] font-black uppercase tracking-widest mt-6">
                          <XCircle size={16} /> {extractionError}
                       </div>
                     )}
@@ -257,7 +271,9 @@ const SupplyModule: React.FC = () => {
                         }
                        `}</style>
                     </div>
-                    <img src={uploadPreview || ""} className="w-full h-full object-contain opacity-40 grayscale blur-[1px]" alt="Scanning" />
+                    {uploadPreview && (
+                      <img src={uploadPreview} className="w-full h-full object-contain opacity-40 grayscale blur-[1px]" alt="Scanning" />
+                    )}
                     <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-12 text-center">
                        <div className="w-20 h-20 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-8"></div>
                        <h3 className="text-2xl font-black italic uppercase text-white">Analizando Estructura Fiscal...</h3>
@@ -316,7 +332,7 @@ const SupplyModule: React.FC = () => {
                                    </tr>
                                 </thead>
                                 <tbody className="divide-y divide-white/5">
-                                   {extractedData.items.map((item: any, idx: number) => (
+                                   {extractedData.items?.map((item: any, idx: number) => (
                                       <tr key={idx} className="group hover:bg-white/[0.01] transition-all">
                                          <td className="py-8 text-sm font-black italic text-white uppercase tracking-tight">{item.nombre}</td>
                                          <td className="py-8 text-xs font-mono text-gray-500">{item.cantidad}</td>
@@ -335,15 +351,15 @@ const SupplyModule: React.FC = () => {
                              <div className="mt-12 pt-10 border-t border-white/10 grid grid-cols-1 md:grid-cols-3 gap-10">
                                 <div className="p-8 bg-black/40 rounded-[2.5rem] border border-white/5">
                                    <span className="text-[9px] text-gray-600 font-black uppercase block mb-2 tracking-widest">Base Imponible</span>
-                                   <span className="text-2xl font-black italic text-white tracking-tighter">$ {extractedData.analisis_fiscal.subtotal.toLocaleString()}</span>
+                                   <span className="text-2xl font-black italic text-white tracking-tighter">$ {extractedData.analisis_fiscal?.subtotal.toLocaleString()}</span>
                                 </div>
                                 <div className="p-8 bg-black/40 rounded-[2.5rem] border border-white/5">
                                    <span className="text-[9px] text-gray-600 font-black uppercase block mb-2 tracking-widest">IVA / Impuestos</span>
-                                   <span className="text-2xl font-black italic text-blue-500 tracking-tighter">$ {extractedData.analisis_fiscal.iva?.toLocaleString() || '0'}</span>
+                                   <span className="text-2xl font-black italic text-blue-500 tracking-tighter">$ {extractedData.analisis_fiscal?.iva?.toLocaleString() || '0'}</span>
                                 </div>
                                 <div className="p-8 bg-blue-600 rounded-[2.5rem] shadow-2xl shadow-blue-600/30">
                                    <span className="text-[9px] text-white/60 font-black uppercase block mb-2 tracking-widest">Gran Total Fiscal</span>
-                                   <span className="text-4xl font-black italic text-white tracking-tighter">$ {extractedData.analisis_fiscal.total.toLocaleString()}</span>
+                                   <span className="text-4xl font-black italic text-white tracking-tighter">$ {extractedData.analisis_fiscal?.total.toLocaleString()}</span>
                                 </div>
                              </div>
                           </div>

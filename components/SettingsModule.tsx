@@ -21,7 +21,6 @@ import {
   Star,
   Sparkles,
   Info
-  // Fix: Changed 'lucide-center' to correct package name 'lucide-react'
 } from 'lucide-react';
 import { OperationalSettings, BusinessDNA, AIAgencyLevel } from '../types.ts';
 
@@ -199,21 +198,21 @@ const SettingsModule: React.FC = () => {
                     label="Objetivo de Margen Bruto" 
                     value={config.target_margin} 
                     suffix="%" min={40} max={90}
-                    onChange={(v) => setConfig({...config, target_margin: v})}
+                    onChange={(v: number) => setConfig({...config, target_margin: v})}
                     color="text-green-500"
                  />
                  <ConfigSlider 
                     label="Límite de COGS" 
                     value={config.target_cogs} 
                     suffix="%" min={10} max={50}
-                    onChange={(v) => setConfig({...config, target_cogs: v})}
+                    onChange={(v: number) => setConfig({...config, target_cogs: v})}
                     color="text-orange-500"
                  />
                  <ConfigSlider 
                     label="Límite de Labor Cost" 
                     value={config.target_labor} 
                     suffix="%" min={10} max={40}
-                    onChange={(v) => setConfig({...config, target_labor: v})}
+                    onChange={(v: number) => setConfig({...config, target_labor: v})}
                     color="text-blue-500"
                  />
               </div>

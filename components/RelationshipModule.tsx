@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Users, 
   Search, 
@@ -12,290 +12,315 @@ import {
   Heart,
   ShieldCheck,
   TrendingUp,
-  Clock
+  Clock,
+  Filter,
+  UserPlus,
+  BarChart3,
+  Calendar,
+  Sparkles,
+  UtensilsCrossed,
+  Wine,
+  Phone,
+  Mail,
+  X,
+  ArrowRight
 } from 'lucide-react';
-import { CustomerProfile } from '../types.ts';
+import { CustomerProfile, RFMSegment, NexumMasterTag } from '../types.ts';
+import { supabase } from '../lib/supabase.ts';
 
 const RelationshipModule: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeSegment, setActiveSegment] = useState<RFMSegment | 'ALL'>('ALL');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   
-  // Implementación de los 12 Tags Maestros de NEXUM con data estratégica
+  // Data de ejemplo ampliada para motor RFM
   const [customers] = useState<CustomerProfile[]>([
     { 
       id: 'C1', 
       name: 'Margarita Rosa', 
       phone: '+57 310 444 5566', 
-      segment: 'HÉROE / VIP REAL', 
+      email: 'margarita@seratta.com',
+      segment: 'CHAMPION', 
       total_spend: 24500000, 
       order_count: 42,
       visit_count: 28,
+      last_visit_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 3).toISOString(), // 3 días
       rating: 5,
       avatar_url: 'https://i.pravatar.cc/150?u=margarita',
-      lastVisit: {
-        venue: 'OMM Bogotá - Cava Principal',
-        total: 1250000,
-        items: [
-          { qty: 1, name: 'Botella Dom Pérignon', price: 950000 },
-          { qty: 2, name: 'Kaori Lobster Roll', price: 150000 },
-          { qty: 1, name: 'Nigiri Ohtoro', price: 150000 }
-        ]
-      },
-      tags: [
-        { label: 'VIP REAL', type: 'yellow' },
-        { label: 'HIGH MARGIN LOVER', type: 'blue' },
-        { label: 'BUSCA EXPERIENCIA', type: 'pink' },
-        { label: 'FIDELIZABLE CON RITUAL', type: 'teal' }
+      preferences: [
+        { category: 'Bebidas', item_name: 'Dom Pérignon', weight: 0.9 },
+        { category: 'Sushi', item_name: 'Lobster Roll', weight: 0.8 },
       ],
-      churnRisk: 5, 
-      walletBalance: 'Mesa 01 Prioritaria'
+      tags: [
+        { id: 't1', label: 'VIP REAL', type: 'financial', color: 'bg-yellow-500' },
+        { id: 't2', label: 'CHAMPAGNE LOVER', type: 'behavior', color: 'bg-blue-500' },
+        { id: 't3', label: 'CELEBRACIÓN PRÓXIMA', type: 'alert', color: 'bg-pink-500' }
+      ],
+      rfm_scores: { r: 5, f: 5, m: 5 },
+      ai_hospitality_note: "Margarita prefiere siempre la mesa en rincón para privacidad. No tolera esperas mayores a 10 min por su vino."
     },
     { 
       id: 'C2', 
       name: 'Julián Román', 
       phone: '+57 300 222 1100', 
-      segment: 'RECUPERACIÓN URGENTE', 
+      segment: 'AT_RISK', 
       total_spend: 4200000, 
       order_count: 8,
       visit_count: 12,
+      last_visit_at: new Date(Date.now() - 1000 * 60 * 60 * 24 * 60).toISOString(), // 60 días
       rating: 2,
       avatar_url: 'https://i.pravatar.cc/150?u=julian',
-      lastVisit: {
-        venue: 'OMM Bogotá - Terraza',
-        total: 125000,
-        items: [
-          { qty: 2, name: 'Zen Gin Tonic', price: 90000 },
-          { qty: 1, name: 'Gyozas Tradicionales', price: 35000 }
-        ]
-      },
-      tags: [
-        { label: 'MAL ATENDIDO / ALTO VALOR', type: 'red' },
-        { label: 'EN RIESGO', type: 'red' },
-        { label: 'CAMBIO DE HÁBITOS', type: 'pink' },
-        { label: 'PRICE SENSITIVE', type: 'orange' }
+      preferences: [
+        { category: 'Gin', item_name: 'Tanqueray Ten', weight: 0.7 }
       ],
-      churnRisk: 88, 
-      walletBalance: 'Intervención Gerente'
+      tags: [
+        { id: 't4', label: 'EN RIESGO', type: 'alert', color: 'bg-red-500' },
+        { id: 't5', label: 'PRICE SENSITIVE', type: 'behavior', color: 'bg-orange-500' }
+      ],
+      rfm_scores: { r: 1, f: 3, m: 3 },
+      ai_hospitality_note: "Tuvo un incidente con el tiempo de preparación en su última visita. Ofrecer cortesía inmediata."
     },
     { 
       id: 'C3', 
       name: 'Elena Poniatowska', 
       phone: '+57 315 999 8877', 
-      segment: 'CRECIMIENTO / POTENCIAL', 
-      total_spend: 8900000, 
-      order_count: 24,
-      visit_count: 15,
+      segment: 'NEW', 
+      total_spend: 850000, 
+      order_count: 2,
+      visit_count: 1,
+      last_visit_at: new Date(Date.now() - 1000 * 60 * 60 * 2).toISOString(), // Hoy
       rating: 5,
       avatar_url: 'https://i.pravatar.cc/150?u=elena',
-      lastVisit: {
-        venue: 'OMM Bogotá - Salón Kaiseki',
-        total: 950000,
-        items: [
-          { qty: 1, name: 'Menú Ritual Omakase', price: 450000 },
-          { qty: 2, name: 'Sake Junmai Daijinjo', price: 500000 }
-        ]
-      },
+      preferences: [],
       tags: [
-        { label: 'POTENCIAL VIP', type: 'yellow' },
-        { label: 'NO TOLERA ESPERA', type: 'red' },
-        { label: 'UPSELL FRIENDLY', type: 'blue' },
-        { label: 'LE GUSTA PRIVACIDAD', type: 'teal' }
+        { id: 't6', label: 'NUEVO_LEAD', type: 'behavior', color: 'bg-green-500' }
       ],
-      churnRisk: 12, 
-      walletBalance: 'Regalo Aniversario'
+      rfm_scores: { r: 5, f: 1, m: 2 },
     },
   ]);
 
-  const filteredCustomers = customers.filter(c => 
-    c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    c.tags.some(t => t.label.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredCustomers = useMemo(() => {
+    return customers.filter(c => {
+      const matchesSearch = c.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          c.phone.includes(searchTerm);
+      const matchesSegment = activeSegment === 'ALL' || c.segment === activeSegment;
+      return matchesSearch && matchesSegment;
+    });
+  }, [customers, searchTerm, activeSegment]);
+
+  const segments: { label: string; value: RFMSegment | 'ALL'; count: number }[] = [
+    { label: 'Todos', value: 'ALL', count: customers.length },
+    { label: 'Champions (VIP)', value: 'CHAMPION', count: customers.filter(c => c.segment === 'CHAMPION').length },
+    { label: 'En Riesgo', value: 'AT_RISK', count: customers.filter(c => c.segment === 'AT_RISK').length },
+    { label: 'Nuevos', value: 'NEW', count: customers.filter(c => c.segment === 'NEW').length },
+  ];
+
+  const selectedCustomer = customers.find(c => c.id === selectedCustomerId);
 
   return (
     <div className="space-y-10 animate-in fade-in duration-700 text-left">
-      {/* Header CRM */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-8 border-b border-white/5 pb-8">
+      {/* Header CRM Estratégico */}
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-8 border-b border-white/5 pb-10">
         <div>
-           <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none text-white">NEXUM Relation Brain</h2>
-           <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.4em] mt-3 italic">Guest Intelligence & 12 Tags Maestros de NEXUM</p>
+           <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none text-white">Relationship Brain</h2>
+           <p className="text-[10px] text-gray-500 font-black uppercase tracking-[0.4em] mt-3 italic">Guest Intelligence & RFM Scoring V4</p>
         </div>
-        <div className="relative">
-           <Search size={16} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600" />
-           <input 
-             type="text" 
-             placeholder="BUSCAR POR NOMBRE O TAG MAESTRO..." 
-             className="bg-[#111114] border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-[10px] font-black uppercase tracking-widest focus:border-blue-500 transition-all outline-none w-full md:w-96 text-white"
-             value={searchTerm}
-             onChange={(e) => setSearchTerm(e.target.value)}
-           />
-        </div>
-      </div>
-
-      {/* Grid de Clientes */}
-      <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-10">
-        {filteredCustomers.map(customer => (
-          <CustomerCard key={customer.id} customer={customer} />
-        ))}
-      </div>
-
-      {/* Panel de Oportunidades CRM */}
-      <div className="bg-[#111114] border border-white/5 rounded-[4rem] p-12 mt-16 shadow-2xl overflow-hidden relative">
-         <div className="absolute top-0 right-0 p-12 opacity-5">
-            <Users size={180} className="text-blue-500" />
-         </div>
-         <div className="relative z-10 space-y-10">
-            <div className="flex items-center justify-between">
-               <div>
-                  <h3 className="text-2xl font-black italic uppercase text-white">Consola de Activación IA</h3>
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest mt-2 italic">Detección de "Mal Atendido" y "Potencial VIP" en tiempo real</p>
-               </div>
-               <div className="flex gap-4">
-                  <div className="bg-red-600/10 border border-red-500/20 px-6 py-3 rounded-xl flex items-center gap-3">
-                     <AlertTriangle size={16} className="text-red-500" />
-                     <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">1 CASO CRÍTICO DETECTADO</span>
-                  </div>
-               </div>
-            </div>
-            
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-               <ActivatorCard label="VIP REAL ACTIVO" count={customers.filter(c => c.tags.some(t => t.label === 'VIP REAL')).length} color="text-yellow-500" />
-               <ActivatorCard label="EN RIESGO HOY" count={customers.filter(c => c.churnRisk > 70).length} color="text-red-500" />
-               <ActivatorCard label="UPSELL POTENTIAL" count={customers.filter(c => c.tags.some(t => t.label === 'UPSELL FRIENDLY')).length} color="text-blue-500" />
-               <ActivatorCard label="FIDELIZABLES" count={customers.filter(c => c.tags.some(t => t.label === 'FIDELIZABLE CON RITUAL')).length} color="text-teal-500" />
-            </div>
-         </div>
-      </div>
-    </div>
-  );
-};
-
-const CustomerCard: React.FC<{ customer: CustomerProfile }> = ({ customer }) => {
-  // Cálculo de Ticket de Visita: Total / Visitas
-  const avgTicket = customer.visit_count > 0 ? customer.total_spend / customer.visit_count : 0;
-
-  return (
-    <div className="bg-white rounded-[2.5rem] overflow-hidden shadow-[0_15px_40px_rgba(0,0,0,0.1)] transition-all hover:scale-[1.02] duration-300 flex flex-col group border border-gray-100">
-      
-      {/* Indicador de Alerta Roja Superior para casos críticos */}
-      {customer.tags.some(t => t.label.includes('MAL ATENDIDO') || t.label.includes('RIESGO')) && (
-        <div className="h-2 w-full bg-red-600 animate-pulse"></div>
-      )}
-
-      {/* Header & Avatar */}
-      <div className="p-10 pb-6 flex flex-col items-center text-center relative">
-        <div className="absolute top-8 right-8">
-           <button className="p-2 text-gray-200 hover:text-gray-400 transition-colors">
-              <MoreVertical size={20} />
-           </button>
-        </div>
-        
-        <div className="relative mb-6">
-          <div className={`w-24 h-24 rounded-full border-4 overflow-hidden shadow-xl group-hover:scale-105 transition-transform duration-500 ${customer.churnRisk > 70 ? 'border-red-100' : 'border-gray-50'}`}>
-            <img src={customer.avatar_url} alt={customer.name} className="w-full h-full object-cover" />
-          </div>
-          {customer.churnRisk < 10 && (
-            <div className="absolute bottom-1 right-1 bg-green-500 w-6 h-6 rounded-full border-4 border-white flex items-center justify-center">
-               <Star size={10} className="text-white" fill="currentColor" />
-            </div>
-          )}
-          {customer.churnRisk > 70 && (
-            <div className="absolute bottom-1 right-1 bg-red-600 w-6 h-6 rounded-full border-4 border-white flex items-center justify-center animate-bounce">
-               <AlertTriangle size={10} className="text-white" fill="currentColor" />
-            </div>
-          )}
-        </div>
-
-        <h3 className="text-2xl font-black text-gray-900 leading-none mb-2 uppercase">{customer.name}</h3>
-        <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em]">{customer.segment}</p>
-      </div>
-
-      {/* 12 Tags Maestros Container (Pills Estilo Pastel) */}
-      <div className="px-10 flex flex-wrap justify-center gap-2 mb-10 min-h-[60px]">
-        {customer.tags.map((tag, i) => (
-          <span 
-            key={i} 
-            className={`px-4 py-1.5 rounded-full text-[9px] font-black uppercase tracking-tight shadow-sm border border-black/5 ${getTagStyle(tag.type)}`}
-          >
-            {tag.label}
-          </span>
-        ))}
-      </div>
-
-      {/* Stats Matrix */}
-      <div className="px-10 grid grid-cols-4 gap-2 mb-10 border-t border-gray-50 pt-8">
-        <StatUnit label="TOTAL GASTADO" value={`$${(customer.total_spend / 1000).toFixed(0)}k`} />
-        <StatUnit label="TICKET VISITA" value={`$${(avgTicket / 1000).toFixed(0)}k`} className="text-blue-600" />
-        <StatUnit label="VISITAS" value={customer.visit_count} />
-        <StatUnit label="RATING" value={'★'.repeat(customer.rating)} className="text-yellow-500 text-[10px]" />
-      </div>
-
-      <div className="mx-10 border-t border-gray-100 mb-8"></div>
-
-      {/* Última Visita Detail */}
-      <div className="px-10 pb-10 flex-1 flex flex-col">
-        <div className="flex justify-between items-end mb-6 text-left">
-           <div>
-              <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest leading-none">ÚLTIMA VISITA</span>
-              <p className="text-[13px] font-bold text-gray-600 mt-1">{customer.lastVisit.venue}</p>
+        <div className="flex flex-col sm:flex-row gap-4">
+           <div className="relative">
+              <Search size={16} className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-600" />
+              <input 
+                type="text" 
+                placeholder="BUSCAR CLIENTE..." 
+                className="bg-[#111114] border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-[10px] font-black uppercase tracking-widest focus:border-blue-500 transition-all outline-none w-full sm:w-80 text-white"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
            </div>
-           <span className="text-lg font-black text-gray-500 font-mono italic tracking-tighter">${customer.lastVisit.total.toLocaleString()}</span>
-        </div>
-
-        <div className="space-y-3">
-           {customer.lastVisit.items.map((item, idx) => (
-             <div key={idx} className="flex items-center justify-between text-[11px] border-b border-gray-50 pb-2">
-                <div className="flex gap-4">
-                   <span className="text-gray-300 font-black w-6">({item.qty})</span>
-                   <span className="text-gray-600 font-bold uppercase tracking-tight italic">{item.name}</span>
-                </div>
-                <span className="text-gray-400 font-mono font-bold">${item.price.toLocaleString()}</span>
-             </div>
-           ))}
-        </div>
-
-        {/* Acción Sugerida basada en Churn o Tags */}
-        <div className="mt-auto pt-10">
-           <button className={`w-full transition-all py-4 rounded-2xl flex items-center justify-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] shadow-lg ${
-             customer.churnRisk > 70 
-              ? 'bg-red-600 text-white hover:bg-red-700' 
-              : 'bg-gray-900 text-white hover:bg-blue-600'
-           }`}>
-              {customer.churnRisk > 70 ? <Zap size={14} /> : <Heart size={14} />}
-              {customer.walletBalance} <ChevronRight size={14} />
+           <button className="bg-blue-600 hover:bg-blue-500 text-white px-8 py-4 rounded-2xl font-black italic text-[10px] uppercase tracking-widest flex items-center justify-center gap-3 transition-all shadow-xl shadow-blue-600/20 active:scale-95">
+              <UserPlus size={18} /> NUEVO CLIENTE
            </button>
+        </div>
+      </div>
+
+      {/* Segment Selector & Stats */}
+      <div className="flex flex-wrap gap-4 items-center">
+         <div className="flex bg-[#111114] p-1.5 rounded-2xl border border-white/5">
+            {segments.map(seg => (
+              <button 
+                key={seg.value}
+                onClick={() => setActiveSegment(seg.value)}
+                className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-3 ${activeSegment === seg.value ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-500 hover:text-white'}`}
+              >
+                {seg.label} <span className={`px-2 py-0.5 rounded-full text-[8px] ${activeSegment === seg.value ? 'bg-white/20' : 'bg-black/40'}`}>{seg.count}</span>
+              </button>
+            ))}
+         </div>
+         <div className="ml-auto hidden lg:flex items-center gap-6">
+            <StatsBadge icon={<BarChart3 size={14} />} label="LTV Promedio" value="$1.4M" />
+            <StatsBadge icon={<TrendingUp size={14} />} label="Tasa Retención" value="68%" />
+         </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+        {/* Lista de Clientes */}
+        <div className="lg:col-span-8 space-y-6">
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {filteredCustomers.map(customer => (
+                <div 
+                  key={customer.id} 
+                  onClick={() => setSelectedCustomerId(customer.id)}
+                  className={`bg-[#111114] rounded-[2.5rem] p-8 border-2 transition-all cursor-pointer group relative overflow-hidden ${selectedCustomerId === customer.id ? 'border-blue-500 shadow-[0_0_40px_rgba(37,99,235,0.15)]' : 'border-white/5 hover:border-white/10'}`}
+                >
+                   {customer.segment === 'CHAMPION' && (
+                     <div className="absolute top-0 right-0 p-6 opacity-10 group-hover:scale-110 transition-transform"><Star size={60} fill="gold" className="text-yellow-500" /></div>
+                   )}
+                   
+                   <div className="flex items-center gap-6 relative z-10">
+                      <div className="relative">
+                         <div className="w-20 h-20 rounded-full border-4 border-black overflow-hidden shadow-xl">
+                            <img src={customer.avatar_url} alt={customer.name} className="w-full h-full object-cover" />
+                         </div>
+                         <div className={`absolute -bottom-1 -right-1 w-6 h-6 rounded-full border-4 border-black flex items-center justify-center text-white ${getSegmentColor(customer.segment)}`}>
+                            {customer.segment === 'CHAMPION' ? <Zap size={10} fill="white" /> : <Clock size={10} />}
+                         </div>
+                      </div>
+                      <div className="flex-1">
+                         <h3 className="text-xl font-black italic uppercase leading-none mb-2 text-white group-hover:text-blue-400 transition-colors">{customer.name}</h3>
+                         <div className="flex flex-wrap gap-2">
+                            {customer.tags.slice(0, 2).map(tag => (
+                               <span key={tag.id} className={`${tag.color} text-white text-[7px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg`}>{tag.label}</span>
+                            ))}
+                         </div>
+                      </div>
+                      <div className="text-right">
+                         <span className="text-[10px] font-black italic text-green-500 block">$ {(customer.total_spend / 1000).toFixed(0)}k</span>
+                         <span className="text-[8px] text-gray-600 font-bold uppercase tracking-widest">LTV TOTAL</span>
+                      </div>
+                   </div>
+
+                   <div className="mt-8 pt-6 border-t border-white/5 flex justify-between items-end relative z-10">
+                      <div className="flex gap-6">
+                         <div>
+                            <span className="text-[8px] text-gray-600 font-black uppercase block">Visitas</span>
+                            <span className="text-sm font-black italic text-white">{customer.visit_count}</span>
+                         </div>
+                         <div>
+                            <span className="text-[8px] text-gray-600 font-black uppercase block">Ticket Avg</span>
+                            <span className="text-sm font-black italic text-blue-500">$ {(customer.total_spend / customer.visit_count / 1000).toFixed(0)}k</span>
+                         </div>
+                      </div>
+                      <ChevronRight size={18} className={`transition-all ${selectedCustomerId === customer.id ? 'text-blue-500 translate-x-2' : 'text-gray-800'}`} />
+                   </div>
+                </div>
+              ))}
+           </div>
+        </div>
+
+        {/* Deep Profile View */}
+        <div className="lg:col-span-4">
+           {selectedCustomer ? (
+             <div className="bg-[#111114] border border-white/5 rounded-[3.5rem] p-10 shadow-2xl space-y-10 animate-in slide-in-from-right duration-500 sticky top-12">
+                <div className="flex justify-between items-start">
+                   <div className="p-4 bg-white/5 rounded-2xl text-blue-500"><ShieldCheck size={28} /></div>
+                   <button onClick={() => setSelectedCustomerId(null)} className="text-gray-700 hover:text-white transition-colors"><X size={24} /></button>
+                </div>
+
+                <div className="text-center space-y-4">
+                   <h3 className="text-3xl font-black italic uppercase tracking-tighter text-white leading-none">{selectedCustomer.name}</h3>
+                   <div className="flex items-center justify-center gap-4 text-gray-500">
+                      <div className="flex items-center gap-1"><Phone size={12} /> <span className="text-[10px] font-bold">{selectedCustomer.phone}</span></div>
+                      <div className="w-1 h-1 bg-gray-800 rounded-full"></div>
+                      <div className="flex items-center gap-1"><Mail size={12} /> <span className="text-[10px] font-bold">VIP_SYNC</span></div>
+                   </div>
+                </div>
+
+                {/* RFM HUD */}
+                <div className="grid grid-cols-3 gap-3">
+                   <RFMUnit label="RECENCY" score={selectedCustomer.rfm_scores.r} color="text-blue-500" />
+                   <RFMUnit label="FREQUENCY" score={selectedCustomer.rfm_scores.f} color="text-purple-500" />
+                   <RFMUnit label="MONETARY" score={selectedCustomer.rfm_scores.m} color="text-green-500" />
+                </div>
+
+                {/* AI Insight */}
+                <div className="bg-blue-600/10 border border-blue-500/20 p-6 rounded-3xl relative overflow-hidden group">
+                   <div className="absolute top-0 right-0 p-4 opacity-5 group-hover:opacity-10 transition-opacity"><Sparkles size={40} className="text-blue-400" /></div>
+                   <h4 className="text-[10px] font-black text-blue-400 uppercase tracking-widest mb-3 flex items-center gap-2">
+                     <Target size={14} /> AI_HOSPITALITY_NOTE
+                   </h4>
+                   <p className="text-xs text-gray-300 italic leading-relaxed font-medium">
+                     "{selectedCustomer.ai_hospitality_note || "Sin notas estratégicas registradas. Analizando historial..."}"
+                   </p>
+                </div>
+
+                {/* Preferences Graph */}
+                <div className="space-y-6">
+                   <h4 className="text-[10px] font-black text-gray-600 uppercase tracking-widest italic">Intereses Detectados</h4>
+                   <div className="space-y-4">
+                      {selectedCustomer.preferences.length > 0 ? selectedCustomer.preferences.map((pref, i) => (
+                        <div key={i} className="space-y-2">
+                           <div className="flex justify-between items-center text-[10px] font-black uppercase">
+                              <span className="text-gray-400">{pref.item_name}</span>
+                              <span className="text-white">{Math.round(pref.weight * 100)}%</span>
+                           </div>
+                           <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
+                              <div className="h-full bg-blue-500" style={{ width: `${pref.weight * 100}%` }}></div>
+                           </div>
+                        </div>
+                      )) : (
+                        <div className="py-6 text-center border-2 border-dashed border-white/5 rounded-3xl opacity-20">
+                           <p className="text-[8px] font-black uppercase italic">Analizando consumo histórico...</p>
+                        </div>
+                      )}
+                   </div>
+                </div>
+
+                <div className="pt-6 border-t border-white/5 grid grid-cols-2 gap-4">
+                   <button className="w-full bg-white/5 hover:bg-white/10 text-white py-4 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all">Ver Pedidos</button>
+                   <button className="w-full bg-blue-600 hover:bg-blue-500 text-white py-4 rounded-2xl text-[9px] font-black uppercase tracking-widest transition-all shadow-xl">Agendar VIP</button>
+                </div>
+             </div>
+           ) : (
+             <div className="h-full flex flex-col items-center justify-center opacity-20 border-4 border-dashed border-white/5 rounded-[4rem] p-12 text-center">
+                <Users size={64} className="mb-6" />
+                <h4 className="text-2xl font-black italic uppercase tracking-tighter text-white">Selecciona un Perfil</h4>
+                <p className="text-[10px] font-bold uppercase tracking-[0.4em] mt-4">NEXUM_CRM_HUD_V4</p>
+             </div>
+           )}
         </div>
       </div>
     </div>
   );
 };
 
-const StatUnit = ({ label, value, className = "text-gray-800" }: any) => (
-  <div className="flex flex-col text-center">
-    <span className="text-[8px] text-gray-300 font-black uppercase tracking-tighter mb-1 leading-none">{label}</span>
-    <span className={`text-[14px] font-black italic tracking-tighter leading-none ${className}`}>{value}</span>
-  </div>
-);
-
-const ActivatorCard = ({ label, count, color }: any) => (
-  <div className="bg-black/40 border border-white/5 p-6 rounded-3xl flex items-center justify-between group hover:border-blue-500/30 transition-all cursor-pointer">
+const StatsBadge = ({ icon, label, value }: any) => (
+  <div className="flex items-center gap-3 bg-[#111114] border border-white/5 px-6 py-3 rounded-2xl">
+     <div className="text-blue-500">{icon}</div>
      <div>
-        <span className="text-[9px] text-gray-500 font-black uppercase block tracking-widest">{label}</span>
-        <span className={`text-3xl font-black italic ${color}`}>{count}</span>
-     </div>
-     <div className={`p-3 bg-white/5 rounded-2xl ${color} opacity-40 group-hover:opacity-100 transition-opacity`}>
-        <TrendingUp size={20} />
+        <span className="text-[8px] text-gray-600 font-black uppercase block leading-none">{label}</span>
+        <span className="text-xs font-black italic text-white">{value}</span>
      </div>
   </div>
 );
 
-const getTagStyle = (type: string) => {
-  switch(type) {
-    case 'red': return 'bg-[#fadbd8] text-[#c0392b] border-[#f5b7b1]';
-    case 'yellow': return 'bg-[#f9e79f] text-[#b7950b] border-[#f7dc6f]';
-    case 'blue': return 'bg-[#aed6f1] text-[#2e86c1] border-[#85c1e9]';
-    case 'pink': return 'bg-[#f5b7b1] text-[#b03a2e] border-[#f1948a]';
-    case 'teal': return 'bg-[#a2d9ce] text-[#117864] border-[#76d7c4]';
-    case 'orange': return 'bg-[#fce8d6] text-[#d35400] border-[#f8c471]';
-    default: return 'bg-[#ebedef] text-[#566573] border-[#d5dbdb]';
+const RFMUnit = ({ label, score, color }: any) => (
+  <div className="bg-black/40 border border-white/5 p-4 rounded-2xl text-center flex flex-col gap-2 group hover:border-white/10 transition-all">
+     <span className="text-[8px] text-gray-600 font-black uppercase tracking-tighter">{label}</span>
+     <div className="flex justify-center gap-0.5">
+        {[1,2,3,4,5].map(i => (
+          <div key={i} className={`w-1.5 h-3 rounded-full ${i <= score ? color + ' bg-current' : 'bg-white/5'}`}></div>
+        ))}
+     </div>
+  </div>
+);
+
+const getSegmentColor = (segment: RFMSegment) => {
+  switch(segment) {
+    case 'CHAMPION': return 'bg-yellow-500';
+    case 'LOYAL': return 'bg-blue-600';
+    case 'AT_RISK': return 'bg-red-600';
+    case 'NEW': return 'bg-green-500';
+    case 'ABOUT_TO_SLEEP': return 'bg-purple-600';
+    default: return 'bg-gray-700';
   }
 };
 

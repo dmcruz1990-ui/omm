@@ -24,7 +24,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let mounted = true;
     const initAuth = async () => {
       try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        // Manejo robusto de la sesión inicial
+        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+           console.warn("⚠️ Auth Init Warning:", error.message);
+           if (error.message.includes("refresh_token")) {
+             // Si el token de refresco es inválido, forzamos salida para limpiar localStorage
+             await supabase.auth.signOut();
+           }
+        }
+
         if (mounted) {
           setSession(initialSession);
           setUser(initialSession?.user ?? null);
@@ -32,6 +42,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setLoading(false);
         }
       } catch (err) {
+        console.error("❌ Auth Error:", err);
         if (mounted) setLoading(false);
       }
     };
@@ -39,10 +50,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
       if (!mounted) return;
-      setSession(currentSession);
-      setUser(currentSession?.user ?? null);
-      if (currentSession?.user) fetchAndSyncProfile(currentSession.user);
-      else setProfile(null);
+      
+      // Si el evento indica un error de token, limpiamos
+      if (_event === 'SIGNED_OUT') {
+        setSession(null);
+        setUser(null);
+        setProfile(null);
+      } else {
+        setSession(currentSession);
+        setUser(currentSession?.user ?? null);
+        if (currentSession?.user) fetchAndSyncProfile(currentSession.user);
+        else setProfile(null);
+      }
     });
 
     return () => {
@@ -70,19 +89,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       };
       
       setProfile(virtualProfile);
-      // Solo intentamos sincronizar si hay una sesión activa real
-      await supabase.from('profiles').upsert({ 
-        id: user.id, 
-        email: email, 
-        role: assignedRole, 
-        full_name: virtualProfile.full_name,
-        loyalty_level: 'UMBRAL'
-      }, { onConflict: 'id' });
-    } catch (err) { console.warn("Profile sync error"); }
+      
+      // Solo sincronizamos con Supabase si no hay errores de red
+      try {
+        await supabase.from('profiles').upsert({ 
+          id: user.id, 
+          email: email, 
+          role: assignedRole, 
+          full_name: virtualProfile.full_name,
+          loyalty_level: 'UMBRAL'
+        }, { onConflict: 'id' });
+      } catch (e) {
+        console.warn("Profile table sync skipped (offline or table missing)");
+      }
+    } catch (err) { console.warn("Profile logic error"); }
   };
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    setSession(null);
+    setUser(null);
     setProfile(null);
   };
 

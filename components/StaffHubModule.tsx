@@ -20,14 +20,18 @@ import {
   Calculator,
   AlertTriangle,
   ArrowRight,
-  UserCheck
+  UserCheck,
+  Play,
+  Flame,
+  Activity,
+  Fingerprint
 } from 'lucide-react';
 import { MicroCredential, OperationalSettings } from '../types.ts';
 import { supabase } from '../lib/supabase.ts';
 import { GoogleGenAI } from "@google/genai";
 
 const StaffHubModule: React.FC = () => {
-  const [activeView, setActiveView] = useState<'performance' | 'credentials' | 'matching' | 'planner' | 'maestros'>('performance');
+  const [activeView, setActiveView] = useState<'performance' | 'credentials' | 'matching' | 'planner' | 'maestros' | 'simulation'>('performance');
   const [loading, setLoading] = useState(true);
   const [config, setConfig] = useState<OperationalSettings | null>(null);
 
@@ -36,6 +40,9 @@ const StaffHubModule: React.FC = () => {
   const [currentWaiters, setCurrentWaiters] = useState(8);
   const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+  // Estados para Simulación
+  const [simStatus, setSimStatus] = useState<'idle' | 'scanning' | 'dispatched' | 'error'>('idle');
 
   // Catálogo de micro-credenciales
   const availableCredentials: MicroCredential[] = [
@@ -54,6 +61,36 @@ const StaffHubModule: React.FC = () => {
     const { data } = await supabase.from('operational_settings').select('*').maybeSingle();
     setConfig(data);
     setTimeout(() => setLoading(false), 800);
+  };
+
+  const simulateSalmonOrder = async () => {
+    setSimStatus('scanning');
+    
+    // Simular latencia de verificación biométrica
+    await new Promise(r => setTimeout(r, 1500));
+
+    try {
+      // 1. Obtener una mesa libre o cualquiera para la prueba
+      const { data: tables } = await supabase.from('tables').select('id').limit(1).maybeSingle();
+      const tableId = tables?.id || 1;
+
+      // 2. Insertar tarea de preparación de Salmón en el flujo de cocina
+      const { error } = await supabase.from('ritual_tasks').insert([{
+        table_id: tableId,
+        step_label: 'PREP: Salmón Noruego (Test)',
+        status: 'active',
+        responsible: 'COCINA',
+        started_at: new Date().toISOString()
+      }]);
+
+      if (error) throw error;
+      setSimStatus('dispatched');
+      setTimeout(() => setSimStatus('idle'), 3000);
+    } catch (err) {
+      console.error(err);
+      setSimStatus('error');
+      setTimeout(() => setSimStatus('idle'), 3000);
+    }
   };
 
   const generateStaffRecommendation = async () => {
@@ -97,14 +134,75 @@ const StaffHubModule: React.FC = () => {
               <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3 italic">Verified Skills & AI Workforce Planner</p>
            </div>
         </div>
-        <div className="flex bg-[#111114] p-2 rounded-2xl border border-white/5 overflow-x-auto">
+        <div className="flex bg-[#111114] p-2 rounded-2xl border border-white/5 overflow-x-auto custom-scrollbar">
            <TabBtn active={activeView === 'performance'} onClick={() => setActiveView('performance')} icon={<TrendingUp size={14} />} label="RANKING LIVE" />
            <TabBtn active={activeView === 'credentials'} onClick={() => setActiveView('credentials')} icon={<Award size={14} />} label="CREDENTIALS" />
-           <TabBtn active={activeView === 'matching'} onClick={() => setActiveView('matching')} icon={<Brain size={14} />} label="SJT QUIZ" />
+           <TabBtn active={activeView === 'simulation'} onClick={() => setActiveView('simulation')} icon={<Zap size={14} />} label="SIM HUB" />
            <TabBtn active={activeView === 'planner'} onClick={() => setActiveView('planner')} icon={<Calculator size={14} />} label="AI PLANNER" />
            <TabBtn active={activeView === 'maestros'} onClick={() => setActiveView('maestros')} icon={<UserCheck size={14} />} label="MAESTROS" />
         </div>
       </div>
+
+      {activeView === 'simulation' && (
+        <div className="space-y-10 animate-in slide-in-from-bottom-4 duration-700">
+           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
+              <div className="bg-[#111114] border border-white/5 p-12 rounded-[4rem] relative overflow-hidden shadow-2xl flex flex-col justify-center text-center space-y-8">
+                 <div className="absolute top-0 right-0 p-8 opacity-5"><Zap size={200} className="text-yellow-500" /></div>
+                 
+                 {simStatus === 'idle' ? (
+                    <>
+                       <div className="w-24 h-24 bg-yellow-500/20 rounded-[2.5rem] flex items-center justify-center text-yellow-500 mx-auto shadow-xl">
+                          <Activity size={48} />
+                       </div>
+                       <div>
+                          <h3 className="text-3xl font-black italic uppercase tracking-tighter">Staff Load Simulator</h3>
+                          <p className="text-gray-500 text-sm mt-4 italic max-w-sm mx-auto">Dispara una orden de prueba para estresar el flujo de cocina y validar el tiempo de respuesta del staff.</p>
+                       </div>
+                       <button 
+                        onClick={simulateSalmonOrder}
+                        className="bg-white text-black px-12 py-5 rounded-[2rem] font-black text-xs uppercase tracking-widest hover:bg-yellow-500 transition-all shadow-2xl mx-auto flex items-center gap-3 active:scale-95"
+                       >
+                          <Play size={18} fill="black" /> SIMULAR PEDIDO: SALMÓN NORUEGO
+                       </button>
+                    </>
+                 ) : simStatus === 'scanning' ? (
+                    <div className="space-y-8 py-10 animate-pulse">
+                       <Fingerprint size={80} className="text-blue-500 mx-auto" />
+                       <h4 className="text-2xl font-black italic uppercase text-blue-500">AUTORIZANDO POR BIOMETRÍA...</h4>
+                    </div>
+                 ) : simStatus === 'dispatched' ? (
+                    <div className="space-y-8 py-10 animate-in zoom-in">
+                       <div className="w-24 h-24 bg-green-500 rounded-full flex items-center justify-center text-white mx-auto shadow-[0_0_50px_rgba(34,197,94,0.4)]">
+                          <CheckCircle2 size={48} />
+                       </div>
+                       <h4 className="text-3xl font-black italic uppercase text-green-500">COMANDA DISPARADA A KDS</h4>
+                       <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">Sincronización Nexum Flow: 100% OK</p>
+                    </div>
+                 ) : (
+                    <div className="space-y-8 py-10">
+                       <AlertTriangle size={80} className="text-red-500 mx-auto" />
+                       <h4 className="text-2xl font-black italic uppercase text-red-500">ERROR DE COMUNICACIÓN</h4>
+                    </div>
+                 )}
+              </div>
+
+              <div className="bg-gradient-to-br from-blue-600/10 to-transparent border border-blue-500/20 p-12 rounded-[4rem] shadow-2xl space-y-10">
+                 <h3 className="text-xs font-black text-white uppercase tracking-widest flex items-center gap-3">
+                    <Activity size={18} className="text-blue-500" /> MONITOR DE CARGA VIRTUAL
+                 </h3>
+                 <div className="space-y-8">
+                    <SkillItem label="Carga en Cocina BOH" pct={simStatus === 'dispatched' ? 95 : 42} />
+                    <SkillItem label="Estrés de Meseros FOH" pct={simStatus === 'dispatched' ? 68 : 12} />
+                    <SkillItem label="Disponibilidad Manager" pct={85} />
+                 </div>
+                 <div className="pt-8 border-t border-white/5 flex items-center gap-4">
+                    <div className="w-3 h-3 rounded-full bg-green-500 animate-pulse"></div>
+                    <span className="text-[10px] font-black text-gray-500 uppercase italic">SISTEMA LISTO PARA PRUEBAS</span>
+                 </div>
+              </div>
+           </div>
+        </div>
+      )}
 
       {activeView === 'maestros' && (
         <div className="space-y-10 animate-in slide-in-from-bottom-4 duration-700">
@@ -122,6 +220,8 @@ const StaffHubModule: React.FC = () => {
               <StaffBioCard name="Andrés Gaviria" role="Sommelier N2" img="https://i.pravatar.cc/300?u=1" tags={['Vino', 'Zen']} bio="Experto en maridaje con 5 años en el grupo. Lidera el ritual de cava en OMM Bogotá." />
               <StaffBioCard name="Sofia Ruiz" role="Captain" img="https://i.pravatar.cc/300?u=2" tags={['Ritual', 'CX']} bio="Especialista en atención VIP y resolución de conflictos. Embajadora de 'Customer Care'." />
               <StaffBioCard name="Carlos Silva" role="Itamae" img="https://i.pravatar.cc/300?u=3" tags={['Sushi', 'Knife']} bio="Maestro de la robata y el corte tradicional japonés. Certificado en BOH Nivel 5." />
+              <StaffBioCard name="Valentina Gomez" role="Hostess Elite" img="https://i.pravatar.cc/300?u=4" tags={['Welcome', 'VIP']} bio="Especialista en flujos de entrada y gestión de zonas premium. Nivel 5 en hospitalidad." />
+              <StaffBioCard name="Mateo Lopez" role="Head Barista" img="https://i.pravatar.cc/300?u=5" tags={['Coffee', 'Ritual']} bio="Maestro del café de especialidad y rituales de cierre. Certificado en Specialty Coffee." />
            </div>
         </div>
       )}
@@ -129,7 +229,6 @@ const StaffHubModule: React.FC = () => {
       {activeView === 'planner' && (
         <div className="space-y-10 animate-in slide-in-from-bottom-4 duration-700">
            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              {/* Input de Control de Nómina */}
               <div className="lg:col-span-1 bg-[#111114] border border-white/5 p-10 rounded-[3rem] shadow-2xl space-y-10">
                  <h3 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2 italic">
                     <Calculator size={16} className="text-blue-500" /> Parámetros de Turno
@@ -169,7 +268,6 @@ const StaffHubModule: React.FC = () => {
                  </button>
               </div>
 
-              {/* Resultado del Análisis IA */}
               <div className="lg:col-span-2 space-y-8">
                  {!aiAnalysis ? (
                     <div className="h-full flex flex-col items-center justify-center border-4 border-dashed border-white/5 rounded-[4rem] opacity-20 text-center p-20">
@@ -305,7 +403,10 @@ const StaffHubModule: React.FC = () => {
                  <div className="space-y-10">
                     <RankingRow rank={1} name="JUAN PÉREZ" score={98} role="Sommelier" />
                     <RankingRow rank={2} name="MARÍA LÓPEZ" score={94} role="Captain" />
-                    <RankingRow rank={3} name="ANDRÉS G." score={92} role="Runner" />
+                    <RankingRow rank={3} name="VALENTINA GOMEZ" score={93} role="Hostess" />
+                    <RankingRow rank={4} name="ANDRÉS G." score={92} role="Runner" />
+                    <RankingRow rank={5} name="MATEO LOPEZ" score={89} role="Barista" />
+                    <RankingRow rank={6} name="CAMILA TORRES" score={88} role="Commis Chef" />
                  </div>
               </div>
            </div>
@@ -345,7 +446,7 @@ const SkillItem = ({ label, pct }: any) => (
         <span className="text-white">{pct}%</span>
      </div>
      <div className="h-1 w-full bg-white/5 rounded-full overflow-hidden">
-        <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${pct}%` }}></div>
+        <div className={`h-full bg-blue-500 transition-all duration-1000`} style={{ width: `${pct}%` }}></div>
      </div>
   </div>
 );
