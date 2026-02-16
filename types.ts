@@ -20,7 +20,8 @@ export enum ModuleType {
   KITCHEN_KDS = 'KITCHEN_KDS',
   BRAND_STUDIO = 'BRAND_STUDIO',
   CONFIG = 'CONFIG',
-  PAYROLL = 'PAYROLL'
+  PAYROLL = 'PAYROLL',
+  GENESIS = 'GENESIS'
 }
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo';

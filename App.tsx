@@ -9,7 +9,8 @@ import {
   LayoutPanelLeft,
   Lock,
   Clock as ClockIcon,
-  Calendar
+  Calendar,
+  Rocket
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -34,6 +35,7 @@ const BrandStudio = lazy(() => import('./components/BrandStudio.tsx'));
 const SettingsModule = lazy(() => import('./components/SettingsModule.tsx'));
 const PayrollModule = lazy(() => import('./components/PayrollModule.tsx'));
 const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'));
+const GenesisModule = lazy(() => import('./components/GenesisModule.tsx'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -54,8 +56,7 @@ const Dashboard: React.FC = () => {
   
   const [currentTime, setCurrentTime] = useState(new Date());
 
-  // Verificar si el rol tiene permiso para ver la vista de cliente (Oh Yeah)
-  const canSeeB2C = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
 
   useEffect(() => {
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
@@ -65,8 +66,7 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     const checkView = () => {
       const isOhYeah = window.location.hash.includes('/oh-yeah');
-      // Solo permitimos la vista si el rol está autorizado
-      if (isOhYeah && !canSeeB2C) {
+      if (isOhYeah && !isAdmin) {
         window.location.hash = '';
         setIsClientView(false);
       } else {
@@ -76,14 +76,11 @@ const Dashboard: React.FC = () => {
     checkView();
     window.addEventListener('hashchange', checkView);
     return () => window.removeEventListener('hashchange', checkView);
-  }, [canSeeB2C]);
+  }, [isAdmin]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const { isCameraReady, lastResultsRef, error: cameraError, retry: retryCamera } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
 
-  /**
-   * CORE RBAC ENGINE
-   */
   const getVisibleModules = (role: UserRole = 'mesero'): ModuleType[] => {
     switch (role) {
       case 'admin':
@@ -183,8 +180,16 @@ const Dashboard: React.FC = () => {
     </div>
   );
 
-  // Redirección directa a módulos según rol si no tiene permiso OhYeah
-  if (isClientView && canSeeB2C) return <Suspense fallback={<ModuleLoader />}><OhYeahPage /></Suspense>;
+  if (isClientView && isAdmin) return <Suspense fallback={<ModuleLoader />}><OhYeahPage /></Suspense>;
+
+  // Vista inmersiva para Genesis
+  if (activeModule === ModuleType.GENESIS) {
+    return (
+      <Suspense fallback={<ModuleLoader />}>
+        <GenesisModule onComplete={() => setActiveModule(ModuleType.DISCOVER)} />
+      </Suspense>
+    );
+  }
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0c] text-white font-sans text-left">
@@ -206,9 +211,8 @@ const Dashboard: React.FC = () => {
            </div>
         </div>
 
-        {/* EXECUTIVE COCKPIT GATE */}
-        {(profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo') && (
-          <div className="mb-10 px-2">
+        {isAdmin && (
+          <div className="mb-8 px-2 space-y-3">
              <button 
               onClick={() => setIsCockpitOpen(true)}
               className="w-full bg-gradient-to-br from-blue-600 to-blue-800 p-5 rounded-[1.8rem] flex items-center gap-4 shadow-xl border border-white/10 hover:scale-[1.02] transition-all"
@@ -219,10 +223,20 @@ const Dashboard: React.FC = () => {
                    <span className="text-[7px] font-bold uppercase text-blue-200">Business Intelligence</span>
                 </div>
              </button>
+
+             <button 
+              onClick={() => setActiveModule(ModuleType.GENESIS)}
+              className="w-full bg-white/[0.03] hover:bg-blue-600/10 p-5 rounded-[1.8rem] flex items-center gap-4 border border-white/5 transition-all group"
+             >
+                <div className="w-10 h-10 bg-blue-600/20 rounded-xl flex items-center justify-center text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition-all"><Rocket size={20} /></div>
+                <div className="text-left">
+                   <span className="text-[10px] font-black uppercase tracking-widest text-white block italic">NEXUM GÉNESIS</span>
+                   <span className="text-[7px] font-bold uppercase text-gray-500">Ritual de Activación</span>
+                </div>
+             </button>
           </div>
         )}
 
-        {/* PACKAGES */}
         <div className="space-y-10 mb-10">
           {[
             { id: 'marketing', label: 'PAQUETE MARKETING', icon: <Sparkles size={14} className="text-blue-500" />, modules: [{ type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'WEB & PLANES', icon: <Compass size={18} /> }, { type: ModuleType.RESERVE, label: 'RESERVE', sub: 'MAPA & AGENDA', icon: <CalendarDays size={18} /> }, { type: ModuleType.RELATIONSHIP, label: 'CLIENTES', sub: 'CRM & VIP', icon: <Users size={18} /> }] },
@@ -249,7 +263,7 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div className="mt-auto pt-8 border-t border-white/5">
-           {canSeeB2C && (
+           {isAdmin && (
              <button onClick={() => window.location.hash = '/oh-yeah'} className="w-full bg-blue-600/5 border border-blue-500/20 rounded-[1.8rem] p-5 flex flex-col gap-2 mb-6 group hover:bg-blue-600 transition-all shadow-lg">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-lg"><Sparkles size={16} /></div>
