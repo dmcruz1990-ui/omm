@@ -76,31 +76,13 @@ export type PYGCategory =
 
 export type AccountingNature = 'COSTO' | 'GASTO';
 
-/* Employment OS: Credentials & Reputation */
-export interface MicroCredential {
-  id: string;
-  name: string;
-  level: 1 | 2 | 3 | 4 | 5;
-  category: 'FOH' | 'BOH' | 'BAR' | 'MGMT';
-  issued_at?: string;
-  evidence_url?: string;
-  status: 'earned' | 'in_progress' | 'not_started';
-}
-
-export interface SalaryBenchmark {
-  city: string;
-  role: string;
-  avg_base: number;
-  currency: string;
-}
-
 export interface SupplyItem {
   id: string;
   name: string;
   theoretical: number;
   real: number;
   costPerUnit: number;
-  status: 'optimal' | 'low' | 'critical';
+  status: 'optimal' | 'low' | 'critical' | 'variance_alert';
   unit: string;
   category: string;
   pyg_category?: PYGCategory;
@@ -110,8 +92,11 @@ export interface SupplyItem {
   pending_invoice: boolean;
   received_quantity?: number;
   cufe?: string;
-  confidence_score?: number; // 0 to 1
-  niif_mapping?: string; // e.g., "IAS 2", "IAS 16"
+  confidence_score?: number; 
+  niif_mapping?: string; 
+  last_recon_at?: string;
+  variance_pct?: number;
+  audit_requested?: boolean;
 }
 
 export interface Table {
@@ -195,6 +180,23 @@ export interface OperationalSettings {
   notifications_enabled: boolean;
 }
 
+// Added missing MicroCredential interface
+export interface MicroCredential {
+  id: string;
+  name: string;
+  level: number;
+  category: string;
+  status: 'earned' | 'in_progress' | 'not_started';
+}
+
+// Added missing SalaryBenchmark interface
+export interface SalaryBenchmark {
+  city: string;
+  role: string;
+  avg_base: number;
+  currency: string;
+}
+
 export interface PayrollEmployee { id: string; name: string; role: string; base_salary: number; efficiency: number; credentials?: MicroCredential[]; reputation_score: number; }
 
 export enum GameStatus { IDLE, PLAYING, PAUSED }
@@ -217,8 +219,8 @@ export interface HandPositions {
   rightVelocity: THREE.Vector3;
 }
 export const COLORS = {
-  left: '#ef4444', // Red
-  right: '#2563eb' // Blue
+  left: '#ef4444', 
+  right: '#2563eb' 
 };
 export type HandType = 'left' | 'right';
 
