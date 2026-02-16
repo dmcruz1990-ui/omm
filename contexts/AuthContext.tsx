@@ -10,6 +10,7 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  signInMock: (role: UserRole) => void; // Nueva función para pruebas
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -24,13 +25,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     let mounted = true;
     const initAuth = async () => {
       try {
-        // Manejo robusto de la sesión inicial
         const { data: { session: initialSession }, error } = await supabase.auth.getSession();
         
         if (error) {
            console.warn("⚠️ Auth Init Warning:", error.message);
            if (error.message.includes("refresh_token")) {
-             // Si el token de refresco es inválido, forzamos salida para limpiar localStorage
              await supabase.auth.signOut();
            }
         }
@@ -51,7 +50,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
       if (!mounted) return;
       
-      // Si el evento indica un error de token, limpiamos
       if (_event === 'SIGNED_OUT') {
         setSession(null);
         setUser(null);
@@ -74,11 +72,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       let assignedRole: UserRole = 'mesero';
       const email = user.email?.toLowerCase() || '';
+      
+      // LÓGICA DE ASIGNACIÓN DE ROLES RBAC POR CORREO
       if (email.startsWith('admin')) assignedRole = 'admin';
       else if (email.startsWith('dev') || email.startsWith('desarrollo')) assignedRole = 'desarrollo';
       else if (email.startsWith('gerente') || email.startsWith('gerencia')) assignedRole = 'gerencia';
-      else if (email.startsWith('chef') || email.startsWith('cocina')) assignedRole = 'chef';
-      else if (email.startsWith('guest')) assignedRole = 'guest';
+      else if (email.startsWith('cocina') || email.startsWith('chef')) assignedRole = 'cocina';
+      else if (email.startsWith('mesero')) assignedRole = 'mesero';
       
       const virtualProfile: Profile = { 
         id: user.id, 
@@ -90,7 +90,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       setProfile(virtualProfile);
       
-      // Solo sincronizamos con Supabase si no hay errores de red
       try {
         await supabase.from('profiles').upsert({ 
           id: user.id, 
@@ -100,9 +99,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           loyalty_level: 'UMBRAL'
         }, { onConflict: 'id' });
       } catch (e) {
-        console.warn("Profile table sync skipped (offline or table missing)");
+        console.warn("Profile table sync skipped");
       }
     } catch (err) { console.warn("Profile logic error"); }
+  };
+
+  // Función de acceso rápido para pruebas (Bypass Auth)
+  const signInMock = (role: UserRole) => {
+    const mockEmail = `${role}@test.omm`;
+    const mockUser = {
+      id: `mock-${role}-${Date.now()}`,
+      email: mockEmail,
+      app_metadata: {},
+      user_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString()
+    } as User;
+
+    const mockProfile: Profile = {
+      id: mockUser.id,
+      email: mockEmail,
+      role: role,
+      full_name: `TEST_${role.toUpperCase()}`,
+      loyalty_level: 'UMBRAL'
+    };
+
+    setSession({ user: mockUser, access_token: 'mock-token', refresh_token: 'mock-refresh' } as Session);
+    setUser(mockUser);
+    setProfile(mockProfile);
+    setLoading(false);
   };
 
   const signOut = async () => {
@@ -113,7 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, profile, loading, signOut }}>
+    <AuthContext.Provider value={{ session, user, profile, loading, signOut, signInMock }}>
       {children}
     </AuthContext.Provider>
   );

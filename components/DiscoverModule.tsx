@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { 
   Sparkles, 
@@ -15,12 +16,16 @@ import {
   Headphones,
   Bot
 } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext.tsx';
 import AIConcierge from './AIConcierge.tsx';
 import EventsModule from './EventsModule.tsx';
 
 const DiscoverModule: React.FC = () => {
+    const { profile } = useAuth();
     const [showConcierge, setShowConcierge] = useState(false);
     const [view, setView] = useState<'home' | 'events'>('home');
+
+    const canSeeB2C = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
 
     if (showConcierge) {
         return (
@@ -43,29 +48,32 @@ const DiscoverModule: React.FC = () => {
             
             {/* Cabecera con Acceso a Concierge IA */}
             <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-               <div className="lg:col-span-2 bg-blue-600 p-10 rounded-[3.5rem] shadow-2xl shadow-blue-600/20 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8 group">
-                  <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:scale-110 transition-transform">
-                     <Smartphone size={150} fill="white" />
-                  </div>
-                  <div className="relative z-10 space-y-4 max-w-xl">
-                     <div className="inline-flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full text-[9px] font-black uppercase text-white italic">
-                        <Zap size={12} fill="white" /> Herramienta de Venta Live
-                     </div>
-                     <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none text-white">Impulsa el Ticket con Oh Yeah!</h2>
-                     <p className="text-sm text-blue-100 italic leading-relaxed">
-                       Muestra el catálogo B2C a tus clientes para descubrir planes curados por IA y fidelizar su círculo social.
-                     </p>
-                  </div>
-                  <button 
-                    onClick={() => window.location.hash = '/oh-yeah'}
-                    className="bg-white text-blue-600 px-10 py-5 rounded-[2rem] font-black italic text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all hover:scale-105 shadow-xl"
-                  >
-                     <Share2 size={18} /> VER VISTA CLIENTE
-                  </button>
-               </div>
+               {/* Solo mostrar promo B2C si el usuario tiene permisos */}
+               {canSeeB2C && (
+                 <div className="lg:col-span-2 bg-blue-600 p-10 rounded-[3.5rem] shadow-2xl shadow-blue-600/20 relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-8 group">
+                    <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:scale-110 transition-transform">
+                       <Smartphone size={150} fill="white" />
+                    </div>
+                    <div className="relative z-10 space-y-4 max-w-xl">
+                       <div className="inline-flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full text-[9px] font-black uppercase text-white italic">
+                          <Zap size={12} fill="white" /> Herramienta de Venta Live
+                       </div>
+                       <h2 className="text-4xl font-black italic uppercase tracking-tighter leading-none text-white">Impulsa el Ticket con Oh Yeah!</h2>
+                       <p className="text-sm text-blue-100 italic leading-relaxed">
+                         Muestra el catálogo B2C a tus clientes para descubrir planes curados por IA y fidelizar su círculo social.
+                       </p>
+                    </div>
+                    <button 
+                      onClick={() => window.location.hash = '/oh-yeah'}
+                      className="bg-white text-blue-600 px-10 py-5 rounded-[2rem] font-black italic text-[11px] uppercase tracking-widest flex items-center gap-3 transition-all hover:scale-105 shadow-xl"
+                    >
+                       <Share2 size={18} /> VER VISTA CLIENTE
+                    </button>
+                 </div>
+               )}
 
-               {/* NUEVA TARJETA DE CONCIERGE IA */}
-               <div className="bg-[#111114] border border-blue-500/30 p-10 rounded-[3.5rem] shadow-2xl flex flex-col justify-between group hover:border-blue-500 transition-all relative overflow-hidden">
+               {/* NUEVA TARJETA DE CONCIERGE IA - Visible para todos en Discover */}
+               <div className={`${canSeeB2C ? 'lg:col-span-1' : 'lg:col-span-3'} bg-[#111114] border border-blue-500/30 p-10 rounded-[3.5rem] shadow-2xl flex flex-col justify-between group hover:border-blue-500 transition-all relative overflow-hidden`}>
                   <div className="absolute -top-10 -right-10 opacity-5 group-hover:opacity-10 transition-opacity">
                      <Bot size={150} className="text-blue-500" />
                   </div>

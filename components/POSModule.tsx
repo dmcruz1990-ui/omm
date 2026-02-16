@@ -5,7 +5,9 @@ import {
   Zap, ChevronRight, 
   Flame, Coffee, Receipt, Martini, 
   BellRing, CheckCircle, UserCheck, GlassWater as Bottle,
-  LayoutGrid, UtensilsCrossed, Wine, Sparkles, Clock, PlayCircle, CheckCircle2, Timer
+  LayoutGrid, UtensilsCrossed, Wine, Sparkles, Clock, PlayCircle, CheckCircle2, Timer,
+  Eye,
+  Info
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../contexts/AuthContext.tsx';
@@ -36,8 +38,17 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable }) => {
   const [selectedTableId, setSelectedTableId] = useState<number | null>(null);
   const [ritualTasks, setRitualTasks] = useState<RitualTask[]>([]);
   const [isRitualLoading, setIsRitualLoading] = useState(false);
+  const [showQuickMenu, setShowQuickMenu] = useState(false);
 
-  const selectedTable = tables.find(t => t.id === selectedTableId);
+  // Aseguramos que siempre haya al menos 20 mesas para la visualización de la planta
+  const displayTables = tables.length > 0 ? tables : Array.from({ length: 20 }, (_, i) => ({
+    id: i + 1,
+    status: 'free',
+    seats: 4,
+    zone: 'Principal'
+  }));
+
+  const selectedTable = displayTables.find(t => t.id === selectedTableId);
 
   useEffect(() => {
     if (selectedTableId) {
@@ -90,28 +101,38 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable }) => {
     await onUpdateTable(tableId, { status: 'occupied', welcome_timer_start: null });
   };
 
-  if (!selectedTableId) {
+  // VISTA DE PLANTA (Ajustada a 20 mesas)
+  if (!selectedTableId && !showQuickMenu) {
     return (
       <div className="space-y-12 animate-in fade-in duration-700 text-left">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-[#111114] p-8 rounded-[3rem] border border-white/5 shadow-2xl">
           <div>
             <h2 className="text-4xl font-black italic tracking-tighter uppercase">Service OS | Planta</h2>
-            <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-2 italic">Selecciona una mesa para iniciar servicio</p>
+            <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-2 italic">Control de Servicio OMM (20 Mesas Online)</p>
+          </div>
+          <div className="flex gap-4">
+             <button 
+              onClick={() => setShowQuickMenu(true)}
+              className="bg-blue-600/10 hover:bg-blue-600 border border-blue-500/30 text-blue-500 hover:text-white px-8 py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest flex items-center gap-3 transition-all"
+             >
+                <Eye size={18} /> VISTA RÁPIDA MENÚ
+             </button>
           </div>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
-          {tables.map(table => (
+
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-10 gap-4">
+          {displayTables.map(table => (
             <button
               key={table.id}
               onClick={() => setSelectedTableId(table.id)}
-              className={`group p-8 rounded-[3rem] border-2 transition-all flex flex-col items-center gap-4 relative overflow-hidden ${
-                table.status === 'calling' ? 'bg-red-600/10 border-red-500 animate-pulse' : 
-                table.status === 'occupied' ? 'bg-blue-600/10 border-blue-500/50' : 'bg-[#111114] border-white/5 hover:border-white/20'
+              className={`group aspect-square p-4 rounded-[2.5rem] border-2 transition-all flex flex-col items-center justify-center gap-2 relative overflow-hidden ${
+                table.status === 'calling' ? 'bg-red-600 border-white animate-pulse' : 
+                table.status === 'occupied' ? 'bg-blue-600/20 border-blue-500/50' : 'bg-[#111114] border-white/5 hover:border-white/20'
               }`}
             >
-              <span className="text-[10px] font-black uppercase tracking-widest opacity-40">MESA</span>
-              <span className="text-5xl font-black italic">{table.id}</span>
-              <span className={`text-[8px] font-black uppercase tracking-widest px-3 py-1 rounded-full ${table.status === 'free' ? 'bg-green-500/10 text-green-500' : 'bg-blue-500/10 text-blue-500'}`}>{table.status}</span>
+              <span className={`text-[8px] font-black uppercase tracking-widest ${table.status === 'calling' ? 'text-white' : 'opacity-30'}`}>MESA</span>
+              <span className={`text-4xl font-black italic ${table.status === 'calling' ? 'text-white' : ''}`}>{table.id}</span>
+              <div className={`w-1.5 h-1.5 rounded-full mt-2 ${table.status === 'free' ? 'bg-green-500' : 'bg-blue-500'}`}></div>
             </button>
           ))}
         </div>
@@ -119,14 +140,43 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable }) => {
     );
   }
 
+  // VISTA DE MENÚ RÁPIDO (SIN SELECCIÓN DE MESA)
+  if (showQuickMenu) {
+    return (
+      <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-700">
+        <div className="flex items-center justify-between">
+           <button onClick={() => setShowQuickMenu(false)} className="bg-white/5 hover:bg-white/10 px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest flex items-center gap-2 transition-all">
+             <LayoutGrid size={14} /> VOLVER A PLANTA
+           </button>
+           <div className="text-right">
+              <h3 className="text-2xl font-black italic uppercase tracking-tight">Catálogo de Servicio</h3>
+              <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest">Modo Consulta de Disponibilidad</p>
+           </div>
+        </div>
+        <div className="bg-[#111114] p-10 rounded-[4rem] border border-white/5 shadow-2xl">
+           <div className="flex items-center gap-4 mb-10 bg-blue-600/5 p-6 rounded-3xl border border-blue-500/20">
+              <Info className="text-blue-500" />
+              <p className="text-xs text-gray-400 italic">Este modo es solo para consulta. Para añadir items, selecciona una mesa en la planta.</p>
+           </div>
+           <MenuGrid selectedTableId={0} />
+        </div>
+      </div>
+    );
+  }
+
   const activeStepTask = ritualTasks.find(t => t.status === 'active');
 
+  // VISTA OPERATIVA (CON MESA SELECCIONADA)
   return (
     <div className="flex flex-col lg:flex-row gap-8 h-full animate-in fade-in duration-700 overflow-hidden text-left">
       <div className="w-full lg:w-[280px] flex flex-col gap-4 shrink-0 overflow-y-auto custom-scrollbar pr-2">
         <button onClick={() => setSelectedTableId(null)} className="bg-white/5 hover:bg-white/10 p-5 rounded-[1.8rem] text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2 mb-4 border border-white/5 shadow-lg"><LayoutGrid size={14} /> VOLVER A PLANTA</button>
-        {tables.map(table => (
-          <button key={table.id} onClick={() => setSelectedTableId(table.id)} className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${selectedTableId === table.id ? 'bg-blue-600 border-blue-500 text-white shadow-xl' : 'bg-[#111114] border-white/5 text-gray-500 hover:border-white/20'}`}>
+        {displayTables.map(table => (
+          <button 
+            key={table.id} 
+            onClick={() => setSelectedTableId(table.id)} 
+            className={`p-4 rounded-2xl border transition-all flex items-center justify-between ${selectedTableId === table.id ? 'bg-blue-600 border-blue-400 text-white shadow-xl scale-105' : 'bg-[#111114] border-white/5 text-gray-500 hover:border-white/20'}`}
+          >
             <span className="font-black italic">MESA {table.id}</span>
             <div className={`w-2 h-2 rounded-full ${table.status === 'calling' ? 'bg-red-500 animate-pulse' : table.status === 'occupied' ? 'bg-blue-400' : 'bg-green-500'}`}></div>
           </button>
@@ -134,15 +184,15 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable }) => {
       </div>
 
       <div className="flex-1 flex flex-col gap-8 overflow-hidden">
-        {/* RITUAL STEPPER HORIZONTAL ACTUALIZADO */}
+        {/* RITUAL STEPPER */}
         <div className="bg-[#111114] rounded-[3rem] border border-white/10 p-10 shadow-2xl relative overflow-hidden group">
            <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-600/20 via-blue-500 to-blue-600/20 opacity-30"></div>
            <div className="flex items-center justify-between mb-10">
               <div className="flex items-center gap-4">
                  <div className="p-3 bg-blue-600 rounded-2xl text-white shadow-lg shadow-blue-600/20"><Sparkles size={24} /></div>
                  <div>
-                   <h3 className="text-xl font-black italic uppercase tracking-tighter text-white">Línea de Tiempo del Ritual OMM</h3>
-                   <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest italic mt-1">Sincronización Operacional en Tiempo Real</p>
+                   <h3 className="text-xl font-black italic uppercase tracking-tighter text-white">Mesa {selectedTableId} | Ritual</h3>
+                   <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest italic mt-1">Sincronización Operacional</p>
                  </div>
               </div>
               <div className="flex gap-3">
@@ -193,7 +243,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable }) => {
            </div>
         </div>
 
-        <div className="flex-1 flex flex-col gap-6 overflow-hidden bg-[#0d0d0f] rounded-[3rem] border border-white/5 p-8 shadow-2xl">
+        <div className="flex-1 flex flex-col gap-6 overflow-hidden bg-[#0d0d0f] rounded-[3.5rem] border border-white/5 p-8 shadow-2xl">
           <div className="flex items-center justify-between mb-4">
              <div className="flex items-center gap-4">
                 <div className="w-12 h-12 bg-blue-600/20 rounded-2xl flex items-center justify-center text-blue-500"><UtensilsCrossed size={24} /></div>
@@ -207,14 +257,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable }) => {
              )}
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
-             <MenuGrid selectedTableId={selectedTableId} />
+             <MenuGrid selectedTableId={selectedTableId!} />
           </div>
         </div>
       </div>
 
       <div className="w-full xl:w-[380px] flex flex-col shrink-0">
         <OrderTicket 
-          table={selectedTable!} 
+          table={selectedTable as any} 
           onUpdateTable={onUpdateTable} 
           onPaymentSuccess={() => setSelectedTableId(null)}
         />

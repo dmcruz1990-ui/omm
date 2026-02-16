@@ -7,7 +7,9 @@ import {
   ChevronDown, Layers, CameraOff, AlertTriangle, RefreshCw, Music,
   Briefcase,
   LayoutPanelLeft,
-  Lock
+  Lock,
+  Clock as ClockIcon,
+  Calendar
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -49,30 +51,75 @@ const Dashboard: React.FC = () => {
   const [activeStation, setActiveStation] = useState(1);
   const [isClientView, setIsClientView] = useState(false);
   const [isCockpitOpen, setIsCockpitOpen] = useState(false);
+  
+  const [currentTime, setCurrentTime] = useState(new Date());
+
+  // Verificar si el rol tiene permiso para ver la vista de cliente (Oh Yeah)
+  const canSeeB2C = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
+
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     const checkView = () => {
-      setIsClientView(window.location.hash.includes('/oh-yeah'));
+      const isOhYeah = window.location.hash.includes('/oh-yeah');
+      // Solo permitimos la vista si el rol está autorizado
+      if (isOhYeah && !canSeeB2C) {
+        window.location.hash = '';
+        setIsClientView(false);
+      } else {
+        setIsClientView(isOhYeah);
+      }
     };
     checkView();
     window.addEventListener('hashchange', checkView);
     return () => window.removeEventListener('hashchange', checkView);
-  }, []);
+  }, [canSeeB2C]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const { isCameraReady, lastResultsRef, error: cameraError, retry: retryCamera } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
 
+  /**
+   * CORE RBAC ENGINE
+   */
   const getVisibleModules = (role: UserRole = 'mesero'): ModuleType[] => {
     switch (role) {
       case 'admin':
       case 'desarrollo':
         return Object.values(ModuleType);
       case 'gerencia':
-        return Object.values(ModuleType).filter(m => m !== ModuleType.COMMAND && m !== ModuleType.CONFIG);
+        return [
+          ModuleType.DISCOVER, 
+          ModuleType.RESERVE, 
+          ModuleType.RELATIONSHIP, 
+          ModuleType.SERVICE_OS,
+          ModuleType.KITCHEN_KDS,
+          ModuleType.CARE,
+          ModuleType.FINANCE_HUB,
+          ModuleType.COMMAND,
+          ModuleType.STAFF_HUB,
+          ModuleType.BRAND_STUDIO,
+          ModuleType.PAYROLL,
+          ModuleType.SUPPLY,
+          ModuleType.FLOW
+        ];
       case 'mesero':
-        return [ModuleType.DISCOVER, ModuleType.SERVICE_OS, ModuleType.RESERVE, ModuleType.RELATIONSHIP, ModuleType.STAFF_HUB];
-      case 'chef':
-        return [ModuleType.KITCHEN_KDS, ModuleType.FLOW, ModuleType.SUPPLY];
+        return [
+          ModuleType.DISCOVER, 
+          ModuleType.SERVICE_OS, 
+          ModuleType.RESERVE, 
+          ModuleType.RELATIONSHIP, 
+          ModuleType.STAFF_HUB
+        ];
+      case 'cocina':
+        return [
+          ModuleType.KITCHEN_KDS, 
+          ModuleType.FLOW, 
+          ModuleType.SUPPLY,
+          ModuleType.STAFF_HUB
+        ];
       default:
         return [ModuleType.DISCOVER];
     }
@@ -81,7 +128,7 @@ const Dashboard: React.FC = () => {
   const visibleModulesList = getVisibleModules(profile?.role);
 
   useEffect(() => {
-    if (!visibleModulesList.includes(activeModule)) {
+    if (visibleModulesList.length > 0 && !visibleModulesList.includes(activeModule)) {
       setActiveModule(visibleModulesList[0]);
     }
   }, [profile?.role]);
@@ -90,21 +137,11 @@ const Dashboard: React.FC = () => {
     try {
       const { data: tablesData } = await supabase
         .from('tables')
-        .select(`*, reservations(id, status, customer_id, customers(name))`)
+        .select(`*`)
         .order('id', { ascending: true });
 
-      const processedTables = tablesData?.map(table => {
-        const activeRes = table.reservations?.find((r: any) => 
-          r.status === 'confirmed' || r.status === 'reserved' || r.status === 'seated'
-        );
-        return {
-          ...table,
-          active_customer: activeRes?.customers?.name || null,
-          active_reservation_id: activeRes?.id || null
-        };
-      });
-
-      setTables(processedTables || []);
+      setTables(tablesData || []);
+      
       const { data: tasksData } = await supabase.from('ritual_tasks').select('*').eq('status', 'active');
       setRitualTasks(tasksData || []);
     } catch (err) {
@@ -127,6 +164,18 @@ const Dashboard: React.FC = () => {
     await supabase.from('tables').update(updates).eq('id', tableId);
   };
 
+  const formatDateTime = (date: Date) => {
+    const timeStr = date.toLocaleTimeString('en-US', {
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
+    });
+    const dateStr = date.toLocaleDateString('es-ES', {
+      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+    });
+    return { time: timeStr.toUpperCase(), date: dateStr.toUpperCase() };
+  };
+
+  const { time, date } = formatDateTime(currentTime);
+
   if (dashboardLoading) return (
     <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
        <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
@@ -134,62 +183,8 @@ const Dashboard: React.FC = () => {
     </div>
   );
 
-  if (isClientView) {
-    return (
-      <div className="h-screen w-full overflow-hidden">
-        <Suspense fallback={<ModuleLoader />}>
-          <OhYeahPage />
-        </Suspense>
-      </div>
-    );
-  }
-
-  const modulePackages = [
-    {
-      id: 'marketing',
-      label: 'PAQUETE MARKETING',
-      icon: <Sparkles size={14} className="text-blue-500" />,
-      modules: [
-        { type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'WEB & PLANES', icon: <Compass size={18} /> },
-        { type: ModuleType.RESERVE, label: 'RESERVE', sub: 'MAPA & AGENDA', icon: <CalendarDays size={18} /> },
-        { type: ModuleType.RELATIONSHIP, label: 'CLIENTES', sub: 'CRM & VIP', icon: <Users size={18} /> },
-      ]
-    },
-    {
-      id: 'operaciones',
-      label: 'PAQUETE OPERACIONES',
-      icon: <Layers size={14} className="text-orange-500" />,
-      modules: [
-        { type: ModuleType.SERVICE_OS, label: 'SERVICE OS', sub: 'POS & RITUALES', icon: <ShoppingCart size={18} /> },
-        { type: ModuleType.KITCHEN_KDS, label: 'KITCHEN KDS', sub: 'ESTACIÓN COCINA', icon: <MonitorPlay size={18} /> },
-        { type: ModuleType.FLOW, label: 'FLOW', sub: 'ESTACIONES', icon: <ChefHat size={18} /> },
-      ]
-    },
-    {
-      id: 'control',
-      label: 'CONTROL & SUMINISTROS',
-      icon: <ShieldCheck size={14} className="text-green-500" />,
-      modules: [
-        { type: ModuleType.SUPPLY, label: 'SUPPLY', sub: 'STOCK IA', icon: <Truck size={18} /> },
-        { type: ModuleType.CARE, label: 'CARE', sub: 'SOPORTE CX', icon: <HeartPulse size={18} /> },
-        { type: ModuleType.STAFF_HUB, label: 'STAFF HUB', sub: 'RANKING & COACH', icon: <Contact size={18} /> },
-      ]
-    },
-    {
-      id: 'estrategia',
-      label: 'ESTRATEGIA & ADMIN',
-      icon: <Globe size={14} className="text-purple-500" />,
-      modules: [
-        { type: ModuleType.COMMAND, label: 'COMMAND', sub: 'ESTRATEGIA IA', icon: <Globe size={18} /> },
-        { type: ModuleType.FINANCE_HUB, label: 'FINANCE HUB', sub: 'DINERO & KPI', icon: <DollarSign size={18} /> },
-        { type: ModuleType.PAYROLL, label: 'NÓMINA DIAN', sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
-        { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'DISEÑO CMS', icon: <Palette size={18} /> },
-        { type: ModuleType.CONFIG, label: 'CEREBRO', sub: 'ADN & IA', icon: <Settings size={18} /> }
-      ]
-    }
-  ];
-
-  const canAccessCockpit = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
+  // Redirección directa a módulos según rol si no tiene permiso OhYeah
+  if (isClientView && canSeeB2C) return <Suspense fallback={<ModuleLoader />}><OhYeahPage /></Suspense>;
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0c] text-white font-sans text-left">
@@ -204,54 +199,47 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* EXECUTIVE COCKPIT TRIGGER (GATE) */}
-        {canAccessCockpit && (
-          <div className="mb-10 px-2 animate-in fade-in slide-in-from-left duration-700">
+        <div className="mb-6 px-4">
+           <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 flex items-center justify-between">
+              <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Rol:</span>
+              <span className="text-[9px] font-black text-blue-500 uppercase italic">{profile?.role}</span>
+           </div>
+        </div>
+
+        {/* EXECUTIVE COCKPIT GATE */}
+        {(profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo') && (
+          <div className="mb-10 px-2">
              <button 
               onClick={() => setIsCockpitOpen(true)}
-              className="w-full bg-gradient-to-br from-blue-600 to-blue-800 p-5 rounded-[1.8rem] flex items-center gap-4 shadow-xl shadow-blue-600/10 group hover:scale-[1.02] transition-all border border-white/10"
+              className="w-full bg-gradient-to-br from-blue-600 to-blue-800 p-5 rounded-[1.8rem] flex items-center gap-4 shadow-xl border border-white/10 hover:scale-[1.02] transition-all"
              >
-                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white">
-                   <LayoutPanelLeft size={20} />
-                </div>
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white"><LayoutPanelLeft size={20} /></div>
                 <div className="text-left">
                    <span className="text-[10px] font-black uppercase tracking-widest text-white block">Executive Cockpit</span>
-                   <span className="text-[7px] font-bold uppercase text-blue-200 tracking-wider">Business Intelligence</span>
-                </div>
-                <div className="ml-auto">
-                   <Sparkles size={14} className="text-blue-300 animate-pulse" />
+                   <span className="text-[7px] font-bold uppercase text-blue-200">Business Intelligence</span>
                 </div>
              </button>
           </div>
         )}
 
+        {/* PACKAGES */}
         <div className="space-y-10 mb-10">
-          {modulePackages.map((pkg) => {
+          {[
+            { id: 'marketing', label: 'PAQUETE MARKETING', icon: <Sparkles size={14} className="text-blue-500" />, modules: [{ type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'WEB & PLANES', icon: <Compass size={18} /> }, { type: ModuleType.RESERVE, label: 'RESERVE', sub: 'MAPA & AGENDA', icon: <CalendarDays size={18} /> }, { type: ModuleType.RELATIONSHIP, label: 'CLIENTES', sub: 'CRM & VIP', icon: <Users size={18} /> }] },
+            { id: 'operaciones', label: 'PAQUETE OPERACIONES', icon: <Layers size={14} className="text-orange-500" />, modules: [{ type: ModuleType.SERVICE_OS, label: 'SERVICE OS', sub: 'POS & RITUALES', icon: <ShoppingCart size={18} /> }, { type: ModuleType.KITCHEN_KDS, label: 'KITCHEN KDS', sub: 'ESTACIÓN COCINA', icon: <MonitorPlay size={18} /> }, { type: ModuleType.FLOW, label: 'FLOW', sub: 'ESTACIONES', icon: <ChefHat size={18} /> }] },
+            { id: 'control', label: 'CONTROL & SUMINISTROS', icon: <ShieldCheck size={14} className="text-green-500" />, modules: [{ type: ModuleType.SUPPLY, label: 'SUPPLY', sub: 'STOCK IA', icon: <Truck size={18} /> }, { type: ModuleType.CARE, label: 'CARE', sub: 'SOPORTE CX', icon: <HeartPulse size={18} /> }, { type: ModuleType.STAFF_HUB, label: 'STAFF HUB', sub: 'RANKING & COACH', icon: <Contact size={18} /> }] },
+            { id: 'estrategia', label: 'ESTRATEGIA & ADMIN', icon: <Globe size={14} className="text-purple-500" />, modules: [{ type: ModuleType.COMMAND, label: 'COMMAND', sub: 'ESTRATEGIA IA', icon: <Globe size={18} /> }, { type: ModuleType.FINANCE_HUB, label: 'FINANCE HUB', sub: 'DINERO & KPI', icon: <DollarSign size={18} /> }, { type: ModuleType.PAYROLL, label: 'NÓMINA DIAN', sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> }, { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'DISEÑO CMS', icon: <Palette size={18} /> }, { type: ModuleType.CONFIG, label: 'CEREBRO', sub: 'ADN & IA', icon: <Settings size={18} /> }] }
+          ].map((pkg) => {
             const visiblePkgModules = pkg.modules.filter(m => visibleModulesList.includes(m.type));
             if (visiblePkgModules.length === 0) return null;
-
             return (
               <div key={pkg.id} className="space-y-4">
-                <div className="flex items-center gap-3 px-4 py-1">
-                   <div className="opacity-60">{pkg.icon}</div>
-                   <span className="text-[9px] font-black text-gray-500 uppercase tracking-[0.3em] italic">{pkg.label}</span>
-                </div>
+                <div className="flex items-center gap-3 px-4 py-1"><div className="opacity-60">{pkg.icon}</div><span className="text-[9px] font-black text-gray-500 uppercase tracking-[0.3em] italic">{pkg.label}</span></div>
                 <div className="flex flex-col gap-1">
                   {visiblePkgModules.map((m) => (
-                    <button
-                      key={m.type}
-                      onClick={() => setActiveModule(m.type)}
-                      className={`flex items-center gap-4 w-full px-4 py-3.5 rounded-2xl transition-all duration-300 group ${
-                        activeModule === m.type 
-                          ? 'bg-white/5 border border-white/10 text-white shadow-xl' 
-                          : 'text-gray-500 hover:bg-white/5 hover:text-white border border-transparent'
-                      }`}
-                    >
-                      <div className={`${activeModule === m.type ? 'text-blue-500' : 'text-gray-600 group-hover:text-blue-400'} transition-colors`}>{m.icon}</div>
-                      <div className="text-left">
-                        <p className={`text-[10px] font-black tracking-widest leading-none mb-1 ${activeModule === m.type ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>{m.label}</p>
-                        <p className={`text-[7px] font-bold uppercase tracking-wider ${activeModule === m.type ? 'text-blue-400' : 'text-gray-600'}`}>{m.sub}</p>
-                      </div>
+                    <button key={m.type} onClick={() => setActiveModule(m.type)} className={`flex items-center gap-4 w-full px-4 py-3.5 rounded-2xl transition-all duration-300 group ${activeModule === m.type ? 'bg-white/5 border border-white/10 text-white shadow-xl' : 'text-gray-500 hover:bg-white/5 hover:text-white border border-transparent'}`}>
+                      <div className={`${activeModule === m.type ? 'text-blue-500' : 'text-gray-600 group-hover:text-blue-400'}`}>{m.icon}</div>
+                      <div className="text-left"><p className={`text-[10px] font-black tracking-widest leading-none mb-1 ${activeModule === m.type ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>{m.label}</p><p className={`text-[7px] font-bold uppercase tracking-wider ${activeModule === m.type ? 'text-blue-400' : 'text-gray-600'}`}>{m.sub}</p></div>
                     </button>
                   ))}
                 </div>
@@ -261,50 +249,25 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div className="mt-auto pt-8 border-t border-white/5">
-           <button 
-            onClick={() => window.location.hash = '/oh-yeah'} 
-            className="w-full bg-blue-600/5 border border-blue-500/20 rounded-[1.8rem] p-5 flex flex-col gap-2 mb-6 group hover:bg-blue-600 transition-all shadow-lg shadow-blue-900/10"
-           >
-              <div className="flex items-center gap-3">
-                 <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white group-hover:bg-white group-hover:text-blue-600 shadow-lg">
-                    <Sparkles size={16} />
-                 </div>
-                 <span className="text-[10px] font-black uppercase tracking-widest text-white">Ir a OH YEAH!</span>
-              </div>
-              <p className="text-[8px] text-gray-500 group-hover:text-blue-100 font-bold uppercase tracking-widest text-left">VISTA CLIENTE B2C</p>
-           </button>
-          <button onClick={signOut} className="flex items-center gap-3 px-6 text-gray-600 hover:text-red-500 transition-all text-[10px] font-black uppercase tracking-widest w-full">
-            <LogOut size={16} /> CERRAR SESIÓN
-          </button>
+           {canSeeB2C && (
+             <button onClick={() => window.location.hash = '/oh-yeah'} className="w-full bg-blue-600/5 border border-blue-500/20 rounded-[1.8rem] p-5 flex flex-col gap-2 mb-6 group hover:bg-blue-600 transition-all shadow-lg">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-lg"><Sparkles size={16} /></div>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-white">VISTA B2C</span>
+                </div>
+             </button>
+           )}
+           <button onClick={signOut} className="flex items-center gap-3 px-6 text-gray-600 hover:text-red-500 transition-all text-[10px] font-black uppercase tracking-widest w-full"><LogOut size={16} /> CERRAR SESIÓN</button>
         </div>
       </nav>
 
       <main className="flex-1 flex flex-col overflow-hidden relative">
         <header className="h-20 border-b border-white/5 flex items-center justify-between px-12 z-40 bg-[#0a0a0c]/80 backdrop-blur-xl shrink-0">
-          <div className="flex items-center gap-4">
-             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-             <h2 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] italic">OMM_OPERATIONAL_NODE_{profile?.role?.toUpperCase()}</h2>
+          <div className="flex items-center gap-10">
+             <div className="flex items-center gap-4"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div><h2 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] italic leading-none">NODE_{profile?.role?.toUpperCase()}</h2></div>
+             <div className="hidden xl:flex items-center gap-8 border-l border-white/10 pl-10"><div className="flex items-center gap-3"><ClockIcon size={14} className="text-blue-500" /><span className="text-lg font-black italic tracking-tighter text-white font-mono">{time}</span></div></div>
           </div>
-          
-          {cameraError && (
-             <div className="flex items-center gap-4 bg-red-600/10 border border-red-500/30 px-4 py-2 rounded-xl animate-pulse">
-                <AlertTriangle size={14} className="text-red-500" />
-                <span className="text-[9px] font-black text-red-500 uppercase italic">{cameraError}</span>
-                <button onClick={retryCamera} className="bg-red-600 text-white p-1 rounded hover:bg-red-500 transition-all">
-                   <RefreshCw size={12} />
-                </button>
-             </div>
-          )}
-
-          <div className="flex items-center gap-6">
-             <div className="text-right">
-                <span className="text-[8px] text-gray-600 font-black uppercase block leading-none">Usuario Activo</span>
-                <span className="text-[10px] font-bold italic text-white">{profile?.full_name}</span>
-             </div>
-             <div className="w-10 h-10 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center">
-                <Users size={18} className="text-blue-500" />
-             </div>
-          </div>
+          <div className="flex items-center gap-6"><div className="text-right"><span className="text-[8px] text-gray-600 font-black uppercase block leading-none">Personal Activo</span><span className="text-[10px] font-bold italic text-white">{profile?.full_name}</span></div><div className="w-10 h-10 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-500"><Users size={18} /></div></div>
         </header>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-12 relative z-10 text-left">
@@ -312,18 +275,7 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.DISCOVER && <DiscoverModule />}
             {activeModule === ModuleType.SERVICE_OS && (
               <div className="space-y-12">
-                <SurveillanceModule 
-                  videoRef={videoRef} 
-                  isCameraReady={isCameraReady} 
-                  resultsRef={lastResultsRef} 
-                  tables={tables} 
-                  onCheckService={async(id) => handleUpdateTable(id, {status: 'occupied'})} 
-                  activeStation={activeStation} 
-                  setActiveStation={setActiveStation} 
-                  onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} 
-                  cameraError={cameraError}
-                  onRetryCamera={retryCamera}
-                />
+                <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onCheckService={async(id) => handleUpdateTable(id, {status: 'occupied'})} activeStation={activeStation} setActiveStation={setActiveStation} onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} cameraError={cameraError} onRetryCamera={retryCamera} />
                 <ServiceOSModule tables={tables} onUpdateTable={handleUpdateTable} tasks={ritualTasks} />
               </div>
             )}
@@ -334,7 +286,7 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.COMMAND && <CommandModule onSimulateEvent={() => {}} />}
             {activeModule === ModuleType.RELATIONSHIP && <RelationshipModule />}
             {activeModule === ModuleType.STAFF_HUB && <StaffHubModule />}
-            {activeModule === ModuleType.FLOW && <FlowModule orders={[]} tasks={ritualTasks} onCompleteTask={async(id) => {}} />}
+            {activeModule === ModuleType.FLOW && <FlowModule />}
             {activeModule === ModuleType.SUPPLY && <SupplyModule />}
             {activeModule === ModuleType.CARE && <CareModule />}
             {activeModule === ModuleType.BRAND_STUDIO && <BrandStudio />}
@@ -343,12 +295,7 @@ const Dashboard: React.FC = () => {
         </div>
       </main>
 
-      <Suspense fallback={null}>
-        {canAccessCockpit && (
-          <ExecutiveCockpit isOpen={isCockpitOpen} onClose={() => setIsCockpitOpen(false)} />
-        )}
-      </Suspense>
-
+      <Suspense fallback={null}>{(profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo') && <ExecutiveCockpit isOpen={isCockpitOpen} onClose={() => setIsCockpitOpen(false)} />}</Suspense>
       <video ref={videoRef} className="absolute opacity-0 pointer-events-none" playsInline muted autoPlay />
     </div>
   );
@@ -356,33 +303,10 @@ const Dashboard: React.FC = () => {
 
 const Main: React.FC = () => {
   const { session, loading } = useAuth();
-  const [internalLoading, setInternalLoading] = useState(true);
-
-  // Asegurar que el estado de carga termine incluso si hay errores de red
-  useEffect(() => {
-    if (!loading) {
-      setInternalLoading(false);
-    } else {
-      const timeout = setTimeout(() => setInternalLoading(false), 5000);
-      return () => clearTimeout(timeout);
-    }
-  }, [loading]);
-
-  if (internalLoading) return (
-    <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
-       <Loader2 className="text-blue-600 animate-spin mb-4" size={48} />
-       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic">Iniciando Núcleo NEXUM...</p>
-    </div>
-  );
-  
+  if (loading) return <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center"><Loader2 className="text-blue-600 animate-spin mb-4" size={48} /><p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic">Iniciando NEXUM Core...</p></div>;
   if (!session) return <Login />;
   return <Dashboard />;
 };
 
-const App: React.FC = () => (
-  <AuthProvider>
-    <Main />
-  </AuthProvider>
-);
-
+const App: React.FC = () => (<AuthProvider><Main /></AuthProvider>);
 export default App;

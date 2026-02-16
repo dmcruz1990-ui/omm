@@ -23,7 +23,7 @@ export enum ModuleType {
   PAYROLL = 'PAYROLL'
 }
 
-export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'chef' | 'guest' | 'desarrollo';
+export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo';
 
 /* CRM & Relationship Brain Types */
 export type RFMSegment = 'CHAMPION' | 'LOYAL' | 'AT_RISK' | 'ABOUT_TO_SLEEP' | 'NEW' | 'POTENTIAL';
