@@ -26,13 +26,32 @@ export enum ModuleType {
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo';
 
-/* CRM & Relationship Brain Types */
+/* Genesis Internal Scoring Types */
+export interface GenesisSignalScore {
+  size: number;           // 0-25
+  revenue: number;        // 0-25
+  complexity: number;     // 0-20
+  dataMaturity: number;   // 0-15
+  strategicValue: number; // 0-15
+  total: number;          // 0-100
+  classification: 'MICRO' | 'MEDIUM' | 'INTERESTING' | 'PREMIUM';
+  insights: string[];
+}
+
+export interface GenesisInternalReport {
+  restaurantName: string;
+  location: string;
+  score: GenesisSignalScore;
+  leadIntent: number; // 0-100 based on behavior
+  timestamp: string;
+}
+
 export type RFMSegment = 'CHAMPION' | 'LOYAL' | 'AT_RISK' | 'ABOUT_TO_SLEEP' | 'NEW' | 'POTENTIAL';
 
 export interface CustomerPreference {
   category: string;
   item_name: string;
-  weight: number; // 0-1 based on order frequency
+  weight: number; 
 }
 
 export interface NexumMasterTag {
@@ -60,7 +79,6 @@ export interface CustomerProfile {
   rfm_scores: { r: number; f: number; m: number };
 }
 
-/* 12 PYG Categories from Executive Report */
 export type PYGCategory = 
   | 'Costo de alimentos' 
   | 'Costo de bebidas' 
@@ -181,7 +199,6 @@ export interface OperationalSettings {
   notifications_enabled: boolean;
 }
 
-// Added missing MicroCredential interface
 export interface MicroCredential {
   id: string;
   name: string;
@@ -190,7 +207,6 @@ export interface MicroCredential {
   status: 'earned' | 'in_progress' | 'not_started';
 }
 
-// Added missing SalaryBenchmark interface
 export interface SalaryBenchmark {
   city: string;
   role: string;
