@@ -27,13 +27,15 @@ import {
   PieChart,
   BarChart3,
   FileSearch,
-  CheckSquare
+  CheckSquare,
+  X
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { GenesisSignalScore, GenesisInternalReport } from '../types.ts';
 
 interface GenesisModuleProps {
   onComplete: () => void;
+  onExit?: () => void;
 }
 
 const CHAPTERS = [
@@ -45,7 +47,7 @@ const CHAPTERS = [
   { id: 6, title: 'NEXO_TRIPULACIÓN', icon: <Users size={20} />, desc: 'Configura tu staff y roles.' },
 ];
 
-const GenesisModule: React.FC<GenesisModuleProps> = ({ onComplete }) => {
+const GenesisModule: React.FC<GenesisModuleProps> = ({ onComplete, onExit }) => {
   const [currentStep, setCurrentStep] = useState(0); 
   const [isNovaThinking, setIsNovaThinking] = useState(false);
   const [novaStatus, setNovaStatus] = useState<'normal' | 'error' | 'success'>('normal');
@@ -305,11 +307,13 @@ const GenesisModule: React.FC<GenesisModuleProps> = ({ onComplete }) => {
         </div>
 
         <div className="flex items-center gap-8">
-           {currentStep > 0 && termsAccepted && (
-             <div className="bg-green-600/10 border border-green-500/30 px-5 py-2 rounded-xl flex items-center gap-3 animate-in fade-in zoom-in duration-500">
-                <CheckCircle size={14} className="text-green-500" />
-                <span className="text-[9px] font-black text-green-500 uppercase tracking-widest">Políticas Aceptadas</span>
-             </div>
+           {onExit && (
+             <button 
+              onClick={onExit}
+              className="bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white px-6 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest flex items-center gap-2 transition-all border border-white/5 shadow-lg backdrop-blur-md"
+             >
+                <ArrowLeft size={14} /> SALIR AL CORE
+             </button>
            )}
            <div className="w-48 h-1.5 bg-white/5 rounded-full overflow-hidden border border-white/10">
               <div className="h-full bg-blue-600 transition-all duration-1000" style={{ width: `${(currentStep/7)*100}%` }}></div>

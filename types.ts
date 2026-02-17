@@ -21,7 +21,8 @@ export enum ModuleType {
   BRAND_STUDIO = 'BRAND_STUDIO',
   CONFIG = 'CONFIG',
   PAYROLL = 'PAYROLL',
-  GENESIS = 'GENESIS'
+  GENESIS = 'GENESIS',
+  MOBILE_MGR = 'MOBILE_MGR'
 }
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo';

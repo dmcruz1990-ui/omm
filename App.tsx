@@ -10,7 +10,8 @@ import {
   Lock,
   Clock as ClockIcon,
   Calendar,
-  Rocket
+  Rocket,
+  Smartphone
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -19,6 +20,7 @@ import { useMediaPipe } from './hooks/useMediaPipe.ts';
 import Login from './components/Login.tsx';
 
 const OhYeahPage = lazy(() => import('./components/OhYeahPage.tsx'));
+const MobileManagerApp = lazy(() => import('./components/MobileManagerApp.tsx'));
 const DiscoverModule = lazy(() => import('./components/DiscoverModule.tsx'));
 const ReserveModule = lazy(() => import('./components/ReserveModule.tsx'));
 const RelationshipModule = lazy(() => import('./components/RelationshipModule.tsx'));
@@ -40,13 +42,13 @@ const GenesisModule = lazy(() => import('./components/GenesisModule.tsx'));
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
     <Loader2 className="text-blue-600 animate-spin mb-4" size={32} />
-    <p className="text-[10px] font-black uppercase tracking-widest italic">Sincronizando Core...</p>
+    <p className="text-[10px] font-black uppercase tracking-widest italic text-white">Sincronizando Core...</p>
   </div>
 );
 
 const Dashboard: React.FC = () => {
   const { user, profile, signOut } = useAuth();
-  const [activeModule, setActiveModule] = useState<ModuleType>(ModuleType.DISCOVER);
+  const [activeModule, setActiveModule] = useState<ModuleType>(ModuleType.GENESIS);
   const [tables, setTables] = useState<any[]>([]);
   const [ritualTasks, setRitualTasks] = useState<RitualTask[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);
@@ -100,7 +102,8 @@ const Dashboard: React.FC = () => {
           ModuleType.BRAND_STUDIO,
           ModuleType.PAYROLL,
           ModuleType.SUPPLY,
-          ModuleType.FLOW
+          ModuleType.FLOW,
+          ModuleType.MOBILE_MGR
         ];
       case 'mesero':
         return [
@@ -126,6 +129,7 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     if (visibleModulesList.length > 0 && !visibleModulesList.includes(activeModule)) {
+      if (activeModule === ModuleType.GENESIS) return;
       setActiveModule(visibleModulesList[0]);
     }
   }, [profile?.role]);
@@ -176,17 +180,27 @@ const Dashboard: React.FC = () => {
   if (dashboardLoading) return (
     <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
        <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
-       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic">Sincronizando Core Intelligence...</p>
+       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic text-white">Sincronizando Core Intelligence...</p>
     </div>
   );
 
   if (isClientView && isAdmin) return <Suspense fallback={<ModuleLoader />}><OhYeahPage /></Suspense>;
 
-  // Vista inmersiva para Genesis
+  if (activeModule === ModuleType.MOBILE_MGR && isAdmin) {
+    return (
+      <Suspense fallback={<ModuleLoader />}>
+        <MobileManagerApp onExit={() => setActiveModule(ModuleType.DISCOVER)} />
+      </Suspense>
+    );
+  }
+
   if (activeModule === ModuleType.GENESIS) {
     return (
       <Suspense fallback={<ModuleLoader />}>
-        <GenesisModule onComplete={() => setActiveModule(ModuleType.DISCOVER)} />
+        <GenesisModule 
+          onComplete={() => setActiveModule(ModuleType.DISCOVER)} 
+          onExit={() => setActiveModule(ModuleType.DISCOVER)}
+        />
       </Suspense>
     );
   }
@@ -219,19 +233,19 @@ const Dashboard: React.FC = () => {
              >
                 <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white"><LayoutPanelLeft size={20} /></div>
                 <div className="text-left">
-                   <span className="text-[10px] font-black uppercase tracking-widest text-white block">Executive Cockpit</span>
+                   <span className="text-[10px] font-black uppercase tracking-widest text-white block">Nexum Copilot</span>
                    <span className="text-[7px] font-bold uppercase text-blue-200">Business Intelligence</span>
                 </div>
              </button>
 
              <button 
-              onClick={() => setActiveModule(ModuleType.GENESIS)}
-              className="w-full bg-white/[0.03] hover:bg-blue-600/10 p-5 rounded-[1.8rem] flex items-center gap-4 border border-white/5 transition-all group"
+              onClick={() => setActiveModule(ModuleType.MOBILE_MGR)}
+              className={`w-full p-5 rounded-[1.8rem] flex items-center gap-4 border transition-all group ${activeModule === ModuleType.MOBILE_MGR ? 'bg-blue-600 border-blue-400 text-white shadow-xl' : 'bg-white/[0.03] border-white/5 hover:bg-blue-600/10'}`}
              >
-                <div className="w-10 h-10 bg-blue-600/20 rounded-xl flex items-center justify-center text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition-all"><Rocket size={20} /></div>
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${activeModule === ModuleType.MOBILE_MGR ? 'bg-white/20 text-white' : 'bg-blue-600/20 text-blue-500 group-hover:bg-blue-600 group-hover:text-white'}`}><Smartphone size={20} /></div>
                 <div className="text-left">
-                   <span className="text-[10px] font-black uppercase tracking-widest text-white block italic">NEXUM GÉNESIS</span>
-                   <span className="text-[7px] font-bold uppercase text-gray-500">Ritual de Activación</span>
+                   <span className={`text-[10px] font-black uppercase tracking-widest block italic ${activeModule === ModuleType.MOBILE_MGR ? 'text-white' : 'text-white'}`}>MODO ANDROID</span>
+                   <span className={`text-[7px] font-bold uppercase ${activeModule === ModuleType.MOBILE_MGR ? 'text-blue-100' : 'text-gray-500'}`}>Vista Gerente Mobile</span>
                 </div>
              </button>
           </div>
@@ -263,14 +277,6 @@ const Dashboard: React.FC = () => {
         </div>
 
         <div className="mt-auto pt-8 border-t border-white/5">
-           {isAdmin && (
-             <button onClick={() => window.location.hash = '/oh-yeah'} className="w-full bg-blue-600/5 border border-blue-500/20 rounded-[1.8rem] p-5 flex flex-col gap-2 mb-6 group hover:bg-blue-600 transition-all shadow-lg">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-lg"><Sparkles size={16} /></div>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-white">VISTA B2C</span>
-                </div>
-             </button>
-           )}
            <button onClick={signOut} className="flex items-center gap-3 px-6 text-gray-600 hover:text-red-500 transition-all text-[10px] font-black uppercase tracking-widest w-full"><LogOut size={16} /> CERRAR SESIÓN</button>
         </div>
       </nav>
@@ -315,12 +321,27 @@ const Dashboard: React.FC = () => {
   );
 };
 
-const Main: React.FC = () => {
-  const { session, loading } = useAuth();
-  if (loading) return <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center"><Loader2 className="text-blue-600 animate-spin mb-4" size={48} /><p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic">Iniciando NEXUM Core...</p></div>;
-  if (!session) return <Login />;
-  return <Dashboard />;
+const AppContent: React.FC = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
+         <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
+         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic text-white">Sincronizando Core Intelligence...</p>
+      </div>
+    );
+  }
+
+  return user ? <Dashboard /> : <Login />;
 };
 
-const App: React.FC = () => (<AuthProvider><Main /></AuthProvider>);
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+};
+
 export default App;

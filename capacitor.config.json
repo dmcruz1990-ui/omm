@@ -1,0 +1,14 @@
+
+{
+  "appId": "com.seratta.nexum.manager",
+  "appName": "Nexum Manager",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "androidScheme": "https",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}
