@@ -7,7 +7,8 @@ export const askNexumAI = async (
   eventContext: string = "" // Contexto dinámico de eventos
 ): Promise<string> => {
   try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const apiKey = import.meta.env.VITE_GOOGLE_API_KEY || (typeof process !== 'undefined' ? process.env.API_KEY : undefined);
+    const ai = new GoogleGenAI({ apiKey });
     
     const AGENT_INSTRUCTION = `
       Eres NEXUM, el Concierge de OMM. Gestionas Reservas de Mesa y Venta de Entradas para Eventos.
