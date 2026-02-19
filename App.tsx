@@ -18,6 +18,7 @@ import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
 import { ModuleType, Table, RitualTask, UserRole } from './types.ts';
 import { useMediaPipe } from './hooks/useMediaPipe.ts';
 import Login from './components/Login.tsx';
+import ErrorBoundary from './components/ErrorBoundary.tsx';
 
 const OhYeahPage = lazy(() => import('./components/OhYeahPage.tsx'));
 const MobileManagerApp = lazy(() => import('./components/MobileManagerApp.tsx'));
@@ -291,27 +292,29 @@ const Dashboard: React.FC = () => {
         </header>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-12 relative z-10 text-left">
-          <Suspense fallback={<ModuleLoader />}>
-            {activeModule === ModuleType.DISCOVER && <DiscoverModule />}
-            {activeModule === ModuleType.SERVICE_OS && (
-              <div className="space-y-12">
-                <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onCheckService={async(id) => handleUpdateTable(id, {status: 'occupied'})} activeStation={activeStation} setActiveStation={setActiveStation} onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} cameraError={cameraError} onRetryCamera={retryCamera} />
-                <ServiceOSModule tables={tables} onUpdateTable={handleUpdateTable} tasks={ritualTasks} />
-              </div>
-            )}
-            {activeModule === ModuleType.KITCHEN_KDS && <KitchenModule />}
-            {activeModule === ModuleType.RESERVE && <ReserveModule />}
-            {activeModule === ModuleType.FINANCE_HUB && <FinanceHub />}
-            {activeModule === ModuleType.PAYROLL && <PayrollModule />}
-            {activeModule === ModuleType.COMMAND && <CommandModule onSimulateEvent={() => {}} />}
-            {activeModule === ModuleType.RELATIONSHIP && <RelationshipModule />}
-            {activeModule === ModuleType.STAFF_HUB && <StaffHubModule />}
-            {activeModule === ModuleType.FLOW && <FlowModule />}
-            {activeModule === ModuleType.SUPPLY && <SupplyModule />}
-            {activeModule === ModuleType.CARE && <CareModule />}
-            {activeModule === ModuleType.BRAND_STUDIO && <BrandStudio />}
-            {activeModule === ModuleType.CONFIG && <SettingsModule />}
-          </Suspense>
+          <ErrorBoundary moduleName={activeModule}>
+            <Suspense fallback={<ModuleLoader />}>
+              {activeModule === ModuleType.DISCOVER && <DiscoverModule />}
+              {activeModule === ModuleType.SERVICE_OS && (
+                <div className="space-y-12">
+                  <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onCheckService={async(id) => handleUpdateTable(id, {status: 'occupied'})} activeStation={activeStation} setActiveStation={setActiveStation} onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} cameraError={cameraError} onRetryCamera={retryCamera} />
+                  <ServiceOSModule tables={tables} onUpdateTable={handleUpdateTable} tasks={ritualTasks} />
+                </div>
+              )}
+              {activeModule === ModuleType.KITCHEN_KDS && <KitchenModule />}
+              {activeModule === ModuleType.RESERVE && <ReserveModule />}
+              {activeModule === ModuleType.FINANCE_HUB && <FinanceHub />}
+              {activeModule === ModuleType.PAYROLL && <PayrollModule />}
+              {activeModule === ModuleType.COMMAND && <CommandModule onSimulateEvent={() => {}} />}
+              {activeModule === ModuleType.RELATIONSHIP && <RelationshipModule />}
+              {activeModule === ModuleType.STAFF_HUB && <StaffHubModule />}
+              {activeModule === ModuleType.FLOW && <FlowModule />}
+              {activeModule === ModuleType.SUPPLY && <SupplyModule />}
+              {activeModule === ModuleType.CARE && <CareModule />}
+              {activeModule === ModuleType.BRAND_STUDIO && <BrandStudio />}
+              {activeModule === ModuleType.CONFIG && <SettingsModule />}
+            </Suspense>
+          </ErrorBoundary>
         </div>
       </main>
 

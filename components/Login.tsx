@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext.tsx';
 import { Zap, Mail, Lock, Loader2, AlertCircle, ChevronRight, FlaskConical, ShieldCheck, Cpu, Briefcase, ShoppingCart, ChefHat } from 'lucide-react';
 import { UserRole } from '../types.ts';
 
+const IS_DEV = import.meta.env.VITE_ENV === 'development' || import.meta.env.DEV;
+
 const Login: React.FC = () => {
   const { signInMock } = useAuth();
   const [email, setEmail] = useState('');
@@ -102,34 +104,36 @@ const Login: React.FC = () => {
           </button>
         </form>
 
-        {/* SECCIÓN DE PRUEBAS / QA ACCESS */}
-        <div className="space-y-6 pt-6 border-t border-white/5">
-           <div className="flex items-center gap-3 px-4">
-              <div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500">
-                 <FlaskConical size={16} />
-              </div>
-              <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] italic">Sandbox / QA Portal Access</h3>
-           </div>
-           
-           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 px-2">
-              {testRoles.map((t) => (
-                <button
-                  key={t.role}
-                  onClick={() => signInMock(t.role)}
-                  className="flex flex-col items-center gap-3 p-4 rounded-3xl bg-white/5 border border-white/5 hover:border-white/20 hover:bg-white/10 transition-all group active:scale-95"
-                >
-                   <div className={`w-10 h-10 ${t.color} rounded-xl flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform`}>
-                      {t.icon}
-                   </div>
-                   <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 group-hover:text-white transition-colors">{t.label}</span>
-                </button>
-              ))}
-           </div>
-           
-           <p className="text-[8px] text-gray-600 font-bold uppercase text-center tracking-widest px-8">
-              Bypass de seguridad activado solo para el entorno de desarrollo y pruebas de OMM.
-           </p>
-        </div>
+        {/* SECCIÓN DE PRUEBAS / QA ACCESS — solo visible en development */}
+        {IS_DEV && (
+          <div className="space-y-6 pt-6 border-t border-white/5">
+             <div className="flex items-center gap-3 px-4">
+                <div className="p-2 bg-yellow-500/10 rounded-lg text-yellow-500">
+                   <FlaskConical size={16} />
+                </div>
+                <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] italic">Sandbox / QA Portal Access</h3>
+             </div>
+
+             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 px-2">
+                {testRoles.map((t) => (
+                  <button
+                    key={t.role}
+                    onClick={() => signInMock(t.role)}
+                    className="flex flex-col items-center gap-3 p-4 rounded-3xl bg-white/5 border border-white/5 hover:border-white/20 hover:bg-white/10 transition-all group active:scale-95"
+                  >
+                     <div className={`w-10 h-10 ${t.color} rounded-xl flex items-center justify-center text-white shadow-lg group-hover:scale-110 transition-transform`}>
+                        {t.icon}
+                     </div>
+                     <span className="text-[9px] font-black uppercase tracking-widest text-gray-400 group-hover:text-white transition-colors">{t.label}</span>
+                  </button>
+                ))}
+             </div>
+
+             <p className="text-[8px] text-gray-600 font-bold uppercase text-center tracking-widest px-8">
+                Bypass de seguridad activado solo para el entorno de desarrollo y pruebas de OMM.
+             </p>
+          </div>
+        )}
 
         <div className="text-center">
           <p className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">
