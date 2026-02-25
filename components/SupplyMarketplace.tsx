@@ -47,6 +47,12 @@ interface CartItem extends SmartSupplyItem {
   selectedVendor: VendorOffer;
 }
 
+interface AutoTableDoc {
+  lastAutoTable: {
+    finalY: number;
+  };
+}
+
 const SupplyMarketplace: React.FC<MarketplaceProps> = ({ items, onBack }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -82,6 +88,7 @@ const SupplyMarketplace: React.FC<MarketplaceProps> = ({ items, onBack }) => {
       initialMap[item.id] = cheapest.vendorId;
     });
     
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedVendorMap(prev => {
       // Simple shallow comparison to avoid unnecessary updates
       const isDifferent = Object.keys(initialMap).length !== Object.keys(prev).length || 
@@ -161,7 +168,7 @@ const SupplyMarketplace: React.FC<MarketplaceProps> = ({ items, onBack }) => {
         }
       });
       
-      const finalY = (doc as any).lastAutoTable.finalY || 150;
+      const finalY = (doc as unknown as AutoTableDoc).lastAutoTable.finalY || 150;
       const subtotal = cartItems.reduce((sum, i) => sum + (i.selectedVendor.price * i.cartQuantity), 0);
       const iva = subtotal * 0.19;
       const total = subtotal + iva;

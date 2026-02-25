@@ -19,13 +19,29 @@ import {
   FileUp,
   Activity,
   ShieldAlert,
-  ClipboardCheck
+  ClipboardCheck,
+  Eye
 } from 'lucide-react';
 import { jsPDF } from 'https://esm.sh/jspdf';
 import autoTable from 'https://esm.sh/jspdf-autotable';
 import { SupplyItem } from '../types.ts';
 import SupplyMarketplace from './SupplyMarketplace.tsx';
 import { useAuth } from '../contexts/AuthContext.tsx';
+
+interface TabItemProps {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  icon: React.ReactNode;
+}
+
+interface StatCardProps {
+  label: string;
+  value: string;
+  status: string;
+  icon: React.ReactNode;
+  color?: string;
+}
 
 const SupplyModule: React.FC = () => {
   const { profile } = useAuth();
@@ -57,6 +73,7 @@ const SupplyModule: React.FC = () => {
   }, []);
 
   const downloadAuditPDF = (item: SupplyItem) => {
+    // eslint-disable-next-line react-hooks/purity
     const timestamp = Date.now();
     const doc = new jsPDF();
     const date = new Date().toLocaleString();
@@ -119,7 +136,7 @@ const SupplyModule: React.FC = () => {
           ...item,
           real: newReal,
           variance_pct: Number(newVariance.toFixed(1)),
-          status: Math.abs(newVariance) > 5 ? 'variance_alert' : 'optimal' as any,
+          status: (Math.abs(newVariance) > 5 ? 'variance_alert' : 'optimal') as SupplyItem['status'],
           last_recon_at: new Date().toISOString()
         };
       }
@@ -364,7 +381,7 @@ const SupplyModule: React.FC = () => {
   );
 };
 
-const TabItem = ({ active, onClick, label, icon }: any) => (
+const TabItem = ({ active, onClick, label, icon }: TabItemProps) => (
   <button 
     onClick={onClick}
     className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 shrink-0 relative ${
@@ -376,7 +393,7 @@ const TabItem = ({ active, onClick, label, icon }: any) => (
   </button>
 );
 
-const StatCard = ({ label, value, status, icon, color }: any) => (
+const StatCard = ({ label, value, status, icon, color }: StatCardProps) => (
   <div className="bg-[#111114] border border-white/5 p-10 rounded-[3rem] shadow-2xl flex flex-col justify-between h-48 group hover:border-blue-500/20 transition-all">
     <div className="flex items-center justify-between">
       <div className="p-4 bg-white/5 rounded-2xl group-hover:bg-blue-600/10 transition-all shadow-xl">{icon}</div>

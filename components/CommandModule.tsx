@@ -2,18 +2,12 @@
 import React, { useState } from 'react';
 import { 
   Zap, 
-  BarChart3, 
-  PieChart, 
   TrendingUp, 
   ShieldCheck, 
   Activity,
   Users,
   DollarSign,
-  Flame,
-  UtensilsCrossed,
-  Wind,
   Info,
-  Play,
   Hand,
   ChefHat,
   AlertTriangle
@@ -25,11 +19,9 @@ interface CommandModuleProps {
 }
 
 const CommandModule: React.FC<CommandModuleProps> = ({ onSimulateEvent }) => {
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [aiReport, setAiReport] = useState<string | null>(null);
 
   const getOmmStrategicReport = async () => {
-    setIsAnalyzing(true);
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
       const response = await ai.models.generateContent({
@@ -37,10 +29,8 @@ const CommandModule: React.FC<CommandModuleProps> = ({ onSimulateEvent }) => {
         contents: `Analiza los KPIs actuales de OMM (Autopista Norte Bogota): Ocupación 85%, Ticket Promedio $245k, Mermas 3.2%. El plato más vendido es Kaori Lobster. Genera un plan táctico de 3 puntos para maximizar el turno de la noche con concepto espiritual/Zen.`,
       });
       setAiReport(response.text || "");
-    } catch (e) {
+    } catch {
       setAiReport("Análisis Estratégico OMM: Se detecta oportunidad de Upsell en la Pagoda (Terraza). Acción: Lanzar 'Noche de Robata & Sakes' para elevar el ticket promedio a $280k.");
-    } finally {
-      setIsAnalyzing(false);
     }
   };
 
@@ -162,7 +152,7 @@ const CommandModule: React.FC<CommandModuleProps> = ({ onSimulateEvent }) => {
   );
 };
 
-const SimButton = ({ icon, label, desc, onClick }: { icon: any, label: string, desc: string, onClick: () => void }) => (
+const SimButton = ({ icon, label, desc, onClick }: { icon: React.ReactNode, label: string, desc: string, onClick: () => void }) => (
   <button 
     onClick={onClick}
     className="bg-white/5 border border-white/5 p-6 rounded-3xl text-left hover:bg-blue-600 transition-all group"
@@ -175,7 +165,7 @@ const SimButton = ({ icon, label, desc, onClick }: { icon: any, label: string, d
   </button>
 );
 
-const MetricCard = ({ label, value, trend, icon }: { label: string, value: string, trend: string, icon: any }) => (
+const MetricCard = ({ label, value, trend, icon }: { label: string, value: string, trend: string, icon: React.ReactNode }) => (
   <div className="bg-[#16161a] p-10 rounded-[3.5rem] border border-white/5 flex flex-col items-center text-center group hover:border-[#2563eb]/30 transition-all shadow-xl hover:shadow-[#2563eb]/5">
      <div className="p-4 bg-white/5 rounded-2xl mb-6 group-hover:bg-[#2563eb]/20 transition-all text-[#2563eb]">
         {icon}

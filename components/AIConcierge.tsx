@@ -8,11 +8,8 @@ import {
   ChevronLeft, 
   CheckCircle, 
   RefreshCcw, 
-  Table as TableIcon, 
-  AlertCircle, 
   Users,
-  Ticket,
-  QrCode
+  Ticket
 } from 'lucide-react';
 import { askNexumAI } from '../lib/ai/brain.ts';
 import { supabase } from '../lib/supabase.ts';
@@ -34,7 +31,6 @@ const AIConcierge: React.FC<AIConciergeProps> = ({ onBack }) => {
   const [events, setEvents] = useState<OmmEvent[]>([]);
   const [bookingStatus, setBookingStatus] = useState<'idle' | 'processing' | 'success' | 'waitlist' | 'event_success' | 'error'>('idle');
   const [reservationDetails, setReservationDetails] = useState<any>(null);
-  const [debugInfo, setDebugInfo] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,7 +58,6 @@ const AIConcierge: React.FC<AIConciergeProps> = ({ onBack }) => {
     setInput('');
     setBookingStatus('idle');
     setReservationDetails(null);
-    setDebugInfo(null);
   };
 
   const processTransaction = async (responseText: string) => {
@@ -81,7 +76,7 @@ const AIConcierge: React.FC<AIConciergeProps> = ({ onBack }) => {
     try {
       const startIndex = responseText.indexOf("CONFIRMAR_EVENTO");
       const segment = responseText.substring(startIndex).split('\n')[0];
-      const [_, id, name, phone, email, qty] = segment.split(",").map(s => s.trim().replace("CONFIRMAR_EVENTO:", ""));
+      const [, id, name, phone, email, qty] = segment.split(",").map(s => s.trim().replace("CONFIRMAR_EVENTO:", ""));
 
       const ticketCode = `TKT-AI-${Date.now()}`;
       const selectedEvent = events.find(e => e.id === id) || events[0];
@@ -109,9 +104,8 @@ const AIConcierge: React.FC<AIConciergeProps> = ({ onBack }) => {
       setBookingStatus('event_success');
       setMessages(prev => [...prev, { role: 'model', text: `¡Listo! He generado tus entradas para ${selectedEvent.title}. Tu código de acceso es ${ticketCode}.` }]);
 
-    } catch (err: any) {
+    } catch {
       setBookingStatus('error');
-      setDebugInfo(err.message);
     }
   };
 
@@ -129,7 +123,7 @@ const AIConcierge: React.FC<AIConciergeProps> = ({ onBack }) => {
       const zone = dataArray[4];
 
       // Buscar o Crear Cliente
-      let { data: customer } = await supabase.from('customers').select('id').eq('phone', phone).maybeSingle();
+      const { data: customer } = await supabase.from('customers').select('id').eq('phone', phone).maybeSingle();
       let customerId;
       if (!customer) {
         const { data: newCust } = await supabase.from('customers').insert([{ name, phone }]).select('id').single();
@@ -165,9 +159,8 @@ const AIConcierge: React.FC<AIConciergeProps> = ({ onBack }) => {
       });
       setBookingStatus(isWaitlist ? 'waitlist' : 'success');
 
-    } catch (error: any) {
+    } catch {
       setBookingStatus('error');
-      setDebugInfo(error.message);
     }
   };
 

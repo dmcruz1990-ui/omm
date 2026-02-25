@@ -2,20 +2,12 @@
 import React, { useState } from 'react';
 import { 
   DollarSign, 
-  BarChart4, 
   Zap, 
-  TrendingUp, 
   FileText, 
-  PieChart, 
-  ArrowUpRight,
   ShieldCheck,
-  Percent,
   Lock,
   Unlock,
-  AlertTriangle,
-  History,
   CheckCircle2,
-  XCircle,
   ShieldAlert,
   ChevronRight
 } from 'lucide-react';
@@ -124,7 +116,7 @@ const FinanceHub: React.FC = () => {
   );
 };
 
-const TabBtn = ({ active, onClick, icon, label }: any) => (
+const TabBtn = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
   <button onClick={onClick} className={`px-8 py-3.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 ${active ? 'bg-blue-600 text-white shadow-xl shadow-blue-600/20' : 'text-gray-500 hover:text-white'}`}>
     {icon} {label}
   </button>

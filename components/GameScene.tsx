@@ -1,16 +1,10 @@
 
-/**
- * @license
- * SPDX-License-Identifier: Apache-2.0
-*/
-
-
-import React, { useRef, useState, useMemo, useEffect } from 'react';
-import { useFrame, useThree } from '@react-three/fiber';
+import React, { useRef, useState, useMemo } from 'react';
+import { useFrame } from '@react-three/fiber';
 import { Environment, Grid, PerspectiveCamera, Stars } from '@react-three/drei';
 import * as THREE from 'three';
-import { GameStatus, NoteData, HandPositions, COLORS, CutDirection } from '../types.ts';
-import { PLAYER_Z, SPAWN_Z, MISS_Z, NOTE_SPEED, DIRECTION_VECTORS, NOTE_SIZE, LANE_X_POSITIONS, LAYER_Y_POSITIONS, SONG_BPM } from '../constants.ts';
+import { GameStatus, NoteData, HandPositions, COLORS } from '../types.ts';
+import { PLAYER_Z, SPAWN_Z, MISS_Z, NOTE_SPEED, DIRECTION_VECTORS, LANE_X_POSITIONS, LAYER_Y_POSITIONS, SONG_BPM } from '../constants.ts';
 import Note from './Note.tsx';
 import Saber from './Saber.tsx';
 
@@ -45,7 +39,7 @@ const GameScene: React.FC<GameSceneProps> = ({
     onSongEnd
 }) => {
   // Local state for notes to trigger re-renders when they are hit/missed
-  const [notesState, setNotesState] = useState<NoteData[]>(chart);
+  const [notesState] = useState<NoteData[]>(chart);
   const [currentTime, setCurrentTime] = useState(0);
 
   // Refs for things we don't want causing re-renders every frame
@@ -164,7 +158,7 @@ const GameScene: React.FC<GameSceneProps> = ({
                      const speed = handVel.length();
 
                      // Reduced required speed from 2.0 to 1.5 for easier cutting
-                     if (note.cutDirection !== CutDirection.ANY) {
+                     if (note.cutDirection !== 8) { // 8 is ANY
                          const requiredDir = DIRECTION_VECTORS[note.cutDirection];
                          vecB.copy(handVel).normalize();
                          const dot = vecB.dot(requiredDir);

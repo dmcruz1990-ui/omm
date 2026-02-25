@@ -11,24 +11,14 @@ import {
   Users, 
   CheckCircle2, 
   ArrowLeft,
-  Loader2,
   ShieldCheck,
   Brain,
-  Info,
   AlertCircle,
-  FileText,
   Shield,
   Lock,
   CheckCircle,
-  Target,
   TrendingUp,
-  Fingerprint,
-  DollarSign,
-  PieChart,
-  BarChart3,
-  FileSearch,
-  CheckSquare,
-  X
+  Fingerprint
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 import { GenesisSignalScore, GenesisInternalReport } from '../types.ts';
@@ -47,6 +37,25 @@ const CHAPTERS = [
   { id: 6, title: 'NEXO_TRIPULACIÓN', icon: <Users size={20} />, desc: 'Configura tu staff y roles.' },
 ];
 
+interface GenesisFormData {
+  name: string;
+  country: string;
+  currency: string;
+  concept: string;
+  type: string;
+  tables2: number;
+  tables4: number;
+  stations: string[];
+  monthlySales: number;
+  staffCount: number;
+  menuItemsCount: number;
+  hasRecipes: boolean;
+  hasSuppliers: boolean;
+  hasInventory: boolean;
+  inventoryValue: number;
+  payrollValue: number;
+}
+
 const GenesisModule: React.FC<GenesisModuleProps> = ({ onComplete, onExit }) => {
   const [currentStep, setCurrentStep] = useState(0); 
   const [isNovaThinking, setIsNovaThinking] = useState(false);
@@ -61,7 +70,7 @@ const GenesisModule: React.FC<GenesisModuleProps> = ({ onComplete, onExit }) => 
   const [internalScore, setInternalScore] = useState<GenesisSignalScore | null>(null);
 
   // Data State
-  const [formData, setFormData] = useState<any>({
+  const [formData, setFormData] = useState<GenesisFormData>({
     name: '',
     country: 'Colombia',
     currency: 'COP',
@@ -115,7 +124,7 @@ const GenesisModule: React.FC<GenesisModuleProps> = ({ onComplete, onExit }) => 
 
     const total = size + revenueScore + complexity + maturity + strategy;
     
-    let classification: any = 'MICRO';
+    let classification: 'MICRO' | 'PREMIUM' | 'INTERESTING' | 'MEDIUM' = 'MICRO';
     if (total > 80) classification = 'PREMIUM';
     else if (total > 60) classification = 'INTERESTING';
     else if (total > 30) classification = 'MEDIUM';
@@ -393,10 +402,10 @@ const GenesisModule: React.FC<GenesisModuleProps> = ({ onComplete, onExit }) => 
                       <p className="text-gray-400 text-lg italic leading-relaxed text-left">¿Cómo conocerá el mundo a tu restaurante?</p>
                    </div>
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
-                      <GenesisInput label="Nombre del Restaurante" value={formData.name} onChange={(v:any) => setFormData({...formData, name: v})} placeholder="Ej: Seratta Experience" />
-                      <GenesisInput label="Concepto Breve" value={formData.concept} onChange={(v:any) => setFormData({...formData, concept: v})} placeholder="Ej: Cocina de autoría Zen" />
-                      <GenesisSelect label="Tipo de Negocio" options={['FINE_DINING', 'CASUAL_PREMIUM', 'BAR_NIGHTLIFE', 'QSR_FAST_CASUAL']} value={formData.type} onChange={(v:any) => setFormData({...formData, type: v})} />
-                      <GenesisSelect label="Moneda Core" options={['COP', 'USD', 'MXN', 'EUR']} value={formData.currency} onChange={(v:any) => setFormData({...formData, currency: v})} />
+                      <GenesisInput label="Nombre del Restaurante" value={formData.name} onChange={(v: string) => setFormData({...formData, name: v})} placeholder="Ej: Seratta Experience" />
+                      <GenesisInput label="Concepto Breve" value={formData.concept} onChange={(v: string) => setFormData({...formData, concept: v})} placeholder="Ej: Cocina de autoría Zen" />
+                      <GenesisSelect label="Tipo de Negocio" options={['FINE_DINING', 'CASUAL_PREMIUM', 'BAR_NIGHTLIFE', 'QSR_FAST_CASUAL']} value={formData.type} onChange={(v: string) => setFormData({...formData, type: v})} />
+                      <GenesisSelect label="Moneda Core" options={['COP', 'USD', 'MXN', 'EUR']} value={formData.currency} onChange={(v: string) => setFormData({...formData, currency: v})} />
                    </div>
                 </div>
               )}
@@ -408,19 +417,19 @@ const GenesisModule: React.FC<GenesisModuleProps> = ({ onComplete, onExit }) => 
                       <p className="text-gray-400 text-lg italic leading-relaxed text-left">Mapeemos la capacidad física y el performance base.</p>
                    </div>
                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-left">
-                      <Counter label="Mesas 2p" value={formData.tables2} onChange={(v:any) => setFormData({...formData, tables2: v})} />
-                      <Counter label="Mesas 4p" value={formData.tables4} onChange={(v:any) => setFormData({...formData, tables4: v})} />
+                      <Counter label="Mesas 2p" value={formData.tables2} onChange={(v: number) => setFormData({...formData, tables2: v})} />
+                      <Counter label="Mesas 4p" value={formData.tables4} onChange={(v: number) => setFormData({...formData, tables4: v})} />
                       <Counter label="Barra (Pax)" value={12} />
                       <Counter label="Privados" value={2} />
                    </div>
                    <div className="space-y-8 text-left">
-                      <GenesisInput label={`Venta Mensual Promedio (${formData.currency})`} value={formData.monthlySales} onChange={(v:any) => setFormData({...formData, monthlySales: parseInt(v) || 0})} placeholder="Ej: 150000000" />
+                      <GenesisInput label={`Venta Mensual Promedio (${formData.currency})`} value={formData.monthlySales} onChange={(v: string) => setFormData({...formData, monthlySales: parseInt(v) || 0})} placeholder="Ej: 150000000" />
                       <div className="space-y-4">
                          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block ml-1">Estaciones Activas</label>
                          <div className="flex flex-wrap gap-3">
                             {['Cocina Caliente', 'Cocina Fría', 'Robata', 'Sushi', 'Bar', 'Cava'].map(st => (
                                <button key={st} onClick={() => {
-                                    const news = formData.stations.includes(st) ? formData.stations.filter((s:any) => s !== st) : [...formData.stations, st];
+                                    const news = formData.stations.includes(st) ? formData.stations.filter((s: string) => s !== st) : [...formData.stations, st];
                                     setFormData({...formData, stations: news});
                                }} className={`px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest border-2 transition-all ${formData.stations.includes(st) ? 'bg-blue-600 border-blue-400 text-white shadow-xl' : 'bg-white/5 border-white/5 text-gray-500'}`}>{st}</button>
                             ))}
@@ -444,7 +453,7 @@ const GenesisModule: React.FC<GenesisModuleProps> = ({ onComplete, onExit }) => 
                       <p className="text-xs text-gray-600 mt-2 font-bold uppercase">NEXUM extraerá platos, precios e insumos automáticamente.</p>
                    </div>
                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8 text-left">
-                      <GenesisInput label="Items totales en Carta" value={formData.menuItemsCount} onChange={(v:any) => setFormData({...formData, menuItemsCount: parseInt(v) || 0})} placeholder="Ej: 45" />
+                      <GenesisInput label="Items totales en Carta" value={formData.menuItemsCount} onChange={(v: string) => setFormData({...formData, menuItemsCount: parseInt(v) || 0})} placeholder="Ej: 45" />
                       <div className="flex items-center gap-6 p-6 bg-white/5 rounded-3xl border border-white/10 mt-6">
                          <div className="flex-1">
                             <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Recetas Estándar</span>
@@ -482,7 +491,7 @@ const GenesisModule: React.FC<GenesisModuleProps> = ({ onComplete, onExit }) => 
                        <p className="text-gray-400 text-lg italic leading-relaxed">Valoración actual de bodega y cobertura.</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                       <GenesisInput label={`Valor Total en Bodega (${formData.currency})`} value={formData.inventoryValue} onChange={(v:any) => setFormData({...formData, inventoryValue: parseInt(v) || 0})} placeholder="Ej: 45000000" />
+                       <GenesisInput label={`Valor Total en Bodega (${formData.currency})`} value={formData.inventoryValue} onChange={(v: string) => setFormData({...formData, inventoryValue: parseInt(v) || 0})} placeholder="Ej: 45000000" />
                        <GenesisSelect label="Disciplina de Inventario" options={['Diario', 'Semanal', 'Mensual', 'Nunca']} value="Semanal" />
                     </div>
                  </div>
@@ -495,8 +504,8 @@ const GenesisModule: React.FC<GenesisModuleProps> = ({ onComplete, onExit }) => 
                        <p className="text-gray-400 text-lg italic leading-relaxed">Estructura organizacional y costos de nómina.</p>
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                       <GenesisInput label="Número de Empleados" value={formData.staffCount} onChange={(v:any) => setFormData({...formData, staffCount: parseInt(v) || 0})} placeholder="Ej: 12" />
-                       <GenesisInput label={`Nómina Mensual Base (${formData.currency})`} value={formData.payrollValue} onChange={(v:any) => setFormData({...formData, payrollValue: parseInt(v) || 0})} placeholder="Ej: 18000000" />
+                       <GenesisInput label="Número de Empleados" value={formData.staffCount} onChange={(v: string) => setFormData({...formData, staffCount: parseInt(v) || 0})} placeholder="Ej: 12" />
+                       <GenesisInput label={`Nómina Mensual Base (${formData.currency})`} value={formData.payrollValue} onChange={(v: string) => setFormData({...formData, payrollValue: parseInt(v) || 0})} placeholder="Ej: 18000000" />
                     </div>
                  </div>
               )}
@@ -568,21 +577,41 @@ const GenesisModule: React.FC<GenesisModuleProps> = ({ onComplete, onExit }) => 
   );
 };
 
-const GenesisInput = ({ label, value, onChange, placeholder }: any) => (
+interface GenesisInputProps {
+  label: string;
+  value: string | number;
+  onChange: (value: string) => void;
+  placeholder?: string;
+}
+
+const GenesisInput: React.FC<GenesisInputProps> = ({ label, value, onChange, placeholder }) => (
   <div className="space-y-3">
      <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block ml-1">{label}</label>
      <input type="text" value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-5 px-8 text-sm font-black italic outline-none focus:border-blue-500 transition-all placeholder:text-gray-800 text-white" placeholder={placeholder} />
   </div>
 );
 
-const GenesisSelect = ({ label, options, value, onChange }: any) => (
+interface GenesisSelectProps {
+  label: string;
+  options: string[];
+  value: string;
+  onChange: (value: string) => void;
+}
+
+const GenesisSelect: React.FC<GenesisSelectProps> = ({ label, options, value, onChange }) => (
   <div className="space-y-3">
      <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest block ml-1">{label}</label>
-     <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-5 px-8 text-sm font-black italic outline-none focus:border-blue-500 transition-all appearance-none cursor-pointer uppercase text-white"><option className="bg-black" value="">Seleccionar...</option>{options.map((o:any) => <option key={o} value={o} className="bg-black">{o.replace('_', ' ')}</option>)}</select>
+     <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-white/5 border border-white/10 rounded-2xl py-5 px-8 text-sm font-black italic outline-none focus:border-blue-500 transition-all appearance-none cursor-pointer uppercase text-white"><option className="bg-black" value="">Seleccionar...</option>{options.map((o) => <option key={o} value={o} className="bg-black">{o.replace('_', ' ')}</option>)}</select>
   </div>
 );
 
-const Counter = ({ label, value, onChange }: any) => (
+interface CounterProps {
+  label: string;
+  value: number;
+  onChange?: (value: number) => void;
+}
+
+const Counter: React.FC<CounterProps> = ({ label, value, onChange }) => (
   <div className="bg-white/5 border border-white/10 p-6 rounded-3xl flex flex-col items-center gap-4 group hover:border-blue-500/30 transition-all">
      <span className="text-[8px] font-black text-gray-600 uppercase tracking-widest text-center h-4">{label}</span>
      <div className="flex items-center gap-6">
@@ -593,7 +622,13 @@ const Counter = ({ label, value, onChange }: any) => (
   </div>
 );
 
-const SummaryRow = ({ label, value, color }: any) => (
+interface SummaryRowProps {
+  label: string;
+  value: string | number;
+  color?: string;
+}
+
+const SummaryRow: React.FC<SummaryRowProps> = ({ label, value, color }) => (
   <div className="flex justify-between items-center border-b border-white/5 pb-3">
      <span className="text-[10px] font-black text-gray-600 uppercase tracking-widest">{label}</span>
      <span className={`text-sm font-black italic ${color || 'text-white'}`}>{value}</span>
@@ -612,7 +647,13 @@ const ScoreBar = ({ label, value, max }: { label: string, value: number, max: nu
   </div>
 );
 
-const InsightNote = ({ icon, title, text }: any) => (
+interface InsightNoteProps {
+  icon: React.ReactNode;
+  title: string;
+  text: string;
+}
+
+const InsightNote: React.FC<InsightNoteProps> = ({ icon, title, text }) => (
   <div className="bg-black/40 border border-white/5 p-8 rounded-3xl space-y-4">
      <div className="flex items-center gap-3 text-blue-500">
         {icon}

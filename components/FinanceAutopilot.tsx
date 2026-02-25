@@ -2,23 +2,18 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { 
-  DollarSign, 
   TrendingUp, 
-  TrendingDown, 
-  Zap, 
   Activity, 
-  Target,
   Flame,
   ShieldCheck,
   Loader2,
   BarChart3,
-  Lightbulb,
   Brain,
   HeartPulse,
   Star,
   Sparkles
 } from 'lucide-react';
-import { OperationalSettings, BusinessDNA } from '../types.ts';
+import { OperationalSettings } from '../types.ts';
 
 // JSON Maestro de Benchmarks NEXUM - Actualizado con CASUAL_PREMIUM (Service-Forward)
 const BENCHMARK_PROFILES = {
@@ -111,7 +106,7 @@ const FinanceAutopilot: React.FC = () => {
 
   const profile = BENCHMARK_PROFILES[config.business_dna as keyof typeof BENCHMARK_PROFILES] || BENCHMARK_PROFILES.FINE_DINING;
   
-  const getStatusColor = (value: number, range: any) => {
+  const getStatusColor = (value: number, range: { green: number[], yellow: number[] }) => {
     if (value <= range.green[1]) return 'text-green-500';
     if (value <= range.yellow[1]) return 'text-yellow-500';
     return 'text-red-500';
@@ -231,7 +226,7 @@ const FinanceAutopilot: React.FC = () => {
   );
 };
 
-const TrafficCard = ({ label, value, range, color, icon }: any) => {
+const TrafficCard = ({ label, value, range, color, icon }: { label: string, value: number, range: { green: number[] }, color: string, icon: React.ReactNode }) => {
   return (
     <div className="space-y-6 bg-white/[0.02] p-8 rounded-[2.5rem] border border-white/5 group transition-all hover:border-white/10">
        <div className="flex flex-col">

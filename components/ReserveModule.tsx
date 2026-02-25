@@ -94,10 +94,11 @@ const ReserveModule: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    fetchData();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void fetchData();
     const channel = supabase.channel('reserve-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => fetchData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => { void fetchData(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => { void fetchData(); })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [fetchData]);

@@ -1,27 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  ChefHat, 
   Flame, 
   Zap, 
   Wine, 
   Clock, 
-  TrendingUp, 
-  AlertTriangle, 
   CheckCircle2, 
-  ChevronRight,
   Monitor,
   Droplets,
-  Timer,
   Activity,
   BarChart3,
-  Coffee,
   Martini,
   IceCream,
   Utensils,
   Beef,
-  GlassWater,
-  // Fix: Added missing Loader2 and Play imports from lucide-react
   Loader2,
   Play
 } from 'lucide-react';
@@ -83,7 +75,7 @@ const FlowModule: React.FC = () => {
         }));
         setItems(enriched);
       }
-    } catch (err) {
+    } catch {
       console.error("Flow Sync Error");
     } finally {
       setLoading(false);
@@ -266,7 +258,7 @@ const FlowModule: React.FC = () => {
   );
 };
 
-const StationTab = ({ active, onClick, icon, label, count, color }: any) => (
+const StationTab = ({ active, onClick, icon, label, count, color }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string, count: number, color?: string }) => (
   <button 
     onClick={onClick}
     className={`flex items-center gap-3 px-6 py-3 rounded-full text-[10px] font-black uppercase tracking-widest transition-all relative ${
@@ -283,7 +275,7 @@ const StationTab = ({ active, onClick, icon, label, count, color }: any) => (
   </button>
 );
 
-const MetricRow = ({ label, value, color }: any) => (
+const MetricRow = ({ label, value, color }: { label: string, value: string, color?: string }) => (
   <div className="flex justify-between items-center border-b border-white/5 pb-4 last:border-0 last:pb-0">
      <span className="text-[10px] text-gray-500 font-black uppercase tracking-tighter">{label}</span>
      <span className={`text-sm font-black italic ${color || 'text-white'}`}>{value}</span>

@@ -2,24 +2,12 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Calendar, 
-  Ticket, 
-  QrCode, 
   X, 
-  Send, 
   Mail, 
-  CheckCircle2, 
   Loader2, 
-  Music, 
-  GlassWater, 
-  Utensils, 
-  Sparkles,
   Phone,
-  User,
-  ChevronRight,
-  Share2,
-  AlertCircle
+  User
 } from 'lucide-react';
-import QRCodeLib from 'https://esm.sh/react-qr-code?external=react';
 import { supabase } from '../lib/supabase.ts';
 import { OmmEvent } from '../types.ts';
 
@@ -28,15 +16,11 @@ const EventsModule: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [selectedEvent, setSelectedEvent] = useState<OmmEvent | null>(null);
   const [isBuying, setIsBuying] = useState(false);
-  const [isMounted, setIsMounted] = useState(false);
   
   const [formData, setFormData] = useState({ name: '', phone: '', email: '' });
   const [isProcessing, setIsProcessing] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [boughtTicket, setBoughtTicket] = useState<{ code: string; event: OmmEvent } | null>(null);
 
   useEffect(() => {
-    setIsMounted(true);
     const fetchEvents = async () => {
       setLoading(true);
       try {
@@ -60,7 +44,6 @@ const EventsModule: React.FC = () => {
     e.preventDefault();
     if (!selectedEvent) return;
     setIsProcessing(true);
-    setErrorMessage(null);
     const ticketCode = `TKT-${Date.now()}-${Math.random().toString(36).substr(2, 4).toUpperCase()}`;
     try {
       const { error } = await supabase
@@ -74,20 +57,13 @@ const EventsModule: React.FC = () => {
           is_paid: true
         }]);
       if (error) throw error;
-      setBoughtTicket({ code: ticketCode, event: selectedEvent });
       setIsBuying(false);
       setFormData({ name: '', phone: '', email: '' });
-    } catch (err: any) {
-      setErrorMessage("No se pudo generar el boleto.");
+    } catch {
+      // ignore
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  const shareOnWhatsApp = () => {
-    if (!boughtTicket) return;
-    const text = encodeURIComponent(`¡Hola! Mi entrada para ${boughtTicket.event.title} en OMM es: ${boughtTicket.code}. Nos vemos allá! ⛩️`);
-    window.open(`https://wa.me/?text=${text}`, '_blank');
   };
 
   if (loading) return (
@@ -147,7 +123,16 @@ const EventsModule: React.FC = () => {
   );
 };
 
-const InputField = ({ label, placeholder, icon, value, onChange, disabled }: any) => (
+interface InputFieldProps {
+  label: string;
+  placeholder: string;
+  icon: React.ReactNode;
+  value: string;
+  onChange: (value: string) => void;
+  disabled?: boolean;
+}
+
+const InputField = ({ label, placeholder, icon, value, onChange, disabled }: InputFieldProps) => (
   <div className="space-y-2 text-left group">
      <label className="text-[10px] font-black text-gray-600 uppercase ml-1">{label}</label>
      <div className="relative">

@@ -1,20 +1,15 @@
 
 import React, { useState } from 'react';
 import { 
-  DollarSign, 
   FileText, 
   TrendingUp, 
-  TrendingDown, 
   PieChart, 
   History, 
   Scan, 
   Download,
   Brain,
-  ChevronRight,
-  Receipt,
   ArrowRightLeft
 } from 'lucide-react';
-import { Transaction } from '../types.ts';
 
 const FinanceModule: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'pyg' | 'ledger' | 'reconciliation'>('pyg');
@@ -157,7 +152,19 @@ const FinanceModule: React.FC = () => {
   );
 };
 
-const PGLINE = ({ label, value, isHeader, isNegative, isSubtotal, isTotal, isSmall, pct, color }: any) => (
+interface PGLINEProps {
+  label: string;
+  value: number;
+  isHeader?: boolean;
+  isNegative?: boolean;
+  isSubtotal?: boolean;
+  isTotal?: boolean;
+  isSmall?: boolean;
+  pct?: number;
+  color?: string;
+}
+
+const PGLINE = ({ label, value, isHeader, isNegative, isTotal, isSmall, pct, color }: PGLINEProps) => (
   <div className={`flex items-center justify-between ${isTotal ? (color || 'text-white') : 'text-gray-400'} ${isHeader ? 'border-b border-white/5 pb-2 mb-2' : ''}`}>
      <div className="flex items-center gap-3">
         <span className={`${isTotal ? 'text-2xl' : isHeader ? 'text-base' : isSmall ? 'text-[11px]' : 'text-sm'} font-black italic uppercase tracking-tight`}>
@@ -177,7 +184,14 @@ const PGLINE = ({ label, value, isHeader, isNegative, isSubtotal, isTotal, isSma
   </div>
 );
 
-const TargetMetric = ({ label, actual, target, isInverse }: any) => {
+interface TargetMetricProps {
+  label: string;
+  actual: number;
+  target: number;
+  isInverse?: boolean;
+}
+
+const TargetMetric = ({ label, actual, target, isInverse }: TargetMetricProps) => {
   const isBetter = isInverse ? actual < target : actual > target;
   return (
     <div className="space-y-2">
@@ -195,7 +209,7 @@ const TargetMetric = ({ label, actual, target, isInverse }: any) => {
   );
 };
 
-const TabButton = ({ active, onClick, icon, label }: any) => (
+const TabButton = ({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) => (
   <button 
     onClick={onClick}
     className={`flex items-center gap-2 px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${

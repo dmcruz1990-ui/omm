@@ -5,26 +5,20 @@ import {
   AlertTriangle, 
   MessageSquare, 
   Zap, 
-  CheckCircle2, 
   TrendingUp, 
   ShieldAlert, 
   Timer,
   Users,
   Star,
-  ChevronRight,
-  Send,
-  MoreVertical,
-  XCircle,
   Coffee,
   Wine,
-  Gift,
-  PhoneCall
+  Gift
 } from 'lucide-react';
-import { ServiceIncident, Severity, NEXUS_COLORS } from '../types.ts';
+import { ServiceIncident, Severity } from '../types.ts';
 import { GoogleGenAI } from "@google/genai";
 
 const CareModule: React.FC = () => {
-  const [incidents, setIncidents] = useState<ServiceIncident[]>([
+  const [incidents] = useState<ServiceIncident[]>([
     { id: 'I1', tableId: 4, type: 'Tiempos Excedidos', severity: 'Alta', timeElapsed: 420, customerLTV: 4500000, status: 'active' },
     { id: 'I2', tableId: 1, type: 'Gesto de Ayuda', severity: 'Media', timeElapsed: 120, customerLTV: 1200000, status: 'active' },
     { id: 'I3', tableId: 8, type: 'Feedback Negativo', severity: 'Crítica', timeElapsed: 0, customerLTV: 8900000, status: 'active' },
@@ -37,27 +31,27 @@ const CareModule: React.FC = () => {
 
   const selectedIncident = incidents.find(i => i.id === selectedIncidentId);
 
-  const generateApologyScript = async (incident: ServiceIncident) => {
-    setIsGeneratingScript(true);
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Eres el Floor Manager de Seratta Gourmet. Mesa ${incident.tableId} ha tenido un incidente de '${incident.type}' con severidad '${incident.severity}'. El cliente es VIP (LTV: $${incident.customerLTV}). Escribe un guion corto y elegante para acercarte a la mesa, pedir disculpas y ofrecer una cortesía. Tono empático y profesional.`,
-      });
-      setAiScript(response.text || "");
-    } catch (e) {
-      setAiScript("Lamento mucho la demora. Estamos perfeccionando su plato ahora mismo. Como atención, me gustaría ofrecerles una ronda de cocteles autoría de la casa.");
-    } finally {
-      setIsGeneratingScript(false);
-    }
-  };
-
   useEffect(() => {
+    const generateApologyScript = async (incident: ServiceIncident) => {
+      setIsGeneratingScript(true);
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      try {
+        const response = await ai.models.generateContent({
+          model: 'gemini-3-flash-preview',
+          contents: `Eres el Floor Manager de Seratta Gourmet. Mesa ${incident.tableId} ha tenido un incidente de '${incident.type}' con severidad '${incident.severity}'. El cliente es VIP (LTV: $${incident.customerLTV}). Escribe un guion corto y elegante para acercarte a la mesa, pedir disculpas y ofrecer una cortesía. Tono empático y profesional.`,
+        });
+        setAiScript(response.text || "");
+      } catch {
+        setAiScript("Lamento mucho la demora. Estamos perfeccionando su plato ahora mismo. Como atención, me gustaría ofrecerles una ronda de cocteles autoría de la casa.");
+      } finally {
+        setIsGeneratingScript(false);
+      }
+    };
+
     if (selectedIncidentId && selectedIncident) {
       generateApologyScript(selectedIncident);
     }
-  }, [selectedIncidentId]);
+  }, [selectedIncidentId, selectedIncident]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 text-left">

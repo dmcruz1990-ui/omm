@@ -3,27 +3,18 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, 
   TrendingUp, 
-  BarChart3, 
   Zap, 
-  Target, 
   ShieldCheck, 
-  DollarSign, 
-  Users, 
-  ArrowUpRight, 
   ArrowDownRight, 
   BrainCircuit,
   PieChart,
   Activity,
   Sparkles,
   Flame,
-  Globe,
   Loader2,
   CalendarDays,
-  UtensilsCrossed,
   Clock,
   UserCheck,
-  ChevronRight,
-  MonitorPlay,
   // Added missing Star icon import
   Star
 } from 'lucide-react';
@@ -91,7 +82,7 @@ const ExecutiveCockpit: React.FC<ExecutiveCockpitProps> = ({ isOpen, onClose }) 
         }));
         setFlowItems(enriched);
       }
-    } catch (err) { console.warn("Flow Sync Error"); }
+    } catch { console.warn("Flow Sync Error"); }
   };
 
   const generateStrategicBrief = async () => {
@@ -114,7 +105,7 @@ const ExecutiveCockpit: React.FC<ExecutiveCockpitProps> = ({ isOpen, onClose }) 
         Genera un 'Strategic Brief' de 2 párrafos que analice el crecimiento vs el mes anterior, el impacto de las 42 reservas y resalte la eficiencia operativa del staff de meseros liderado por Juan Pérez.`,
       });
       setAiInsight(response.text || "");
-    } catch (e) {
+    } catch {
       setAiInsight("Análisis resumido: La operación registra un crecimiento del 5.1% vs mes anterior. Con 42 reservas hoy y un staff operando al 98% de eficiencia (liderado por Juan Pérez), se proyecta un cierre de turno exitoso.");
     } finally {
       setIsThinking(false);
@@ -363,7 +354,7 @@ const ExecutiveCockpit: React.FC<ExecutiveCockpitProps> = ({ isOpen, onClose }) 
   );
 };
 
-const KPIMiniCard = ({ label, value, trend, positive, icon }: any) => (
+const KPIMiniCard = ({ label, value, trend, positive, icon }: { label: string, value: string, trend: string, positive?: boolean, icon: React.ReactNode }) => (
   <div className="bg-[#111114] border border-white/5 p-8 rounded-[2.5rem] shadow-xl hover:border-blue-500/20 transition-all group">
      <div className="flex justify-between items-start mb-6">
         <div className="p-3 bg-white/5 rounded-2xl text-blue-500 group-hover:bg-blue-600 group-hover:text-white transition-all">
@@ -379,7 +370,7 @@ const KPIMiniCard = ({ label, value, trend, positive, icon }: any) => (
   </div>
 );
 
-const YieldMetric = ({ label, value, target, suffix, isInverse, isGrowth }: any) => {
+const YieldMetric = ({ label, value, target, suffix, isInverse, isGrowth }: { label: string, value: number, target: number, suffix: string, isInverse?: boolean, isGrowth?: boolean }) => {
   const isBetter = isInverse ? value < target : value > target;
   return (
     <div className="flex flex-col items-center space-y-2">

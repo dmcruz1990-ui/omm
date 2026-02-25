@@ -1,5 +1,5 @@
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { HandLandmarkerResult } from '@mediapipe/tasks-vision';
 import { 
   Activity,
