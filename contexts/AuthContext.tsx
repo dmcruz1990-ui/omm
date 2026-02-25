@@ -21,6 +21,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const fetchAndSyncProfile = async (user: User) => {
+    try {
+      let assignedRole: UserRole = 'mesero';
+      const email = user.email?.toLowerCase() || '';
+      
+      // LÓGICA DE ASIGNACIÓN DE ROLES RBAC POR CORREO
+      if (email.startsWith('admin')) assignedRole = 'admin';
+      else if (email.startsWith('dev') || email.startsWith('desarrollo')) assignedRole = 'desarrollo';
+      else if (email.startsWith('gerente') || email.startsWith('gerencia')) assignedRole = 'gerencia';
+      else if (email.startsWith('cocina') || email.startsWith('chef')) assignedRole = 'cocina';
+      else if (email.startsWith('mesero')) assignedRole = 'mesero';
+      
+      const virtualProfile: Profile = { 
+        id: user.id, 
+        email: email, 
+        role: assignedRole, 
+        full_name: email.split('@')[0].toUpperCase(),
+        loyalty_level: 'UMBRAL'
+      };
+      
+      setProfile(virtualProfile);
+      
+      try {
+        await supabase.from('profiles').upsert({ 
+          id: user.id, 
+          email: email, 
+          role: assignedRole, 
+          full_name: virtualProfile.full_name,
+          loyalty_level: 'UMBRAL'
+        }, { onConflict: 'id' });
+      } catch (e) {
+        console.warn("Profile table sync skipped");
+      }
+    } catch (err) { console.warn("Profile logic error"); }
+  };
+
   useEffect(() => {
     let mounted = true;
     const initAuth = async () => {
@@ -67,42 +103,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       subscription.unsubscribe();
     };
   }, []);
-
-  const fetchAndSyncProfile = async (user: User) => {
-    try {
-      let assignedRole: UserRole = 'mesero';
-      const email = user.email?.toLowerCase() || '';
-      
-      // LÓGICA DE ASIGNACIÓN DE ROLES RBAC POR CORREO
-      if (email.startsWith('admin')) assignedRole = 'admin';
-      else if (email.startsWith('dev') || email.startsWith('desarrollo')) assignedRole = 'desarrollo';
-      else if (email.startsWith('gerente') || email.startsWith('gerencia')) assignedRole = 'gerencia';
-      else if (email.startsWith('cocina') || email.startsWith('chef')) assignedRole = 'cocina';
-      else if (email.startsWith('mesero')) assignedRole = 'mesero';
-      
-      const virtualProfile: Profile = { 
-        id: user.id, 
-        email: email, 
-        role: assignedRole, 
-        full_name: email.split('@')[0].toUpperCase(),
-        loyalty_level: 'UMBRAL'
-      };
-      
-      setProfile(virtualProfile);
-      
-      try {
-        await supabase.from('profiles').upsert({ 
-          id: user.id, 
-          email: email, 
-          role: assignedRole, 
-          full_name: virtualProfile.full_name,
-          loyalty_level: 'UMBRAL'
-        }, { onConflict: 'id' });
-      } catch (e) {
-        console.warn("Profile table sync skipped");
-      }
-    } catch (err) { console.warn("Profile logic error"); }
-  };
 
   // Función de acceso rápido para pruebas (Bypass Auth)
   const signInMock = (role: UserRole) => {

@@ -77,9 +77,9 @@ export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>,
 
         landmarkerRef.current = landmarker;
         await startCamera();
-      } catch (err: any) {
+      } catch (err) {
         console.error("MediaPipe Init Error:", err);
-        setError(`Error de inicialización: ${err.message}`);
+        setError(`Error de inicialización: ${(err as Error).message}`);
       }
     };
 
@@ -103,88 +103,90 @@ export const useMediaPipe = (videoRef: React.RefObject<HTMLVideoElement | null>,
              }
           };
         }
-      } catch (err: any) {
+      } catch (err) {
         console.error("Camera Error:", err);
-        if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
+        const error = err as Error;
+        if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
           setError("Permiso Denegado: Por favor, activa el acceso a la cámara en tu navegador.");
         } else {
-          setError(`Error de Cámara: ${err.message || "No se pudo acceder."}`);
+          setError(`Error de Cámara: ${error.message || "No se pudo acceder."}`);
         }
       }
     };
 
-    const predictWebcam = () => {
-        if (!videoRef.current || !landmarkerRef.current || !isActive) return;
+      const videoElement = videoRef.current;
 
-        const video = videoRef.current;
-        if (video.videoWidth > 0 && video.videoHeight > 0) {
-             let startTimeMs = performance.now();
+      const predictWebcam = () => {
+        if (!videoElement || !landmarkerRef.current || !isActive) return;
+
+        if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+             const startTimeMs = performance.now();
              try {
-                 const results = landmarkerRef.current.detectForVideo(video, startTimeMs);
+                 const results = landmarkerRef.current.detectForVideo(videoElement, startTimeMs);
                  lastResultsRef.current = results;
                  processResults(results);
-             } catch (e) {
+             } catch {
                  // Frame skip
              }
         }
         requestRef.current = requestAnimationFrame(predictWebcam);
-    };
+      };
 
-    const processResults = (results: HandLandmarkerResult) => {
-        const now = performance.now();
-        const deltaTime = (now - handPositionsRef.current.lastTimestamp) / 1000;
-        handPositionsRef.current.lastTimestamp = now;
+      const processResults = (results: HandLandmarkerResult) => {
+          const now = performance.now();
+          const deltaTime = (now - handPositionsRef.current.lastTimestamp) / 1000;
+          handPositionsRef.current.lastTimestamp = now;
 
-        let newLeft: THREE.Vector3 | null = null;
-        let newRight: THREE.Vector3 | null = null;
+          let newLeft: THREE.Vector3 | null = null;
+          let newRight: THREE.Vector3 | null = null;
 
-        if (results.landmarks) {
-          for (let i = 0; i < results.landmarks.length; i++) {
-            const landmarks = results.landmarks[i];
-            const classification = results.handedness[i][0];
-            const isRight = classification.categoryName === 'Right'; 
-            const tip = landmarks[8];
-            const worldPos = mapHandToWorld(tip.x, tip.y);
+          if (results.landmarks) {
+            for (let i = 0; i < results.landmarks.length; i++) {
+              const landmarks = results.landmarks[i];
+              const classification = results.handedness[i][0];
+              const isRight = classification.categoryName === 'Right'; 
+              const tip = landmarks[8];
+              const worldPos = mapHandToWorld(tip.x, tip.y);
 
-            if (isRight) { newRight = worldPos; } else { newLeft = worldPos; }
-          }
-        }
-
-        const s = handPositionsRef.current;
-        const LERP = 0.6; 
-
-        if (newLeft) {
-            if (s.left) {
-                newLeft.lerpVectors(s.left, newLeft, LERP);
-                if (deltaTime > 0.001) { s.leftVelocity.subVectors(newLeft, s.left).divideScalar(deltaTime); }
+              if (isRight) { newRight = worldPos; } else { newLeft = worldPos; }
             }
-            s.lastLeft = s.left ? s.left.clone() : newLeft.clone();
-            s.left = newLeft;
-        } else { s.left = null; }
+          }
 
-        if (newRight) {
-             if (s.right) {
-                 newRight.lerpVectors(s.right, newRight, LERP);
-                 if (deltaTime > 0.001) { s.rightVelocity.subVectors(newRight, s.right).divideScalar(deltaTime); }
-             }
-             s.lastRight = s.right ? s.right.clone() : newRight.clone();
-             s.right = newRight;
-        } else { s.right = null; }
-    };
+          const s = handPositionsRef.current;
+          const LERP = 0.6; 
 
-    setupMediaPipe();
+          if (newLeft) {
+              if (s.left) {
+                  newLeft.lerpVectors(s.left, newLeft, LERP);
+                  if (deltaTime > 0.001) { s.leftVelocity.subVectors(newLeft, s.left).divideScalar(deltaTime); }
+              }
+              s.lastLeft = s.left ? s.left.clone() : newLeft.clone();
+              s.left = newLeft;
+          } else { s.left = null; }
 
-    return () => {
-      isActive = false;
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
-      if (landmarkerRef.current) landmarkerRef.current.close();
-      if (videoRef.current && videoRef.current.srcObject) {
-          const stream = videoRef.current.srcObject as MediaStream;
-          stream.getTracks().forEach(t => t.stop());
-          videoRef.current.srcObject = null;
-      }
-      setIsCameraReady(false);
-    };
+          if (newRight) {
+               if (s.right) {
+                   newRight.lerpVectors(s.right, newRight, LERP);
+                   if (deltaTime > 0.001) { s.rightVelocity.subVectors(newRight, s.right).divideScalar(deltaTime); }
+               }
+               s.lastRight = s.right ? s.right.clone() : newRight.clone();
+               s.right = newRight;
+          } else { s.right = null; }
+      };
+
+      setupMediaPipe();
+
+      return () => {
+        isActive = false;
+        if (requestRef.current) cancelAnimationFrame(requestRef.current);
+        if (landmarkerRef.current) landmarkerRef.current.close();
+        if (videoElement && videoElement.srcObject) {
+            const stream = videoElement.srcObject as MediaStream;
+            stream.getTracks().forEach(t => t.stop());
+            videoElement.srcObject = null;
+        }
+        setIsCameraReady(false);
+      };
   }, [enabled, videoRef, retryCount]);
 
   return { isCameraReady, handPositionsRef, lastResultsRef, error, retry };

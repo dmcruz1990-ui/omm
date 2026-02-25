@@ -1,65 +1,31 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  Package, 
   AlertTriangle, 
   Zap, 
   RefreshCw,
-  Box,
   Loader2,
   Truck,
-  FileText,
-  ShieldCheck,
-  ChevronRight,
-  Atom,
   Store,
-  Upload,
-  FileCode,
-  CheckCircle,
-  Eye,
   Search,
   TrendingUp,
   TrendingDown,
   Scale,
   Plus,
-  // Added missing Minus import
   Minus,
   FileSearch,
-  DollarSign,
   AlertCircle,
   Database,
-  XCircle,
   FileUp,
   Activity,
-  ArrowLeft,
-  Clock,
-  History,
-  Archive,
-  Bell,
-  CheckCircle2,
-  Timer,
-  Download,
-  Fingerprint,
-  ClipboardCheck,
-  ShieldAlert
+  ShieldAlert,
+  ClipboardCheck
 } from 'lucide-react';
 import { jsPDF } from 'https://esm.sh/jspdf';
 import autoTable from 'https://esm.sh/jspdf-autotable';
-import { GoogleGenAI, Type } from "@google/genai";
-import { supabase } from '../lib/supabase.ts';
-import { SupplyItem, PYGCategory } from '../types.ts';
+import { SupplyItem } from '../types.ts';
 import SupplyMarketplace from './SupplyMarketplace.tsx';
 import { useAuth } from '../contexts/AuthContext.tsx';
-
-interface PurchaseOrder {
-  id: string;
-  vendor: string;
-  date: string;
-  items_count: number;
-  total: number;
-  status: 'pending' | 'received' | 'delayed';
-  eta: string;
-}
 
 const SupplyModule: React.FC = () => {
   const { profile } = useAuth();
@@ -72,10 +38,6 @@ const SupplyModule: React.FC = () => {
   const [isSyncingRecon, setIsSyncingRecon] = useState(false);
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
-
-  useEffect(() => {
-    fetchInventory();
-  }, []);
 
   const fetchInventory = async () => {
     setLoading(true);
@@ -90,7 +52,12 @@ const SupplyModule: React.FC = () => {
     setLoading(false);
   };
 
+  useEffect(() => {
+    fetchInventory();
+  }, []);
+
   const downloadAuditPDF = (item: SupplyItem) => {
+    const timestamp = Date.now();
     const doc = new jsPDF();
     const date = new Date().toLocaleString();
     
@@ -132,7 +99,7 @@ const SupplyModule: React.FC = () => {
     doc.text('ALERTA DISPARADA: La desviación supera el umbral del 3% permitido.', 25, finalY + 20);
     doc.text('Requiere inspección de cámaras y revisión de mermas.', 25, finalY + 28);
 
-    doc.save(`AUDIT_${item.id}_${Date.now()}.pdf`);
+    doc.save(`AUDIT_${item.id}_${timestamp}.pdf`);
   };
 
   const handleUpdateCount = (id: string, val: number) => {

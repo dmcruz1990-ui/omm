@@ -2,19 +2,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { HandLandmarkerResult } from '@mediapipe/tasks-vision';
 import { 
-  Monitor, 
-  Zap,
   Activity,
   ShieldCheck,
   BellRing,
-  CheckCircle,
-  Video,
-  Fingerprint,
   Volume2,
-  MapPin,
   Target,
-  Clock,
-  AlertTriangle
+  Clock
 } from 'lucide-react';
 import { Table } from '../types.ts';
 import { supabase } from '../lib/supabase.ts';
@@ -24,12 +17,7 @@ interface SurveillanceProps {
   isCameraReady: boolean;
   resultsRef: React.RefObject<HandLandmarkerResult | null>;
   tables: Table[];
-  onCheckService: (tableId: number) => void;
-  activeStation: number;
-  setActiveStation: (id: number) => void;
   onManualTrigger: (id: number) => void;
-  cameraError?: string | null;
-  onRetryCamera?: () => void;
 }
 
 // Definición de Zonas de Mesa (Coordenadas normalizadas 0.0 a 1.0)
@@ -41,13 +29,11 @@ const TABLE_ZONES = [
 ];
 
 const SurveillanceModule: React.FC<SurveillanceProps> = ({ 
-  videoRef, isCameraReady, resultsRef, tables, onCheckService, activeStation, setActiveStation, onManualTrigger,
-  cameraError, onRetryCamera
+  videoRef, isCameraReady, resultsRef, tables, onManualTrigger
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   
-  const [lastAction, setLastAction] = useState<string>('Sincronizando Visión...');
   const [detectionHistory, setDetectionHistory] = useState<string[]>([]);
   
   // Contadores de frames por mesa para evitar falsos positivos
@@ -66,17 +52,12 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
     }
   };
 
-  const logEvent = (msg: string) => {
-    setDetectionHistory(prev => [msg, ...prev].slice(0, 5));
-    setLastAction(msg);
-  };
-
-  const triggerAutoAlert = async (tableId: number) => {
+  const triggerAutoAlert = useCallback(async (tableId: number) => {
     const now = Date.now();
     if (now - lastAlertTime.current[tableId] < 10000) return; // Cooldown de 10s
 
     playAlertSound();
-    logEvent(`GESTO DETECTADO EN MESA ${tableId}`);
+    setDetectionHistory(prev => [`GESTO DETECTADO EN MESA ${tableId}`, ...prev].slice(0, 5));
 
     try {
       const { error } = await supabase.from('tables').update({ 
@@ -88,10 +69,10 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
         lastAlertTime.current[tableId] = now;
         onManualTrigger(tableId);
       }
-    } catch (err) {
-      logEvent(`ERROR SYNC M${tableId}`);
+    } catch {
+      setDetectionHistory(prev => [`ERROR SYNC M${tableId}`, ...prev].slice(0, 5));
     }
-  };
+  }, [onManualTrigger]);
 
   useEffect(() => {
     if (!isCameraReady) return;
@@ -135,9 +116,8 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
       if (resultsRef.current?.landmarks) {
         const activeMesasInFrame = new Set<number>();
 
-        resultsRef.current.landmarks.forEach((landmarks, index) => {
+        resultsRef.current.landmarks.forEach((landmarks) => {
           const tip = landmarks[8]; // Punta del índice
-          const wrist = landmarks[0]; // Muñeca
           
           // Lógica de Gesto: ¿Está la mano por encima del hombro/muñeca?
           // En MediaPipe, Y disminuye hacia arriba
@@ -187,7 +167,7 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
 
     render();
     return () => cancelAnimationFrame(animationFrameId);
-  }, [isCameraReady, videoRef, resultsRef]);
+  }, [isCameraReady, videoRef, resultsRef, triggerAutoAlert]);
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 text-left">

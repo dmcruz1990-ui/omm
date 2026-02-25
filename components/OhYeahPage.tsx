@@ -5,57 +5,28 @@
 */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase.ts';
 import { 
-  Zap, 
-  Sparkles, 
-  Calendar, 
-  ChevronRight, 
-  Star, 
-  Loader2, 
-  MessageCircle,
-  Wine,
-  Gift,
-  Ticket,
-  Users,
+  MapPin, 
+  User, 
+  CalendarDays, 
+  Bell, 
+  Diamond, 
   Search,
-  CheckCircle2,
-  Trophy,
-  Compass,
-  Award,
-  Briefcase,
-  TrendingUp,
-  BadgeCheck,
-  UserCheck,
-  Play,
-  Info,
-  ChevronLeft,
-  Heart,
-  Plus,
-  LayoutDashboard,
-  Coins,
-  Crown,
-  MapPin,
-  Flame,
-  // Fix: Added missing Clock and Lock icons to imports from lucide-react
+  ChevronDown,
   Clock,
-  Lock
+  Users
 } from 'lucide-react';
-import { OmmEvent, Brand } from '../types.ts';
 import { useAuth } from '../contexts/AuthContext.tsx';
 
-const OhYeahPage: React.FC = () => {
+interface OhYeahPageProps {
+  onExit?: () => void;
+}
+
+const OhYeahPage: React.FC<OhYeahPageProps> = ({ onExit }) => {
   const { profile } = useAuth();
-  const [activeTab, setActiveTab] = useState<'discover' | 'profile' | 'social'>('discover');
-  const [brands, setBrands] = useState<Brand[]>([]);
-  const [events, setEvents] = useState<OmmEvent[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isScrolled, setIsScrolled] = useState(false);
-  
-  const userPoints = 2450; // Mock de puntos
 
   useEffect(() => {
-    fetchGlobalData();
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 50);
     };
@@ -63,306 +34,325 @@ const OhYeahPage: React.FC = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const fetchGlobalData = async () => {
-    setLoading(true);
-    try {
-      const { data: b } = await supabase.from('brands').select('*');
-      const { data: e } = await supabase.from('events').select('*');
-      setBrands(b || []);
-      setEvents(e || []);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
+  const handleExit = () => {
+    if (onExit) {
+      onExit();
+    } else {
+      window.location.hash = '';
     }
   };
 
-  const isStaff = profile && ['admin', 'gerencia', 'mesero', 'chef', 'desarrollo'].includes(profile.role);
-
-  if (loading) return (
-    <div className="h-screen w-full bg-[#050505] flex flex-col items-center justify-center">
-       <Loader2 className="text-blue-600 animate-spin mb-4" size={48} />
-       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic">Iniciando Experiencia Netflix OMM...</p>
-    </div>
-  );
-
   return (
-    <div className="min-h-screen bg-[#050505] text-white font-sans selection:bg-blue-600">
+    <div className="min-h-screen bg-black text-white font-sans selection:bg-[#ec008c] overflow-x-hidden">
       
-      {/* Header Netflix Style */}
-      <header className={`fixed top-0 left-0 right-0 h-20 z-[100] px-8 md:px-16 flex items-center justify-between transition-all duration-500 ${isScrolled ? 'bg-[#050505]' : 'bg-transparent'}`}>
-        <div className="flex items-center gap-10">
-           <div className="flex items-center gap-2 cursor-pointer" onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})}>
-              <Zap size={24} className="text-blue-600" fill="currentColor" />
-              <h1 className="text-2xl font-black italic tracking-tighter uppercase leading-none">OH YEAH!</h1>
-           </div>
-           <nav className="hidden lg:flex items-center gap-6">
-              <NavBtn active={activeTab === 'discover'} onClick={() => setActiveTab('discover')} label="Inicio" />
-              <NavBtn active={activeTab === 'social'} onClick={() => setActiveTab('social')} label="Social Hub" />
-              <NavBtn active={activeTab === 'profile'} onClick={() => setActiveTab('profile')} label="Mis Beneficios" />
-           </nav>
+      {/* Top Bar */}
+      <div className="bg-[#1a1a1a] text-[#a0a0a0] text-[10px] md:text-xs py-2 px-6 flex justify-between items-center font-medium tracking-wider">
+        <div className="flex-1 text-center md:text-left">
+          <span className="text-[#ccff00] italic mr-1">Los mejores restaurantes, eventos y experiencias.</span> Aquí
+        </div>
+        <div className="hidden md:flex items-center gap-4">
+          <a href="#" className="hover:text-white transition-colors">Preguntas frecuentes</a>
+          <div className="flex items-center gap-1 cursor-pointer hover:text-white transition-colors">
+            ES <ChevronDown size={12} />
+          </div>
+        </div>
+      </div>
+
+      {/* Header */}
+      <header className={`sticky top-0 z-[100] px-6 py-4 flex items-center justify-between transition-all duration-300 ${isScrolled ? 'bg-black/90 backdrop-blur-md border-b border-white/10' : 'bg-transparent'}`}>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1 cursor-pointer text-[#ec008c] hover:text-[#ff1493] transition-colors">
+            <MapPin size={24} strokeWidth={1.5} />
+            <ChevronDown size={14} className="mt-2" />
+          </div>
+          <div className="cursor-pointer" onClick={() => window.scrollTo({top: 0, behavior: 'smooth'})}>
+            {/* Custom Oh Yeah! Logo Text */}
+            <h1 className="text-4xl md:text-5xl font-black italic tracking-tighter text-[#ec008c]" style={{ textShadow: '2px 2px 0px #ccff00' }}>
+              Oh Yeah!
+            </h1>
+          </div>
         </div>
 
-        <div className="flex items-center gap-6">
-           {isStaff && (
-             <button 
-              onClick={() => window.location.hash = ''}
-              className="bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center gap-2 shadow-lg transition-all"
-             >
-                <LayoutDashboard size={14} /> 
-                <span className="hidden sm:inline">REGRESAR AL SISTEMA</span>
-             </button>
-           )}
-           <Search size={20} className="text-gray-400 cursor-pointer hover:text-white" />
-           <div className="w-8 h-8 rounded bg-blue-600 flex items-center justify-center cursor-pointer">
-              <Users size={16} />
-           </div>
+        <div className="flex items-center gap-4 md:gap-6">
+          <div className="hidden md:flex items-center gap-4">
+            <button className="text-xs font-bold tracking-widest uppercase hover:text-[#ec008c] transition-colors">INICIAR SESIÓN</button>
+            <button className="border border-[#ccff00] text-[#ccff00] px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest uppercase flex items-center gap-2 hover:bg-[#ccff00] hover:text-black transition-all">
+              GOURMAND SOCIETY <div className="w-1.5 h-4 bg-current rounded-full"></div>
+            </button>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <button className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center text-[#ec008c] hover:bg-white/10 transition-colors">
+              <User size={16} />
+            </button>
+            <button className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center text-[#4169e1] hover:bg-white/10 transition-colors">
+              <CalendarDays size={16} />
+            </button>
+            <button className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center text-[#ccff00] hover:bg-white/10 transition-colors">
+              <Bell size={16} />
+            </button>
+            <button className="w-8 h-8 rounded-full border border-white/20 flex items-center justify-center text-[#ec008c] hover:bg-white/10 transition-colors">
+              <Diamond size={16} />
+            </button>
+            <div className="w-[1px] h-6 bg-white/20 mx-1"></div>
+            <button className="text-[#ccff00] hover:scale-110 transition-transform">
+              <Search size={24} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
       </header>
 
-      <main className="pb-32">
-        {activeTab === 'discover' && (
-          <div className="animate-in fade-in duration-1000">
-             <section className="relative h-[85vh] w-full flex flex-col justify-end px-8 md:px-16 pb-24 overflow-hidden">
-                <div className="absolute inset-0 z-0">
-                   <img src="https://images.unsplash.com/photo-1553621042-f6e147245754?q=80&w=2050&auto=format&fit=crop" className="w-full h-full object-cover" alt="Featured" />
-                   <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent"></div>
-                   <div className="absolute inset-0 bg-gradient-to-r from-[#050505]/60 via-transparent to-transparent"></div>
-                </div>
-                <div className="relative z-10 max-w-2xl space-y-6">
-                   <div className="flex items-center gap-2 mb-4">
-                      <Zap size={20} className="text-blue-500" fill="currentColor" />
-                      <span className="text-sm font-black uppercase tracking-[0.3em] text-white">RECOMENDADO PARA TI</span>
-                   </div>
-                   <h2 className="text-6xl md:text-8xl font-black italic tracking-tighter uppercase leading-[0.9]">OMAKASE <br/> <span className="text-blue-600">RITUAL.</span></h2>
-                   <p className="text-lg text-gray-200 font-medium italic leading-relaxed max-w-lg">Una inmersión de 12 pasos donde cada ingrediente cuenta una historia. Tu nivel CONSAGRADO te da 15% de puntos extra hoy.</p>
-                   <div className="flex gap-4 pt-6">
-                      <button className="bg-white text-black px-8 py-3 rounded-md font-black flex items-center gap-3 hover:bg-gray-200 transition-all"><Play size={20} fill="black" /> RESERVAR</button>
-                      <button className="bg-gray-500/40 backdrop-blur-md text-white px-8 py-3 rounded-md font-black flex items-center gap-3 hover:bg-gray-500/60 transition-all border border-white/10"><Info size={20} /> MÁS INFO</button>
-                   </div>
-                </div>
-             </section>
-
-             <div className="relative z-20 -mt-20 space-y-12 pl-8 md:pl-16">
-                <ContentRow title="Eventos de la Semana" items={events.slice(0, 5)} />
-                <ContentRow title="NEXUM Inteligencia: Lo que amamos hoy" items={events.slice(2, 6)} />
-             </div>
+      {/* Search/Filter Bar */}
+      <div className="flex justify-center -mt-4 relative z-50 px-4">
+        <div className="bg-black border border-[#ccff00]/30 rounded-full flex flex-wrap md:flex-nowrap items-center p-1 shadow-[0_0_20px_rgba(204,255,0,0.1)]">
+          <div className="flex items-center gap-2 px-4 py-2 bg-[#ccff00] text-black rounded-full font-black text-xs md:text-sm cursor-pointer">
+            <CalendarDays size={16} /> FEB 16
           </div>
-        )}
+          <div className="flex items-center gap-2 px-4 py-2 text-[#ccff00] font-black text-xs md:text-sm cursor-pointer border-r border-white/10">
+            <Clock size={16} /> 7:00 PM
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 text-[#ccff00] font-black text-xs md:text-sm cursor-pointer border-r border-white/10">
+            <Users size={16} /> 2 PERSONAS
+          </div>
+          <div className="flex items-center justify-between gap-4 px-4 py-2 text-[#a0a0a0] font-medium text-xs md:text-sm cursor-pointer min-w-[150px]">
+            <div className="flex items-center gap-2">
+              <Search size={16} className="text-[#ccff00]" /> Elige tu mood
+            </div>
+            <ChevronDown size={14} />
+          </div>
+          <button className="bg-[#ec008c] text-white px-6 py-2 rounded-full font-black text-xs md:text-sm tracking-widest hover:bg-[#ff1493] transition-colors ml-auto md:ml-2">
+            RESERVAR
+          </button>
+        </div>
+      </div>
 
-        {activeTab === 'social' && (
-           <div className="pt-32 px-8 md:px-16 animate-in slide-in-from-bottom-4 duration-700 space-y-16">
-              {/* Perfil de Fidelización */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-                 <div className="lg:col-span-2 bg-gradient-to-br from-blue-900/40 to-blue-600/10 border border-blue-500/20 rounded-[3rem] p-12 relative overflow-hidden shadow-2xl">
-                    <div className="absolute top-0 right-0 p-12 opacity-5"><Coins size={200} className="text-blue-400" /></div>
-                    <div className="relative z-10 flex flex-col md:flex-row items-center gap-10">
-                       <div className="relative">
-                          <div className="w-32 h-32 rounded-full border-4 border-blue-500 p-1">
-                             <img src="https://i.pravatar.cc/300?u=customer" className="w-full h-full rounded-full object-cover" alt="Avatar" />
-                          </div>
-                          <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 bg-blue-600 text-white px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest">CONSAGRADO</div>
+      <main className="pb-20">
+        {/* Hero Section */}
+        <section className="px-6 md:px-12 mt-8 mb-16 flex flex-col lg:flex-row gap-6">
+          <div className="flex-1 rounded-[2rem] overflow-hidden relative min-h-[400px]">
+            <img src="https://images.unsplash.com/photo-1555396273-367ea4eb4db5?q=80&w=1600&auto=format&fit=crop" className="absolute inset-0 w-full h-full object-cover" alt="Hero" />
+            <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/40 to-transparent"></div>
+            <div className="absolute bottom-12 left-12">
+              <h2 className="text-4xl md:text-6xl font-black text-white leading-tight mb-4">
+                Bienvenido <br/> al mundo de
+              </h2>
+              <div className="flex items-center gap-4">
+                <div className="flex">
+                  <div className="w-12 h-12 rounded-full bg-[#eb001b] mix-blend-screen"></div>
+                  <div className="w-12 h-12 rounded-full bg-[#f79e1b] mix-blend-screen -ml-4"></div>
+                </div>
+                <span className="text-3xl font-medium tracking-wide">priceless</span>
+              </div>
+            </div>
+          </div>
+          
+          <div className="w-full lg:w-[350px] rounded-[2rem] border border-[#ec008c]/30 p-1 relative overflow-hidden flex flex-col items-center justify-center min-h-[400px]">
+             <div className="absolute inset-0 bg-gradient-to-b from-transparent to-[#ec008c]/10"></div>
+             <div className="bg-white text-black p-8 rounded-3xl w-[85%] text-center relative z-10 shadow-2xl">
+                <div className="w-16 h-16 bg-[#ec008c] rounded-full mx-auto -mt-16 mb-4 flex items-center justify-center text-white font-black italic text-xl shadow-lg">
+                  Oh Yeah!
+                </div>
+                <h3 className="font-black italic text-xl mb-2">Concierge</h3>
+                <p className="font-bold text-sm leading-tight">¿Qué estas buscando<br/>es día de hoy?</p>
+             </div>
+             <img src="https://images.unsplash.com/photo-1576092762791-dd9e2220c9d8?q=80&w=400&auto=format&fit=crop" className="absolute bottom-0 right-0 w-48 opacity-80 mix-blend-luminosity" alt="Hand" style={{ maskImage: 'linear-gradient(to top, black, transparent)' }} />
+          </div>
+        </section>
+
+        {/* Horizontal Scroll Sections */}
+        <div className="space-y-16">
+          <ScrollSection 
+            title={<>Basados en tus gustos <span className="text-[#a0a0a0] font-normal text-sm md:text-base">(Se activa al iniciar sesión)</span></>}
+            items={[1,2,3,4,5,6]} 
+            showTopBadge 
+          />
+
+          {/* Top 10 Section */}
+          <section className="px-6 md:px-12">
+            <h3 className="text-xl md:text-2xl font-black tracking-wide mb-6">Los 10 restaurantes que están marcando conversación</h3>
+            <div className="flex gap-4 overflow-x-auto no-scrollbar pb-8 snap-x">
+               {[1,2,3,4,5,6].map((num) => (
+                 <div key={num} className="min-w-[280px] md:min-w-[320px] h-[400px] relative snap-start flex-shrink-0 group cursor-pointer">
+                    <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                       <span className="text-[250px] font-black text-transparent stroke-text leading-none group-hover:text-[#ec008c]/20 transition-colors" style={{ WebkitTextStroke: '2px #ec008c' }}>{num}</span>
+                    </div>
+                    <div className="absolute inset-x-4 inset-y-12 rounded-xl overflow-hidden z-0">
+                       <img src={`https://images.unsplash.com/photo-1514933651103-005eec06c04b?q=80&w=600&auto=format&fit=crop&sig=${num}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Restaurant" />
+                       <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors"></div>
+                    </div>
+                    {num === 1 && <div className="absolute bottom-8 left-8 z-20 bg-[#ccff00] text-black text-[10px] font-black px-3 py-1 uppercase">RECIÉN AGREGADO</div>}
+                    {num === 3 && (
+                      <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex flex-col items-center">
+                        <div className="bg-[#ccff00] text-black text-[10px] font-black px-3 py-1 uppercase mb-1">NUEVO MENÚ</div>
+                        <div className="bg-white text-black text-[10px] font-bold px-3 py-1 rounded-full cursor-pointer hover:bg-gray-200">Ver ahora</div>
+                      </div>
+                    )}
+                 </div>
+               ))}
+            </div>
+          </section>
+
+          <ScrollSection title="Los que todos están hablando" items={[1,2,3,4,5,6]} />
+
+          {/* Banner */}
+          <section className="w-full h-[300px] md:h-[400px] relative overflow-hidden my-12">
+             <img src="https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?q=80&w=2000&auto=format&fit=crop" className="w-full h-full object-cover" alt="Cats Banner" style={{ filter: 'hue-rotate(280deg) saturate(2)' }} />
+             <div className="absolute inset-0 bg-[#ec008c]/20 mix-blend-overlay"></div>
+             <div className="absolute bottom-0 left-0 right-0 h-1/2 bg-gradient-to-t from-black to-transparent"></div>
+             <div className="absolute bottom-8 w-full text-center">
+                <h2 className="text-6xl md:text-9xl font-black italic tracking-tighter text-[#ccff00]" style={{ textShadow: '4px 4px 0px #ec008c' }}>Oh Yeah!</h2>
+             </div>
+          </section>
+
+          <ScrollSection title="Experiencias privadas" items={[1,2,3,4,5,6]} vertical />
+          
+          <ScrollSection title="Top 5 de los más reservados hoy" items={[1,2,3,4,5,6]} />
+
+          {/* Reviews Section */}
+          <section className="px-6 md:px-12">
+            <h3 className="text-xl md:text-2xl font-black tracking-wide mb-2">Algunos lugares recuerdan a quienes saben vivirlos.</h3>
+            <p className="text-[#a0a0a0] text-sm mb-6">Memoria viva</p>
+            <div className="flex gap-6 overflow-x-auto no-scrollbar pb-8 snap-x">
+               {[
+                 { name: 'Sofía Sanmartín', rating: 5, text: 'Excelente sabor de los platos, entradas muy recomendas y excelente atencion' },
+                 { name: 'Samantha Leal', rating: 5, text: 'Excelente sabor de los platos, entradas muy recomendas y excelente atencion' },
+                 { name: 'Olga Cardenas', rating: 5, text: 'Excelente sabor de los platos, entradas muy recomendas y excelente atencion' }
+               ].map((review, idx) => (
+                 <div key={idx} className="min-w-[300px] md:min-w-[400px] snap-start flex-shrink-0">
+                    <div className="flex gap-4 mb-4">
+                       <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0">
+                          <img src={`https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=200&auto=format&fit=crop&sig=${idx}`} className="w-full h-full object-cover" alt="Restaurant" />
                        </div>
-                       <div className="flex-1 text-center md:text-left space-y-4">
-                          <h2 className="text-4xl font-black italic uppercase tracking-tighter">Bienvenido, {profile?.full_name || 'Invitado'}</h2>
-                          <div className="flex flex-wrap justify-center md:justify-start gap-6">
-                             <div>
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Puntos Seratta</span>
-                                <span className="text-3xl font-black italic text-blue-500">{userPoints.toLocaleString()} PTS</span>
-                             </div>
-                             <div className="w-[1px] bg-white/10 hidden md:block"></div>
-                             <div>
-                                <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest block mb-1">Visitas del Mes</span>
-                                <span className="text-3xl font-black italic text-white">04</span>
-                             </div>
-                          </div>
+                       <div>
+                          <h4 className="font-black text-lg italic">{review.name}</h4>
+                          <div className="flex text-[#ec008c] text-xs my-1">{'★'.repeat(review.rating)}</div>
+                          <p className="text-xs text-[#a0a0a0] leading-tight">{review.text}</p>
+                          <p className="text-[8px] text-[#666] mt-1">Comida 5 Servicio 5 Ambiente 5 Valor 5</p>
                        </div>
-                       <div className="bg-black/40 p-6 rounded-3xl border border-white/5 text-center">
-                          <p className="text-[9px] font-black text-blue-400 uppercase mb-3">Tu Siguiente Nivel</p>
-                          <div className="w-32 h-2 bg-white/5 rounded-full overflow-hidden mb-2">
-                             <div className="h-full bg-blue-500" style={{ width: '65%' }}></div>
-                          </div>
-                          <span className="text-[8px] text-gray-500 font-bold uppercase">A 550 pts de CATADOR</span>
+                    </div>
+                    <div className="bg-[#ccff00] text-black p-3 flex justify-between items-center rounded-sm">
+                       <div>
+                          <h5 className="font-black text-sm leading-none">Seratta</h5>
+                          <p className="text-[9px] font-bold mt-1">$$$$$ • Mediterraneo • Bogotá • ★ 4.5</p>
+                       </div>
+                       <div className="w-4 h-6 border-2 border-black border-b-0 relative">
+                          <div className="absolute -bottom-2 left-0 right-0 border-t-[8px] border-t-black border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent"></div>
                        </div>
                     </div>
                  </div>
-                 
-                 <div className="bg-[#111114] border border-white/5 rounded-[3rem] p-10 flex flex-col justify-center gap-6 shadow-2xl">
-                    <h3 className="text-xl font-black italic uppercase tracking-tighter flex items-center gap-2">
-                       <Flame size={20} className="text-orange-500" /> Hot Streak
-                    </h3>
-                    <p className="text-sm text-gray-400 italic">Has visitado <strong>OMM</strong> y <strong>Seratta</strong> 3 fines de semana seguidos. ¡Tienes un coctel de cortesía esperándote!</p>
-                    <button className="w-full bg-orange-600 hover:bg-orange-500 text-white py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">CANJEAR AHORA</button>
-                 </div>
-              </div>
+               ))}
+            </div>
+          </section>
 
-              {/* Agenda Semanal */}
-              <div className="space-y-8">
-                 <div className="flex items-center justify-between border-b border-white/5 pb-6">
-                    <h3 className="text-2xl font-black italic uppercase tracking-tighter flex items-center gap-3">
-                       <Calendar size={24} className="text-blue-500" /> Agenda de la Semana
-                    </h3>
-                    <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest">Marzo 10 - Marzo 16</span>
-                 </div>
-                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
-                    <WeeklyEvent day="VIE" title="KAISEKI BEATS" venue="Terraza OMM" time="08:00 PM" img="https://images.unsplash.com/photo-1514525253361-bee8718a300a?q=80&w=400" />
-                    <WeeklyEvent day="SAB" title="SAKE TASTING" venue="Cava Privada" time="06:30 PM" img="https://images.unsplash.com/photo-1582719478250-c89cae4dc85b?q=80&w=400" />
-                    <WeeklyEvent day="DOM" title="BRUNCH RITUAL" venue="Main Hall" time="11:00 AM" img="https://images.unsplash.com/photo-1504674900247-0877df9cc836?q=80&w=400" />
-                    <WeeklyEvent day="LUN" title="ZEN MONDAY" venue="All Venues" time="All Day" img="https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?q=80&w=400" />
-                 </div>
-              </div>
-           </div>
-        )}
+          {/* Info Section */}
+          <section className="px-6 md:px-12 py-12 flex flex-col lg:flex-row gap-12 border-t border-white/10">
+             <div className="flex-1">
+                <h3 className="text-sm font-bold mb-12">Preguntas frecuentes</h3>
+                <div className="max-w-md">
+                   <h2 className="text-6xl font-black italic tracking-tighter text-[#ccff00] mb-4" style={{ textShadow: '2px 2px 0px #ec008c' }}>Oh Yeah!</h2>
+                   <p className="text-xl font-bold mb-2">No te ayuda a buscar restaurantes.</p>
+                   <p className="text-xl font-black bg-[#ec008c] inline-block px-2 py-1">Te guía hacia grandes experiencias.</p>
+                </div>
+             </div>
+             <div className="flex-1 text-sm text-[#d0d0d0] space-y-6 max-w-2xl">
+                <p>Explora una selección curada de restaurantes, eventos y rituales gastronómicos que realmente valen la pena. No somos un catálogo infinito lleno de lugares random. Somos un ecosistema vivo de espacios que saben recibir, sorprender... y dejar huella.</p>
+                <p><strong>Aquí no eliges solo por disponibilidad. Eliges por vibra. Por mood. Por lo que quieres sentir esa noche.</strong><br/>¿Cena íntima? ¿Ritual de celebración? ¿Apertura secreta? ¿Viaje con mesa imprescindible? Filtra por ambiente, ocasión o tipo de experiencia y deja que OH YEAH! te muestre lo que está alineado contigo — no solo lo que está libre.</p>
+                <p>Porque una mesa es logística. Una experiencia es memoria.</p>
+                <ul className="list-disc pl-4 space-y-1">
+                   <li>La reserva es solo el comienzo.</li>
+                   <li>La experiencia se construye con el tiempo.</li>
+                   <li>Y nosotros conectamos los puntos.</li>
+                </ul>
+                <p className="font-bold text-white">No busques mesa. Encuentra tu próxima gran experiencia.</p>
+                <p className="font-black text-white text-xs">OH YEAH!<br/>Feel it. Book it. Live it.</p>
+             </div>
+          </section>
 
-        {activeTab === 'profile' && (
-           <div className="pt-32 px-8 md:px-16 animate-in fade-in duration-700 space-y-12">
-              <div className="max-w-4xl mx-auto text-center space-y-4">
-                 <h2 className="text-5xl font-black italic uppercase tracking-tighter">Seratta Elite <span className="text-blue-500">Benefits</span></h2>
-                 <p className="text-gray-400 text-lg italic">Entre más vivas el ritual, más privilegios desbloqueas en nuestro ecosistema.</p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                 <TierCard 
-                    level="UMBRAL" 
-                    points="0 - 1,000" 
-                    perks={['Acumulación básica (1x)', 'Newsletter VIP', 'Acceso a eventos públicos']} 
-                    status="completed"
-                 />
-                 <TierCard 
-                    level="CONSAGRADO" 
-                    points="1,000 - 5,000" 
-                    perks={['Acumulación 1.5x', 'Mesa prioritaria', 'Coctel de bienvenida', '15% Off en eventos']} 
-                    status="active"
-                    current
-                 />
-                 <TierCard 
-                    level="SUPREMO" 
-                    points="5,000+" 
-                    perks={['Acumulación 2x', 'Concierge Personalizado', 'Cenas en Cava sin costo base', 'Valet Parking cortesía']} 
-                    status="locked"
-                 />
-              </div>
-
-              <div className="bg-blue-600 p-12 rounded-[4rem] flex flex-col md:flex-row items-center justify-between gap-8 shadow-2xl relative overflow-hidden">
-                 <div className="absolute top-0 right-0 p-12 opacity-10"><Crown size={150} fill="white" /></div>
-                 <div className="relative z-10 space-y-2">
-                    <h3 className="text-3xl font-black italic uppercase tracking-tighter leading-none">¿Tienes una celebración?</h3>
-                    <p className="text-blue-100 italic">Tus beneficios CONSAGRADO te dan una torta de autoría y decoración zen gratis este mes.</p>
-                 </div>
-                 <button className="bg-white text-blue-600 px-12 py-4 rounded-full font-black uppercase tracking-widest text-xs shadow-xl transition-all hover:scale-105">RESERVAR CELEBRACIÓN</button>
-              </div>
-           </div>
-        )}
+          {/* How it works */}
+          <section className="px-6 md:px-12 pb-16">
+             <h3 className="text-xl font-black tracking-wide mb-12">¿Cómo funciona Oh yeah!?</h3>
+             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 text-center">
+                <div className="flex flex-col items-center">
+                   <div className="text-[#4169e1] mb-4">
+                      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2v0a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+                   </div>
+                   <p className="text-sm font-medium px-4">Descubre el restaurante ideal para cada ocasión</p>
+                </div>
+                <div className="flex flex-col items-center">
+                   <div className="text-[#ec008c] mb-4">
+                      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                   </div>
+                   <p className="text-sm font-medium px-4">Consulta la disponibilidad rápidamente y recibe notificaciones oportunas</p>
+                </div>
+                <div className="flex flex-col items-center">
+                   <div className="text-[#ccff00] mb-4">
+                      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="20" x="5" y="2" rx="2" ry="2"/><path d="M12 18h.01"/></svg>
+                   </div>
+                   <p className="text-sm font-medium px-4">Administra fácilmente tus reservaciones</p>
+                </div>
+             </div>
+          </section>
+        </div>
       </main>
 
-      <footer className="mt-20 px-8 md:px-16 py-12 border-t border-white/5 bg-[#050505]">
-         <div className="flex flex-col md:flex-row justify-between items-center gap-8 opacity-40">
-            <div className="flex items-center gap-2">
-               <Zap size={20} className="text-blue-600" fill="currentColor" />
-               <span className="text-[10px] font-black uppercase tracking-[0.3em]">SERATTA UNIVERSE © 2025</span>
+      {/* Footer */}
+      <footer className="bg-[#ec008c] text-white pt-16 pb-8 px-6 md:px-12">
+         <div className="flex flex-col md:flex-row justify-between items-start gap-12 mb-16">
+            <h2 className="text-5xl md:text-7xl font-black italic tracking-tighter text-[#ccff00]" style={{ textShadow: '2px 2px 0px rgba(0,0,0,0.2)' }}>Oh Yeah!</h2>
+            
+            <div className="flex flex-col md:flex-row gap-12 md:gap-24 font-bold text-sm tracking-widest uppercase">
+               <div className="space-y-3">
+                  <p className="cursor-pointer hover:text-[#ccff00]">RESTAURANTES AFILIADOS</p>
+                  <p className="cursor-pointer hover:text-[#ccff00]">GOURMAND SOCIETY</p>
+                  <p className="cursor-pointer hover:text-[#ccff00]">REVISTA GOURMAND SOCIETY</p>
+                  <p className="cursor-pointer hover:text-[#ccff00]">TENGO UN RESTAURANTE</p>
+               </div>
+               <div className="space-y-3 font-medium normal-case tracking-normal text-base">
+                  <p className="cursor-pointer hover:text-[#ccff00]">Curaduría</p>
+                  <p className="cursor-pointer hover:text-[#ccff00]">Estatus</p>
+                  <p className="cursor-pointer hover:text-[#ccff00]">Miembro de una sociedad</p>
+                  <p className="cursor-pointer hover:text-[#ccff00]">Memoria viva</p>
+               </div>
             </div>
-            <div className="flex gap-8 text-[10px] font-bold uppercase tracking-widest">
-               <a href="#" className="hover:text-blue-500 transition-colors">Términos</a>
-               <a href="#" className="hover:text-blue-500 transition-colors">Privacidad</a>
-               <a href="#" className="hover:text-blue-500 transition-colors">Soporte</a>
-            </div>
+         </div>
+         
+         <div className="flex flex-col md:flex-row justify-between items-center gap-6 pt-8 border-t border-white/20 text-sm font-bold tracking-widest">
+            <a href="#" className="hover:text-[#ccff00] border-b border-transparent hover:border-[#ccff00] pb-1">Términos y condiciones</a>
+            <a href="#" className="hover:text-[#ccff00]">Política de datos</a>
+            <a href="#" className="hover:text-[#ccff00]">Contacto</a>
          </div>
       </footer>
     </div>
   );
 };
 
-const ContentRow = ({ title, items }: { title: string, items: any[] }) => {
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const scroll = (direction: 'left' | 'right') => {
-    if (scrollRef.current) {
-      const { scrollLeft, clientWidth } = scrollRef.current;
-      const scrollTo = direction === 'left' ? scrollLeft - clientWidth : scrollLeft + clientWidth;
-      scrollRef.current.scrollTo({ left: scrollTo, behavior: 'smooth' });
-    }
-  };
-  return (
-    <div className="space-y-4 group/row">
-      <h3 className="text-xl font-black italic tracking-tighter uppercase text-gray-200 group-hover/row:text-white transition-colors">{title}</h3>
-      <div className="relative">
-        <button onClick={() => scroll('left')} className="absolute left-0 top-0 bottom-0 z-40 bg-black/40 px-2 opacity-0 group-hover/row:opacity-100 transition-opacity hover:bg-black/60"><ChevronLeft size={32} /></button>
-        <div ref={scrollRef} className="flex gap-4 overflow-x-auto scroll-smooth no-scrollbar snap-x snap-mandatory">
-          {items.map((item, idx) => (
-            <div key={idx} className="min-w-[300px] md:min-w-[350px] aspect-video relative rounded-md overflow-hidden snap-start group cursor-pointer transition-all duration-300 hover:scale-105 hover:z-30">
-               <img src={item.image_url || 'https://images.unsplash.com/photo-1514525253361-bee8718a300a?q=80&w=400'} className="w-full h-full object-cover group-hover:brightness-50 transition-all" alt={item.title} />
-               <div className="absolute inset-0 p-6 flex flex-col justify-end opacity-0 group-hover:opacity-100 transition-opacity bg-gradient-to-t from-black/80 to-transparent">
-                  <div className="flex gap-2 mb-2">
-                     <span className="text-[8px] font-black bg-blue-600 px-2 py-0.5 rounded uppercase">{item.category}</span>
-                     <span className="text-[8px] font-black border border-white/40 px-2 py-0.5 rounded uppercase">Exclusive</span>
-                  </div>
-                  <h4 className="text-lg font-black italic uppercase leading-tight">{item.title}</h4>
+const ScrollSection = ({ title, items, showTopBadge, vertical }: any) => (
+  <section className="px-6 md:px-12">
+    <h3 className="text-xl md:text-2xl font-black tracking-wide mb-6">{title}</h3>
+    <div className="flex gap-4 overflow-x-auto no-scrollbar pb-8 snap-x">
+       {items.map((item: any, idx: number) => (
+         <div key={idx} className={`snap-start flex-shrink-0 group cursor-pointer ${vertical ? 'w-[200px] md:w-[240px]' : 'w-[280px] md:w-[320px]'}`}>
+            <div className={`relative rounded-xl overflow-hidden mb-3 ${vertical ? 'aspect-[3/4]' : 'aspect-[4/3]'}`}>
+               <img src={`https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?q=80&w=600&auto=format&fit=crop&sig=${idx + (vertical ? 10 : 0)}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt="Restaurant" />
+               <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent"></div>
+               
+               {showTopBadge && (
+                 <div className="absolute top-0 right-4 bg-[#4169e1] text-white text-[10px] font-black px-2 py-3 rounded-b-md flex flex-col items-center leading-none">
+                    <span>TOP</span>
+                    <span className="text-sm">10</span>
+                 </div>
+               )}
+               
+               <div className="absolute bottom-4 left-4 right-4">
+                  <h4 className="text-2xl font-black italic uppercase text-white mb-1" style={{ textShadow: '2px 2px 0px rgba(0,0,0,0.5)' }}>SELVATÍCO</h4>
+                  <p className="text-[8px] font-bold text-[#ccff00] tracking-widest uppercase mb-1">ITALIANO • $ 31.000 A $ 50.000 •</p>
+                  <p className="text-[8px] text-gray-300 leading-tight line-clamp-2">Lorem ipsum dolor sit amet, consectetuer adipiscing elit, Lorem ipsum dolor sit amet, consectetuer adipiscing elit,</p>
                </div>
             </div>
-          ))}
-        </div>
-        <button onClick={() => scroll('right')} className="absolute right-0 top-0 bottom-0 z-40 bg-black/40 px-2 opacity-0 group-hover/row:opacity-100 transition-opacity hover:bg-black/60"><ChevronRight size={32} /></button>
-      </div>
+         </div>
+       ))}
     </div>
-  );
-};
-
-const WeeklyEvent = ({ day, title, venue, time, img }: any) => (
-  <div className="bg-[#111114] rounded-2xl overflow-hidden border border-white/5 group hover:border-blue-500/40 transition-all">
-     <div className="h-32 overflow-hidden relative">
-        <img src={img} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700 opacity-60" alt={title} />
-        <div className="absolute top-4 left-4 bg-blue-600 text-white w-10 h-10 rounded-xl flex flex-col items-center justify-center font-black italic text-xs leading-none">
-           <span>{day}</span>
-        </div>
-     </div>
-     <div className="p-6 space-y-2">
-        <h4 className="text-lg font-black italic uppercase text-white leading-tight">{title}</h4>
-        <div className="flex items-center gap-2 text-[9px] font-bold text-gray-500 uppercase tracking-widest">
-           <MapPin size={10} className="text-blue-500" /> {venue}
-        </div>
-        <div className="flex items-center gap-2 text-[9px] font-bold text-gray-500 uppercase tracking-widest">
-           <Clock size={10} className="text-blue-500" /> {time}
-        </div>
-     </div>
-  </div>
-);
-
-const TierCard = ({ level, points, perks, status, current }: any) => (
-  <div className={`p-10 rounded-[3rem] border-2 transition-all flex flex-col justify-between min-h-[450px] ${
-    current ? 'bg-blue-600/10 border-blue-500 shadow-2xl' : status === 'locked' ? 'bg-[#111114] border-white/5 opacity-40' : 'bg-[#111114] border-blue-500/20'
-  }`}>
-     <div className="space-y-8">
-        <div className="flex justify-between items-start">
-           <div>
-              <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest block mb-1">Rango SERATTA</span>
-              <h4 className="text-3xl font-black italic uppercase tracking-tighter text-white leading-none">{level}</h4>
-           </div>
-           {status === 'completed' ? <CheckCircle2 className="text-green-500" size={24} /> : 
-            status === 'locked' ? <Lock className="text-gray-700" size={24} /> : <Zap className="text-blue-500 animate-pulse" size={24} />}
-        </div>
-        
-        <div className="space-y-4">
-           {perks.map((p: string, idx: number) => (
-             <div key={idx} className="flex items-center gap-3">
-                <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
-                <span className="text-[11px] font-medium italic text-gray-300">{p}</span>
-             </div>
-           ))}
-        </div>
-     </div>
-
-     <div className="mt-10 pt-8 border-t border-white/5">
-        <span className="text-[9px] font-black text-gray-500 uppercase block mb-1">{points} PTS</span>
-        {current && (
-           <div className="bg-blue-600 text-white py-3 rounded-2xl text-[9px] font-black uppercase text-center tracking-widest italic">NIVEL ACTUAL</div>
-        )}
-     </div>
-  </div>
-);
-
-const NavBtn = ({ active, onClick, label }: any) => (
-  <button onClick={onClick} className={`text-sm font-bold transition-all ${active ? 'text-white border-b-2 border-blue-600 pb-1' : 'text-gray-400 hover:text-gray-200'}`}>
-    {label}
-  </button>
+  </section>
 );
 
 export default OhYeahPage;

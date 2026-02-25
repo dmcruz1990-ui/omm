@@ -1,32 +1,23 @@
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Users, 
   Search, 
   Star, 
-  AlertTriangle, 
   ChevronRight,
   Target,
-  MoreVertical,
   Zap,
-  Heart,
   ShieldCheck,
   TrendingUp,
   Clock,
-  Filter,
   UserPlus,
   BarChart3,
-  Calendar,
   Sparkles,
-  UtensilsCrossed,
-  Wine,
   Phone,
   Mail,
-  X,
-  ArrowRight
+  X
 } from 'lucide-react';
-import { CustomerProfile, RFMSegment, NexumMasterTag } from '../types.ts';
-import { supabase } from '../lib/supabase.ts';
+import { CustomerProfile, RFMSegment } from '../types.ts';
 
 const RelationshipModule: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,7 +25,7 @@ const RelationshipModule: React.FC = () => {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   
   // Data de ejemplo ampliada para motor RFM
-  const [customers] = useState<CustomerProfile[]>([
+  const [customers] = useState<CustomerProfile[]>(() => [
     { 
       id: 'C1', 
       name: 'Margarita Rosa', 
@@ -292,7 +283,13 @@ const RelationshipModule: React.FC = () => {
   );
 };
 
-const StatsBadge = ({ icon, label, value }: any) => (
+interface StatsBadgeProps {
+  icon: React.ReactNode;
+  label: string;
+  value: string;
+}
+
+const StatsBadge = ({ icon, label, value }: StatsBadgeProps) => (
   <div className="flex items-center gap-3 bg-[#111114] border border-white/5 px-6 py-3 rounded-2xl">
      <div className="text-blue-500">{icon}</div>
      <div>
@@ -302,7 +299,13 @@ const StatsBadge = ({ icon, label, value }: any) => (
   </div>
 );
 
-const RFMUnit = ({ label, score, color }: any) => (
+interface RFMUnitProps {
+  label: string;
+  score: number;
+  color: string;
+}
+
+const RFMUnit = ({ label, score, color }: RFMUnitProps) => (
   <div className="bg-black/40 border border-white/5 p-4 rounded-2xl text-center flex flex-col gap-2 group hover:border-white/10 transition-all">
      <span className="text-[8px] text-gray-600 font-black uppercase tracking-tighter">{label}</span>
      <div className="flex justify-center gap-0.5">

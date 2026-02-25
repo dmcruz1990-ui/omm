@@ -6,29 +6,20 @@ import {
   ChevronLeft, 
   Box, 
   Plus, 
-  Minus, 
-  Trash2, 
   CheckCircle,
   X,
   ArrowLeft,
   Truck,
-  Building2,
-  Brain,
-  Clock,
-  ShieldCheck,
   MessageCircle,
   FileText,
   Mail,
   Download,
-  BarChart3,
   Send,
-  Sparkles,
-  ChevronRight,
   Store
 } from 'lucide-react';
 import { jsPDF } from 'https://esm.sh/jspdf';
 import autoTable from 'https://esm.sh/jspdf-autotable';
-import { SupplyItem, PYGCategory } from '../types.ts';
+import { SupplyItem } from '../types.ts';
 
 interface MarketplaceProps {
   items: SupplyItem[];
@@ -57,25 +48,15 @@ interface CartItem extends SmartSupplyItem {
 }
 
 const SupplyMarketplace: React.FC<MarketplaceProps> = ({ items, onBack }) => {
-  const [mode, setMode] = useState<'internal' | 'external' | 'stats'>('external');
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [isDispatching, setIsDispatching] = useState(false);
   const [selectedVendorMap, setSelectedVendorMap] = useState<Record<string, string>>({});
-  const [showPODocument, setShowPODocument] = useState<{vendor: VendorOffer, items: CartItem[]} | null>(null);
+  const [showPODocument, setShowPODocument] = useState<{vendor: VendorOffer, items: CartItem[], poNumber: string} | null>(null);
   const [dispatchedVendors, setDispatchedVendors] = useState<Set<string>>(new Set());
 
   const TEST_PHONE = "573204297359";
-
-  const categories: PYGCategory[] = [
-    'Costo de alimentos',
-    'Costo de bebidas',
-    'Empaques y desechables',
-    'Comisiones y plataformas',
-    'Aseo, mantenimiento y operación'
-  ];
 
   const enrichedItems: SmartSupplyItem[] = useMemo(() => {
     return items.map(item => {
@@ -100,16 +81,21 @@ const SupplyMarketplace: React.FC<MarketplaceProps> = ({ items, onBack }) => {
       const cheapest = item.offers.reduce((prev, curr) => prev.price < curr.price ? prev : curr);
       initialMap[item.id] = cheapest.vendorId;
     });
-    setSelectedVendorMap(initialMap);
+    
+    setSelectedVendorMap(prev => {
+      // Simple shallow comparison to avoid unnecessary updates
+      const isDifferent = Object.keys(initialMap).length !== Object.keys(prev).length || 
+                          Object.keys(initialMap).some(key => initialMap[key] !== prev[key]);
+      return isDifferent ? initialMap : prev;
+    });
   }, [enrichedItems]);
 
   const filteredItems = useMemo(() => {
     return enrichedItems.filter(item => {
       const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = selectedCategory ? (item.pyg_category === selectedCategory || item.category === selectedCategory) : true;
-      return matchesSearch && matchesCategory;
+      return matchesSearch;
     });
-  }, [enrichedItems, searchTerm, selectedCategory]);
+  }, [enrichedItems, searchTerm]);
 
   const generatePDF = (vendor: VendorOffer, cartItems: CartItem[]) => {
     try {
@@ -227,10 +213,6 @@ const SupplyMarketplace: React.FC<MarketplaceProps> = ({ items, onBack }) => {
       }
       return [...prev, { ...item, cartQuantity: 1, selectedVendor: vendor }];
     });
-  };
-
-  const removeFromCart = (cartId: string) => {
-    setCart(prev => prev.filter(i => `${i.id}-${i.selectedVendor.vendorId}` !== cartId));
   };
 
   const cartTotalAmount = cart.reduce((sum, item) => sum + (item.selectedVendor.price * item.cartQuantity), 0);
@@ -414,7 +396,7 @@ const SupplyMarketplace: React.FC<MarketplaceProps> = ({ items, onBack }) => {
                        <div className="bg-black text-white px-6 py-2 rounded-xl inline-block">
                           <h3 className="text-sm font-black uppercase tracking-widest">ORDEN DE COMPRA</h3>
                        </div>
-                       <p className="text-blue-600 font-mono font-bold text-xl">#PO-2025-{Date.now().toString().slice(-4)}</p>
+                       <p className="text-blue-600 font-mono font-bold text-xl">#{showPODocument.poNumber}</p>
                     </div>
                  </div>
 
@@ -580,7 +562,7 @@ const SupplyMarketplace: React.FC<MarketplaceProps> = ({ items, onBack }) => {
                         </div>
                         <div className="flex gap-3">
                            <button onClick={() => sendWhatsAppOrder(group.vendor, group.items)} className="bg-green-500 hover:bg-green-600 text-white p-3 rounded-2xl transition-all shadow-xl active:scale-95"><MessageCircle size={22} fill="white" /></button>
-                           <button onClick={() => setShowPODocument({vendor: group.vendor, items: group.items})} className="bg-gray-900 hover:bg-black text-white p-3 rounded-2xl transition-all shadow-xl active:scale-95"><FileText size={22} /></button>
+                           <button onClick={() => setShowPODocument({vendor: group.vendor, items: group.items, poNumber: `PO-2025-${Date.now().toString().slice(-4)}`})} className="bg-gray-900 hover:bg-black text-white p-3 rounded-2xl transition-all shadow-xl active:scale-95"><FileText size={22} /></button>
                         </div>
                      </div>
                      <div className="p-8 space-y-6">

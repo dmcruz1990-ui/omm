@@ -22,7 +22,8 @@ export enum ModuleType {
   CONFIG = 'CONFIG',
   PAYROLL = 'PAYROLL',
   GENESIS = 'GENESIS',
-  MOBILE_MGR = 'MOBILE_MGR'
+  MOBILE_MGR = 'MOBILE_MGR',
+  OH_YEAH = 'OH_YEAH'
 }
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo';

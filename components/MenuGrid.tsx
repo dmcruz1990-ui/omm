@@ -1,36 +1,23 @@
-
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { MenuItem } from '../types.ts';
 import { 
   Plus, 
   Loader2, 
-  CheckCircle2, 
-  CheckCircle,
-  Zap,
-  Timer,
-  AlertCircle
+  CheckCircle2
 } from 'lucide-react';
 
 interface MenuGridProps {
   selectedTableId: number;
 }
 
-interface ItemMetrics {
-  [key: string]: number;
-}
-
 const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [addingId, setAddingId] = useState<string | null>(null);
-  const [successId, setSuccessId] = useState<string | null>(null);
-  const [itemDemand, setItemDemand] = useState<ItemMetrics>({});
 
   useEffect(() => {
     fetchMenuAndDemand();
-    const interval = setInterval(fetchDemandMetrics, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   const fetchMenuAndDemand = async () => {
@@ -43,22 +30,11 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
       
       if (error) throw error;
       if (items) setMenuItems(items);
-      await fetchDemandMetrics();
     } catch (err) {
-      console.error("❌ [MENU] Error de carga:", err);
+      console.error("❌ [MENU] Error:", err);
     } finally {
       setLoading(false);
     }
-  };
-
-  const fetchDemandMetrics = async () => {
-    try {
-      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
-      const { data } = await supabase.from('order_items').select('menu_item_id').gte('created_at', oneHourAgo);
-      const metrics: ItemMetrics = {};
-      data?.forEach((row: any) => { metrics[row.menu_item_id] = (metrics[row.menu_item_id] || 0) + 1; });
-      setItemDemand(metrics);
-    } catch (err) { /* silent fail */ }
   };
 
   const handleAddItem = async (item: MenuItem) => {
@@ -94,9 +70,7 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
 
       await supabase.from('orders').update({ total_amount: (order.total_amount || 0) + item.price }).eq('id', order.id);
       
-      setSuccessId(itemId);
       window.dispatchEvent(new CustomEvent('manual-order-update', { detail: { tableId: selectedTableId } }));
-      setTimeout(() => setSuccessId(null), 800);
     } catch (err) { 
       console.error("❌ [ORDER] Error:", err);
     } finally { setAddingId(null); }
@@ -105,59 +79,49 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
   if (loading) return (
     <div className="py-20 flex flex-col items-center justify-center opacity-40">
       <Loader2 className="animate-spin text-blue-500 mb-4" size={32} />
-      <p className="text-[10px] font-black uppercase tracking-widest italic text-white">Sincronizando Carta OMM Real...</p>
     </div>
   );
 
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8 pb-24 text-left">
+    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pb-24 text-left">
       {menuItems.map((item) => {
-        const count = itemDemand[item.id!] || 0;
-        const isHot = count >= 4;
         return (
           <div 
             key={item.id} 
-            className={`group relative bg-[#111114] border-2 rounded-[3rem] overflow-hidden transition-all duration-500 flex flex-col h-[460px] ${isHot ? 'border-yellow-600' : 'border-white/5'} hover:scale-[1.01]`}
+            className="group relative bg-[#1a1d24] rounded-2xl overflow-hidden transition-all duration-300 flex flex-col h-[280px] border border-transparent hover:border-gray-600"
           >
-            {successId === item.id && (
-              <div className="absolute inset-0 bg-blue-600/90 backdrop-blur-md z-50 flex flex-col items-center justify-center animate-in zoom-in">
-                <CheckCircle2 size={64} className="text-white mb-4 animate-bounce" />
-                <span className="text-[10px] font-black uppercase tracking-[0.4em] text-white text-center">PEDIDO<br/>SINCRONIZADO</span>
-              </div>
-            )}
-
-            <div className="pt-8 px-8 flex justify-between items-center w-full">
-               <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[8px] font-black uppercase tracking-widest ${isHot ? 'bg-yellow-600 text-white' : 'bg-white/5 text-gray-500'}`}>
-                  {isHot ? <Zap size={10} fill="white" /> : <CheckCircle size={10} />} {isHot ? 'DEMANDA ALTA' : 'DISPONIBLE'}
-               </div>
-               <span className="text-[9px] font-black text-gray-700 uppercase tracking-widest">{item.category}</span>
+            {/* Image Background */}
+            <div className="absolute top-0 left-0 right-0 h-[140px] z-0">
+               <img src={(item as any).image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=400'} className="w-full h-full object-cover opacity-80" alt={item.name} />
+               <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#1a1d24]/80 to-[#1a1d24]"></div>
             </div>
 
-            <div className="flex-1 flex flex-col p-10 justify-center">
-               <h4 className="text-2xl font-black italic uppercase tracking-tighter leading-tight text-white group-hover:text-blue-500 transition-colors mb-3">
+            {/* Price Tag */}
+            <div className="absolute top-3 right-3 z-10 bg-black/60 backdrop-blur-md px-2 py-1 rounded text-xs font-bold text-white">
+               ${item.price}
+            </div>
+
+            {/* Content */}
+            <div className="relative z-10 flex-1 flex flex-col p-5 pt-[100px]">
+               <h4 className="text-base font-bold text-white mb-2 leading-tight">
                  {item.name}
                </h4>
-               <p className="text-[10px] text-gray-500 italic font-medium leading-relaxed line-clamp-3 mb-6">
-                 {(item as any).description || "Plato de autoría OMM preparado con ingredientes frescos del día."}
+               <p className="text-[11px] text-gray-400 font-medium leading-relaxed line-clamp-2">
+                 {(item as any).description || 'Delicioso plato preparado con los mejores ingredientes.'}
                </p>
-               <span className="text-2xl font-black italic text-white tracking-tight">$ {item.price.toLocaleString()}</span>
             </div>
 
-            <div className="px-8 pb-10 w-full mt-auto">
+            {/* Footer */}
+            <div className="relative z-10 px-5 pb-5 flex justify-between items-end mt-auto">
+               <span className="text-[10px] font-mono text-gray-600">ID: {item.id?.substring(0,4) || '0000'}</span>
                <button 
                  onClick={() => handleAddItem(item)}
                  disabled={!!addingId || selectedTableId === 0}
-                 className={`w-full py-5 rounded-2xl flex items-center justify-center gap-3 transition-all font-black text-[10px] uppercase tracking-widest shadow-xl ${
-                   isHot ? 'bg-yellow-600 text-white' : 'bg-white text-black hover:bg-blue-600 hover:text-white'
-                 } active:scale-95 disabled:opacity-50`}
+                 className="w-8 h-8 rounded-full bg-[#2a2d35] hover:bg-blue-600 text-white flex items-center justify-center transition-colors disabled:opacity-50"
                >
-                 {addingId === item.id ? <Loader2 size={18} className="animate-spin" /> : <>
-                     <Plus size={16} />
-                     <span>{selectedTableId === 0 ? 'SOLO CONSULTA' : 'AÑADIR A MESA'}</span>
-                   </>}
+                 {addingId === item.id ? <Loader2 size={14} className="animate-spin" /> : <Plus size={16} />}
                </button>
             </div>
-            <div className="absolute inset-0 bg-gradient-to-b from-white/[0.01] to-transparent pointer-events-none"></div>
           </div>
         );
       })}

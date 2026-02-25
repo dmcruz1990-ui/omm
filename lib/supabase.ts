@@ -1,16 +1,25 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Credenciales de fallback para el proyecto OMM (solo entorno de desarrollo/demo)
-const FALLBACK_URL = 'https://kxaxjttvkaeewsjbpert.supabase.co';
-const FALLBACK_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YXhqdHR2a2FlZXdzamJwZXJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkxMTc0MjgsImV4cCI6MjA4NDY5MzQyOH0.fMINxNqrLT6f8lNPrpRZYPpm6IjTlKg6wAH7aAlfz_o';
+// Helper para obtener variables de entorno de forma segura en navegador
+const getSafeEnv = (key: string, fallback: string): string => {
+  try {
+    // Intento con Vite/Meta
+    // @ts-ignore
+    if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env[key]) {
+      // @ts-ignore
+      return import.meta.env[key];
+    }
+    // Intento con process (inyectado por shim en index.html)
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key];
+    }
+  } catch (e) {}
+  return fallback;
+};
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || FALLBACK_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || FALLBACK_KEY;
-
-if (import.meta.env.PROD && (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY)) {
-  console.error('❌ NEXUM: VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY son obligatorias en producción. Revisa tu archivo .env');
-}
+const supabaseUrl = getSafeEnv('VITE_SUPABASE_URL', 'https://kxaxjttvkaeewsjbpert.supabase.co');
+const supabaseAnonKey = getSafeEnv('VITE_SUPABASE_ANON_KEY', 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YXhqdHR2a2FlZXdzamJwZXJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkxMTc0MjgsImV4cCI6MjA4NDY5MzQyOH0.fMINxNqrLT6f8lNPrpRZYPpm6IjTlKg6wAH7aAlfz_o');
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {

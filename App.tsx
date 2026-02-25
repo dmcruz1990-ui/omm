@@ -4,21 +4,16 @@ import {
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
   Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
   ShieldCheck, Compass, Loader2, MonitorPlay, Sparkles, Palette,
-  ChevronDown, Layers, CameraOff, AlertTriangle, RefreshCw, Music,
-  Briefcase,
+  Layers, Briefcase,
   LayoutPanelLeft,
-  Lock,
-  Clock as ClockIcon,
-  Calendar,
-  Rocket,
-  Smartphone
+  Smartphone,
+  BellRing
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
 import { ModuleType, Table, RitualTask, UserRole } from './types.ts';
 import { useMediaPipe } from './hooks/useMediaPipe.ts';
 import Login from './components/Login.tsx';
-import ErrorBoundary from './components/ErrorBoundary.tsx';
 
 const OhYeahPage = lazy(() => import('./components/OhYeahPage.tsx'));
 const MobileManagerApp = lazy(() => import('./components/MobileManagerApp.tsx'));
@@ -48,23 +43,15 @@ const ModuleLoader = () => (
 );
 
 const Dashboard: React.FC = () => {
-  const { user, profile, signOut } = useAuth();
+  const { profile, signOut } = useAuth();
   const [activeModule, setActiveModule] = useState<ModuleType>(ModuleType.GENESIS);
-  const [tables, setTables] = useState<any[]>([]);
+  const [tables, setTables] = useState<Table[]>([]);
   const [ritualTasks, setRitualTasks] = useState<RitualTask[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);
-  const [activeStation, setActiveStation] = useState(1);
   const [isClientView, setIsClientView] = useState(false);
   const [isCockpitOpen, setIsCockpitOpen] = useState(false);
   
-  const [currentTime, setCurrentTime] = useState(new Date());
-
   const isAdmin = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
-
-  useEffect(() => {
-    const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-    return () => clearInterval(timer);
-  }, []);
 
   useEffect(() => {
     const checkView = () => {
@@ -82,7 +69,7 @@ const Dashboard: React.FC = () => {
   }, [isAdmin]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { isCameraReady, lastResultsRef, error: cameraError, retry: retryCamera } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
+  const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
 
   const getVisibleModules = (role: UserRole = 'mesero'): ModuleType[] => {
     switch (role) {
@@ -104,7 +91,8 @@ const Dashboard: React.FC = () => {
           ModuleType.PAYROLL,
           ModuleType.SUPPLY,
           ModuleType.FLOW,
-          ModuleType.MOBILE_MGR
+          ModuleType.MOBILE_MGR,
+          ModuleType.OH_YEAH
         ];
       case 'mesero':
         return [
@@ -112,7 +100,8 @@ const Dashboard: React.FC = () => {
           ModuleType.SERVICE_OS, 
           ModuleType.RESERVE, 
           ModuleType.RELATIONSHIP, 
-          ModuleType.STAFF_HUB
+          ModuleType.STAFF_HUB,
+          ModuleType.OH_YEAH
         ];
       case 'cocina':
         return [
@@ -133,7 +122,7 @@ const Dashboard: React.FC = () => {
       if (activeModule === ModuleType.GENESIS) return;
       setActiveModule(visibleModulesList[0]);
     }
-  }, [profile?.role]);
+  }, [profile?.role, activeModule, visibleModulesList]);
 
   const fetchData = async () => {
     try {
@@ -146,7 +135,7 @@ const Dashboard: React.FC = () => {
       
       const { data: tasksData } = await supabase.from('ritual_tasks').select('*').eq('status', 'active');
       setRitualTasks(tasksData || []);
-    } catch (err) {
+    } catch {
       console.warn("Sync Error");
     } finally {
       setDashboardLoading(false);
@@ -166,18 +155,6 @@ const Dashboard: React.FC = () => {
     await supabase.from('tables').update(updates).eq('id', tableId);
   };
 
-  const formatDateTime = (date: Date) => {
-    const timeStr = date.toLocaleTimeString('en-US', {
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true
-    });
-    const dateStr = date.toLocaleDateString('es-ES', {
-      weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
-    });
-    return { time: timeStr.toUpperCase(), date: dateStr.toUpperCase() };
-  };
-
-  const { time, date } = formatDateTime(currentTime);
-
   if (dashboardLoading) return (
     <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
        <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
@@ -185,7 +162,11 @@ const Dashboard: React.FC = () => {
     </div>
   );
 
-  if (isClientView && isAdmin) return <Suspense fallback={<ModuleLoader />}><OhYeahPage /></Suspense>;
+  if ((isClientView || activeModule === ModuleType.OH_YEAH)) return (
+    <Suspense fallback={<ModuleLoader />}>
+      <OhYeahPage onExit={() => setActiveModule(ModuleType.DISCOVER)} />
+    </Suspense>
+  );
 
   if (activeModule === ModuleType.MOBILE_MGR && isAdmin) {
     return (
@@ -254,7 +235,7 @@ const Dashboard: React.FC = () => {
 
         <div className="space-y-10 mb-10">
           {[
-            { id: 'marketing', label: 'PAQUETE MARKETING', icon: <Sparkles size={14} className="text-blue-500" />, modules: [{ type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'WEB & PLANES', icon: <Compass size={18} /> }, { type: ModuleType.RESERVE, label: 'RESERVE', sub: 'MAPA & AGENDA', icon: <CalendarDays size={18} /> }, { type: ModuleType.RELATIONSHIP, label: 'CLIENTES', sub: 'CRM & VIP', icon: <Users size={18} /> }] },
+            { id: 'marketing', label: 'PAQUETE MARKETING', icon: <Sparkles size={14} className="text-blue-500" />, modules: [{ type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'WEB & PLANES', icon: <Compass size={18} /> }, { type: ModuleType.OH_YEAH, label: 'OH YEAH! B2C', sub: 'VISTA CLIENTE', icon: <Smartphone size={18} /> }, { type: ModuleType.RESERVE, label: 'RESERVE', sub: 'MAPA & AGENDA', icon: <CalendarDays size={18} /> }, { type: ModuleType.RELATIONSHIP, label: 'CLIENTES', sub: 'CRM & VIP', icon: <Users size={18} /> }] },
             { id: 'operaciones', label: 'PAQUETE OPERACIONES', icon: <Layers size={14} className="text-orange-500" />, modules: [{ type: ModuleType.SERVICE_OS, label: 'SERVICE OS', sub: 'POS & RITUALES', icon: <ShoppingCart size={18} /> }, { type: ModuleType.KITCHEN_KDS, label: 'KITCHEN KDS', sub: 'ESTACIÓN COCINA', icon: <MonitorPlay size={18} /> }, { type: ModuleType.FLOW, label: 'FLOW', sub: 'ESTACIONES', icon: <ChefHat size={18} /> }] },
             { id: 'control', label: 'CONTROL & SUMINISTROS', icon: <ShieldCheck size={14} className="text-green-500" />, modules: [{ type: ModuleType.SUPPLY, label: 'SUPPLY', sub: 'STOCK IA', icon: <Truck size={18} /> }, { type: ModuleType.CARE, label: 'CARE', sub: 'SOPORTE CX', icon: <HeartPulse size={18} /> }, { type: ModuleType.STAFF_HUB, label: 'STAFF HUB', sub: 'RANKING & COACH', icon: <Contact size={18} /> }] },
             { id: 'estrategia', label: 'ESTRATEGIA & ADMIN', icon: <Globe size={14} className="text-purple-500" />, modules: [{ type: ModuleType.COMMAND, label: 'COMMAND', sub: 'ESTRATEGIA IA', icon: <Globe size={18} /> }, { type: ModuleType.FINANCE_HUB, label: 'FINANCE HUB', sub: 'DINERO & KPI', icon: <DollarSign size={18} /> }, { type: ModuleType.PAYROLL, label: 'NÓMINA DIAN', sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> }, { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'DISEÑO CMS', icon: <Palette size={18} /> }, { type: ModuleType.CONFIG, label: 'CEREBRO', sub: 'ADN & IA', icon: <Settings size={18} /> }] }
@@ -282,39 +263,63 @@ const Dashboard: React.FC = () => {
         </div>
       </nav>
 
-      <main className="flex-1 flex flex-col overflow-hidden relative">
-        <header className="h-20 border-b border-white/5 flex items-center justify-between px-12 z-40 bg-[#0a0a0c]/80 backdrop-blur-xl shrink-0">
-          <div className="flex items-center gap-10">
-             <div className="flex items-center gap-4"><div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div><h2 className="text-[10px] font-black text-gray-500 uppercase tracking-[0.4em] italic leading-none">NODE_{profile?.role?.toUpperCase()}</h2></div>
-             <div className="hidden xl:flex items-center gap-8 border-l border-white/10 pl-10"><div className="flex items-center gap-3"><ClockIcon size={14} className="text-blue-500" /><span className="text-lg font-black italic tracking-tighter text-white font-mono">{time}</span></div></div>
+      <main className="flex-1 flex flex-col overflow-hidden relative bg-[#0f1115]">
+        <header className="h-16 border-b border-white/5 flex items-center justify-between px-8 z-40 bg-[#0f1115] shrink-0">
+          <div className="flex items-center gap-4">
+             <div className="w-8 h-8 flex items-center justify-center">
+               <Zap className="text-blue-500" size={20} fill="currentColor" />
+             </div>
+             <h1 className="text-lg font-bold tracking-widest text-white flex items-center gap-3">
+               NEXUM V4 <span className="text-gray-600 font-light">//</span> <span className="text-gray-300">HOSPITALITY INTELLIGENCE</span>
+             </h1>
           </div>
-          <div className="flex items-center gap-6"><div className="text-right"><span className="text-[8px] text-gray-600 font-black uppercase block leading-none">Personal Activo</span><span className="text-[10px] font-bold italic text-white">{profile?.full_name}</span></div><div className="w-10 h-10 rounded-full bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-500"><Users size={18} /></div></div>
+          
+          <div className="flex items-center gap-6">
+             <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 px-3 py-1 rounded-full">
+               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+               <span className="text-[10px] font-mono text-green-500 uppercase tracking-widest">SYSTEM: ONLINE</span>
+             </div>
+             
+             <div className="text-[10px] font-mono text-gray-400 uppercase tracking-widest flex items-center gap-2">
+               OPERATIONAL CORE <span className="text-gray-600">//</span> <span className="text-white">{activeModule.replace('_', ' ')}</span>
+             </div>
+
+             <div className="flex items-center gap-3 ml-4">
+               <button className="w-8 h-8 rounded-full bg-[#1a1d24] flex items-center justify-center text-gray-400 hover:text-white transition-colors">
+                 <BellRing size={14} />
+               </button>
+               <button className="w-8 h-8 rounded-full bg-[#1a1d24] flex items-center justify-center text-gray-400 hover:text-white transition-colors">
+                 <Settings size={14} />
+               </button>
+               <div className="w-8 h-8 rounded-full bg-blue-900/30 border border-blue-500/30 flex items-center justify-center text-blue-400 text-xs font-bold">
+                 {profile?.full_name?.substring(0, 2).toUpperCase() || 'JD'}
+               </div>
+             </div>
+          </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-12 relative z-10 text-left">
-          <ErrorBoundary moduleName={activeModule}>
-            <Suspense fallback={<ModuleLoader />}>
-              {activeModule === ModuleType.DISCOVER && <DiscoverModule />}
-              {activeModule === ModuleType.SERVICE_OS && (
-                <div className="space-y-12">
-                  <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onCheckService={async(id) => handleUpdateTable(id, {status: 'occupied'})} activeStation={activeStation} setActiveStation={setActiveStation} onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} cameraError={cameraError} onRetryCamera={retryCamera} />
-                  <ServiceOSModule tables={tables} onUpdateTable={handleUpdateTable} tasks={ritualTasks} />
-                </div>
-              )}
-              {activeModule === ModuleType.KITCHEN_KDS && <KitchenModule />}
-              {activeModule === ModuleType.RESERVE && <ReserveModule />}
-              {activeModule === ModuleType.FINANCE_HUB && <FinanceHub />}
-              {activeModule === ModuleType.PAYROLL && <PayrollModule />}
-              {activeModule === ModuleType.COMMAND && <CommandModule onSimulateEvent={() => {}} />}
-              {activeModule === ModuleType.RELATIONSHIP && <RelationshipModule />}
-              {activeModule === ModuleType.STAFF_HUB && <StaffHubModule />}
-              {activeModule === ModuleType.FLOW && <FlowModule />}
-              {activeModule === ModuleType.SUPPLY && <SupplyModule />}
-              {activeModule === ModuleType.CARE && <CareModule />}
-              {activeModule === ModuleType.BRAND_STUDIO && <BrandStudio />}
-              {activeModule === ModuleType.CONFIG && <SettingsModule />}
-            </Suspense>
-          </ErrorBoundary>
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 relative z-10 text-left">
+          <Suspense fallback={<ModuleLoader />}>
+            {activeModule === ModuleType.DISCOVER && <DiscoverModule />}
+            {activeModule === ModuleType.SERVICE_OS && (
+              <div className="space-y-12">
+                <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} />
+                <ServiceOSModule tables={tables} onUpdateTable={handleUpdateTable} tasks={ritualTasks} />
+              </div>
+            )}
+            {activeModule === ModuleType.KITCHEN_KDS && <KitchenModule />}
+            {activeModule === ModuleType.RESERVE && <ReserveModule />}
+            {activeModule === ModuleType.FINANCE_HUB && <FinanceHub />}
+            {activeModule === ModuleType.PAYROLL && <PayrollModule />}
+            {activeModule === ModuleType.COMMAND && <CommandModule onSimulateEvent={() => {}} />}
+            {activeModule === ModuleType.RELATIONSHIP && <RelationshipModule />}
+            {activeModule === ModuleType.STAFF_HUB && <StaffHubModule />}
+            {activeModule === ModuleType.FLOW && <FlowModule />}
+            {activeModule === ModuleType.SUPPLY && <SupplyModule />}
+            {activeModule === ModuleType.CARE && <CareModule />}
+            {activeModule === ModuleType.BRAND_STUDIO && <BrandStudio />}
+            {activeModule === ModuleType.CONFIG && <SettingsModule />}
+          </Suspense>
         </div>
       </main>
 
