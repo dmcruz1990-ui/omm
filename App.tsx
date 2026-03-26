@@ -17,7 +17,6 @@ import Login from './components/Login.tsx';
 
 const OhYeahPage = lazy(() => import('./components/OhYeahPage.tsx'));
 const MobileManagerApp = lazy(() => import('./components/MobileManagerApp.tsx'));
-const DiscoverModule = lazy(() => import('./components/DiscoverModule.tsx'));
 const ReserveModule = lazy(() => import('./components/ReserveModule.tsx'));
 const RelationshipModule = lazy(() => import('./components/RelationshipModule.tsx'));
 const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
@@ -29,7 +28,6 @@ const CommandModule = lazy(() => import('./components/CommandModule.tsx'));
 const SurveillanceModule = lazy(() => import('./components/SurveillanceModule.tsx'));
 const KitchenModule = lazy(() => import('./components/KitchenModule.tsx'));
 const StaffHubModule = lazy(() => import('./components/StaffHubModule.tsx'));
-const BrandStudio = lazy(() => import('./components/BrandStudio.tsx'));
 const SettingsModule = lazy(() => import('./components/SettingsModule.tsx'));
 const PayrollModule = lazy(() => import('./components/PayrollModule.tsx'));
 const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'));
@@ -78,7 +76,6 @@ const Dashboard: React.FC = () => {
         return Object.values(ModuleType);
       case 'gerencia':
         return [
-          ModuleType.DISCOVER, 
           ModuleType.RESERVE, 
           ModuleType.RELATIONSHIP, 
           ModuleType.SERVICE_OS,
@@ -87,7 +84,6 @@ const Dashboard: React.FC = () => {
           ModuleType.FINANCE_HUB,
           ModuleType.COMMAND,
           ModuleType.STAFF_HUB,
-          ModuleType.BRAND_STUDIO,
           ModuleType.PAYROLL,
           ModuleType.SUPPLY,
           ModuleType.FLOW,
@@ -96,7 +92,6 @@ const Dashboard: React.FC = () => {
         ];
       case 'mesero':
         return [
-          ModuleType.DISCOVER, 
           ModuleType.SERVICE_OS, 
           ModuleType.RESERVE, 
           ModuleType.RELATIONSHIP, 
@@ -111,7 +106,7 @@ const Dashboard: React.FC = () => {
           ModuleType.STAFF_HUB
         ];
       default:
-        return [ModuleType.DISCOVER];
+        return [ModuleType.SERVICE_OS];
     }
   };
 
@@ -164,14 +159,14 @@ const Dashboard: React.FC = () => {
 
   if ((isClientView || activeModule === ModuleType.OH_YEAH)) return (
     <Suspense fallback={<ModuleLoader />}>
-      <OhYeahPage onExit={() => setActiveModule(ModuleType.DISCOVER)} />
+      <OhYeahPage onExit={() => setActiveModule(ModuleType.SERVICE_OS)} />
     </Suspense>
   );
 
   if (activeModule === ModuleType.MOBILE_MGR && isAdmin) {
     return (
       <Suspense fallback={<ModuleLoader />}>
-        <MobileManagerApp onExit={() => setActiveModule(ModuleType.DISCOVER)} />
+        <MobileManagerApp onExit={() => setActiveModule(ModuleType.SERVICE_OS)} />
       </Suspense>
     );
   }
@@ -180,8 +175,8 @@ const Dashboard: React.FC = () => {
     return (
       <Suspense fallback={<ModuleLoader />}>
         <GenesisModule 
-          onComplete={() => setActiveModule(ModuleType.DISCOVER)} 
-          onExit={() => setActiveModule(ModuleType.DISCOVER)}
+          onComplete={() => setActiveModule(ModuleType.SERVICE_OS)} 
+          onExit={() => setActiveModule(ModuleType.SERVICE_OS)}
         />
       </Suspense>
     );
@@ -235,10 +230,10 @@ const Dashboard: React.FC = () => {
 
         <div className="space-y-10 mb-10">
           {[
-            { id: 'marketing', label: 'PAQUETE MARKETING', icon: <Sparkles size={14} className="text-blue-500" />, modules: [{ type: ModuleType.DISCOVER, label: 'DESCUBRE OMM', sub: 'WEB & PLANES', icon: <Compass size={18} /> }, { type: ModuleType.OH_YEAH, label: 'OH YEAH! B2C', sub: 'VISTA CLIENTE', icon: <Smartphone size={18} /> }, { type: ModuleType.RESERVE, label: 'RESERVE', sub: 'MAPA & AGENDA', icon: <CalendarDays size={18} /> }, { type: ModuleType.RELATIONSHIP, label: 'CLIENTES', sub: 'CRM & VIP', icon: <Users size={18} /> }] },
+            { id: 'marketing', label: 'PAQUETE MARKETING', icon: <Sparkles size={14} className="text-blue-500" />, modules: [{ type: ModuleType.OH_YEAH, label: 'OH YEAH! B2C', sub: 'VISTA CLIENTE', icon: <Smartphone size={18} /> }, { type: ModuleType.RESERVE, label: 'RESERVE', sub: 'MAPA & AGENDA', icon: <CalendarDays size={18} /> }, { type: ModuleType.RELATIONSHIP, label: 'CLIENTES', sub: 'CRM & VIP', icon: <Users size={18} /> }] },
             { id: 'operaciones', label: 'PAQUETE OPERACIONES', icon: <Layers size={14} className="text-orange-500" />, modules: [{ type: ModuleType.SERVICE_OS, label: 'SERVICE OS', sub: 'POS & RITUALES', icon: <ShoppingCart size={18} /> }, { type: ModuleType.KITCHEN_KDS, label: 'KITCHEN KDS', sub: 'ESTACIÓN COCINA', icon: <MonitorPlay size={18} /> }, { type: ModuleType.FLOW, label: 'FLOW', sub: 'ESTACIONES', icon: <ChefHat size={18} /> }] },
             { id: 'control', label: 'CONTROL & SUMINISTROS', icon: <ShieldCheck size={14} className="text-green-500" />, modules: [{ type: ModuleType.SUPPLY, label: 'SUPPLY', sub: 'STOCK IA', icon: <Truck size={18} /> }, { type: ModuleType.CARE, label: 'CARE', sub: 'SOPORTE CX', icon: <HeartPulse size={18} /> }, { type: ModuleType.STAFF_HUB, label: 'STAFF HUB', sub: 'RANKING & COACH', icon: <Contact size={18} /> }] },
-            { id: 'estrategia', label: 'ESTRATEGIA & ADMIN', icon: <Globe size={14} className="text-purple-500" />, modules: [{ type: ModuleType.COMMAND, label: 'COMMAND', sub: 'ESTRATEGIA IA', icon: <Globe size={18} /> }, { type: ModuleType.FINANCE_HUB, label: 'FINANCE HUB', sub: 'DINERO & KPI', icon: <DollarSign size={18} /> }, { type: ModuleType.PAYROLL, label: 'NÓMINA DIAN', sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> }, { type: ModuleType.BRAND_STUDIO, label: 'BRAND STUDIO', sub: 'DISEÑO CMS', icon: <Palette size={18} /> }, { type: ModuleType.CONFIG, label: 'CEREBRO', sub: 'ADN & IA', icon: <Settings size={18} /> }] }
+            { id: 'estrategia', label: 'ESTRATEGIA & ADMIN', icon: <Globe size={14} className="text-purple-500" />, modules: [{ type: ModuleType.COMMAND, label: 'COMMAND', sub: 'ESTRATEGIA IA', icon: <Globe size={18} /> }, { type: ModuleType.FINANCE_HUB, label: 'FINANCE HUB', sub: 'DINERO & KPI', icon: <DollarSign size={18} /> }, { type: ModuleType.PAYROLL, label: 'NÓMINA DIAN', sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> }, { type: ModuleType.CONFIG, label: 'CEREBRO', sub: 'ADN & IA', icon: <Settings size={18} /> }] }
           ].map((pkg) => {
             const visiblePkgModules = pkg.modules.filter(m => visibleModulesList.includes(m.type));
             if (visiblePkgModules.length === 0) return null;
@@ -300,7 +295,6 @@ const Dashboard: React.FC = () => {
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 relative z-10 text-left">
           <Suspense fallback={<ModuleLoader />}>
-            {activeModule === ModuleType.DISCOVER && <DiscoverModule />}
             {activeModule === ModuleType.SERVICE_OS && (
               <div className="space-y-12">
                 <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} />
@@ -317,7 +311,6 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.FLOW && <FlowModule />}
             {activeModule === ModuleType.SUPPLY && <SupplyModule />}
             {activeModule === ModuleType.CARE && <CareModule />}
-            {activeModule === ModuleType.BRAND_STUDIO && <BrandStudio />}
             {activeModule === ModuleType.CONFIG && <SettingsModule />}
           </Suspense>
         </div>

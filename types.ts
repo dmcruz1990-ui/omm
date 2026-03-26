@@ -7,7 +7,6 @@
 import * as THREE from 'three';
 
 export enum ModuleType {
-  DISCOVER = 'DISCOVER',
   RESERVE = 'RESERVE',
   RELATIONSHIP = 'RELATIONSHIP',
   SERVICE_OS = 'SERVICE_OS',
@@ -18,7 +17,6 @@ export enum ModuleType {
   COMMAND = 'COMMAND',
   STAFF_HUB = 'STAFF_HUB',
   KITCHEN_KDS = 'KITCHEN_KDS',
-  BRAND_STUDIO = 'BRAND_STUDIO',
   CONFIG = 'CONFIG',
   PAYROLL = 'PAYROLL',
   GENESIS = 'GENESIS',
