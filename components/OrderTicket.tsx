@@ -1,22 +1,17 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase.ts';
-import { CreditCard, Loader2 } from 'lucide-react';
 import { Table } from '../types.ts';
-import CheckoutModal from './CheckoutModal.tsx';
 
 interface OrderTicketProps {
   table: Table;
   onUpdateTable: (tableId: number, updates: Partial<Table>) => void;
-  onPaymentSuccess?: () => void;
 }
 
-const OrderTicket: React.FC<OrderTicketProps> = ({ table, onUpdateTable, onPaymentSuccess }) => {
-  const [loading, setLoading] = useState(true);
+const OrderTicket: React.FC<OrderTicketProps> = ({ table, onUpdateTable }) => {
   const [order, setOrder] = useState<any>(null);
   const [items, setItems] = useState<any[]>([]);
-  const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     if (!table) return;
     try {
       const { data: orderData } = await supabase
@@ -39,10 +34,8 @@ const OrderTicket: React.FC<OrderTicketProps> = ({ table, onUpdateTable, onPayme
       }
     } catch (err) {
       console.warn("❌ [TICKET] DB Sync Error");
-    } finally {
-      setLoading(false);
     }
-  };
+  }, [table]);
 
   useEffect(() => {
     fetchData();
@@ -62,7 +55,7 @@ const OrderTicket: React.FC<OrderTicketProps> = ({ table, onUpdateTable, onPayme
       supabase.removeChannel(channel);
       window.removeEventListener('manual-order-update', handleManualRefresh);
     };
-  }, [table?.id]);
+  }, [table, fetchData]);
 
   const groupedItems = items.reduce((acc: any[], current) => {
     const itemName = current.menu_items?.name || 'Producto OMM';
@@ -86,85 +79,59 @@ const OrderTicket: React.FC<OrderTicketProps> = ({ table, onUpdateTable, onPayme
   const service = subtotal * 0.10;
   const total = subtotal + tax + service;
 
-  if (!table) return <div className="flex flex-col h-full bg-[#1a1d24] rounded-2xl p-6 text-gray-500 items-center justify-center">Select a table</div>;
+  const pax = (table as any).pax || 2;
+  const time = (table as any).time || '00:00';
+
+  if (!table) return null;
 
   return (
-    <div className="flex flex-col h-full bg-[#1a1d24] rounded-2xl overflow-hidden text-left">
-      
-      {/* Header */}
-      <div className="p-6 border-b border-white/5">
-        <div className="flex justify-between items-start mb-2">
-          <h2 className="text-xl font-bold text-white">TABLE {table.id.toString().padStart(2, '0')}</h2>
-          <span className={`px-3 py-1 rounded-full text-[9px] font-bold tracking-widest uppercase border ${order ? 'bg-blue-900/30 text-blue-400 border-blue-500/20' : 'bg-gray-800/30 text-gray-500 border-gray-700/30'}`}>
-            {order ? 'ACTIVE' : 'VACANT'}
-          </span>
-        </div>
-        <div className="flex justify-between items-center text-[10px] font-mono text-gray-400 uppercase">
-          <span>ORD {order ? `#${order.id.substring(0,4)}` : '---'}</span>
-          <span>SERVER: M.J.</span>
-        </div>
+    <div className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl overflow-hidden mt-2">
+      <div className="p-2.5 px-3 border-b border-[#2a2a2a] flex items-center justify-between">
+        <span className="font-['Syne'] text-[12px] font-bold text-[#f0f0f0] flex items-center gap-1.5">
+          🧾 Cuenta — Mesa {(table as any).num || table.id}
+        </span>
+        <span className="text-[10px] text-[#606060]">{pax} personas · {time}</span>
       </div>
 
-      {/* Items List */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-5">
-        {loading ? (
-          <div className="flex justify-center py-10"><Loader2 className="animate-spin text-blue-500" /></div>
-        ) : groupedItems.length > 0 ? (
-          groupedItems.map((item, idx) => (
-            <div key={idx} className="flex justify-between items-start">
-              <div className="flex gap-3">
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${item.status === 'pending' ? 'bg-blue-600 text-white' : 'bg-[#2a2d35] text-gray-300'}`}>
-                  {item.quantity}
-                </div>
-                <div className="flex flex-col">
-                  <span className={`text-sm font-bold ${item.status === 'pending' ? 'text-white' : 'text-gray-200'}`}>{item.menu_items?.name}</span>
-                  <span className={`text-[10px] ${item.status === 'pending' ? 'text-blue-400' : 'text-gray-500'}`}>{item.status}</span>
-                </div>
-              </div>
-              <span className="text-sm font-mono text-gray-300">${item.subtotal.toFixed(2)}</span>
+      <div className="p-2 px-3 max-h-[180px] overflow-y-auto custom-scrollbar flex flex-col gap-1">
+        {groupedItems.length === 0 ? (
+          <p className="text-[11px] text-[#606060] text-center py-2.5">Sin productos agregados aún</p>
+        ) : (
+          groupedItems.map((o, i) => (
+            <div key={i} className="flex items-center gap-2 py-1 border-b border-[#2a2a2a]">
+              <span className="text-[14px]">🍽️</span>
+              <span className="flex-1 text-[12px] text-[#f0f0f0]">{o.quantity}x {o.menu_items?.name}</span>
+              <span className="text-[12px] font-bold text-[#d4943a] whitespace-nowrap">${o.subtotal.toLocaleString()}</span>
+              <button className="bg-transparent border-none text-[#606060] cursor-pointer text-[12px] p-0.5 hover:text-[#e05050]">✕</button>
             </div>
           ))
-        ) : (
-          <div className="text-center text-gray-600 text-xs py-10">No items yet</div>
         )}
       </div>
 
-      {/* Totals & Action */}
-      <div className="p-6 bg-[#15171c] border-t border-white/5">
-        <div className="space-y-2 mb-6 text-xs font-mono">
-          <div className="flex justify-between text-gray-400">
-            <span>SUBTOTAL</span>
-            <span>${subtotal.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-gray-400">
-            <span>TAX (8%)</span>
-            <span>${tax.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between text-green-500">
-            <span>SERVICE (10%)</span>
-            <span>${service.toFixed(2)}</span>
-          </div>
+      <div className="p-2 px-3 border-t border-[#2a2a2a] flex flex-col gap-1">
+        <div className="flex justify-between text-[11px] text-[#a0a0a0]">
+          <span>Subtotal</span><span>${subtotal.toLocaleString()}</span>
         </div>
-        
-        <div className="border-t border-dashed border-gray-700 pt-4 mb-6 flex justify-between items-end">
-          <span className="text-sm font-bold text-white tracking-widest">TOTAL</span>
-          <span className="text-3xl font-bold text-white">${total.toFixed(2)}</span>
+        <div className="flex justify-between text-[11px] text-[#a0a0a0]">
+          <span>IVA (8%)</span><span>${tax.toLocaleString()}</span>
         </div>
-
-        <button 
-          onClick={() => setIsCheckoutOpen(true)}
-          disabled={!order || items.length === 0}
-          className="w-full bg-[#2563eb] hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-[#2563eb] text-white py-4 rounded-xl font-bold text-sm tracking-widest flex items-center justify-center gap-3 transition-all"
-        >
-          <CreditCard size={18} /> PROCESAR PAGO
-        </button>
+        <div className="flex justify-between text-[11px] text-[#606060]">
+          <span>Propina sugerida (10%)</span><span>${service.toLocaleString()}</span>
+        </div>
+        <div className="flex justify-between text-[15px] font-bold pt-1.5 border-t border-[#2a2a2a] mt-0.5">
+          <span>Total</span>
+          <span className="text-[#f0b45a]">${total.toLocaleString()}</span>
+        </div>
       </div>
 
-      <CheckoutModal 
-        isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)}
-        order={order} items={groupedItems} tableId={table.id} total={total}
-        onSuccess={() => { if (onPaymentSuccess) onPaymentSuccess(); fetchData(); }}
-      />
+      <div className="flex gap-1.5 p-2 px-2.5 border-t border-[#2a2a2a]">
+        <button className="flex-1 py-1.5 rounded-md font-['DM_Sans'] text-[11px] font-semibold cursor-pointer border border-[#2a2a2a] bg-transparent text-[#a0a0a0] hover:border-[#a0a0a0] hover:text-[#f0f0f0] transition-all text-center">
+          📋 Detalle
+        </button>
+        <button className="flex-[2] py-1.5 rounded-md font-['DM_Sans'] text-[11px] font-semibold cursor-pointer border border-[#d4943a] bg-[#d4943a] text-black hover:bg-[#f0b45a] hover:border-[#f0b45a] transition-all text-center">
+          💳 Cobrar ahora
+        </button>
+      </div>
     </div>
   );
 };

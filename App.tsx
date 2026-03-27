@@ -3,11 +3,12 @@ import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import { 
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
   Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
-  ShieldCheck, Compass, Loader2, MonitorPlay, Sparkles, Palette,
+  ShieldCheck, Loader2, MonitorPlay, Sparkles,
   Layers, Briefcase,
   LayoutPanelLeft,
   Smartphone,
-  BellRing
+  BellRing,
+  X
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -49,6 +50,8 @@ const Dashboard: React.FC = () => {
   const [isClientView, setIsClientView] = useState(false);
   const [isCockpitOpen, setIsCockpitOpen] = useState(false);
   
+  const [isVisionAIOpen, setIsVisionAIOpen] = useState(false);
+
   const isAdmin = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
 
   useEffect(() => {
@@ -296,9 +299,26 @@ const Dashboard: React.FC = () => {
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 relative z-10 text-left">
           <Suspense fallback={<ModuleLoader />}>
             {activeModule === ModuleType.SERVICE_OS && (
-              <div className="space-y-12">
-                <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} />
-                <ServiceOSModule tables={tables} onUpdateTable={handleUpdateTable} tasks={ritualTasks} />
+              <div className="h-full flex flex-col">
+                <ServiceOSModule tables={tables} onUpdateTable={handleUpdateTable} tasks={ritualTasks} onOpenVisionAI={() => setIsVisionAIOpen(true)} />
+                {isVisionAIOpen && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-8">
+                    <div className="bg-[#0f1115] border border-white/10 rounded-2xl w-full max-w-6xl h-[80vh] flex flex-col overflow-hidden shadow-2xl relative">
+                      <div className="flex justify-between items-center p-4 border-b border-white/10 bg-[#1a1d24]">
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                          <MonitorPlay size={20} className="text-blue-500" />
+                          Vision AI - Monitoreo en Vivo
+                        </h2>
+                        <button onClick={() => setIsVisionAIOpen(false)} className="text-gray-400 hover:text-white transition-colors">
+                          <X size={24} />
+                        </button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-6">
+                        <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
             {activeModule === ModuleType.KITCHEN_KDS && <KitchenModule />}

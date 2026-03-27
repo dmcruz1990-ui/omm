@@ -1,17 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { MenuItem } from '../types.ts';
-import { 
-  Plus, 
-  Loader2, 
-  CheckCircle2
-} from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 
 interface MenuGridProps {
   selectedTableId: number;
+  currentCat: string;
 }
 
-const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
+const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId, currentCat }) => {
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [addingId, setAddingId] = useState<string | null>(null);
@@ -78,49 +75,48 @@ const MenuGrid: React.FC<MenuGridProps> = ({ selectedTableId }) => {
 
   if (loading) return (
     <div className="py-20 flex flex-col items-center justify-center opacity-40">
-      <Loader2 className="animate-spin text-blue-500 mb-4" size={32} />
+      <Loader2 className="animate-spin text-[#4a8fd4] mb-4" size={32} />
     </div>
   );
 
+  const filteredItems = currentCat === 'ALL' ? menuItems : menuItems.filter(i => i.category.toUpperCase() === currentCat.toUpperCase());
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 pb-24 text-left">
-      {menuItems.map((item) => {
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2.5 pb-24 text-left">
+      {filteredItems.map((item) => {
+        // Mocking some data that might not be in DB yet
+        const emoji = (item as any).emoji || '🍽️';
+        const desc = (item as any).description || 'Delicioso plato preparado con los mejores ingredientes.';
+        const badge = (item as any).badge || 'recomendado';
+        
+        let badgeClass = 'bg-[#3dba6f]/15 text-[#3dba6f]';
+        let badgeLabel = 'Recomendado';
+        if (badge === 'gold') { badgeClass = 'bg-[#d4943a]/15 text-[#d4943a]'; badgeLabel = 'Alta rentable'; }
+        if (badge === 'orange') { badgeClass = 'bg-[#e07830]/15 text-[#e07830]'; badgeLabel = 'Mover Hoy'; }
+        if (badge === 'red') { badgeClass = 'bg-[#e05050]/15 text-[#e05050]'; badgeLabel = 'Urgente'; }
+
         return (
           <div 
             key={item.id} 
-            className="group relative bg-[#1a1d24] rounded-2xl overflow-hidden transition-all duration-300 flex flex-col h-[280px] border border-transparent hover:border-gray-600"
+            className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl overflow-hidden cursor-pointer transition-all duration-200 relative flex flex-col hover:border-[#d4943a]/50 hover:-translate-y-0.5 hover:shadow-[0_6px_20px_rgba(0,0,0,0.4)] group"
+            onClick={() => handleAddItem(item)}
           >
-            {/* Image Background */}
-            <div className="absolute top-0 left-0 right-0 h-[140px] z-0">
-               <img src={(item as any).image_url || 'https://images.unsplash.com/photo-1546069901-ba9599a7e63c?q=80&w=400'} className="w-full h-full object-cover opacity-80" alt={item.name} />
-               <div className="absolute inset-0 bg-gradient-to-b from-transparent via-[#1a1d24]/80 to-[#1a1d24]"></div>
+            <div className="w-full aspect-[4/3] bg-[#222222] flex items-center justify-center text-[44px] shrink-0">
+              {emoji}
             </div>
-
-            {/* Price Tag */}
-            <div className="absolute top-3 right-3 z-10 bg-black/60 backdrop-blur-md px-2 py-1 rounded text-xs font-bold text-white">
-               ${item.price}
-            </div>
-
-            {/* Content */}
-            <div className="relative z-10 flex-1 flex flex-col p-5 pt-[100px]">
-               <h4 className="text-base font-bold text-white mb-2 leading-tight">
-                 {item.name}
-               </h4>
-               <p className="text-[11px] text-gray-400 font-medium leading-relaxed line-clamp-2">
-                 {(item as any).description || 'Delicioso plato preparado con los mejores ingredientes.'}
-               </p>
-            </div>
-
-            {/* Footer */}
-            <div className="relative z-10 px-5 pb-5 flex justify-between items-end mt-auto">
-               <span className="text-[10px] font-mono text-gray-600">ID: {item.id?.substring(0,4) || '0000'}</span>
-               <button 
-                 onClick={() => handleAddItem(item)}
-                 disabled={!!addingId || selectedTableId === 0}
-                 className="w-8 h-8 rounded-full bg-[#2a2d35] hover:bg-blue-600 text-white flex items-center justify-center transition-colors disabled:opacity-50"
-               >
-                 {addingId === item.id ? <Loader2 size={14} className="animate-spin" /> : <Plus size={16} />}
-               </button>
+            <div className="p-2.5 flex-1 flex flex-col gap-1">
+              <div className="text-[13px] font-bold leading-[1.3] text-[#f0f0f0]">{item.name}</div>
+              <div className="text-[11px] text-[#606060] leading-[1.4] flex-1 line-clamp-2">{desc}</div>
+              <span className={`inline-block px-2 py-0.5 rounded-full text-[9px] font-semibold tracking-[0.3px] self-start mt-1 ${badgeClass}`}>
+                {badgeLabel}
+              </span>
+              <div className="text-[14px] font-bold text-[#d4943a] mt-0.5">${item.price.toLocaleString()}</div>
+              <button 
+                disabled={!!addingId || selectedTableId === 0}
+                className="w-full mt-2 py-1.5 rounded-md bg-[#d4943a] text-black font-['DM_Sans'] text-[11px] font-bold border-none cursor-pointer transition-all tracking-[0.2px] hover:bg-[#f0b45a] disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {addingId === item.id ? <Loader2 size={14} className="animate-spin" /> : '+ Agregar a la orden'}
+              </button>
             </div>
           </div>
         );
