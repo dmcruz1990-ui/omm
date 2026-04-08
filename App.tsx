@@ -8,7 +8,8 @@ import {
   Smartphone,
   BellRing,
   X,
-  Brain
+  Brain,
+  Receipt
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -34,6 +35,7 @@ const SettingsModule = lazy(() => import('./components/SettingsModule.tsx'));
 const PayrollModule = lazy(() => import('./components/PayrollModule.tsx'));
 const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'));
 const GenesisModule = lazy(() => import('./components/GenesisModule.tsx'));
+const DIANModule = lazy(() => import('./components/DIANModule.tsx'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -269,6 +271,7 @@ const Dashboard: React.FC = () => {
                 { type: ModuleType.COMMAND,    label: 'COMMAND',      sub: 'ESTRATEGIA IA',        icon: <Globe size={18} /> },
                 { type: ModuleType.FINANCE_HUB,label: 'FINANCE HUB',  sub: 'DINERO & KPI',         icon: <DollarSign size={18} /> },
                 { type: ModuleType.PAYROLL,    label: 'NÓMINA DIAN',  sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
+                { type: ModuleType.DIAN,       label: 'FACTURACIÓN',  sub: 'DIAN · UBL 2.1',       icon: <Receipt size={18} /> },
                 { type: ModuleType.CONFIG,     label: 'CEREBRO',      sub: 'ADN & IA',             icon: <Settings size={18} /> }
               ]
             }
@@ -382,6 +385,7 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.FLOW           && <FlowModule />}
             {activeModule === ModuleType.SUPPLY         && <SupplyModule />}
             {activeModule === ModuleType.CARE           && <CareModule />}
+            {activeModule === ModuleType.DIAN           && <DIANModule />}
             {activeModule === ModuleType.CONFIG         && <SettingsModule />}
           </Suspense>
         </div>
