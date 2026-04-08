@@ -1,4 +1,3 @@
-
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -19,6 +18,7 @@ export enum ModuleType {
   KITCHEN_KDS = 'KITCHEN_KDS',
   CONFIG = 'CONFIG',
   PAYROLL = 'PAYROLL',
+  DIAN = 'DIAN',
   GENESIS = 'GENESIS',
   MOBILE_MGR = 'MOBILE_MGR',
   OH_YEAH = 'OH_YEAH'
