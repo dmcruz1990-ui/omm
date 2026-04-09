@@ -9,6 +9,7 @@ import {
   BellRing,
   X,
   Brain,
+  BarChart3,
   Receipt
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
@@ -36,6 +37,7 @@ const PayrollModule = lazy(() => import('./components/PayrollModule.tsx'));
 const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'));
 const GenesisModule = lazy(() => import('./components/GenesisModule.tsx'));
 const DIANModule = lazy(() => import('./components/DIANModule.tsx'));
+const ContabilidadModule = lazy(() => import('./components/ContabilidadModule.tsx'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -268,11 +270,12 @@ const Dashboard: React.FC = () => {
               id: 'estrategia', label: 'ESTRATEGIA & ADMIN',
               icon: <Globe size={14} className="text-purple-500" />,
               modules: [
-                { type: ModuleType.COMMAND,    label: 'COMMAND',      sub: 'ESTRATEGIA IA',        icon: <Globe size={18} /> },
-                { type: ModuleType.FINANCE_HUB,label: 'FINANCE HUB',  sub: 'DINERO & KPI',         icon: <DollarSign size={18} /> },
-                { type: ModuleType.PAYROLL,    label: 'NÓMINA DIAN',  sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
-                { type: ModuleType.DIAN,       label: 'FACTURACIÓN',  sub: 'DIAN · UBL 2.1',       icon: <Receipt size={18} /> },
-                { type: ModuleType.CONFIG,     label: 'CEREBRO',      sub: 'ADN & IA',             icon: <Settings size={18} /> }
+                { type: ModuleType.COMMAND,       label: 'COMMAND',      sub: 'ESTRATEGIA IA',        icon: <Globe size={18} /> },
+                { type: ModuleType.FINANCE_HUB,  label: 'FINANCE HUB',  sub: 'DINERO & KPI',         icon: <DollarSign size={18} /> },
+                { type: ModuleType.PAYROLL,       label: 'NÓMINA DIAN',  sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
+                { type: ModuleType.DIAN,          label: 'FACTURACIÓN',  sub: 'DIAN · UBL 2.1',       icon: <Receipt size={18} /> },
+                { type: ModuleType.CONTABILIDAD,  label: 'CONTABILIDAD', sub: 'P&G · CIERRE · KPI',   icon: <BarChart3 size={18} /> },
+                { type: ModuleType.CONFIG,        label: 'CEREBRO',      sub: 'ADN & IA',             icon: <Settings size={18} /> }
               ]
             }
           ].map((pkg) => {
@@ -386,6 +389,7 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.SUPPLY         && <SupplyModule />}
             {activeModule === ModuleType.CARE           && <CareModule />}
             {activeModule === ModuleType.DIAN           && <DIANModule />}
+            {activeModule === ModuleType.CONTABILIDAD   && <ContabilidadModule />}
             {activeModule === ModuleType.CONFIG         && <SettingsModule />}
           </Suspense>
         </div>
