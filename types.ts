@@ -22,6 +22,7 @@ export enum ModuleType {
   GENESIS = 'GENESIS',
   MOBILE_MGR = 'MOBILE_MGR',
   OH_YEAH = 'OH_YEAH'
+  CONTABILIDAD = 'CONTABILIDAD'
 }
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo';
