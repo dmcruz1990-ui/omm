@@ -388,6 +388,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [notasMesero, setNotasMesero] = useState<Record<number, string[]>>({});
   const [ritualState, setRitualState] = useState<Record<number, string[]>>(mesaRitualState);
   const [addedCards, setAddedCards] = useState<Set<string>>(new Set());
+  const [pantallaConfirmacion, setPantallaConfirmacion] = useState<{
+    activa: boolean; monto: number; metodo: string; facMsg: string; tableId: number;
+  }>({ activa: false, monto: 0, metodo: '', facMsg: '', tableId: 0 });
 
   // ── Modal término de cocción ─────────────────────────────
   const [terminoModal, setTerminoModal] = useState<{ open: boolean; producto: any | null; modo: 'orden' | 'marchar' }>({ open: false, producto: null, modo: 'orden' });
@@ -552,16 +555,133 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     const subtotal = m.ticket + items.reduce((s, o) => s + parsePrecio(o.precio), 0);
     const descuento = Math.round(subtotal * (posDescuento / 100));
     const subtotalNeto = Math.max(0, subtotal - descuento - posCorte);
-    const iva = Math.round(subtotalNeto * 0.08);
+    const impoconsumo = Math.round(subtotalNeto * 0.08); // Impoconsumo 8% — restaurantes no responsables IVA
     const propinaMonto = Math.round(subtotalNeto * 0.10);
-    const total = subtotalNeto + iva;
+    const total = subtotalNeto + impoconsumo;
     const totalConPropina = total + propinaMonto;
+    const iva = impoconsumo; // alias para compatibilidad
 
     const procesarPago = (metodo: string, conPropina: boolean) => {
-      closeModal();
       const montoFinal = conPropina ? totalConPropina : total;
-      showToast(`✓ Pago procesado — ${metodo} — $${formatPrecio(montoFinal)}`);
-      setTimeout(() => abrirEncuesta(tableId), 400);
+      // Abrir flujo de factura obligatorio antes de cerrar
+      abrirFacturaModal(tableId, metodo, montoFinal);
+    };
+
+    // ── MODAL FACTURA OBLIGATORIO ──────────────────────────
+    const abrirFacturaModal = (tid: number, metodo: string, monto: number) => {
+      let tipoFac: 'electronica' | 'generica' | null = null;
+      let facNombre = ''; let facId = ''; let facEmail = ''; let facRazon = '';
+      let tipoId: 'CC' | 'NIT' | 'CE' = 'CC';
+      let confirmado = false;
+
+      const renderFac = (msg?: string) => {
+        setModal({
+          open: true, title: '',
+          content: (
+            <div className="font-['DM_Sans']">
+              {/* Pantalla de selección tipo */}
+              {!tipoFac ? (
+                <>
+                  <div className="font-['Syne'] text-[17px] font-bold mb-1">🧾 Tipo de factura</div>
+                  <div className="text-[11px] text-[#a0a0a0] mb-5">Monto a cobrar: <span className="text-[#f0b45a] font-bold">${formatPrecio(monto)}</span> · {metodo}</div>
+                  <div className="flex flex-col gap-3">
+                    <button onClick={() => { tipoFac = 'electronica'; renderFac(); }}
+                      className="w-full py-4 rounded-xl border border-[#2a2a2a] hover:border-[#4a8fd4] hover:bg-[#4a8fd4]/10 transition-all text-left px-4">
+                      <div className="text-[13px] font-bold text-[#4a8fd4]">📱 Factura Electrónica DIAN</div>
+                      <div className="text-[11px] text-[#606060] mt-1">Requiere nombre, documento e email del cliente</div>
+                    </button>
+                    <button onClick={() => { tipoFac = 'generica'; renderFac(); }}
+                      className="w-full py-4 rounded-xl border border-[#2a2a2a] hover:border-[#a0a0a0] hover:bg-[#2a2a2a]/50 transition-all text-left px-4">
+                      <div className="text-[13px] font-bold text-[#a0a0a0]">🖨️ Factura Impresa / Genérica</div>
+                      <div className="text-[11px] text-[#606060] mt-1">Sin datos del cliente · Solo impresión</div>
+                    </button>
+                  </div>
+                </>
+              ) : tipoFac === 'generica' && !confirmado ? (
+                <>
+                  <div className="font-['Syne'] text-[17px] font-bold mb-1">🖨️ Factura Genérica</div>
+                  <div className="text-[11px] text-[#a0a0a0] mb-6">Se imprimirá sin datos del cliente</div>
+                  <div className="bg-[#0a0a0a] rounded-xl p-4 mb-6">
+                    <div className="flex justify-between text-[12px] text-[#a0a0a0] mb-2"><span>Subtotal</span><span>${formatPrecio(subtotalNeto)}</span></div>
+                    <div className="flex justify-between text-[12px] text-[#a0a0a0] mb-2"><span>Impoconsumo (8%)</span><span>${formatPrecio(impoconsumo)}</span></div>
+                    <div className="flex justify-between text-[14px] font-bold border-t border-[#2a2a2a] pt-2 mt-2">
+                      <span>Total</span><span className="text-[#f0b45a]">${formatPrecio(monto)}</span>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => { tipoFac = null; renderFac(); }} className="flex-1 py-2.5 rounded-xl border border-[#2a2a2a] text-[#606060] text-[11px]">← Volver</button>
+                    <button onClick={() => {
+                      confirmado = true;
+                      abrirPantallaConfirmacion(tid, monto, '🖨️ Factura genérica impresa');
+                    }} className="flex-[2] py-2.5 rounded-xl bg-[#a0a0a0] text-black text-[12px] font-bold hover:bg-white transition-all">
+                      🖨️ Imprimir y cerrar
+                    </button>
+                  </div>
+                </>
+              ) : tipoFac === 'electronica' ? (
+                <>
+                  <div className="font-['Syne'] text-[17px] font-bold mb-1">📱 Factura Electrónica</div>
+                  <div className="text-[11px] text-[#a0a0a0] mb-4">Datos obligatorios para la DIAN</div>
+                  {msg && <div className={`text-[11px] font-bold mb-3 text-center ${msg.startsWith('✓')?'text-[#3dba6f]':'text-[#e05050]'}`}>{msg}</div>}
+
+                  {/* Tipo de ID */}
+                  <div className="flex gap-2 mb-3">
+                    {(['CC','NIT','CE'] as const).map(t => (
+                      <button key={t} onClick={() => { tipoId = t; renderFac(); }}
+                        style={{ borderColor: tipoId===t?'#4a8fd4':'#2a2a2a', background: tipoId===t?'#4a8fd418':'transparent', color: tipoId===t?'#4a8fd4':'#606060' }}
+                        className="flex-1 py-2 rounded-lg border text-[11px] font-bold transition-all">{t}</button>
+                    ))}
+                  </div>
+
+                  <input autoFocus defaultValue={facNombre} onChange={e=>{facNombre=e.target.value;}}
+                    placeholder="Nombre completo / Razón social *"
+                    className="w-full bg-[#141414] border border-[#2a2a2a] focus:border-[#4a8fd4] rounded-lg px-3 py-2.5 text-[12px] text-[#f0f0f0] outline-none mb-2" />
+                  <input defaultValue={facId} onChange={e=>{facId=e.target.value;}}
+                    placeholder={`${tipoId} *`}
+                    className="w-full bg-[#141414] border border-[#2a2a2a] focus:border-[#4a8fd4] rounded-lg px-3 py-2.5 text-[12px] text-[#f0f0f0] outline-none mb-2" />
+                  <input defaultValue={facEmail} onChange={e=>{facEmail=e.target.value;}} type="email"
+                    placeholder="Correo electrónico *"
+                    className="w-full bg-[#141414] border border-[#2a2a2a] focus:border-[#4a8fd4] rounded-lg px-3 py-2.5 text-[12px] text-[#f0f0f0] outline-none mb-2" />
+                  {tipoId === 'NIT' && (
+                    <input defaultValue={facRazon} onChange={e=>{facRazon=e.target.value;}}
+                      placeholder="Razón social *"
+                      className="w-full bg-[#141414] border border-[#2a2a2a] focus:border-[#4a8fd4] rounded-lg px-3 py-2.5 text-[12px] text-[#f0f0f0] outline-none mb-2" />
+                  )}
+
+                  <div className="bg-[#0a0a0a] rounded-xl p-3 my-3">
+                    <div className="flex justify-between text-[11px] text-[#a0a0a0] mb-1"><span>Subtotal</span><span>${formatPrecio(subtotalNeto)}</span></div>
+                    <div className="flex justify-between text-[11px] text-[#a0a0a0] mb-1"><span>Impoconsumo (8%)</span><span>${formatPrecio(impoconsumo)}</span></div>
+                    <div className="flex justify-between text-[13px] font-bold border-t border-[#2a2a2a] pt-2 mt-1">
+                      <span>Total</span><span className="text-[#f0b45a]">${formatPrecio(monto)}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button onClick={() => { tipoFac = null; renderFac(); }} className="flex-1 py-2.5 rounded-xl border border-[#2a2a2a] text-[#606060] text-[11px]">← Volver</button>
+                    <button onClick={() => {
+                      if (!facNombre.trim()) { renderFac('✗ El nombre es obligatorio'); return; }
+                      if (!facId.trim()) { renderFac('✗ El documento es obligatorio'); return; }
+                      if (!facEmail.trim() || !facEmail.includes('@')) { renderFac('✗ Email inválido'); return; }
+                      abrirPantallaConfirmacion(tid, monto, `📱 Factura electrónica → ${facEmail}`);
+                    }} style={{ background: '#4a8fd4' }}
+                      className="flex-[2] py-2.5 rounded-xl text-white text-[12px] font-bold hover:opacity-90 transition-all">
+                      📤 Emitir factura DIAN
+                    </button>
+                  </div>
+                </>
+              ) : null}
+            </div>
+          ),
+        });
+      };
+      renderFac();
+    };
+
+    // ── PANTALLA NEGRA DE CONFIRMACIÓN ─────────────────────
+    const abrirPantallaConfirmacion = (tid: number, monto: number, facMsg: string) => {
+      setModal({ open: false, title: '', content: null });
+      // Activar pantalla negra de confirmación
+      setPantallaConfirmacion({ activa: true, monto, metodo, facMsg, tableId: tid });
     };
 
     // ── BONO / TARJETA REGALO ──
@@ -779,7 +899,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               </div>
             )}
             {posCorte > 0 && <div className="flex justify-between text-[12px] text-[#3dba6f]"><span>Cortesía</span><span>-${formatPrecio(posCorte)}</span></div>}
-            <div className="flex justify-between text-[12px] text-[#a0a0a0]"><span>IVA (8%)</span><span>${formatPrecio(iva)}</span></div>
+            <div className="flex justify-between text-[12px] text-[#a0a0a0]"><span>Impoconsumo (8%)</span><span>${formatPrecio(iva)}</span></div>
             <div className="flex justify-between text-[13px] font-bold pt-2 border-t border-[#2a2a2a] mt-1">
               <span>Total sin propina</span><span className="text-[#f0f0f0]">${formatPrecio(total)}</span>
             </div>
@@ -1515,6 +1635,41 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       minHeight: '100vh',
       overflow: 'hidden'
     }}>
+
+      {/* PANTALLA NEGRA DE CONFIRMACIÓN — al cerrar cuenta */}
+      {pantallaConfirmacion.activa && (
+        <div className="fixed inset-0 bg-black z-[700] flex flex-col items-center justify-center"
+          style={{ fontFamily: "'DM Sans', sans-serif" }}>
+          <div className="text-center" style={{ animation: 'fadeIn .4s ease' }}>
+            {/* Check animado */}
+            <div style={{ width: 80, height: 80, borderRadius: '50%', background: '#3dba6f', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 24px', fontSize: 40 }}>
+              ✓
+            </div>
+            <div style={{ fontFamily: "'Syne', sans-serif", fontSize: 28, fontWeight: 900, color: '#f0f0f0', marginBottom: 8 }}>
+              Cuenta cerrada
+            </div>
+            <div style={{ fontSize: 36, fontWeight: 900, color: '#f0b45a', marginBottom: 8 }}>
+              ${typeof pantallaConfirmacion.monto === 'number' ? new Intl.NumberFormat('es-CO').format(pantallaConfirmacion.monto) : pantallaConfirmacion.monto}
+            </div>
+            <div style={{ fontSize: 14, color: '#a0a0a0', marginBottom: 4 }}>
+              {pantallaConfirmacion.metodo}
+            </div>
+            <div style={{ fontSize: 12, color: '#606060', marginBottom: 48 }}>
+              {pantallaConfirmacion.facMsg}
+            </div>
+            <button
+              onClick={() => {
+                setPantallaConfirmacion({ activa: false, monto: 0, metodo: '', facMsg: '', tableId: 0 });
+                showToast(`✓ Mesa liberada`);
+                setTimeout(() => abrirEncuesta(pantallaConfirmacion.tableId), 300);
+              }}
+              style={{ background: '#d4943a', color: '#000', border: 'none', padding: '14px 40px', borderRadius: 12, fontSize: 14, fontWeight: 900, cursor: 'pointer', marginBottom: 16 }}>
+              📲 Pasar tablet al cliente
+            </button>
+            <div style={{ fontSize: 11, color: '#606060' }}>O toca para ir directo a la encuesta</div>
+          </div>
+        </div>
+      )}
 
       {/* TOAST */}
       {toast && (
