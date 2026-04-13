@@ -10,7 +10,8 @@ import {
   X,
   Brain,
   BarChart3,
-  Receipt
+  Receipt,
+  Store
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -38,6 +39,7 @@ const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'))
 const GenesisModule = lazy(() => import('./components/GenesisModule.tsx'));
 const DIANModule = lazy(() => import('./components/DIANModule.tsx'));
 const ContabilidadModule = lazy(() => import('./components/ContabilidadModule.tsx'));
+const OhYeahAdmin = lazy(() => import('./components/OhYeahAdmin.tsx'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -242,9 +244,10 @@ const Dashboard: React.FC = () => {
               id: 'marketing', label: 'PAQUETE MARKETING',
               icon: <Sparkles size={14} className="text-blue-500" />,
               modules: [
-                { type: ModuleType.OH_YEAH,       label: 'OH YEAH! B2C', sub: 'VISTA CLIENTE',  icon: <Smartphone size={18} /> },
-                { type: ModuleType.RESERVE,        label: 'RESERVE',      sub: 'MAPA & AGENDA',  icon: <CalendarDays size={18} /> },
-                { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',     sub: 'CRM & VIP',      icon: <Users size={18} /> }
+                { type: ModuleType.OH_YEAH,       label: 'OH YEAH! B2C',  sub: 'VISTA CLIENTE',      icon: <Smartphone size={18} /> },
+                { type: ModuleType.OH_YEAH_ADMIN, label: 'OH YEAH! ADMIN',sub: 'RESTAURANTES',        icon: <Store size={18} /> },
+                { type: ModuleType.RESERVE,        label: 'RESERVE',       sub: 'MAPA & AGENDA',      icon: <CalendarDays size={18} /> },
+                { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> }
               ]
             },
             {
@@ -390,6 +393,7 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.CARE           && <CareModule />}
             {activeModule === ModuleType.DIAN           && <DIANModule />}
             {activeModule === ModuleType.CONTABILIDAD   && <ContabilidadModule />}
+            {activeModule === ModuleType.OH_YEAH_ADMIN  && <OhYeahAdmin />}
             {activeModule === ModuleType.CONFIG         && <SettingsModule />}
           </Suspense>
         </div>
