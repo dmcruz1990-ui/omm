@@ -434,6 +434,54 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     showToast(`✓ ${p.nombre} agregado al pedido`);
   };
 
+  // ── Insertar pedido en Supabase → Flow lo ve en tiempo real ──
+  const insertarPedidoFlow = async (nombrePlato: string, categoria: string, mesaNum: number) => {
+    try {
+      // 1. Buscar orden abierta de esta mesa
+      const { data: ordenes } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('table_id', mesaNum)
+        .eq('status', 'open')
+        .limit(1);
+
+      let orderId: string;
+
+      if (ordenes && ordenes.length > 0) {
+        orderId = ordenes[0].id;
+      } else {
+        // Crear orden nueva si no existe
+        const { data: nuevaOrden } = await supabase
+          .from('orders')
+          .insert({ table_id: mesaNum, status: 'open' })
+          .select('id')
+          .single();
+        if (!nuevaOrden) return;
+        orderId = nuevaOrden.id;
+      }
+
+      // 2. Buscar menu_item por nombre (si existe)
+      const { data: menuItem } = await supabase
+        .from('menu_items')
+        .select('id, category')
+        .ilike('name', `%${nombrePlato.split('(')[0].trim()}%`)
+        .limit(1);
+
+      // 3. Insertar en order_items
+      await supabase.from('order_items').insert({
+        order_id: orderId,
+        menu_item_id: menuItem?.[0]?.id ?? null,
+        quantity: 1,
+        status: 'pending',
+        notes: nombrePlato, // nombre completo con término si aplica
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.error('Flow sync error:', e);
+    }
+  };
+
   // MARCHAR AHORA — va directo a cocina
   const marcharAhoraDirecto = (p: any, termino?: string) => {
     const productoFinal = termino ? { ...p, nombre: `${p.nombre} (${termino})` } : p;
@@ -446,7 +494,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     } else {
       showToast(`🍽️ ${productoFinal.nombre} marchando → Cocina`);
     }
-    // ── Sincronizar con Book Flow ─────────────────────────
+    // ── Sincronizar con Supabase → Flow lo ve en tiempo real ─
+    insertarPedidoFlow(productoFinal.nombre, p.categoria ?? currentCat, selectedTable?.num ?? 0);
+    // ── Sincronizar con flowStore (Book Flow) ─────────────────
     agregarPlatoFlow({
       mesa: selectedTable?.num ?? 0,
       plato: productoFinal.nombre,
@@ -503,10 +553,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <button onClick={closeModal} className="flex-1 py-2.5 rounded-xl border border-[#2a2a2a] text-[#a0a0a0] text-[13px] font-semibold hover:border-[#a0a0a0] transition-all">Cancelar</button>
             <button onClick={() => {
               closeModal();
-              // ── Sincronizar orden completa con Book Flow ──────
+              // ── Sincronizar cada ítem con Supabase → Flow ────
               pendingOrder
                 .filter(o => o.mesa === selectedTable.num)
                 .forEach(item => {
+                  insertarPedidoFlow(item.nombre, item.categoria ?? currentCat, selectedTable.num);
                   agregarPlatoFlow({
                     mesa: selectedTable.num,
                     plato: item.nombre,
