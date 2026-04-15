@@ -11,7 +11,6 @@ import {
   BarChart3,
   Receipt,
   Store,
-  MessageSquare
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -38,7 +37,6 @@ const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'))
 const DIANModule = lazy(() => import('./components/DIANModule.tsx'));
 const ContabilidadModule = lazy(() => import('./components/ContabilidadModule.tsx'));
 const OhYeahAdmin = lazy(() => import('./components/OhYeahAdmin.tsx'));
-const ChatFlowModule = lazy(() => import('./components/ChatFlowModule.tsx'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -240,7 +238,6 @@ const Dashboard: React.FC = () => {
               modules: [
                 { type: ModuleType.SERVICE_OS,   label: 'SERVICE OS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
                 { type: ModuleType.FLOW,         label: 'FLOW',         sub: 'ESTACIONES',       icon: <ChefHat size={18} /> },
-                { type: ModuleType.CHAT_FLOW,    label: 'FLOW CENTER',  sub: 'CHAT · BOOK · CARE', icon: <MessageSquare size={18} /> }
               ]
             },
             {
@@ -376,7 +373,6 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.DIAN           && <DIANModule />}
             {activeModule === ModuleType.CONTABILIDAD   && <ContabilidadModule />}
             {activeModule === ModuleType.OH_YEAH_ADMIN  && <OhYeahAdmin />}
-            {activeModule === ModuleType.CHAT_FLOW      && <ChatFlowModule />}
             {activeModule === ModuleType.CONFIG         && <SettingsModule />}
           </Suspense>
         </div>
