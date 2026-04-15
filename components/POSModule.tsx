@@ -3,7 +3,6 @@ import { supabase } from '../lib/supabase.ts';
 import { Table, RitualTask } from '../types.ts';
 import { BellRing, Settings, MonitorPlay, MessageSquare, Sparkles, Receipt, X, ShoppingCart, Lock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { useFlowStore } from '../stores/flowStore';
 
 interface POSProps {
   tables: any[];
@@ -337,7 +336,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [chatMessage, setChatMessage] = useState('');
 
   // ── Flow Store — sincronización con Book Flow ────────────
-  const { agregarPlatoFlow, agregarMensaje: flowMensaje } = useFlowStore();
+  const agregarPlatoFlow = (_data: any) => {}; // stub hasta que flowStore esté en el repo
+  const flowMensaje = (_data: any) => {};
   const [chatHistory, setChatHistory] = useState([
     { sender: 'Cocina', msg: 'Mesa 4, marchando principales.', time: '19:45' },
     { sender: 'Host', msg: 'Mesa 2 VIP acaba de llegar.', time: '19:30' },
