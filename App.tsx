@@ -50,7 +50,7 @@ const ModuleLoader = () => (
 
 const Dashboard: React.FC = () => {
   const { profile, signOut } = useAuth();
-  const [activeModule, setActiveModule] = useState<ModuleType>(ModuleType.GENESIS);
+  const [activeModule, setActiveModule] = useState<ModuleType>(ModuleType.SERVICE_OS);
   const [tables, setTables] = useState<Table[]>([]);
   const [ritualTasks, setRitualTasks] = useState<RitualTask[]>([]);
   const [dashboardLoading, setDashboardLoading] = useState(true);
