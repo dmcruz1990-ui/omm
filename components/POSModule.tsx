@@ -463,17 +463,18 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       // 2. Buscar menu_item por nombre (si existe)
       const { data: menuItem } = await supabase
         .from('menu_items')
-        .select('id, category')
+        .select('id')
         .ilike('name', `%${nombrePlato.split('(')[0].trim()}%`)
         .limit(1);
 
-      // 3. Insertar en order_items
+      // 3. Insertar en order_items con notes = nombre completo del plato
       await supabase.from('order_items').insert({
         order_id: orderId,
         menu_item_id: menuItem?.[0]?.id ?? null,
         quantity: 1,
         status: 'pending',
-        notes: nombrePlato, // nombre completo con término si aplica
+        notes: nombrePlato,
+        price_at_time: 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });
