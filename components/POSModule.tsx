@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase.ts';
 import { Table, RitualTask } from '../types.ts';
 import { BellRing, Settings, MonitorPlay, MessageSquare, Sparkles, Receipt, X, ShoppingCart, Lock } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useFlowStore } from '../stores/flowStore';
 
 interface POSProps {
   tables: any[];
@@ -334,6 +335,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [toast, setToast] = useState('');
   const [modal, setModal] = useState<POSModal>({ open: false, title: '', content: null });
   const [chatMessage, setChatMessage] = useState('');
+
+  // ── Flow Store — sincronización con Book Flow ────────────
+  const { agregarPlatoFlow, agregarMensaje: flowMensaje } = useFlowStore();
   const [chatHistory, setChatHistory] = useState([
     { sender: 'Cocina', msg: 'Mesa 4, marchando principales.', time: '19:45' },
     { sender: 'Host', msg: 'Mesa 2 VIP acaba de llegar.', time: '19:30' },
@@ -442,6 +446,16 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     } else {
       showToast(`🍽️ ${productoFinal.nombre} marchando → Cocina`);
     }
+    // ── Sincronizar con Book Flow ─────────────────────────
+    agregarPlatoFlow({
+      mesa: selectedTable?.num ?? 0,
+      plato: productoFinal.nombre,
+      emoji: p.emoji ?? '🍽️',
+      mesero: profile?.nombre_completo?.split(' ')[0] ?? 'Mesero',
+      etapa: 'cocina',
+      urgente: totalEnCocina >= 10,
+      termino: termino,
+    });
     setTimeout(() => setAddedCards(prev => { const n = new Set(prev); n.delete(p.nombre + '_marchar'); return n; }), 1500);
     setSelectedPlato(null);
   };
@@ -489,6 +503,19 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <button onClick={closeModal} className="flex-1 py-2.5 rounded-xl border border-[#2a2a2a] text-[#a0a0a0] text-[13px] font-semibold hover:border-[#a0a0a0] transition-all">Cancelar</button>
             <button onClick={() => {
               closeModal();
+              // ── Sincronizar orden completa con Book Flow ──────
+              pendingOrder
+                .filter(o => o.mesa === selectedTable.num)
+                .forEach(item => {
+                  agregarPlatoFlow({
+                    mesa: selectedTable.num,
+                    plato: item.nombre,
+                    emoji: item.emoji ?? '🍽️',
+                    mesero: profile?.nombre_completo?.split(' ')[0] ?? 'Mesero',
+                    etapa: 'cocina',
+                    urgente: false,
+                  });
+                });
               setOrder(prev => [...prev, ...pendingOrder]);
               setPendingOrder([]);
               showToast('🍽️ Orden enviada a cocina exitosamente');
@@ -680,7 +707,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     // ── PANTALLA NEGRA DE CONFIRMACIÓN ─────────────────────
     const abrirPantallaConfirmacion = (tid: number, monto: number, facMsg: string) => {
       setModal({ open: false, title: '', content: null });
-      // Activar pantalla negra de confirmación
+      // Notificar al mesero responsable de la mesa
+      const mesa = displayTables.find(x => x.id === tid);
+      if (mesa) {
+        showToast(`🔔 Mesa ${mesa.num} cerrada — notificando a ${mesa.mesero || 'mesero'}`);
+      }
       setPantallaConfirmacion({ activa: true, monto, metodo, facMsg, tableId: tid });
     };
 
@@ -1660,7 +1691,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <button
               onClick={() => {
                 setPantallaConfirmacion({ activa: false, monto: 0, metodo: '', facMsg: '', tableId: 0 });
-                showToast(`✓ Mesa liberada`);
+                showToast(`🔔 Mesa ${pantallaConfirmacion.tableId} cerrada — ${pantallaConfirmacion.metodo} · ${new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(pantallaConfirmacion.monto)}`);
                 setTimeout(() => abrirEncuesta(pantallaConfirmacion.tableId), 300);
               }}
               style={{ background: '#d4943a', color: '#000', border: 'none', padding: '14px 40px', borderRadius: 12, fontSize: 14, fontWeight: 900, cursor: 'pointer', marginBottom: 16 }}>
@@ -1911,37 +1942,37 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 </div>
 
                 {/* Card de la mesa activa — más grande */}
-                <div className="bg-[#1c1c1c] border-2 border-[#d4943a] rounded-xl p-3 px-3.5">
+                <div className="bg-[#1c1c1c] border-2 border-[#d4943a] rounded-2xl p-4 px-4">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="font-['Syne'] text-[20px] font-black text-[#f0f0f0]">Mesa {m.num}</span>
+                    <span className="font-['Syne'] text-[24px] font-black text-[#f0f0f0]">Mesa {m.num}</span>
                     <div className="flex gap-1 items-center ml-1">
-                      {m.vip && <span className="text-[14px] text-[#ffd700]">⭐</span>}
-                      {m.bday && <span className="text-[14px]">🎂</span>}
-                      {m.alert && <span className="text-[13px] text-[#e07830]">⚠️</span>}
+                      {m.vip && <span className="text-[16px] text-[#ffd700]">⭐</span>}
+                      {m.bday && <span className="text-[16px]">🎂</span>}
+                      {m.alert && <span className="text-[15px] text-[#e07830]">⚠️</span>}
                     </div>
-                    <div className="w-6 h-6 rounded-full bg-[#3dba6f] text-white text-[11px] font-bold flex items-center justify-center shrink-0 ml-auto">{m.pax}</div>
+                    <div className="w-7 h-7 rounded-full bg-[#3dba6f] text-white text-[12px] font-bold flex items-center justify-center shrink-0 ml-auto">{m.pax}</div>
                   </div>
-                  <div className="text-[13px] text-[#a0a0a0] mb-3">{m.cliente}</div>
+                  <div className="text-[14px] text-[#a0a0a0] mb-3">{m.cliente}</div>
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[12px] text-[#606060] tabular-nums">{m.time}</span>
-                    <span className="text-[12px] text-[#a0a0a0] ml-auto">${m.ticket} / ${m.meta}</span>
+                    <span className="text-[13px] text-[#606060] tabular-nums">{m.time}</span>
+                    <span className="text-[13px] text-[#a0a0a0] ml-auto">${m.ticket} / ${m.meta}</span>
                   </div>
-                  <div className="h-[4px] bg-[#2a2a2a] rounded-sm overflow-hidden">
+                  <div className="h-[5px] bg-[#2a2a2a] rounded-sm overflow-hidden">
                     <div className={`h-full rounded-sm transition-all duration-500 ${colorClass}`} style={{ width: `${pct}%` }}></div>
                   </div>
-                  <div className="text-[11px] text-center mt-1.5" style={{ color: pct >= 80 ? '#3dba6f' : pct >= 50 ? '#d4943a' : '#e05050' }}>
+                  <div className="text-[12px] text-center mt-1.5" style={{ color: pct >= 80 ? '#3dba6f' : pct >= 50 ? '#d4943a' : '#e05050' }}>
                     {pct}% del objetivo
                   </div>
                 </div>
 
                 {/* Botones de acción de mesa */}
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-2 gap-2">
                   <button onClick={() => { setRightTab('Cuenta'); abrirPOS(m.id); }}
-                    className="py-2 rounded-lg border border-[#2a2a2a] text-[11px] font-semibold text-[#a0a0a0] hover:border-[#d4943a] hover:text-[#d4943a] active:bg-[#3dba6f]/20 active:border-[#3dba6f] active:text-[#3dba6f] transition-all">
+                    className="py-3 rounded-xl border border-[#2a2a2a] text-[13px] font-semibold text-[#a0a0a0] hover:border-[#d4943a] hover:text-[#d4943a] active:bg-[#3dba6f]/20 active:border-[#3dba6f] active:text-[#3dba6f] transition-all">
                     🧾 Ver cuenta
                   </button>
                   <button onClick={() => abrirModoCliente(m.id)}
-                    className="py-2 rounded-lg bg-[#d4943a] text-black text-[11px] font-bold hover:bg-[#f0b45a] active:bg-[#3dba6f] active:text-white transition-all">
+                    className="py-3 rounded-xl bg-[#d4943a] text-black text-[13px] font-bold hover:bg-[#f0b45a] active:bg-[#3dba6f] active:text-white transition-all">
                     📲 Cobrar
                   </button>
                 </div>
@@ -2054,7 +2085,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           <div className="flex gap-0.5 overflow-x-auto h-full items-center" style={{ scrollbarWidth: 'none' }}>
             {categorias.map(cat => (
               <button key={cat} onClick={() => setCurrentCat(cat)}
-                className={`px-3.5 py-1.5 rounded-md text-[13px] font-medium whitespace-nowrap border transition-all h-[32px] flex items-center ${currentCat === cat ? 'text-[#f0f0f0] bg-[#1c1c1c] border-[#2a2a2a] font-semibold border-b-2 border-b-[#d4943a]' : 'border-transparent text-[#a0a0a0] bg-transparent hover:text-[#f0f0f0] hover:bg-[#1c1c1c]'}`}>
+                className={`px-4 py-2.5 rounded-md text-[14px] font-medium whitespace-nowrap border transition-all h-[40px] flex items-center ${currentCat === cat ? 'text-[#f0f0f0] bg-[#1c1c1c] border-[#2a2a2a] font-semibold border-b-2 border-b-[#d4943a]' : 'border-transparent text-[#a0a0a0] bg-transparent hover:text-[#f0f0f0] hover:bg-[#1c1c1c]'}`}>
                 {cat}
               </button>
             ))}
@@ -2062,7 +2093,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           {/* Botones panel derecho + carrito */}
           <div className="ml-auto flex items-center gap-1 shrink-0">
             {(['IA','Cuenta','Chat'] as const).map(tab => {
-              const icons = { IA: <Sparkles size={13}/>, Cuenta: <Receipt size={13}/>, Chat: <MessageSquare size={13}/> };
+              const icons = { IA: <Sparkles size={15}/>, Cuenta: <Receipt size={15}/>, Chat: <MessageSquare size={15}/> };
               return (
                 <button key={tab} onClick={() => setRightTab(tab)}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition-all ${rightTab === tab ? 'bg-[#d4943a]/15 border-[#d4943a] text-[#d4943a]' : 'bg-[#1c1c1c] border-[#2a2a2a] text-[#606060] hover:text-[#a0a0a0]'}`}>
@@ -2080,7 +2111,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <span>{currentCat}</span>
             <div className="flex-1 h-px bg-[#2a2a2a]"></div>
           </div>
-          <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(118px, 1fr))' }}>
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(175px, 1fr))' }}>
             {(productos[currentCat] || []).map((p, i) => {
               const isAdded = addedCards.has(p.nombre);
               const isMarchando = addedCards.has(p.nombre + '_marchar');
@@ -2092,42 +2123,42 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               return (
                 <div key={i}
                   onClick={() => setSelectedPlato(isSelected ? null : p)}
-                  className={`bg-[#1c1c1c] border rounded-lg overflow-hidden transition-all flex flex-col relative cursor-pointer
+                  className={`bg-[#1c1c1c] border rounded-xl overflow-hidden transition-all flex flex-col relative cursor-pointer
                     ${stock <= 0 ? 'opacity-50 border-[#e05050]/40' :
-                      isSelected ? 'border-[#d4943a] ring-1 ring-[#d4943a]/30 -translate-y-0.5 shadow-lg shadow-[#d4943a]/10' :
+                      isSelected ? 'border-[#d4943a] ring-2 ring-[#d4943a]/30 -translate-y-0.5 shadow-lg shadow-[#d4943a]/10' :
                       isAdded ? 'border-[#3dba6f]' :
                       isMarchando ? 'border-[#4a8fd4]' :
                       'border-[#2a2a2a] hover:border-[#d4943a]/50'}`}>
 
                   {/* Stock badge */}
-                  <div className="absolute top-1 right-1 z-10 flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[8px] font-black"
+                  <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 px-2 py-1 rounded-full text-[9px] font-black"
                     style={{ background: stockColor + '25', color: stockColor, border: `1px solid ${stockColor}50` }}>
                     {stock <= 0 ? '86' : stock <= 6 ? `⚠ ${stock}` : stock}
                   </div>
 
-                  <div className="w-full aspect-[4/3] bg-[#222] flex items-center justify-center text-[32px]">{p.emoji}</div>
-                  <div className="p-2 flex flex-col gap-0.5 flex-1">
-                    <div className="text-[11px] font-bold text-[#f0f0f0] leading-tight overflow-hidden text-ellipsis whitespace-nowrap pr-4">{p.nombre}</div>
-                    <span className={`self-start text-[8px] font-semibold px-1.5 py-0.5 rounded-full ${badgeColors[getBadgeClass(p.badge)] || 'bg-[#3dba6f]/15 text-[#3dba6f]'}`}>{getBadgeLabel(p.badge)}</span>
-                    <div className="text-[12px] font-bold text-[#d4943a]">{p.precio}</div>
-                    {/* Botones — solo visibles si no está en 86 */}
+                  <div className="w-full aspect-[4/3] bg-[#222] flex items-center justify-center text-[52px]">{p.emoji}</div>
+                  <div className="p-3 flex flex-col gap-1.5 flex-1">
+                    <div className="text-[14px] font-bold text-[#f0f0f0] leading-tight overflow-hidden text-ellipsis whitespace-nowrap pr-4">{p.nombre}</div>
+                    <span className={`self-start text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeColors[getBadgeClass(p.badge)] || 'bg-[#3dba6f]/15 text-[#3dba6f]'}`}>{getBadgeLabel(p.badge)}</span>
+                    <div className="text-[15px] font-bold text-[#d4943a]">{p.precio}</div>
+                    {/* Botones */}
                     {stock > 0 && (
-                      <div className="flex gap-1 mt-0.5">
+                      <div className="flex gap-2 mt-1.5">
                         <button
                           onClick={(e) => { e.stopPropagation(); marcharAhora(p); }}
-                          className={`flex-1 py-1 rounded-md text-[9px] font-bold transition-all ${isMarchando ? 'bg-[#3dba6f] text-white border border-[#3dba6f]' : 'bg-[#4a8fd4]/10 border border-[#4a8fd4]/30 text-[#4a8fd4] hover:bg-[#3dba6f] hover:text-white hover:border-[#3dba6f] active:bg-[#3dba6f]'}`}>
+                          className={`flex-1 py-2 rounded-xl text-[12px] font-bold transition-all ${isMarchando ? 'bg-[#3dba6f] text-white border border-[#3dba6f]' : 'bg-[#4a8fd4]/10 border border-[#4a8fd4]/30 text-[#4a8fd4] hover:bg-[#3dba6f] hover:text-white hover:border-[#3dba6f] active:bg-[#3dba6f]'}`}>
                           🔥 Marchar
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); agregarAOrden(p); }}
-                          className={`flex-1 py-1 rounded-md text-[9px] font-bold transition-all ${isAdded ? 'bg-[#3dba6f] text-white border border-[#3dba6f]' : 'bg-[#222] border border-[#2a2a2a] text-[#a0a0a0] hover:bg-[#3dba6f] hover:text-white hover:border-[#3dba6f] active:bg-[#3dba6f]'}`}>
+                          className={`flex-1 py-2 rounded-xl text-[12px] font-bold transition-all ${isAdded ? 'bg-[#3dba6f] text-white border border-[#3dba6f]' : 'bg-[#222] border border-[#2a2a2a] text-[#a0a0a0] hover:bg-[#3dba6f] hover:text-white hover:border-[#3dba6f] active:bg-[#3dba6f]'}`}>
                           + Orden
                         </button>
                       </div>
                     )}
-                    {stock <= 0 && <div className="text-[9px] text-[#e05050] font-bold text-center mt-0.5">NO DISPONIBLE</div>}
+                    {stock <= 0 && <div className="text-[10px] text-[#e05050] font-bold text-center mt-1">NO DISPONIBLE</div>}
                   </div>
-                  {isAdded && <div className="absolute inset-0 bg-[#3dba6f]/10 pointer-events-none border-2 border-[#3dba6f] rounded-lg"></div>}
+                  {isAdded && <div className="absolute inset-0 bg-[#3dba6f]/10 pointer-events-none border-2 border-[#3dba6f] rounded-xl"></div>}
                 </div>
               );
             })}
