@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import { 
   ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
   Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
-  ShieldCheck, Loader2, MonitorPlay, Sparkles,
   Layers, Briefcase,
   LayoutPanelLeft,
   Smartphone,
@@ -11,7 +10,8 @@ import {
   Brain,
   BarChart3,
   Receipt,
-  Store
+  Store,
+  MessageSquare
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -30,7 +30,6 @@ const CareModule = lazy(() => import('./components/CareModule.tsx'));
 const FinanceHub = lazy(() => import('./components/FinanceHub.tsx'));
 const CommandModule = lazy(() => import('./components/CommandModule.tsx'));
 const SurveillanceModule = lazy(() => import('./components/SurveillanceModule.tsx'));
-const KitchenModule = lazy(() => import('./components/KitchenModule.tsx'));
 // ── CAMBIO 1: StaffHubModule → TeamIQ ──────────────────────────────────────
 const TeamIQ = lazy(() => import('./components/TeamIQ.tsx'));
 const SettingsModule = lazy(() => import('./components/SettingsModule.tsx'));
@@ -40,6 +39,7 @@ const GenesisModule = lazy(() => import('./components/GenesisModule.tsx'));
 const DIANModule = lazy(() => import('./components/DIANModule.tsx'));
 const ContabilidadModule = lazy(() => import('./components/ContabilidadModule.tsx'));
 const OhYeahAdmin = lazy(() => import('./components/OhYeahAdmin.tsx'));
+const ChatFlowModule = lazy(() => import('./components/ChatFlowModule.tsx'));
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -89,7 +89,6 @@ const Dashboard: React.FC = () => {
           ModuleType.RESERVE, 
           ModuleType.RELATIONSHIP, 
           ModuleType.SERVICE_OS,
-          ModuleType.KITCHEN_KDS,
           ModuleType.CARE,
           ModuleType.FINANCE_HUB,
           ModuleType.COMMAND,
@@ -110,7 +109,6 @@ const Dashboard: React.FC = () => {
         ];
       case 'cocina':
         return [
-          ModuleType.KITCHEN_KDS, 
           ModuleType.FLOW, 
           ModuleType.SUPPLY,
           ModuleType.STAFF_HUB
@@ -247,16 +245,15 @@ const Dashboard: React.FC = () => {
                 { type: ModuleType.OH_YEAH,       label: 'OH YEAH! B2C',  sub: 'VISTA CLIENTE',      icon: <Smartphone size={18} /> },
                 { type: ModuleType.OH_YEAH_ADMIN, label: 'OH YEAH! ADMIN',sub: 'RESTAURANTES',        icon: <Store size={18} /> },
                 { type: ModuleType.RESERVE,        label: 'RESERVE',       sub: 'MAPA & AGENDA',      icon: <CalendarDays size={18} /> },
-                { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> }
-              ]
+                { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> }              ]
             },
             {
               id: 'operaciones', label: 'PAQUETE OPERACIONES',
               icon: <Layers size={14} className="text-orange-500" />,
               modules: [
                 { type: ModuleType.SERVICE_OS,   label: 'SERVICE OS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
-                { type: ModuleType.KITCHEN_KDS,  label: 'KITCHEN KDS',  sub: 'ESTACIÓN COCINA',  icon: <MonitorPlay size={18} /> },
-                { type: ModuleType.FLOW,         label: 'FLOW',         sub: 'ESTACIONES',       icon: <ChefHat size={18} /> }
+                { type: ModuleType.FLOW,         label: 'FLOW',         sub: 'ESTACIONES',       icon: <ChefHat size={18} /> },
+                { type: ModuleType.CHAT_FLOW,    label: 'FLOW CENTER',  sub: 'CHAT · BOOK · CARE', icon: <MessageSquare size={18} /> }
               ]
             },
             {
@@ -365,7 +362,6 @@ const Dashboard: React.FC = () => {
                     <div className="bg-[#0f1115] border border-white/10 rounded-2xl w-full max-w-6xl h-[80vh] flex flex-col overflow-hidden shadow-2xl relative">
                       <div className="flex justify-between items-center p-4 border-b border-white/10 bg-[#1a1d24]">
                         <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                          <MonitorPlay size={20} className="text-blue-500" />
                           Vision AI - Monitoreo en Vivo
                         </h2>
                         <button onClick={() => setIsVisionAIOpen(false)} className="text-gray-400 hover:text-white transition-colors">
@@ -380,7 +376,6 @@ const Dashboard: React.FC = () => {
                 )}
               </div>
             )}
-            {activeModule === ModuleType.KITCHEN_KDS  && <KitchenModule />}
             {activeModule === ModuleType.RESERVE       && <ReserveModule />}
             {activeModule === ModuleType.FINANCE_HUB   && <FinanceHub />}
             {activeModule === ModuleType.PAYROLL        && <PayrollModule />}
@@ -394,6 +389,7 @@ const Dashboard: React.FC = () => {
             {activeModule === ModuleType.DIAN           && <DIANModule />}
             {activeModule === ModuleType.CONTABILIDAD   && <ContabilidadModule />}
             {activeModule === ModuleType.OH_YEAH_ADMIN  && <OhYeahAdmin />}
+            {activeModule === ModuleType.CHAT_FLOW      && <ChatFlowModule />}
             {activeModule === ModuleType.CONFIG         && <SettingsModule />}
           </Suspense>
         </div>
