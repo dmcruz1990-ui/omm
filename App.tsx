@@ -35,7 +35,6 @@ const TeamIQ = lazy(() => import('./components/TeamIQ.tsx'));
 const SettingsModule = lazy(() => import('./components/SettingsModule.tsx'));
 const PayrollModule = lazy(() => import('./components/PayrollModule.tsx'));
 const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'));
-const GenesisModule = lazy(() => import('./components/GenesisModule.tsx'));
 const DIANModule = lazy(() => import('./components/DIANModule.tsx'));
 const ContabilidadModule = lazy(() => import('./components/ContabilidadModule.tsx'));
 const OhYeahAdmin = lazy(() => import('./components/OhYeahAdmin.tsx'));
@@ -122,7 +121,6 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     if (visibleModulesList.length > 0 && !visibleModulesList.includes(activeModule)) {
-      if (activeModule === ModuleType.GENESIS) return;
       setActiveModule(visibleModulesList[0]);
     }
   }, [profile?.role, activeModule, visibleModulesList]);
@@ -175,17 +173,6 @@ const Dashboard: React.FC = () => {
     return (
       <Suspense fallback={<ModuleLoader />}>
         <MobileManagerApp onExit={() => setActiveModule(ModuleType.SERVICE_OS)} />
-      </Suspense>
-    );
-  }
-
-  if (activeModule === ModuleType.GENESIS) {
-    return (
-      <Suspense fallback={<ModuleLoader />}>
-        <GenesisModule 
-          onComplete={() => setActiveModule(ModuleType.SERVICE_OS)} 
-          onExit={() => setActiveModule(ModuleType.SERVICE_OS)}
-        />
       </Suspense>
     );
   }
