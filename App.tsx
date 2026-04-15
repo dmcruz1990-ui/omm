@@ -11,6 +11,9 @@ import {
   BarChart3,
   Receipt,
   Store,
+  Loader2,
+  ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
