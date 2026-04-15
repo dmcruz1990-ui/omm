@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Flame, 
@@ -10,7 +9,6 @@ import {
   Droplets,
   Activity,
   BarChart3,
-  Martini,
   IceCream,
   Utensils,
   Beef,
@@ -19,6 +17,13 @@ import {
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.ts';
 
+// Icono Martini inline — lucide no lo exporta en todas las versiones
+const Martini = ({ size = 14 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M8 22h8M12 11v11M3 3l9 9 9-9H3z"/>
+  </svg>
+);
+
 type Station = 'ALL' | 'CALIENTE' | 'FRIA' | 'ENSALADAS' | 'POSTRES' | 'CHARCUTERIA' | 'BAR' | 'CAVA';
 
 interface FlowOrderItem {
@@ -26,13 +31,14 @@ interface FlowOrderItem {
   order_id: string;
   status: 'pending' | 'preparing' | 'served';
   quantity: number;
+  notes?: string;       // ← nombre del POS cuando menu_item_id es null
   created_at: string;
   updated_at: string;
   table_id?: number;
   menu_items: {
     name: string;
     category: string;
-  };
+  } | null;             // ← puede ser null cuando viene del POS
 }
 
 const FlowModule: React.FC = () => {
@@ -48,7 +54,6 @@ const FlowModule: React.FC = () => {
 
   const fetchFlowData = async () => {
     try {
-      // Obtenemos todos los items de ordenes abiertas que no han sido servidos
       const { data: ordersData } = await supabase
         .from('orders')
         .select('id, table_id')
@@ -56,6 +61,7 @@ const FlowModule: React.FC = () => {
 
       if (!ordersData || ordersData.length === 0) {
         setItems([]);
+        setLoading(false);
         return;
       }
 
@@ -68,7 +74,6 @@ const FlowModule: React.FC = () => {
         .order('created_at', { ascending: true });
 
       if (itemsData) {
-        // Enriquecemos los items con el table_id de la orden madre
         const enriched = itemsData.map(item => ({
           ...item,
           table_id: ordersData.find(o => o.id === item.order_id)?.table_id
@@ -76,7 +81,7 @@ const FlowModule: React.FC = () => {
         setItems(enriched);
       }
     } catch {
-      console.error("Flow Sync Error");
+      console.error('Flow Sync Error');
     } finally {
       setLoading(false);
     }
@@ -98,32 +103,53 @@ const FlowModule: React.FC = () => {
     }).eq('id', itemId);
   };
 
-  // Lógica de mapeo de categorías de menú a estaciones físicas de OMM
-  const getStationForItem = (category: string): Station => {
-    const cat = category.toUpperCase();
-    if (cat.includes('ROBATA') || cat.includes('CALIENTE')) return 'CALIENTE';
-    if (cat.includes('SUSHI') || cat.includes('ENTRADAS') || cat.includes('FRIA')) return 'FRIA';
+  // ── Nombre del plato — usa notes si menu_items es null (vino del POS) ──
+  const getNombre = (item: FlowOrderItem): string => {
+    return item.menu_items?.name ?? item.notes ?? 'Plato';
+  };
+
+  // ── Categoría — usa notes o default para mapear estación ──
+  const getCategoria = (item: FlowOrderItem): string => {
+    return item.menu_items?.category ?? inferirCategoria(item.notes ?? '');
+  };
+
+  // Inferir categoría desde el nombre cuando viene del POS sin menu_item
+  const inferirCategoria = (nombre: string): string => {
+    const n = nombre.toUpperCase();
+    if (n.includes('ROBATA') || n.includes('CALIENTE') || n.includes('WOK')) return 'ROBATA';
+    if (n.includes('MAKI') || n.includes('SUSHI') || n.includes('NIGIRI') || n.includes('SASHIMI') || n.includes('TEMAKI') || n.includes('GEISHA')) return 'SUSHI';
+    if (n.includes('ENSALADA')) return 'ENSALADA';
+    if (n.includes('POSTRE')) return 'POSTRE';
+    if (n.includes('CHARCUTERIA') || n.includes('TABLA')) return 'CHARCUTERIA';
+    if (n.includes('COCTEL') || n.includes('SAKE') || n.includes('CERVEZA') || n.includes('BEBIDA') || n.includes('JUGO') || n.includes('CAFÉ')) return 'COCTEL';
+    if (n.includes('VINO') || n.includes('CAVA')) return 'VINO';
+    return 'ROBATA'; // default caliente
+  };
+
+  const getStationForItem = (item: FlowOrderItem): Station => {
+    const cat = getCategoria(item).toUpperCase();
+    if (cat.includes('ROBATA') || cat.includes('CALIENTE') || cat.includes('WOK')) return 'CALIENTE';
+    if (cat.includes('SUSHI') || cat.includes('ENTRADAS') || cat.includes('FRIA') || cat.includes('MAKI') || cat.includes('NIGIRI') || cat.includes('SASHIMI')) return 'FRIA';
     if (cat.includes('ENSALADA')) return 'ENSALADAS';
     if (cat.includes('POSTRE')) return 'POSTRES';
     if (cat.includes('CHARCUTERIA') || cat.includes('TABLA')) return 'CHARCUTERIA';
-    if (cat.includes('COCTEL') || cat.includes('BEBIDA')) return 'BAR';
+    if (cat.includes('COCTEL') || cat.includes('BEBIDA') || cat.includes('SAKE') || cat.includes('CERVEZA') || cat.includes('JUGO') || cat.includes('CAFÉ')) return 'BAR';
     if (cat.includes('VINO') || cat.includes('CAVA')) return 'CAVA';
-    return 'CALIENTE'; // Default
+    return 'CALIENTE';
   };
 
   const filteredItems = items.filter(item => {
     if (activeStation === 'ALL') return true;
-    return getStationForItem(item.menu_items.category) === activeStation;
+    return getStationForItem(item) === activeStation;
   });
 
   const getStationCount = (station: Station) => {
     if (station === 'ALL') return items.length;
-    return items.filter(i => getStationForItem(i.menu_items.category) === station).length;
+    return items.filter(i => getStationForItem(i) === station).length;
   };
 
   if (loading) return (
     <div className="h-full flex flex-col items-center justify-center opacity-40 py-40">
-      {/* Fix: Loader2 correctly used after import */}
       <Loader2 className="animate-spin text-blue-500 mb-4" size={48} />
       <p className="text-sm font-black uppercase tracking-[0.5em] text-gray-500 italic">Balanceando Carga Estaciones...</p>
     </div>
@@ -144,41 +170,43 @@ const FlowModule: React.FC = () => {
            </div>
         </div>
 
-        {/* Tab Selector de Estaciones Estilo Centro de Control */}
         <div className="flex flex-wrap gap-2 bg-[#111114] p-2 rounded-[2.5rem] border border-white/5">
-          <StationTab active={activeStation === 'ALL'} count={getStationCount('ALL')} onClick={() => setActiveStation('ALL')} label="GLOBAL" icon={<Monitor size={14} />} />
-          <StationTab active={activeStation === 'CALIENTE'} count={getStationCount('CALIENTE')} onClick={() => setActiveStation('CALIENTE')} label="CALIENTE" icon={<Flame size={14} />} color="text-orange-500" />
-          <StationTab active={activeStation === 'FRIA'} count={getStationCount('FRIA')} onClick={() => setActiveStation('FRIA')} label="FRÍA" icon={<Droplets size={14} />} color="text-blue-400" />
-          <StationTab active={activeStation === 'ENSALADAS'} count={getStationCount('ENSALADAS')} onClick={() => setActiveStation('ENSALADAS')} label="ENSALADAS" icon={<Utensils size={14} />} color="text-green-500" />
-          <StationTab active={activeStation === 'POSTRES'} count={getStationCount('POSTRES')} onClick={() => setActiveStation('POSTRES')} label="POSTRES" icon={<IceCream size={14} />} color="text-pink-500" />
-          <StationTab active={activeStation === 'CHARCUTERIA'} count={getStationCount('CHARCUTERIA')} onClick={() => setActiveStation('CHARCUTERIA')} label="CHARCUTERÍA" icon={<Beef size={14} />} color="text-amber-600" />
-          <StationTab active={activeStation === 'BAR'} count={getStationCount('BAR')} onClick={() => setActiveStation('BAR')} label="BAR" icon={<Martini size={14} />} color="text-purple-500" />
-          <StationTab active={activeStation === 'CAVA'} count={getStationCount('CAVA')} onClick={() => setActiveStation('CAVA')} label="CAVA" icon={<Wine size={14} />} color="text-red-400" />
+          <StationTab active={activeStation === 'ALL'}         count={getStationCount('ALL')}         onClick={() => setActiveStation('ALL')}         label="GLOBAL"       icon={<Monitor size={14} />} />
+          <StationTab active={activeStation === 'CALIENTE'}    count={getStationCount('CALIENTE')}    onClick={() => setActiveStation('CALIENTE')}    label="CALIENTE"     icon={<Flame size={14} />}    color="text-orange-500" />
+          <StationTab active={activeStation === 'FRIA'}        count={getStationCount('FRIA')}        onClick={() => setActiveStation('FRIA')}        label="FRÍA"         icon={<Droplets size={14} />} color="text-blue-400" />
+          <StationTab active={activeStation === 'ENSALADAS'}   count={getStationCount('ENSALADAS')}   onClick={() => setActiveStation('ENSALADAS')}   label="ENSALADAS"    icon={<Utensils size={14} />} color="text-green-500" />
+          <StationTab active={activeStation === 'POSTRES'}     count={getStationCount('POSTRES')}     onClick={() => setActiveStation('POSTRES')}     label="POSTRES"      icon={<IceCream size={14} />} color="text-pink-500" />
+          <StationTab active={activeStation === 'CHARCUTERIA'} count={getStationCount('CHARCUTERIA')} onClick={() => setActiveStation('CHARCUTERIA')} label="CHARCUTERÍA"  icon={<Beef size={14} />}     color="text-amber-600" />
+          <StationTab active={activeStation === 'BAR'}         count={getStationCount('BAR')}         onClick={() => setActiveStation('BAR')}         label="BAR"          icon={<Martini size={14} />}  color="text-purple-500" />
+          <StationTab active={activeStation === 'CAVA'}        count={getStationCount('CAVA')}        onClick={() => setActiveStation('CAVA')}        label="CAVA"         icon={<Wine size={14} />}     color="text-red-400" />
         </div>
       </header>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
         
-        {/* Panel de Comandas por Estación */}
+        {/* Panel de Comandas */}
         <div className="lg:col-span-9">
            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
               {filteredItems.map(item => {
                 const isPreparing = item.status === 'preparing';
-                const station = getStationForItem(item.menu_items.category);
+                const station = getStationForItem(item);
                 const startTime = new Date(isPreparing ? item.updated_at : item.created_at).getTime();
                 const diff = Math.floor((now - startTime) / 1000);
                 const mins = Math.floor(diff / 60);
                 const secs = diff % 60;
                 const isAlert = mins >= (station === 'CALIENTE' ? 12 : 8);
+                const nombre = getNombre(item);
+                const fromPOS = !item.menu_items; // vino del POS directamente
 
                 return (
                   <div key={item.id} className={`bg-[#111114] border-2 rounded-[3rem] overflow-hidden flex flex-col shadow-2xl transition-all hover:scale-[1.02] ${isAlert ? 'border-red-600 animate-pulse' : isPreparing ? 'border-blue-500/40' : 'border-white/5'}`}>
                      
-                     {/* Card Header: Mesa y Cronómetro */}
+                     {/* Card Header */}
                      <div className={`p-6 border-b flex justify-between items-center ${isAlert ? 'bg-red-600/10 border-red-600/20' : 'bg-white/[0.02] border-white/5'}`}>
                         <div className="flex items-center gap-3">
                            <div className="bg-white/5 px-3 py-1 rounded-xl font-black italic text-sm text-blue-500">M{item.table_id}</div>
                            <span className="text-[8px] font-black text-gray-600 uppercase tracking-widest">{station}</span>
+                           {fromPOS && <span className="text-[8px] font-black text-orange-500 uppercase tracking-widest bg-orange-500/10 px-2 py-0.5 rounded-full">POS</span>}
                         </div>
                         <div className={`flex items-center gap-2 font-mono text-sm font-black italic ${isAlert ? 'text-red-500' : isPreparing ? 'text-blue-400' : 'text-gray-500'}`}>
                            <Clock size={14} />
@@ -186,11 +214,11 @@ const FlowModule: React.FC = () => {
                         </div>
                      </div>
 
-                     {/* Card Body: Producto */}
+                     {/* Card Body */}
                      <div className="p-8 flex-1">
-                        <h4 className="text-xl font-black italic uppercase leading-tight text-white mb-2">{item.quantity}x {item.menu_items.name}</h4>
+                        <h4 className="text-xl font-black italic uppercase leading-tight text-white mb-2">{item.quantity}x {nombre}</h4>
                         <div className="flex items-center gap-2">
-                           <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest">{item.menu_items.category}</span>
+                           <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest">{getCategoria(item)}</span>
                            <div className={`w-1 h-1 rounded-full ${isPreparing ? 'bg-blue-500' : 'bg-gray-700'}`}></div>
                            <span className={`text-[9px] font-black uppercase ${isPreparing ? 'text-blue-500' : 'text-gray-700'}`}>{item.status}</span>
                         </div>
@@ -203,7 +231,6 @@ const FlowModule: React.FC = () => {
                             onClick={() => updateItemStatus(item.id, 'preparing')}
                             className="w-full bg-white text-black hover:bg-blue-600 hover:text-white py-4 rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-2 shadow-xl"
                           >
-                             {/* Fix: Play correctly used after import */}
                              <Play size={16} fill="currentColor" /> COMENZAR
                           </button>
                         ) : (
@@ -248,7 +275,7 @@ const FlowModule: React.FC = () => {
                  <h4 className="text-[10px] font-black text-white uppercase tracking-widest italic">Predictivo Nexum</h4>
               </div>
               <p className="text-sm text-gray-400 italic leading-relaxed">
-                "Alta demanda detectada en la estación de **CALIENTE**. Sugiero mover un refuerzo de **ENSALADAS** para apoyar la salida de Robata."
+                "Alta demanda detectada en la estación de <strong>CALIENTE</strong>. Sugiero mover un refuerzo de <strong>ENSALADAS</strong> para apoyar la salida de Robata."
               </p>
            </div>
         </div>
