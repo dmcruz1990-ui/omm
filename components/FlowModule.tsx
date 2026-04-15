@@ -12,7 +12,6 @@ import {
   IceCream,
   Utensils,
   Beef,
-  Loader2,
   Play
 } from 'lucide-react';
 import { supabase } from '../lib/supabase.ts';
@@ -54,32 +53,27 @@ const FlowModule: React.FC = () => {
 
   const fetchFlowData = async () => {
     try {
-      const { data: ordersData } = await supabase
-        .from('orders')
-        .select('id, table_id')
-        .eq('status', 'open');
-
-      if (!ordersData || ordersData.length === 0) {
-        setItems([]);
-        setLoading(false);
-        return;
-      }
-
-      const orderIds = ordersData.map(o => o.id);
-      const { data: itemsData } = await supabase
+      // Una sola query con join — evita el doble round-trip
+      const { data, error } = await supabase
         .from('order_items')
-        .select('*, menu_items(name, category)')
-        .in('order_id', orderIds)
+        .select(`
+          id, order_id, status, quantity, notes, created_at, updated_at,
+          menu_items(name, category),
+          orders!inner(table_id, status)
+        `)
+        .eq('orders.status', 'open')
         .neq('status', 'served')
         .order('created_at', { ascending: true });
 
-      if (itemsData) {
-        const enriched = itemsData.map(item => ({
-          ...item,
-          table_id: ordersData.find(o => o.id === item.order_id)?.table_id
-        }));
-        setItems(enriched);
-      }
+      if (error || !data) { setLoading(false); return; }
+
+      const enriched = data.map((item: any) => ({
+        ...item,
+        table_id: item.orders?.table_id,
+        menu_items: item.menu_items ?? null,
+      }));
+
+      setItems(enriched);
     } catch {
       console.error('Flow Sync Error');
     } finally {
@@ -149,9 +143,25 @@ const FlowModule: React.FC = () => {
   };
 
   if (loading) return (
-    <div className="h-full flex flex-col items-center justify-center opacity-40 py-40">
-      <Loader2 className="animate-spin text-blue-500 mb-4" size={48} />
-      <p className="text-sm font-black uppercase tracking-[0.5em] text-gray-500 italic">Balanceando Carga Estaciones...</p>
+    <div className="space-y-10 pb-20">
+      <header className="flex items-center gap-6 border-b border-white/5 pb-10">
+        <div className="w-16 h-16 bg-blue-600/20 rounded-[2rem] animate-pulse" />
+        <div>
+          <div className="h-8 w-48 bg-white/5 rounded-xl animate-pulse mb-3" />
+          <div className="h-3 w-32 bg-white/5 rounded-lg animate-pulse" />
+        </div>
+      </header>
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {[1,2,3].map(i => (
+          <div key={i} className="bg-[#111114] border-2 border-white/5 rounded-[3rem] overflow-hidden h-64 animate-pulse">
+            <div className="h-16 bg-white/[0.02] border-b border-white/5" />
+            <div className="p-8 space-y-3">
+              <div className="h-5 w-3/4 bg-white/5 rounded-lg" />
+              <div className="h-3 w-1/2 bg-white/5 rounded-lg" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 
