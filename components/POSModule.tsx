@@ -235,6 +235,99 @@ function getBadgeLabel(b: string): string {
   return { recomendado: 'Recomendado', gold: 'Alta rentable', orange: 'Mover Hoy', red: 'Urgente' }[b] || b;
 }
 
+// ── Componente independiente para la ruleta ───────────────
+const PREMIOS_RULETA = [
+  { emoji:'☕', label:'Café gratis',   color:'#cd853f', bg:'#3d2a1a', desc:'Un espresso en tu próxima visita' },
+  { emoji:'🍷', label:'Copa de vino',  color:'#e91e8c', bg:'#3d0d25', desc:'Una copa de la casa' },
+  { emoji:'💸', label:'10% OFF',       color:'#d4943a', bg:'#3d2a00', desc:'En tu próxima cuenta' },
+  { emoji:'🍮', label:'Postre gratis', color:'#f0b45a', bg:'#3d2d00', desc:'El postre del chef' },
+  { emoji:'🥂', label:'2x1 Coctel',    color:'#9b72ff', bg:'#1e1040', desc:'Dos por el precio de uno' },
+  { emoji:'🎁', label:'20% OFF',       color:'#3dba6f', bg:'#0d3020', desc:'Descuento especial Seratta' },
+];
+
+const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: number }> = ({ onClose, mesaNum, rating }) => {
+  const [spinning, setSpinning] = useState(false);
+  const [selected, setSelected] = useState<number|null>(null);
+  const [rotation, setRotation] = useState(0);
+  const segAngle = 360 / PREMIOS_RULETA.length;
+
+  const girar = () => {
+    if (spinning || selected !== null) return;
+    setSpinning(true);
+    const winner = Math.floor(Math.random() * PREMIOS_RULETA.length);
+    const target = 6 * 360 + (360 - winner * segAngle - segAngle / 2);
+    setRotation(target);
+    setTimeout(() => { setSpinning(false); setSelected(winner); }, 3800);
+  };
+
+  const premio = selected !== null ? PREMIOS_RULETA[selected] : null;
+
+  return (
+    <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'20px 20px 32px', background: premio ? premio.bg : '#fff', transition:'background .8s' }}>
+      <div style={{ fontSize:24, fontWeight:900, color: premio ? premio.color : '#000', marginBottom:4, textAlign:'center', transition:'color .5s' }}>
+        {selected === null ? (spinning ? '✨ Girando...' : '¡Gira tu ruleta!') : `¡Ganaste ${premio!.label}!`}
+      </div>
+      <div style={{ fontSize:13, color: premio ? 'rgba(255,255,255,.7)' : '#888', marginBottom:20, textAlign:'center' }}>
+        {selected === null ? 'Premio por responder la encuesta' : premio!.desc}
+      </div>
+
+      {/* Ruleta SVG */}
+      <div style={{ position:'relative', width:260, height:260, marginBottom:20, flexShrink:0 }}>
+        <div style={{ position:'absolute', top:-18, left:'50%', transform:'translateX(-50%)', zIndex:10, fontSize:32 }}>▼</div>
+        <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:36, height:36, borderRadius:'50%', background:'#fff', border:'3px solid #ddd', zIndex:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>⭐</div>
+        <svg viewBox="0 0 260 260" width="260" height="260"
+          style={{ transform:`rotate(${rotation}deg)`, transition: spinning ? 'transform 3.8s cubic-bezier(0.17,0.67,0.08,1.0)' : 'none', borderRadius:'50%', boxShadow:'0 8px 32px rgba(0,0,0,.25)' }}>
+          {PREMIOS_RULETA.map((p, i) => {
+            const sa = i * segAngle - 90, ea = sa + segAngle;
+            const r = 130, cx = 130, cy = 130;
+            const x1 = cx + r * Math.cos(sa * Math.PI/180), y1 = cy + r * Math.sin(sa * Math.PI/180);
+            const x2 = cx + r * Math.cos(ea * Math.PI/180), y2 = cy + r * Math.sin(ea * Math.PI/180);
+            const ma = sa + segAngle/2;
+            const tx = cx + r*0.62 * Math.cos(ma*Math.PI/180), ty = cy + r*0.62 * Math.sin(ma*Math.PI/180);
+            const ex = cx + r*0.82 * Math.cos(ma*Math.PI/180), ey = cy + r*0.82 * Math.sin(ma*Math.PI/180);
+            return (
+              <g key={i}>
+                <path d={`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2} Z`} fill={p.color} stroke="#fff" strokeWidth="2"/>
+                <text x={tx} y={ty+4} textAnchor="middle" fontSize="8" fontWeight="800" fill="#fff">{p.label}</text>
+                <text x={ex} y={ey+5} textAnchor="middle" fontSize="15">{p.emoji}</text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+
+      {/* Premio ganado */}
+      {selected !== null && (
+        <div style={{ background:'rgba(255,255,255,.15)', border:`2px solid ${premio!.color}`, borderRadius:20, padding:'20px 28px', textAlign:'center', marginBottom:20 }}>
+          <div style={{ fontSize:56, marginBottom:8 }}>{premio!.emoji}</div>
+          <div style={{ fontSize:22, fontWeight:900, color:premio!.color, marginBottom:4 }}>{premio!.label}</div>
+          <div style={{ fontSize:13, color:'rgba(255,255,255,.8)', marginBottom:8 }}>{premio!.desc}</div>
+          <div style={{ fontSize:11, color:'rgba(255,255,255,.5)' }}>Muéstrale esta pantalla a tu mesero · Válido 30 días</div>
+        </div>
+      )}
+
+      {/* Botones */}
+      {selected === null ? (
+        <button onClick={girar} disabled={spinning}
+          style={{ padding:'16px 48px', borderRadius:100, background: spinning ? '#ccc':'#000', color:'#fff', fontSize:17, fontWeight:900, border:'none', cursor: spinning?'not-allowed':'pointer', boxShadow: spinning?'none':'0 4px 20px rgba(0,0,0,.3)' }}>
+          {spinning ? '✨ Girando...' : '🎰 ¡GIRAR!'}
+        </button>
+      ) : (
+        <button onClick={onClose}
+          style={{ padding:'16px 48px', borderRadius:100, background:premio!.color, color:'#fff', fontSize:16, fontWeight:900, border:'none', cursor:'pointer', boxShadow:`0 4px 20px ${premio!.color}60` }}>
+          ✓ ¡Listo! Cerrar
+        </button>
+      )}
+
+      {selected === null && !spinning && (
+        <button onClick={onClose} style={{ background:'none', border:'none', fontSize:12, color:'rgba(0,0,0,.4)', cursor:'pointer', marginTop:12, textDecoration:'underline' }}>
+          Omitir ruleta
+        </button>
+      )}
+    </div>
+  );
+};
+
 const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisionAI }) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { profile } = useAuth();
@@ -1082,9 +1175,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     const m = displayTables.find(x => x.id === tableId);
     if (!m) return;
     const porPersona = Math.round(total / pax);
-    // Estado por persona: null=pendiente, metodo=pagado
     type MetodoPago = 'Datafono' | 'Efectivo' | 'Transferencia' | 'Bono' | null;
     let personasState: MetodoPago[] = new Array(pax).fill(null);
+    // ── Monto personalizable por persona ─────────────────
+    let montosState: number[] = new Array(pax).fill(porPersona);
     const metodos: { icon: string; label: MetodoPago; color: string }[] = [
       { icon: '💳', label: 'Datafono',     color: '#4a8fd4' },
       { icon: '💵', label: 'Efectivo',     color: '#3dba6f' },
@@ -1092,37 +1186,59 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       { icon: '🎁', label: 'Bono',         color: '#9b72ff' },
     ];
 
+    const totalCobrado = () => montosState.reduce((a, b) => a + b, 0);
+    const diferencia = () => total - totalCobrado();
+
     const renderDiv = () => {
       const cobradas = personasState.filter(Boolean).length;
+      const diff = diferencia();
       setModal({
         open: true, title: '',
         content: (
           <div>
             <div className="font-['Syne'] text-[17px] font-bold mb-1">👥 Dividir Cuenta</div>
             <div className="text-[12px] text-[#a0a0a0] mb-1">
-              Total: <span className="text-[#d4943a] font-bold">${formatPrecio(total)}</span> ÷ {pax} personas = <span className="text-[#f0b45a] font-bold">${formatPrecio(porPersona)}</span> c/u
+              Total: <span className="text-[#d4943a] font-bold">${formatPrecio(total)}</span> ÷ {pax} personas
             </div>
-            <div className="text-[11px] text-[#606060] mb-3">{cobradas}/{pax} personas cobradas</div>
-            <div className="flex flex-col gap-2 mb-4 max-h-[300px] overflow-y-auto">
+            {/* Diferencia restante */}
+            <div className={`text-[11px] font-bold mb-3 ${Math.abs(diff) < 100 ? 'text-[#3dba6f]' : diff > 0 ? 'text-[#f0b45a]' : 'text-[#e05050]'}`}>
+              {Math.abs(diff) < 100 ? '✓ Montos cuadrados' : diff > 0 ? `Faltan $${formatPrecio(diff)} por asignar` : `Excede $${formatPrecio(Math.abs(diff))}`}
+              <span className="text-[#606060] font-normal ml-2">{cobradas}/{pax} cobradas</span>
+            </div>
+            <div className="flex flex-col gap-2 mb-4 max-h-[320px] overflow-y-auto">
               {Array.from({ length: pax }, (_, i) => {
                 const metodo = personasState[i];
                 const pagado = metodo !== null;
                 return (
                   <div key={i} style={{ background: pagado ? 'rgba(61,186,111,0.06)' : '#1c1c1c', borderColor: pagado ? 'rgba(61,186,111,0.3)' : '#2a2a2a' }}
                     className="rounded-xl border overflow-hidden">
-                    <div className="flex justify-between items-center p-3">
-                      <div>
-                        <span className="text-[13px] font-semibold">👤 Persona {i + 1}</span>
+                    <div className="flex justify-between items-center p-3 gap-2">
+                      <span className="text-[13px] font-semibold shrink-0">
+                        👤 Persona {i + 1}
                         {pagado && <span className="ml-2 text-[10px] text-[#3dba6f] font-bold">{metodo} ✓</span>}
+                      </span>
+                      {/* Input de monto personalizable */}
+                      <div className="flex items-center gap-1 ml-auto">
+                        <span className="text-[11px] text-[#606060]">$</span>
+                        <input
+                          type="number"
+                          defaultValue={montosState[i]}
+                          disabled={pagado}
+                          onChange={e => {
+                            montosState[i] = parseInt(e.target.value) || 0;
+                            renderDiv();
+                          }}
+                          className="w-[90px] bg-[#0a0a0a] border border-[#2a2a2a] rounded-lg px-2 py-1 text-[13px] font-bold text-[#f0b45a] text-right outline-none disabled:opacity-50"
+                          style={{ border: pagado ? '1px solid #2a2a2a' : '1px solid #d4943a40' }}
+                        />
                       </div>
-                      <span className="text-[#d4943a] font-bold text-[13px]">${formatPrecio(porPersona)}</span>
                     </div>
                     {!pagado && (
                       <div className="flex gap-1 px-3 pb-3 flex-wrap">
                         {metodos.map(mp => (
                           <button key={mp.label} onClick={() => {
                             personasState[i] = mp.label;
-                            showToast(`✅ Persona ${i+1} — ${mp.label} — $${formatPrecio(porPersona)}`);
+                            showToast(`✅ Persona ${i+1} — ${mp.label} — $${formatPrecio(montosState[i])}`);
                             renderDiv();
                           }}
                             style={{ borderColor: mp.color+'40', color: mp.color, background: mp.color+'10' }}
@@ -1135,17 +1251,50 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     {pagado && (
                       <button onClick={() => { personasState[i] = null; renderDiv(); }}
                         className="w-full text-[10px] text-[#606060] pb-2 hover:text-[#e05050] transition-all">
-                        ↩ Cambiar método
+                        ↩ Cambiar
                       </button>
                     )}
                   </div>
                 );
               })}
             </div>
+            {/* Botón dividir equitativamente */}
+            <button onClick={() => {
+              const eq = Math.round(total / pax);
+              montosState = new Array(pax).fill(eq);
+              // Ajustar último para cuadrar exacto
+              montosState[pax-1] = total - eq * (pax-1);
+              renderDiv();
+            }} className="w-full py-2 mb-2 rounded-xl border border-[#2a2a2a] text-[#606060] text-[11px] font-semibold hover:border-[#a0a0a0] transition-all">
+              ⚖️ Dividir equitativamente (${formatPrecio(porPersona)} c/u)
+            </button>
             <div className="flex gap-2">
               <button onClick={() => abrirPOS(tableId)} className="flex-1 py-2.5 rounded-xl border border-[#2a2a2a] text-[#a0a0a0] text-[12px] font-semibold hover:border-[#a0a0a0] transition-all">← Volver</button>
-              <button onClick={() => {
+              <button onClick={async () => {
                 if (cobradas < pax) { showToast(`⚠️ Faltan ${pax - cobradas} persona(s) por cobrar`); return; }
+                // Guardar split en Supabase
+                try {
+                  const { data: ord } = await supabase.from('orders').select('id').eq('table_id', m.num).eq('status','open').limit(1);
+                  if (ord?.[0]) {
+                    const splits = Array.from({length: pax}, (_,i) => ({
+                      order_id: ord[0].id,
+                      persona_numero: i+1,
+                      monto: montosState[i],
+                      metodo_pago: personasState[i] || 'Efectivo',
+                      pagado: true,
+                      pagado_at: new Date().toISOString(),
+                    }));
+                    await supabase.from('pagos_split').insert(splits);
+                    await supabase.from('orders').update({
+                      status: 'closed',
+                      total_amount: total,
+                      split_count: pax,
+                      split_total: total,
+                      metodo_pago: `Split ${pax} personas`,
+                      closed_at: new Date().toISOString(),
+                    }).eq('id', ord[0].id);
+                  }
+                } catch(e) { console.error(e); }
                 closeModal();
                 showToast(`✓ Cuenta dividida — ${pax} personas cobradas`);
                 setTimeout(() => abrirEncuesta(tableId), 400);
@@ -1591,117 +1740,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       )}
 
       {/* ═══ PASO 5: RULETA DE PREMIOS ═══ */}
-      {clientePaso === 'premio' && (() => {
-        const premios = [
-          { emoji: '☕', label: 'Café gratis', color: '#cd853f', desc: 'Un espresso en tu próxima visita' },
-          { emoji: '🍷', label: 'Copa de vino', color: '#e91e8c', desc: 'Una copa de la casa' },
-          { emoji: '🎂', label: '10% OFF', color: '#d4943a', desc: 'En tu próxima cuenta' },
-          { emoji: '🍮', label: 'Postre gratis', color: '#f0b45a', desc: 'El postre del chef' },
-          { emoji: '🥂', label: '2x1 Coctel', color: '#9b72ff', desc: 'Dos por el precio de uno' },
-          { emoji: '🎁', label: '20% OFF', color: '#3dba6f', desc: 'Descuento especial' },
-        ];
-        const [spinning, setSpinning] = React.useState(false);
-        const [selected, setSelected] = React.useState<number|null>(null);
-        const [rotation, setRotation] = React.useState(0);
-
-        const girar = () => {
-          if (spinning || selected !== null) return;
-          setSpinning(true);
-          const winner = Math.floor(Math.random() * premios.length);
-          const spins = 5;
-          const deg = spins * 360 + (winner * (360 / premios.length));
-          setRotation(prev => prev + deg);
-          setTimeout(() => {
-            setSpinning(false);
-            setSelected(winner);
-          }, 3500);
-        };
-
-        const premio = selected !== null ? premios[selected] : null;
-        const segmentAngle = 360 / premios.length;
-
-        return (
-          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '24px 20px 32px' }}>
-            <div style={{ fontSize: 22, fontWeight: 900, color: S.black, marginBottom: 4, textAlign: 'center' }}>
-              {selected === null ? '¡Gira tu ruleta!' : '¡Felicitaciones!'}
-            </div>
-            <div style={{ fontSize: 13, color: S.text3, marginBottom: 24, textAlign: 'center' }}>
-              {selected === null ? 'Tienes un premio por tu opinión' : `Ganaste: ${premio?.label}`}
-            </div>
-
-            {/* Ruleta SVG */}
-            <div style={{ position: 'relative', width: 240, height: 240, marginBottom: 20 }}>
-              {/* Flecha indicadora */}
-              <div style={{ position: 'absolute', top: -16, left: '50%', transform: 'translateX(-50%)', zIndex: 10, fontSize: 28 }}>▼</div>
-
-              <svg viewBox="0 0 240 240" width="240" height="240"
-                style={{ transform: `rotate(${rotation}deg)`, transition: spinning ? 'transform 3.5s cubic-bezier(0.17,0.67,0.12,0.99)' : 'none', borderRadius: '50%', boxShadow: '0 4px 24px rgba(0,0,0,0.15)' }}>
-                {premios.map((p, i) => {
-                  const startAngle = i * segmentAngle - 90;
-                  const endAngle = startAngle + segmentAngle;
-                  const r = 120;
-                  const cx = 120, cy = 120;
-                  const x1 = cx + r * Math.cos((startAngle * Math.PI) / 180);
-                  const y1 = cy + r * Math.sin((startAngle * Math.PI) / 180);
-                  const x2 = cx + r * Math.cos((endAngle * Math.PI) / 180);
-                  const y2 = cy + r * Math.sin((endAngle * Math.PI) / 180);
-                  const midAngle = startAngle + segmentAngle / 2;
-                  const tx = cx + (r * 0.65) * Math.cos((midAngle * Math.PI) / 180);
-                  const ty = cy + (r * 0.65) * Math.sin((midAngle * Math.PI) / 180);
-                  return (
-                    <g key={i}>
-                      <path d={`M${cx},${cy} L${x1},${y1} A${r},${r} 0 0,1 ${x2},${y2} Z`}
-                        fill={p.color} opacity={selected === i ? 1 : 0.85} />
-                      <text x={tx} y={ty} textAnchor="middle" dominantBaseline="middle"
-                        style={{ fontSize: 18, fill: '#fff', fontWeight: 700, pointerEvents: 'none' }}>
-                        {p.emoji}
-                      </text>
-                    </g>
-                  );
-                })}
-                <circle cx="120" cy="120" r="18" fill="#fff" />
-                <circle cx="120" cy="120" r="12" fill={S.black} />
-              </svg>
-            </div>
-
-            {/* Botón girar */}
-            {selected === null ? (
-              <button onClick={girar} disabled={spinning}
-                style={{ width: '100%', padding: '18px', borderRadius: 100, background: spinning ? S.bg2 : S.black, color: spinning ? S.text3 : '#fff', fontSize: 17, fontWeight: 700, border: 'none', cursor: spinning ? 'not-allowed' : 'pointer', marginBottom: 12, transition: 'all 0.2s' }}>
-                {spinning ? '🎰 Girando...' : '🎰 ¡Girar!'}
-              </button>
-            ) : (
-              <>
-                {/* Premio ganado */}
-                <div style={{ width: '100%', background: premio!.color + '15', border: `2px solid ${premio!.color}40`, borderRadius: 20, padding: '20px', textAlign: 'center', marginBottom: 16 }}>
-                  <div style={{ fontSize: 48, marginBottom: 8 }}>{premio!.emoji}</div>
-                  <div style={{ fontSize: 22, fontWeight: 900, color: S.black, marginBottom: 4 }}>{premio!.label}</div>
-                  <div style={{ fontSize: 13, color: S.text2, marginBottom: 12 }}>{premio!.desc}</div>
-                  <div style={{ background: S.bg2, borderRadius: 12, padding: '8px 16px', display: 'inline-block' }}>
-                    <span style={{ fontSize: 14, fontFamily: 'monospace', fontWeight: 700, letterSpacing: 3, color: S.black }}>
-                      OMM-{String(clienteTableId).padStart(3,'0')}-{Math.floor(Math.random()*9000+1000)}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: 11, color: S.text3, marginTop: 8 }}>Válido 30 días · Muéstralo al mesero</div>
-                </div>
-
-                {/* Google Reviews si ≥4 */}
-                {clienteRating >= 4 && (
-                  <a href="https://g.page/r/review" target="_blank" rel="noopener noreferrer"
-                    style={{ width: '100%', padding: '14px', borderRadius: 100, background: '#fff', border: `1px solid ${S.border}`, color: S.black, fontSize: 15, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, textDecoration: 'none', marginBottom: 12 }}>
-                    📝 Dejar reseña en Google
-                  </a>
-                )}
-
-                <button onClick={() => { setClienteMode(false); setOrder(prev => prev.filter(o => o.mesa !== mesaCliente.num)); showToast(`⭐ Mesa ${mesaCliente.num} cerrada`); }}
-                  style={{ width: '100%', padding: '18px', borderRadius: 100, background: S.black, color: '#fff', fontSize: 17, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
-                  ✓ Finalizar
-                </button>
-              </>
-            )}
-          </div>
-        );
-      })()}
+      {clientePaso === 'premio' && (
+        <RuletaPremios
+          onClose={() => { setClienteMode(false); setOrder(prev => prev.filter(o => o.mesa !== mesaCliente?.num)); showToast('¡Gracias! Mesa cerrada'); }}
+          mesaNum={mesaCliente?.num ?? 0}
+          rating={clienteRating}
+        />
+      )}
     </div>
     </>
   );
