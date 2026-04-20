@@ -1,299 +1,418 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import { 
-  Flame, Zap, Wine, Clock, CheckCircle2, Monitor,
-  Droplets, Activity, BarChart3, IceCream, Utensils, Beef, Play
+  ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
+  Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
+  Layers, Briefcase,
+  LayoutPanelLeft,
+  Smartphone,
+  BellRing,
+  X,
+  Brain,
+  BarChart3,
+  Receipt,
+  Store,
+  Loader2,
+  ShieldCheck,
+  Sparkles,
 } from 'lucide-react';
-import { supabase } from '../lib/supabase.ts';
+import { supabase } from './lib/supabase.ts';
+import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
+import { ModuleType, Table, RitualTask, UserRole } from './types.ts';
+import { useMediaPipe } from './hooks/useMediaPipe.ts';
+import Login from './components/Login.tsx';
 
-const Martini = ({ size = 14 }: { size?: number }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M8 22h8M12 11v11M3 3l9 9 9-9H3z"/>
-  </svg>
+const OhYeahPage = lazy(() => import('./components/OhYeahPage.tsx'));
+const MobileManagerApp = lazy(() => import('./components/MobileManagerApp.tsx'));
+const ReserveModule = lazy(() => import('./components/ReserveModule.tsx'));
+const RelationshipModule = lazy(() => import('./components/RelationshipModule.tsx'));
+const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
+const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
+const SupplyModule = lazy(() => import('./components/SupplyModule.tsx'));
+const CareModule = lazy(() => import('./components/CareModule.tsx'));
+const FinanceHub = lazy(() => import('./components/FinanceHub.tsx'));
+const CommandModule = lazy(() => import('./components/CommandModule.tsx'));
+const SurveillanceModule = lazy(() => import('./components/SurveillanceModule.tsx'));
+// ── CAMBIO 1: StaffHubModule → TeamIQ ──────────────────────────────────────
+const TeamIQ = lazy(() => import('./components/TeamIQ.tsx'));
+const SettingsModule = lazy(() => import('./components/SettingsModule.tsx'));
+const PayrollModule = lazy(() => import('./components/PayrollModule.tsx'));
+const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'));
+const DIANModule = lazy(() => import('./components/DIANModule.tsx'));
+const ContabilidadModule = lazy(() => import('./components/ContabilidadModule.tsx'));
+const OhYeahAdmin = lazy(() => import('./components/OhYeahAdmin.tsx'));
+
+const ModuleLoader = () => (
+  <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
+    <Loader2 className="text-blue-600 animate-spin mb-4" size={32} />
+    <p className="text-[10px] font-black uppercase tracking-widest italic text-white">Sincronizando Core...</p>
+  </div>
 );
 
-type Station = 'ALL' | 'CALIENTE' | 'FRIA' | 'ENSALADAS' | 'POSTRES' | 'CHARCUTERIA' | 'BAR' | 'CAVA';
+const Dashboard: React.FC = () => {
+  const { profile, signOut } = useAuth();
+  const [activeModule, setActiveModule] = useState<ModuleType>(ModuleType.SERVICE_OS);
+  const [tables, setTables] = useState<Table[]>([]);
+  const [ritualTasks, setRitualTasks] = useState<RitualTask[]>([]);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [isClientView, setIsClientView] = useState(false);
+  const [isCockpitOpen, setIsCockpitOpen] = useState(false);
+  
+  const [isVisionAIOpen, setIsVisionAIOpen] = useState(false);
 
-interface FlowOrderItem {
-  id: string;
-  order_id: string;
-  status: 'pending' | 'preparing' | 'served';
-  quantity: number;
-  notes?: string;
-  created_at: string;
-  updated_at: string;
-  table_id?: number;
-  menu_items: { name: string; category: string; } | null;
-}
-
-const FlowModule: React.FC = () => {
-  const [activeStation, setActiveStation] = useState<Station>('ALL');
-  const [items, setItems] = useState<FlowOrderItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [now, setNow] = useState(Date.now());
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
 
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
+    const checkView = () => {
+      const isOhYeah = window.location.hash.includes('/oh-yeah');
+      if (isOhYeah && !isAdmin) {
+        window.location.hash = '';
+        setIsClientView(false);
+      } else {
+        setIsClientView(isOhYeah);
+      }
+    };
+    checkView();
+    window.addEventListener('hashchange', checkView);
+    return () => window.removeEventListener('hashchange', checkView);
+  }, [isAdmin]);
 
-  const fetchFlowData = async () => {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
+
+  const getVisibleModules = (role: UserRole = 'mesero'): ModuleType[] => {
+    switch (role) {
+      case 'admin':
+      case 'desarrollo':
+        return Object.values(ModuleType);
+      case 'gerencia':
+        return [
+          ModuleType.RESERVE, 
+          ModuleType.RELATIONSHIP, 
+          ModuleType.SERVICE_OS,
+          ModuleType.CARE,
+          ModuleType.FINANCE_HUB,
+          ModuleType.COMMAND,
+          ModuleType.STAFF_HUB,
+          ModuleType.PAYROLL,
+          ModuleType.SUPPLY,
+          ModuleType.FLOW,
+          ModuleType.MOBILE_MGR,
+          ModuleType.OH_YEAH
+        ];
+      case 'mesero':
+        return [
+          ModuleType.SERVICE_OS, 
+          ModuleType.RESERVE, 
+          ModuleType.RELATIONSHIP, 
+          ModuleType.STAFF_HUB,
+          ModuleType.OH_YEAH
+        ];
+      case 'cocina':
+        return [
+          ModuleType.FLOW, 
+          ModuleType.SUPPLY,
+          ModuleType.STAFF_HUB
+        ];
+      default:
+        return [ModuleType.SERVICE_OS];
+    }
+  };
+
+  const visibleModulesList = getVisibleModules(profile?.role);
+
+  useEffect(() => {
+    if (visibleModulesList.length > 0 && !visibleModulesList.includes(activeModule)) {
+      setActiveModule(visibleModulesList[0]);
+    }
+  }, [profile?.role, activeModule, visibleModulesList]);
+
+  const fetchData = async () => {
     try {
-      // Query en 2 pasos — más compatible y robusta
-      const { data: ordersData } = await supabase
-        .from('orders')
-        .select('id, table_id')
-        .eq('status', 'open');
+      const { data: tablesData } = await supabase
+        .from('tables')
+        .select(`*`)
+        .order('id', { ascending: true });
 
-      if (!ordersData || ordersData.length === 0) {
-        setItems([]);
-        setLoading(false);
-        return;
-      }
-
-      const orderIds = ordersData.map((o: any) => o.id);
-
-      const { data: itemsData } = await supabase
-        .from('order_items')
-        .select('*, menu_items(name, category)')
-        .in('order_id', orderIds)
-        .neq('status', 'served')
-        .order('created_at', { ascending: true });
-
-      if (itemsData) {
-        const enriched = itemsData.map((item: any) => ({
-          ...item,
-          table_id: ordersData.find((o: any) => o.id === item.order_id)?.table_id,
-          menu_items: item.menu_items ?? null,
-        }));
-        setItems(enriched);
-      }
-    } catch (e) {
-      console.error('Flow error:', e);
+      setTables(tablesData || []);
+      
+      const { data: tasksData } = await supabase.from('ritual_tasks').select('*').eq('status', 'active');
+      setRitualTasks(tasksData || []);
+    } catch {
+      console.warn("Sync Error");
     } finally {
-      setLoading(false);
+      setDashboardLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchFlowData();
-    const channel = supabase.channel('flow-live-v2')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, fetchFlowData)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, fetchFlowData)
+    fetchData();
+    const channel = supabase.channel('main-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ritual_tasks' }, () => fetchData())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, []);
 
-  const updateItemStatus = async (itemId: string, newStatus: string) => {
-    await supabase.from('order_items').update({
-      status: newStatus,
-      updated_at: new Date().toISOString()
-    }).eq('id', itemId);
+  const handleUpdateTable = async (tableId: number, updates: Partial<Table>) => {
+    await supabase.from('tables').update(updates).eq('id', tableId);
   };
 
-  const getNombre = (item: FlowOrderItem) =>
-    item.menu_items?.name ?? item.notes ?? 'Plato';
+  if (dashboardLoading) return (
+    <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
+       <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
+       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic text-white">Sincronizando Core Intelligence...</p>
+    </div>
+  );
 
-  const inferirCategoria = (nombre: string) => {
-    const n = nombre.toUpperCase();
-    if (n.includes('ROBATA') || n.includes('WOK') || n.includes('CALIENTE')) return 'ROBATA';
-    if (n.includes('MAKI') || n.includes('SUSHI') || n.includes('NIGIRI') || n.includes('SASHIMI') || n.includes('TEMAKI') || n.includes('GEISHA') || n.includes('TIRADITO')) return 'SUSHI';
-    if (n.includes('ENSALADA')) return 'ENSALADA';
-    if (n.includes('POSTRE')) return 'POSTRE';
-    if (n.includes('CHARCUTERIA') || n.includes('TABLA')) return 'CHARCUTERIA';
-    if (n.includes('COCTEL') || n.includes('SAKE') || n.includes('CERVEZA') || n.includes('JUGO') || n.includes('CAFÉ') || n.includes('AGUA')) return 'COCTEL';
-    if (n.includes('VINO') || n.includes('CAVA') || n.includes('COPA')) return 'VINO';
-    return 'ROBATA';
-  };
+  if ((isClientView || activeModule === ModuleType.OH_YEAH)) return (
+    <Suspense fallback={<ModuleLoader />}>
+      <OhYeahPage onExit={() => setActiveModule(ModuleType.SERVICE_OS)} />
+    </Suspense>
+  );
 
-  const getStationForItem = (item: FlowOrderItem): Station => {
-    const cat = (item.menu_items?.category ?? inferirCategoria(item.notes ?? '')).toUpperCase();
-    if (cat.includes('ROBATA') || cat.includes('CALIENTE') || cat.includes('WOK') || cat.includes('COMPARTIR') || cat.includes('PARA COMPARTIR')) return 'CALIENTE';
-    if (cat.includes('SUSHI') || cat.includes('FRIA') || cat.includes('MAKI') || cat.includes('NIGIRI') || cat.includes('SASHIMI') || cat.includes('ENTRADAS')) return 'FRIA';
-    if (cat.includes('ENSALADA')) return 'ENSALADAS';
-    if (cat.includes('POSTRE')) return 'POSTRES';
-    if (cat.includes('CHARCUTERIA') || cat.includes('TABLA')) return 'CHARCUTERIA';
-    if (cat.includes('COCTEL') || cat.includes('BEBIDA') || cat.includes('SAKE') || cat.includes('CERVEZA') || cat.includes('TEQUILA') || cat.includes('JUGO') || cat.includes('CAFÉ')) return 'BAR';
-    if (cat.includes('VINO') || cat.includes('CAVA')) return 'CAVA';
-    return 'CALIENTE';
-  };
-
-  const filteredItems = activeStation === 'ALL'
-    ? items
-    : items.filter(i => getStationForItem(i) === activeStation);
-
-  const getCount = (s: Station) => s === 'ALL' ? items.length : items.filter(i => getStationForItem(i) === s).length;
+  if (activeModule === ModuleType.MOBILE_MGR && isAdmin) {
+    return (
+      <Suspense fallback={<ModuleLoader />}>
+        <MobileManagerApp onExit={() => setActiveModule(ModuleType.SERVICE_OS)} />
+      </Suspense>
+    );
+  }
 
   return (
-    <div style={{ height:'100%', display:'flex', flexDirection:'column', background:'#0a0a0c', color:'#fff', overflow:'hidden' }}>
-
-      {/* Header */}
-      <div style={{ padding:'20px 28px 16px', borderBottom:'1px solid rgba(255,255,255,0.05)', flexShrink:0 }}>
-        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:16, flexWrap:'wrap' }}>
-          <div style={{ display:'flex', alignItems:'center', gap:16 }}>
-            <div style={{ width:56, height:56, background:'#2563eb', borderRadius:'1.5rem', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 0 24px rgba(37,99,235,0.3)' }}>
-              <Activity size={28} className="text-white" />
-            </div>
-            <div>
-              <h2 style={{ fontFamily:'sans-serif', fontSize:28, fontWeight:900, fontStyle:'italic', letterSpacing:'-0.05em', margin:0, textTransform:'uppercase' }}>Command Flow</h2>
-              <p style={{ fontSize:10, color:'#6b7280', fontWeight:700, textTransform:'uppercase', letterSpacing:'0.3em', margin:'6px 0 0' }}>Orquestación Multizona OMM</p>
-            </div>
+    <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0c] text-white font-sans text-left">
+      <nav className="w-[300px] bg-[#0a0a0c] border-r border-white/5 flex flex-col px-6 py-8 z-50 overflow-y-auto custom-scrollbar">
+        <div className="flex items-center gap-4 mb-12 px-2">
+          <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/30">
+            <Zap className="text-white" size={24} fill="currentColor" />
           </div>
-
-          {/* Tabs estaciones */}
-          <div style={{ display:'flex', flexWrap:'wrap', gap:6, background:'#111114', padding:8, borderRadius:'2.5rem', border:'1px solid rgba(255,255,255,0.05)' }}>
-            {([
-              { s:'ALL',         label:'GLOBAL',      icon:<Monitor size={13}/>,   color:'' },
-              { s:'CALIENTE',    label:'CALIENTE',    icon:<Flame size={13}/>,     color:'text-orange-500' },
-              { s:'FRIA',        label:'FRÍA',        icon:<Droplets size={13}/>,  color:'text-blue-400' },
-              { s:'ENSALADAS',   label:'ENSALADAS',   icon:<Utensils size={13}/>,  color:'text-green-500' },
-              { s:'POSTRES',     label:'POSTRES',     icon:<IceCream size={13}/>,  color:'text-pink-500' },
-              { s:'CHARCUTERIA', label:'CHARCUTERÍA', icon:<Beef size={13}/>,      color:'text-amber-600' },
-              { s:'BAR',         label:'BAR',         icon:<Martini size={13}/>,   color:'text-purple-500' },
-              { s:'CAVA',        label:'CAVA',        icon:<Wine size={13}/>,      color:'text-red-400' },
-            ] as const).map(({ s, label, icon, color }) => {
-              const count = getCount(s as Station);
-              const active = activeStation === s;
-              return (
-                <button key={s} onClick={() => setActiveStation(s as Station)}
-                  style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 14px', borderRadius:'9999px', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.08em', border:'none', cursor:'pointer', transition:'all 0.2s', background: active ? '#fff' : 'transparent', color: active ? '#000' : '#6b7280', transform: active ? 'scale(1.05)' : 'scale(1)' }}>
-                  <span style={{ color: active ? '#000' : undefined }}>{icon}</span>
-                  {label}
-                  {count > 0 && <span style={{ padding:'1px 7px', borderRadius:'9999px', fontSize:9, background: active ? '#000' : 'rgba(255,255,255,0.05)', color: active ? '#fff' : '#6b7280' }}>{count}</span>}
-                </button>
-              );
-            })}
+          <div>
+            <h1 className="text-2xl font-black tracking-tighter italic leading-none">NEXUM <span className="text-blue-600">V4</span></h1>
+            <p className="text-[9px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-1">OPERATIONAL CORE</p>
           </div>
         </div>
-      </div>
 
-      {/* Contenido */}
-      <div style={{ flex:1, overflowY:'auto', display:'grid', gridTemplateColumns:'1fr auto', gap:0 }}>
+        <div className="mb-6 px-4">
+           <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 flex items-center justify-between">
+              <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Rol:</span>
+              <span className="text-[9px] font-black text-blue-500 uppercase italic">{profile?.role}</span>
+           </div>
+        </div>
 
-        {/* Cards de pedidos */}
-        <div style={{ padding:'20px 24px', overflowY:'auto' }}>
-          {loading ? (
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px,1fr))', gap:16 }}>
-              {[1,2,3].map(i => (
-                <div key={i} style={{ background:'#111114', border:'2px solid rgba(255,255,255,0.05)', borderRadius:'2rem', height:220, animation:'pulse 2s infinite' }} />
-              ))}
-            </div>
-          ) : filteredItems.length === 0 ? (
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', height:'50vh', opacity:0.1 }}>
-              <Zap size={80} style={{ color:'#3b82f6', marginBottom:24 }} />
-              <h4 style={{ fontSize:32, fontWeight:900, fontStyle:'italic', textTransform:'uppercase', letterSpacing:'0.2em', margin:0 }}>Estación Despejada</h4>
-              <p style={{ fontSize:13, fontWeight:700, textTransform:'uppercase', marginTop:16, color:'#6b7280' }}>No hay pedidos pendientes en {activeStation}</p>
-            </div>
-          ) : (
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(280px,1fr))', gap:16 }}>
-              {filteredItems.map(item => {
-                const isPreparing = item.status === 'preparing';
-                const station = getStationForItem(item);
-                const startTime = new Date(isPreparing ? item.updated_at : item.created_at).getTime();
-                const diff = Math.floor((now - startTime) / 1000);
-                const mins = Math.floor(diff / 60);
-                const secs = diff % 60;
-                const isAlert = mins >= (station === 'CALIENTE' ? 12 : 8);
-                const nombre = getNombre(item);
-                const fromPOS = !item.menu_items;
+        {isAdmin && (
+          <div className="mb-8 px-2 space-y-3">
+             <button 
+              onClick={() => setIsCockpitOpen(true)}
+              className="w-full bg-gradient-to-br from-blue-600 to-blue-800 p-5 rounded-[1.8rem] flex items-center gap-4 shadow-xl border border-white/10 hover:scale-[1.02] transition-all"
+             >
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white"><LayoutPanelLeft size={20} /></div>
+                <div className="text-left">
+                   <span className="text-[10px] font-black uppercase tracking-widest text-white block">Nexum Copilot</span>
+                   <span className="text-[7px] font-bold uppercase text-blue-200">Business Intelligence</span>
+                </div>
+             </button>
 
-                return (
-                  <div key={item.id} style={{
-                    background:'#111114', borderRadius:'2.5rem', overflow:'hidden',
-                    display:'flex', flexDirection:'column',
-                    border: `2px solid ${isAlert ? '#dc2626' : isPreparing ? 'rgba(59,130,246,0.4)' : 'rgba(255,255,255,0.05)'}`,
-                    boxShadow: isAlert ? '0 0 20px rgba(220,38,38,0.2)' : 'none',
-                    animation: isAlert ? 'pulse 2s infinite' : 'none',
-                    transition:'all 0.3s',
-                  }}>
-                    {/* Header card */}
-                    <div style={{ padding:'20px 24px', borderBottom:`1px solid ${isAlert ? 'rgba(220,38,38,0.2)' : 'rgba(255,255,255,0.05)'}`, background: isAlert ? 'rgba(220,38,38,0.1)' : 'rgba(255,255,255,0.02)', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                        <div style={{ background:'rgba(255,255,255,0.05)', padding:'4px 12px', borderRadius:12, fontWeight:900, fontStyle:'italic', fontSize:14, color:'#3b82f6' }}>
-                          M{item.table_id}
-                        </div>
-                        <span style={{ fontSize:9, fontWeight:700, color:'#4b5563', textTransform:'uppercase', letterSpacing:'0.1em' }}>{station}</span>
-                        {fromPOS && <span style={{ fontSize:9, fontWeight:700, color:'#f97316', background:'rgba(249,115,22,0.1)', padding:'2px 8px', borderRadius:20 }}>POS</span>}
+             <button 
+              onClick={() => setActiveModule(ModuleType.MOBILE_MGR)}
+              className={`w-full p-5 rounded-[1.8rem] flex items-center gap-4 border transition-all group ${activeModule === ModuleType.MOBILE_MGR ? 'bg-blue-600 border-blue-400 text-white shadow-xl' : 'bg-white/[0.03] border-white/5 hover:bg-blue-600/10'}`}
+             >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${activeModule === ModuleType.MOBILE_MGR ? 'bg-white/20 text-white' : 'bg-blue-600/20 text-blue-500 group-hover:bg-blue-600 group-hover:text-white'}`}><Smartphone size={20} /></div>
+                <div className="text-left">
+                   <span className={`text-[10px] font-black uppercase tracking-widest block italic ${activeModule === ModuleType.MOBILE_MGR ? 'text-white' : 'text-white'}`}>MODO ANDROID</span>
+                   <span className={`text-[7px] font-bold uppercase ${activeModule === ModuleType.MOBILE_MGR ? 'text-blue-100' : 'text-gray-500'}`}>Vista Gerente Mobile</span>
+                </div>
+             </button>
+          </div>
+        )}
+
+        <div className="space-y-10 mb-10">
+          {[
+            {
+              id: 'marketing', label: 'PAQUETE MARKETING',
+              icon: <Sparkles size={14} className="text-blue-500" />,
+              modules: [
+                { type: ModuleType.OH_YEAH,       label: 'OH YEAH! B2C',  sub: 'VISTA CLIENTE',      icon: <Smartphone size={18} /> },
+                { type: ModuleType.OH_YEAH_ADMIN, label: 'OH YEAH! ADMIN',sub: 'RESTAURANTES',        icon: <Store size={18} /> },
+                { type: ModuleType.RESERVE,        label: 'RESERVE',       sub: 'MAPA & AGENDA',      icon: <CalendarDays size={18} /> },
+                { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> }              ]
+            },
+            {
+              id: 'operaciones', label: 'PAQUETE OPERACIONES',
+              icon: <Layers size={14} className="text-orange-500" />,
+              modules: [
+                { type: ModuleType.SERVICE_OS,   label: 'SERVICE OS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
+                { type: ModuleType.FLOW,         label: 'FLOW',         sub: 'ESTACIONES',       icon: <ChefHat size={18} /> },
+              ]
+            },
+            {
+              id: 'control', label: 'CONTROL & SUMINISTROS',
+              icon: <ShieldCheck size={14} className="text-green-500" />,
+              modules: [
+                { type: ModuleType.SUPPLY,    label: 'SUPPLY',    sub: 'STOCK IA',          icon: <Truck size={18} /> },
+                { type: ModuleType.CARE,      label: 'CARE',      sub: 'SOPORTE CX',        icon: <HeartPulse size={18} /> },
+                // ── CAMBIO 2: Label y sub actualizados ──────────────────────
+                { type: ModuleType.STAFF_HUB, label: 'TEAM IQ™',  sub: 'HUMAN PERFORMANCE', icon: <Brain size={18} /> }
+              ]
+            },
+            {
+              id: 'estrategia', label: 'ESTRATEGIA & ADMIN',
+              icon: <Globe size={14} className="text-purple-500" />,
+              modules: [
+                { type: ModuleType.COMMAND,       label: 'COMMAND',      sub: 'ESTRATEGIA IA',        icon: <Globe size={18} /> },
+                { type: ModuleType.FINANCE_HUB,  label: 'FINANCE HUB',  sub: 'DINERO & KPI',         icon: <DollarSign size={18} /> },
+                { type: ModuleType.PAYROLL,       label: 'NÓMINA DIAN',  sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
+                { type: ModuleType.DIAN,          label: 'FACTURACIÓN',  sub: 'DIAN · UBL 2.1',       icon: <Receipt size={18} /> },
+                { type: ModuleType.CONTABILIDAD,  label: 'CONTABILIDAD', sub: 'P&G · CIERRE · KPI',   icon: <BarChart3 size={18} /> },
+                { type: ModuleType.CONFIG,        label: 'CEREBRO',      sub: 'ADN & IA',             icon: <Settings size={18} /> }
+              ]
+            }
+          ].map((pkg) => {
+            const visiblePkgModules = pkg.modules.filter(m => visibleModulesList.includes(m.type));
+            if (visiblePkgModules.length === 0) return null;
+            return (
+              <div key={pkg.id} className="space-y-4">
+                <div className="flex items-center gap-3 px-4 py-1">
+                  <div className="opacity-60">{pkg.icon}</div>
+                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-[0.3em] italic">{pkg.label}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {visiblePkgModules.map((m) => (
+                    <button key={m.type} onClick={() => setActiveModule(m.type)}
+                      className={`flex items-center gap-4 w-full px-4 py-3.5 rounded-2xl transition-all duration-300 group ${
+                        activeModule === m.type
+                          ? 'bg-white/5 border border-white/10 text-white shadow-xl'
+                          : 'text-gray-500 hover:bg-white/5 hover:text-white border border-transparent'
+                      }`}>
+                      <div className={`${activeModule === m.type ? 'text-blue-500' : 'text-gray-600 group-hover:text-blue-400'}`}>{m.icon}</div>
+                      <div className="text-left">
+                        <p className={`text-[10px] font-black tracking-widest leading-none mb-1 ${activeModule === m.type ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>{m.label}</p>
+                        <p className={`text-[7px] font-bold uppercase tracking-wider ${activeModule === m.type ? 'text-blue-400' : 'text-gray-600'}`}>{m.sub}</p>
                       </div>
-                      <div style={{ display:'flex', alignItems:'center', gap:6, fontFamily:'monospace', fontSize:13, fontWeight:900, fontStyle:'italic', color: isAlert ? '#ef4444' : isPreparing ? '#60a5fa' : '#6b7280' }}>
-                        <Clock size={13} />
-                        {mins}:{secs.toString().padStart(2,'0')}
-                      </div>
-                    </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
 
-                    {/* Body */}
-                    <div style={{ padding:'24px 24px 16px', flex:1 }}>
-                      <h4 style={{ fontSize:18, fontWeight:900, fontStyle:'italic', textTransform:'uppercase', lineHeight:1.2, color:'#fff', margin:'0 0 8px' }}>
-                        {item.quantity}x {nombre}
-                      </h4>
-                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                        <span style={{ fontSize:10, fontWeight:700, color:'#4b5563', textTransform:'uppercase' }}>{item.menu_items?.category ?? inferirCategoria(nombre)}</span>
-                        <div style={{ width:4, height:4, borderRadius:'50%', background: isPreparing ? '#3b82f6' : '#374151' }} />
-                        <span style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', color: isPreparing ? '#3b82f6' : '#374151' }}>{item.status}</span>
-                      </div>
-                    </div>
+        <div className="mt-auto pt-8 border-t border-white/5">
+           <button onClick={signOut} className="flex items-center gap-3 px-6 text-gray-600 hover:text-red-500 transition-all text-[10px] font-black uppercase tracking-widest w-full">
+             <LogOut size={16} /> CERRAR SESIÓN
+           </button>
+        </div>
+      </nav>
 
-                    {/* Botón acción */}
-                    <div style={{ padding:'0 20px 20px' }}>
-                      {!isPreparing ? (
-                        <button onClick={() => updateItemStatus(item.id, 'preparing')}
-                          style={{ width:'100%', padding:'14px', borderRadius:16, background:'#fff', color:'#000', border:'none', fontSize:10, fontWeight:900, textTransform:'uppercase', letterSpacing:'0.1em', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, transition:'all 0.2s' }}
-                          onMouseEnter={e => { e.currentTarget.style.background='#2563eb'; e.currentTarget.style.color='#fff'; }}
-                          onMouseLeave={e => { e.currentTarget.style.background='#fff'; e.currentTarget.style.color='#000'; }}>
-                          <Play size={14} fill="currentColor" /> COMENZAR
-                        </button>
-                      ) : (
-                        <button onClick={() => updateItemStatus(item.id, 'served')}
-                          style={{ width:'100%', padding:'14px', borderRadius:16, background:'#2563eb', color:'#fff', border:'none', fontSize:10, fontWeight:900, textTransform:'uppercase', letterSpacing:'0.1em', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:8, transition:'all 0.2s' }}
-                          onMouseEnter={e => e.currentTarget.style.background='#16a34a'}
-                          onMouseLeave={e => e.currentTarget.style.background='#2563eb'}>
-                          <CheckCircle2 size={14} /> LISTO PARA ENTREGA
-                        </button>
-                      )}
+      <main className="flex-1 flex flex-col overflow-hidden relative bg-[#0f1115]">
+        <header className="h-16 border-b border-white/5 flex items-center justify-between px-8 z-40 bg-[#0f1115] shrink-0">
+          <div className="flex items-center gap-4">
+             <div className="w-8 h-8 flex items-center justify-center">
+               <Zap className="text-blue-500" size={20} fill="currentColor" />
+             </div>
+             <h1 className="text-lg font-bold tracking-widest text-white flex items-center gap-3">
+               NEXUM V4 <span className="text-gray-600 font-light">//</span> <span className="text-gray-300">HOSPITALITY INTELLIGENCE</span>
+             </h1>
+          </div>
+          
+          <div className="flex items-center gap-6">
+             <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 px-3 py-1 rounded-full">
+               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+               <span className="text-[10px] font-mono text-green-500 uppercase tracking-widest">SYSTEM: ONLINE</span>
+             </div>
+             <div className="text-[10px] font-mono text-gray-400 uppercase tracking-widest flex items-center gap-2">
+               OPERATIONAL CORE <span className="text-gray-600">//</span>
+               <span className="text-white">
+                 {/* ── CAMBIO 3b: header muestra Team IQ en vez de STAFF HUB ── */}
+                 {activeModule === ModuleType.STAFF_HUB ? 'TEAM IQ™' : activeModule.replace('_', ' ')}
+               </span>
+             </div>
+             <div className="flex items-center gap-3 ml-4">
+               <button className="w-8 h-8 rounded-full bg-[#1a1d24] flex items-center justify-center text-gray-400 hover:text-white transition-colors">
+                 <BellRing size={14} />
+               </button>
+               <button className="w-8 h-8 rounded-full bg-[#1a1d24] flex items-center justify-center text-gray-400 hover:text-white transition-colors">
+                 <Settings size={14} />
+               </button>
+               <div className="w-8 h-8 rounded-full bg-blue-900/30 border border-blue-500/30 flex items-center justify-center text-blue-400 text-xs font-bold">
+                 {profile?.full_name?.substring(0, 2).toUpperCase() || 'JD'}
+               </div>
+             </div>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-hidden relative z-10">
+          <Suspense fallback={<ModuleLoader />}>
+            {activeModule === ModuleType.SERVICE_OS && (
+              <div className="h-full flex flex-col">
+                <ServiceOSModule tables={tables} onUpdateTable={handleUpdateTable} tasks={ritualTasks} onOpenVisionAI={() => setIsVisionAIOpen(true)} />
+                {isVisionAIOpen && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-8">
+                    <div className="bg-[#0f1115] border border-white/10 rounded-2xl w-full max-w-6xl h-[80vh] flex flex-col overflow-hidden shadow-2xl relative">
+                      <div className="flex justify-between items-center p-4 border-b border-white/10 bg-[#1a1d24]">
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">Vision AI - Monitoreo en Vivo</h2>
+                        <button onClick={() => setIsVisionAIOpen(false)} className="text-gray-400 hover:text-white transition-colors"><X size={24} /></button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-6">
+                        <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} />
+                      </div>
                     </div>
                   </div>
-                );
-              })}
-            </div>
-          )}
+                )}
+              </div>
+            )}
+            {activeModule === ModuleType.FLOW && (
+              <div className="h-full">
+                <FlowModule />
+              </div>
+            )}
+            {activeModule !== ModuleType.SERVICE_OS && activeModule !== ModuleType.FLOW && (
+              <div className="h-full overflow-y-auto custom-scrollbar p-6 text-left">
+                {activeModule === ModuleType.RESERVE       && <ReserveModule />}
+                {activeModule === ModuleType.FINANCE_HUB   && <FinanceHub />}
+                {activeModule === ModuleType.PAYROLL        && <PayrollModule />}
+                {activeModule === ModuleType.COMMAND        && <CommandModule onSimulateEvent={() => {}} />}
+                {activeModule === ModuleType.RELATIONSHIP   && <RelationshipModule />}
+                {activeModule === ModuleType.STAFF_HUB      && <TeamIQ />}
+                {activeModule === ModuleType.SUPPLY         && <SupplyModule />}
+                {activeModule === ModuleType.CARE           && <CareModule />}
+                {activeModule === ModuleType.DIAN           && <DIANModule />}
+                {activeModule === ModuleType.CONTABILIDAD   && <ContabilidadModule />}
+                {activeModule === ModuleType.OH_YEAH_ADMIN  && <OhYeahAdmin />}
+                {activeModule === ModuleType.CONFIG         && <SettingsModule />}
+              </div>
+            )}
+          </Suspense>
         </div>
+      </main>
 
-        {/* Sidebar */}
-        <div style={{ width:220, padding:'20px 16px', borderLeft:'1px solid rgba(255,255,255,0.05)', display:'flex', flexDirection:'column', gap:16, overflowY:'auto', flexShrink:0 }}>
-          <div style={{ background:'#111114', border:'1px solid rgba(255,255,255,0.05)', padding:20, borderRadius:'2rem' }}>
-            <h3 style={{ fontSize:10, fontWeight:700, color:'#6b7280', textTransform:'uppercase', letterSpacing:'0.1em', display:'flex', alignItems:'center', gap:8, fontStyle:'italic', marginBottom:24 }}>
-              <BarChart3 size={14} style={{ color:'#3b82f6' }} /> Rendimiento Live
-            </h3>
-            <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
-              {[
-                { label:'Items Activos',  value: items.length.toString() },
-                { label:'En Fuego',       value: items.filter(i=>i.status==='preparing').length.toString() },
-                { label:'Pendientes',     value: items.filter(i=>i.status==='pending').length.toString(), color:'#f59e0b' },
-              ].map(m => (
-                <div key={m.label} style={{ display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid rgba(255,255,255,0.05)', paddingBottom:12 }}>
-                  <span style={{ fontSize:10, color:'#6b7280', fontWeight:700, textTransform:'uppercase', letterSpacing:'-0.02em' }}>{m.label}</span>
-                  <span style={{ fontSize:14, fontWeight:900, fontStyle:'italic', color: m.color ?? '#fff' }}>{m.value}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ background:'linear-gradient(135deg, rgba(37,99,235,0.2), transparent)', padding:24, borderRadius:'2rem', border:'1px solid rgba(37,99,235,0.1)' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:12 }}>
-              <Zap size={18} style={{ color:'#3b82f6' }} fill="#3b82f6" />
-              <h4 style={{ fontSize:10, fontWeight:700, color:'#fff', textTransform:'uppercase', letterSpacing:'0.1em', fontStyle:'italic', margin:0 }}>Predictivo Nexum</h4>
-            </div>
-            <p style={{ fontSize:12, color:'#9ca3af', fontStyle:'italic', lineHeight:1.6, margin:0 }}>
-              {items.filter(i=>i.status==='pending').length > 5
-                ? `Alta demanda — ${items.filter(i=>i.status==='pending').length} pedidos pendientes. Priorizar salida.`
-                : items.length === 0
-                ? 'Cocina despejada. Servicio fluido.'
-                : `${items.filter(i=>i.status==='preparing').length} platos en preparación activa.`}
-            </p>
-          </div>
-        </div>
-      </div>
+      <Suspense fallback={null}>
+        {(profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo') &&
+          <ExecutiveCockpit isOpen={isCockpitOpen} onClose={() => setIsCockpitOpen(false)} />
+        }
+      </Suspense>
+      <video ref={videoRef} className="absolute opacity-0 pointer-events-none" playsInline muted autoPlay />
     </div>
   );
 };
 
-export default FlowModule;
+const AppContent: React.FC = () => {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
+         <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
+         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic text-white">Sincronizando Core Intelligence...</p>
+      </div>
+    );
+  }
+  return user ? <Dashboard /> : <Login />;
+};
+
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+};
+
+export default App;
