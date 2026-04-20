@@ -339,7 +339,7 @@ const Dashboard: React.FC = () => {
           </div>
         </header>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-6 relative z-10 text-left">
+        <div className="flex-1 overflow-hidden relative z-10 text-left">
           <Suspense fallback={<ModuleLoader />}>
             {activeModule === ModuleType.SERVICE_OS && (
               <div className="h-full flex flex-col">
@@ -363,20 +363,25 @@ const Dashboard: React.FC = () => {
                 )}
               </div>
             )}
+            {activeModule === ModuleType.FLOW && (
+              <div className="h-full flex flex-col overflow-hidden">
+                <FlowModule />
+              </div>
+            )}
+            <div className={`h-full overflow-y-auto custom-scrollbar p-6 ${[ModuleType.SERVICE_OS, ModuleType.FLOW].includes(activeModule) ? 'hidden' : ''}`}>
             {activeModule === ModuleType.RESERVE       && <ReserveModule />}
             {activeModule === ModuleType.FINANCE_HUB   && <FinanceHub />}
             {activeModule === ModuleType.PAYROLL        && <PayrollModule />}
             {activeModule === ModuleType.COMMAND        && <CommandModule onSimulateEvent={() => {}} />}
             {activeModule === ModuleType.RELATIONSHIP   && <RelationshipModule />}
-            {/* ── CAMBIO 3: renderiza TeamIQ en vez de StaffHubModule ──────── */}
             {activeModule === ModuleType.STAFF_HUB      && <TeamIQ />}
-            {activeModule === ModuleType.FLOW           && <FlowModule />}
             {activeModule === ModuleType.SUPPLY         && <SupplyModule />}
             {activeModule === ModuleType.CARE           && <CareModule />}
             {activeModule === ModuleType.DIAN           && <DIANModule />}
             {activeModule === ModuleType.CONTABILIDAD   && <ContabilidadModule />}
             {activeModule === ModuleType.OH_YEAH_ADMIN  && <OhYeahAdmin />}
             {activeModule === ModuleType.CONFIG         && <SettingsModule />}
+            </div>
           </Suspense>
         </div>
       </main>
