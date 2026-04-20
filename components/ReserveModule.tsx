@@ -1,455 +1,569 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { 
-  Calendar, 
-  X,
-  LayoutGrid,
-  BellRing,
-  Search,
-  Bell,
-  Settings,
-  Plus,
-  Minus,
-  Check
-} from 'lucide-react';
+// ============================================================
+// NEXUM — ReserveModule.tsx  v2
+// Sistema completo de reservas — estilo OpenTable / Resy
+// Mapa de mesas visual, CRM integrado, Realtime, WhatsApp
+// ============================================================
+
+import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase.ts';
 
-// Configuración del Plano (Updated to match image)
-const FLOOR_LAYOUT = [
-  // SECTOR: SUSHI_BAR (Top Center)
-  { id: 1, x: 36, y: 25, type: 'sushi', label: 'S1', zone: 'SUSHI_BAR' },
-  { id: 2, x: 41, y: 25, type: 'sushi', label: 'S2', zone: 'SUSHI_BAR' },
-  { id: 3, x: 46, y: 25, type: 'sushi', label: 'S3', zone: 'SUSHI_BAR' },
-  { id: 4, x: 51, y: 25, type: 'sushi', label: 'S4', zone: 'SUSHI_BAR' },
-  { id: 5, x: 56, y: 25, type: 'sushi', label: 'S5', zone: 'SUSHI_BAR' },
+const S = {
+  bg:'#0a0a0a', bg2:'#141414', bg3:'#1c1c1c',
+  border:'#2a2a2a', text1:'#f0f0f0', text2:'#a0a0a0', text3:'#606060',
+  gold:'#d4943a', goldL:'#f0b45a', green:'#3dba6f',
+  red:'#e05050', blue:'#4a8fd4', purple:'#9b72ff',
+};
 
-  // SECTOR: SAKE_ZONE (Left)
-  { id: 9, x: 15, y: 40, type: 'booth', label: 'B-01', zone: 'SAKE_ZONE' },
-  { id: 10, x: 15, y: 55, type: 'booth', label: 'B-02', zone: 'SAKE_ZONE' },
-  { id: 11, x: 15, y: 70, type: 'booth', label: 'B-03', zone: 'SAKE_ZONE' },
+type Tab = 'mapa' | 'lista' | 'nueva' | 'timeline';
+type EstadoMesa = 'libre' | 'ocupada' | 'reservada' | 'bloqueada';
+type EstadoReserva = 'pendiente' | 'confirmada' | 'llegó' | 'cancelada' | 'no_show';
 
-  // SECTOR: MAIN_HALL (Center)
-  { id: 12, x: 28, y: 42, type: 'round', label: 'T-12', zone: 'MAIN_HALL' },
-  { id: 14, x: 45, y: 42, type: 'rect', label: 'T-14', zone: 'MAIN_HALL' },
-  { id: 15, x: 62, y: 42, type: 'round', label: 'T-15', zone: 'MAIN_HALL' },
-  { id: 16, x: 38, y: 58, type: 'rect', label: 'T-16', zone: 'MAIN_HALL' },
-  { id: 18, x: 55, y: 58, type: 'round', label: 'T-18', zone: 'MAIN_HALL' },
-
-  // SECTOR: BAR_TOWER (Right)
-  { id: 20, x: 80, y: 40, type: 'round', label: 'H-01', zone: 'BAR_TOWER' },
-  { id: 21, x: 80, y: 55, type: 'rect', label: 'H-02', zone: 'BAR_TOWER' },
-  { id: 22, x: 80, y: 70, type: 'round', label: 'H-03', zone: 'BAR_TOWER' },
-
-  // SECTOR: TERRACE_OPEN_AIR (Bottom)
-  { id: 17, x: 35, y: 85, type: 'round', label: 'TR-1', zone: 'TERRACE' },
-  { id: 180, x: 48, y: 85, type: 'round', label: 'TR-2', zone: 'TERRACE' }, // Changed ID to avoid conflict
-  { id: 19, x: 61, y: 85, type: 'round', label: 'TR-3', zone: 'TERRACE' },
-];
-
-interface Table {
+interface Mesa {
   id: number;
-  status?: string;
-  seats?: number;
-  label?: string;
-  zone?: string;
-  name?: string;
-  welcome_timer_start?: string | null;
+  numero: number;
+  capacidad: number;
+  zona: string;
+  estado: EstadoMesa;
+  activa: boolean;
 }
 
-interface Reservation {
+interface Reserva {
   id: number;
-  reservation_time: string;
+  mesa_id: number;
+  nombre_cliente: string;
+  telefono: string;
+  email: string;
   pax: number;
-  status: string;
-  customers?: { name: string };
-  tables?: { id: number; zone: string; name: string };
+  fecha: string;
+  hora: string;
+  duracion_min: number;
+  ocasion: string;
+  nota: string;
+  estado: EstadoReserva;
+  origen: string;
+  // join
+  mesa_numero?: number;
+  mesa_zona?: string;
+  mesa_capacidad?: number;
+  customer_name?: string;
+  vip_status?: boolean;
+  total_visits?: number;
 }
 
-const ReserveModule: React.FC = () => {
-  const [tables, setTables] = useState<Table[]>([]); 
-  const [dailyReservations, setDailyReservations] = useState<Reservation[]>([]);
-  const [selectedTable, setSelectedTable] = useState<Table | null>(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
-  const [scale, setScale] = useState(1);
+const ESTADO_CFG: Record<EstadoMesa, { color: string; bg: string; label: string }> = {
+  libre:     { color: S.green,  bg: `${S.green}20`,  label: 'Libre' },
+  ocupada:   { color: S.red,    bg: `${S.red}20`,    label: 'Ocupada' },
+  reservada: { color: S.gold,   bg: `${S.gold}20`,   label: 'Reservada' },
+  bloqueada: { color: S.text3,  bg: `${S.text3}20`,  label: 'Bloqueada' },
+};
 
-  const fetchData = useCallback(async () => {
-    try {
-      const { data: tablesData } = await supabase
-        .from('tables')
-        .select(`*, reservations(id, reservation_time, pax, status, customers(name))`)
-        .order('id', { ascending: true });
-      
-      setTables(tablesData || []);
+const RESERVA_CFG: Record<EstadoReserva, { color: string; label: string; icon: string }> = {
+  pendiente:  { color: S.gold,   label: 'Pendiente',  icon: '⏳' },
+  confirmada: { color: S.blue,   label: 'Confirmada', icon: '✓' },
+  'llegó':    { color: S.green,  label: 'Llegó',      icon: '🟢' },
+  cancelada:  { color: S.red,    label: 'Cancelada',  icon: '✕' },
+  no_show:    { color: S.text3,  label: 'No Show',    icon: '👻' },
+};
 
-      const today = new Date().toISOString().split('T')[0];
-      const { data: resData } = await supabase
-        .from('reservations')
-        .select('*, customers(name), tables(id, zone, name)')
-        .gte('reservation_time', `${today}T00:00:00`)
-        .lte('reservation_time', `${today}T23:59:59`)
-        .order('reservation_time', { ascending: true });
-      setDailyReservations(resData || []);
-    } catch (err) {
-      console.error(err);
-    }
+const ZONAS_COLOR: Record<string, string> = {
+  'Principal': '#1a1a2e', 'Terraza': '#0d1f0d', 'VIP': '#1f1a0d',
+  'Barra': '#1a0d1f', 'Salón': '#0d1a1f', 'default': '#141414',
+};
+
+const OCASIONES = ['Cumpleaños', 'Aniversario', 'Negocio', 'Primera Cita', 'Celebración', 'Despedida', 'Graduación', 'Otro'];
+const ORIGENES = ['web', 'telefono', 'whatsapp', 'oh_yeah', 'walk-in', 'instagram'];
+
+const hoy = () => new Date().toISOString().split('T')[0];
+const formatHora = (h: string) => h?.slice(0, 5) ?? '';
+const formatFecha = (f: string) => {
+  if (!f) return '';
+  const d = new Date(f + 'T00:00:00');
+  return d.toLocaleDateString('es-CO', { weekday:'short', day:'numeric', month:'short' });
+};
+
+export default function ReserveModule() {
+  const [tab, setTab] = useState<Tab>('mapa');
+  const [mesas, setMesas] = useState<Mesa[]>([]);
+  const [reservas, setReservas] = useState<Reserva[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fechaFiltro, setFechaFiltro] = useState(hoy());
+  const [zonaFiltro, setZonaFiltro] = useState('Todas');
+  const [mesaSeleccionada, setMesaSeleccionada] = useState<Mesa | null>(null);
+  const [reservaDetalle, setReservaDetalle] = useState<Reserva | null>(null);
+  const [toast, setToast] = useState('');
+
+  // Form nueva reserva
+  const [form, setForm] = useState({
+    nombre: '', telefono: '', email: '', pax: 2,
+    fecha: hoy(), hora: '20:00', duracion: 90,
+    mesa_id: 0, ocasion: '', nota: '', origen: 'web',
+  });
+
+  const showToast = (m: string) => { setToast(m); setTimeout(() => setToast(''), 3000); };
+  const setF = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
+
+  // Cargar datos
+  const fetchData = async () => {
+    const [{ data: mesasData }, { data: reservasData }] = await Promise.all([
+      supabase.from('mesas').select('*').order('numero'),
+      supabase.from('vista_reservas').select('*').gte('fecha', fechaFiltro).order('hora'),
+    ]);
+    if (mesasData) setMesas(mesasData);
+    if (reservasData) setReservas(reservasData as Reserva[]);
+    setLoading(false);
+  };
+
+  useEffect(() => { fetchData(); }, [fechaFiltro]);
+
+  // Realtime
+  useEffect(() => {
+    const ch = supabase.channel('reservas-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservas' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'mesas' }, fetchData)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
   }, []);
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void fetchData();
-    const channel = supabase.channel('reserve-sync')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => { void fetchData(); })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => { void fetchData(); })
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
-  }, [fetchData]);
-
-  const handleOpenTable = async (tableId: number) => {
-    try {
-      await supabase.from('tables').update({ status: 'occupied', welcome_timer_start: null }).eq('id', tableId);
-      setIsModalOpen(false);
-      fetchData();
-    } catch (err) { console.error(err); }
+  const crearReserva = async () => {
+    if (!form.nombre || !form.mesa_id || !form.fecha || !form.hora) {
+      showToast('⚠️ Completa nombre, mesa, fecha y hora'); return;
+    }
+    const { error } = await supabase.from('reservas').insert({
+      restaurante_id: 6,
+      mesa_id: form.mesa_id,
+      nombre_cliente: form.nombre,
+      telefono: form.telefono,
+      email: form.email,
+      pax: form.pax,
+      fecha: form.fecha,
+      hora: form.hora,
+      duracion_min: form.duracion,
+      ocasion: form.ocasion || null,
+      nota: form.nota || null,
+      estado: 'confirmada',
+      origen: form.origen,
+    });
+    if (error) { showToast(`✗ Error: ${error.message}`); return; }
+    // Marcar mesa como reservada
+    await supabase.from('mesas').update({ estado: 'reservada' }).eq('id', form.mesa_id);
+    showToast(`✓ Reserva confirmada — ${form.nombre}`);
+    setForm({ nombre:'', telefono:'', email:'', pax:2, fecha:hoy(), hora:'20:00', duracion:90, mesa_id:0, ocasion:'', nota:'', origen:'web' });
+    setTab('lista');
+    fetchData();
   };
 
-  const getTableStatus = (id: number) => {
-    const table = tables.find(t => t.id === id);
-    return table?.status || 'free';
+  const cambiarEstadoReserva = async (id: number, estado: EstadoReserva) => {
+    await supabase.from('reservas').update({ estado }).eq('id', id);
+    if (estado === 'llegó') {
+      const r = reservas.find(x => x.id === id);
+      if (r) await supabase.from('mesas').update({ estado: 'ocupada' }).eq('id', r.mesa_id);
+    }
+    if (estado === 'cancelada' || estado === 'no_show') {
+      const r = reservas.find(x => x.id === id);
+      if (r) await supabase.from('mesas').update({ estado: 'libre' }).eq('id', r.mesa_id);
+    }
+    showToast(`✓ Estado actualizado: ${RESERVA_CFG[estado].label}`);
+    setReservaDetalle(null);
+    fetchData();
   };
 
-  const getTableData = (id: number) => {
-    return tables.find(t => t.id === id) || { id, status: 'free', zone: 'Unknown' };
+  const zonas = ['Todas', ...Array.from(new Set(mesas.map(m => m.zona)))];
+  const mesasFiltradas = mesas.filter(m => zonaFiltro === 'Todas' || m.zona === zonaFiltro);
+  const reservasHoy = reservas.filter(r => r.fecha === fechaFiltro);
+
+  const inp = {
+    background: S.bg2, border: `1px solid ${S.border}`,
+    borderRadius: 8, padding: '9px 14px', color: S.text1,
+    fontSize: 13, outline: 'none', width: '100%',
   };
 
-  // Metrics Calculation
-  const totalCovers = tables.reduce((acc, t) => acc + (t.status === 'occupied' ? (t.seats || 2) : 0), 0);
-  const totalCapacity = 142; // Hardcoded from image or calculate
-  const occupancyRate = Math.round((totalCovers / totalCapacity) * 100);
-  const waitlistCount = 4; // Mock or fetch
-
-  // Find calling table for Service Request card
-  const callingTable = tables.find(t => t.status === 'calling');
+  const kpis = [
+    { label: 'Reservas hoy',   value: reservasHoy.length,                                           color: S.blue   },
+    { label: 'Confirmadas',    value: reservasHoy.filter(r=>r.estado==='confirmada').length,        color: S.green  },
+    { label: 'Mesas libres',   value: mesas.filter(m=>m.estado==='libre').length,                  color: S.goldL  },
+    { label: 'Pax esperados',  value: reservasHoy.filter(r=>['confirmada','pendiente'].includes(r.estado)).reduce((a,r)=>a+r.pax,0), color: S.purple },
+  ];
 
   return (
-    <div className="flex h-full bg-[#0B0E14] text-white overflow-hidden font-sans">
-      {/* Main Floorplan Area */}
-      <div className="flex-1 flex flex-col relative border-r border-white/5">
-        {/* Header */}
-        <header className="h-20 border-b border-white/5 flex items-center justify-between px-8 bg-[#0B0E14] z-10">
+    <div style={{ display:'flex', flexDirection:'column', height:'100%', background:S.bg, color:S.text1, fontFamily:"'DM Sans',sans-serif" }}>
+
+      {toast && <div style={{ position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:'#222', border:`1px solid ${S.border}`, color:S.text1, padding:'10px 20px', borderRadius:10, fontSize:13, zIndex:9999, whiteSpace:'nowrap' }}>{toast}</div>}
+
+      {/* Modal detalle reserva */}
+      {reservaDetalle && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,.8)', zIndex:600, display:'flex', alignItems:'center', justifyContent:'center', padding:20 }}>
+          <div style={{ background:S.bg3, border:`1px solid ${S.border}`, borderRadius:16, padding:28, maxWidth:460, width:'100%' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', marginBottom:20 }}>
+              <div>
+                <div style={{ fontFamily:"'Syne',sans-serif", fontSize:18, fontWeight:900 }}>{reservaDetalle.nombre_cliente}</div>
+                <div style={{ fontSize:12, color:S.text3, marginTop:2 }}>
+                  {reservaDetalle.vip_status && <span style={{ color:S.gold, marginRight:6 }}>⭐ VIP</span>}
+                  {reservaDetalle.total_visits && <span>{reservaDetalle.total_visits} visitas</span>}
+                </div>
+              </div>
+              <button onClick={()=>setReservaDetalle(null)} style={{ background:'none', border:'none', color:S.text3, fontSize:20, cursor:'pointer' }}>✕</button>
+            </div>
+
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:16 }}>
+              {[
+                { l:'Mesa', v:`#${reservaDetalle.mesa_numero} — ${reservaDetalle.mesa_zona}` },
+                { l:'Pax', v:`${reservaDetalle.pax} personas` },
+                { l:'Fecha', v:formatFecha(reservaDetalle.fecha) },
+                { l:'Hora', v:formatHora(reservaDetalle.hora) },
+                { l:'Duración', v:`${reservaDetalle.duracion_min} min` },
+                { l:'Origen', v:reservaDetalle.origen },
+              ].map(x => (
+                <div key={x.l} style={{ background:S.bg2, borderRadius:8, padding:'8px 12px' }}>
+                  <div style={{ fontSize:10, color:S.text3, marginBottom:2 }}>{x.l}</div>
+                  <div style={{ fontSize:13, fontWeight:600 }}>{x.v}</div>
+                </div>
+              ))}
+            </div>
+
+            {reservaDetalle.ocasion && (
+              <div style={{ background:`${S.purple}15`, border:`1px solid ${S.purple}30`, borderRadius:8, padding:'8px 12px', marginBottom:12, fontSize:12, color:S.purple }}>
+                🎉 {reservaDetalle.ocasion}
+              </div>
+            )}
+            {reservaDetalle.nota && (
+              <div style={{ background:S.bg2, borderRadius:8, padding:'8px 12px', marginBottom:16, fontSize:12, color:S.text2 }}>
+                📝 {reservaDetalle.nota}
+              </div>
+            )}
+
+            {/* Contacto */}
+            <div style={{ display:'flex', gap:8, marginBottom:16 }}>
+              {reservaDetalle.telefono && (
+                <a href={`https://wa.me/${reservaDetalle.telefono.replace(/\D/g,'')}`} target="_blank"
+                  style={{ flex:1, padding:'8px', borderRadius:8, background:'#25D36615', border:'1px solid #25D36640', color:'#25D366', fontSize:11, fontWeight:700, textAlign:'center', textDecoration:'none' }}>
+                  💬 WhatsApp
+                </a>
+              )}
+              {reservaDetalle.telefono && (
+                <a href={`tel:${reservaDetalle.telefono}`}
+                  style={{ flex:1, padding:'8px', borderRadius:8, background:`${S.blue}15`, border:`1px solid ${S.blue}40`, color:S.blue, fontSize:11, fontWeight:700, textAlign:'center', textDecoration:'none' }}>
+                  📞 Llamar
+                </a>
+              )}
+            </div>
+
+            {/* Acciones de estado */}
+            <div style={{ fontSize:10, color:S.text3, marginBottom:8, fontWeight:700, textTransform:'uppercase' as const }}>Cambiar estado</div>
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              {(['confirmada','llegó','cancelada','no_show'] as EstadoReserva[]).map(e => {
+                const cfg = RESERVA_CFG[e];
+                const active = reservaDetalle.estado === e;
+                return (
+                  <button key={e} onClick={() => cambiarEstadoReserva(reservaDetalle.id, e)}
+                    style={{ padding:'7px 14px', borderRadius:20, border:`1px solid ${active?cfg.color:S.border}`, background:active?`${cfg.color}20`:'transparent', color:active?cfg.color:S.text3, fontSize:11, fontWeight:700, cursor:'pointer', transition:'all .2s' }}>
+                    {cfg.icon} {cfg.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{ padding:'14px 20px', borderBottom:`1px solid ${S.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', flexShrink:0 }}>
+        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+          <div style={{ width:36, height:36, borderRadius:10, background:`linear-gradient(135deg,${S.purple},#6040b0)`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 }}>📅</div>
           <div>
-            <div className="flex items-center gap-4 text-gray-400 text-xs font-bold tracking-widest uppercase mb-1">
-              <span>Floorplan</span>
-              <span className="w-px h-3 bg-gray-700"></span>
-              <span>Intelligence</span>
+            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:15, fontWeight:900 }}>RESERVE</div>
+            <div style={{ fontSize:11, color:S.text3 }}>Gestión central de reservas — OMM</div>
+          </div>
+        </div>
+        <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+          <input type="date" value={fechaFiltro} onChange={e=>setFechaFiltro(e.target.value)}
+            style={{ ...inp, width:'auto', fontSize:12, padding:'6px 12px' }} />
+          <button onClick={()=>{setTab('nueva');}} style={{ background:S.purple, color:'#fff', border:'none', padding:'8px 16px', borderRadius:8, fontSize:12, fontWeight:700, cursor:'pointer' }}>
+            + Nueva reserva
+          </button>
+        </div>
+      </div>
+
+      {/* KPIs */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:10, padding:'12px 20px', borderBottom:`1px solid ${S.border}`, flexShrink:0 }}>
+        {kpis.map(k => (
+          <div key={k.label} style={{ background:S.bg2, border:`1px solid ${S.border}`, borderRadius:10, padding:'10px 14px' }}>
+            <div style={{ fontSize:10, color:S.text3, marginBottom:2 }}>{k.label}</div>
+            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:900, color:k.color }}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabs */}
+      <div style={{ display:'flex', borderBottom:`1px solid ${S.border}`, flexShrink:0 }}>
+        {([
+          { id:'mapa',     label:'🗺️ Mapa de mesas' },
+          { id:'lista',    label:`📋 Reservas (${reservasHoy.length})` },
+          { id:'timeline', label:'⏱️ Timeline' },
+          { id:'nueva',    label:'➕ Nueva reserva' },
+        ] as const).map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding:'10px 18px', background:'none', border:'none', cursor:'pointer', fontSize:12, fontWeight:700, whiteSpace:'nowrap', color:tab===t.id?S.purple:S.text3, borderBottom:`2px solid ${tab===t.id?S.purple:'transparent'}`, transition:'all .15s' }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ flex:1, overflowY:'auto', padding:16 }}>
+
+        {/* ── MAPA DE MESAS ── */}
+        {tab === 'mapa' && (
+          <div>
+            {/* Filtro zona */}
+            <div style={{ display:'flex', gap:8, marginBottom:16, flexWrap:'wrap' }}>
+              {zonas.map(z => (
+                <button key={z} onClick={() => setZonaFiltro(z)}
+                  style={{ padding:'5px 14px', borderRadius:20, border:`1px solid ${zonaFiltro===z?S.purple:S.border}`, background:zonaFiltro===z?`${S.purple}15`:'transparent', color:zonaFiltro===z?S.purple:S.text3, fontSize:11, fontWeight:700, cursor:'pointer' }}>
+                  {z}
+                </button>
+              ))}
             </div>
-          </div>
-          
-          <div className="flex items-center gap-4 bg-[#151921] rounded-full px-4 py-2 border border-white/5 w-1/3">
-            <Search size={16} className="text-gray-500" />
-            <input 
-              type="text" 
-              placeholder="Search table, reservation ID, or guest name" 
-              className="bg-transparent border-none outline-none text-xs w-full placeholder-gray-600"
-            />
-          </div>
 
-          <div className="flex items-center gap-6">
-            <div className="flex items-center gap-2 px-3 py-1.5 bg-[#151921] rounded-full border border-white/5">
-              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-              <span className="text-[10px] font-bold text-green-500 uppercase tracking-wider">NODE_ACTIVO</span>
+            {/* Leyenda */}
+            <div style={{ display:'flex', gap:12, marginBottom:16, flexWrap:'wrap' }}>
+              {Object.entries(ESTADO_CFG).map(([k,v]) => (
+                <div key={k} style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, color:S.text2 }}>
+                  <div style={{ width:10, height:10, borderRadius:'50%', background:v.color }}/>
+                  {v.label}
+                </div>
+              ))}
             </div>
-            <div className="text-xl font-mono font-bold tracking-widest">
-              {new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}
-            </div>
-            <div className="flex items-center gap-4 text-gray-400">
-              <Bell size={20} />
-              <Settings size={20} />
-            </div>
-          </div>
-        </header>
 
-        {/* Floorplan Content */}
-        <div className="flex-1 relative overflow-hidden bg-[#0B0E14]">
-          {/* Grid Background */}
-          <div className="absolute inset-0 opacity-5" 
-               style={{ 
-                 backgroundImage: 'linear-gradient(#333 1px, transparent 1px), linear-gradient(90deg, #333 1px, transparent 1px)', 
-                 backgroundSize: '40px 40px' 
-               }}>
-          </div>
-
-          {/* Controls & Title Overlay */}
-          <div className="absolute top-8 left-8 z-10">
-            <h1 className="text-3xl font-bold text-white mb-1">MAIN HALL LEVEL 1</h1>
-            <div className="flex items-center gap-3 text-gray-400 text-sm">
-              <span>Capacity: {totalCapacity}</span>
-              <span className="w-1 h-1 rounded-full bg-gray-600"></span>
-              <span>Occupancy: {occupancyRate}%</span>
-            </div>
-          </div>
-
-          <div className="absolute top-8 right-8 z-10 flex items-center gap-3">
-            <button onClick={() => setScale(s => Math.min(s + 0.1, 2))} className="w-10 h-10 rounded-full bg-[#1F232C] border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors">
-              <Plus size={18} />
-            </button>
-            <button onClick={() => setScale(s => Math.max(s - 0.1, 0.5))} className="w-10 h-10 rounded-full bg-[#1F232C] border border-white/10 flex items-center justify-center hover:bg-white/10 transition-colors">
-              <Minus size={18} />
-            </button>
-            <button className="px-6 py-2.5 bg-blue-600 hover:bg-blue-500 rounded-full text-xs font-bold uppercase tracking-wider shadow-lg shadow-blue-900/20 transition-all">
-              Auto-Assign
-            </button>
-          </div>
-
-          {/* Sector Labels */}
-          <div className="absolute top-[18%] left-1/2 -translate-x-1/2 text-[10px] font-bold tracking-[0.2em] text-gray-600 uppercase">SECTOR: SUSHI_BAR</div>
-          <div className="absolute left-8 top-1/2 -translate-y-1/2 -rotate-90 text-[10px] font-bold tracking-[0.2em] text-gray-600 uppercase origin-left">SECTOR: SAKE_ZONE</div>
-          <div className="absolute right-8 top-1/2 -translate-y-1/2 rotate-90 text-[10px] font-bold tracking-[0.2em] text-gray-600 uppercase origin-right">SECTOR: BAR_TOWER</div>
-          <div className="absolute bottom-[15%] left-1/2 -translate-x-1/2 text-[10px] font-bold tracking-[0.2em] text-gray-600 uppercase w-full text-center border-t border-dashed border-white/5 pt-4">SECTOR: TERRACE_OPEN_AIR</div>
-
-          {/* Tables Layer */}
-          <div className="absolute inset-0 transition-transform duration-500 ease-out" style={{ transform: `scale(${scale})` }}>
-            {FLOOR_LAYOUT.map(item => {
-              const status = getTableStatus(item.id);
-              const data = getTableData(item.id);
-              const isReserved = status === 'reserved';
-              const isOccupied = status === 'occupied';
-              const isCalling = status === 'calling';
-              
-              // Shape Styles
-              let shapeClass = 'rounded-2xl'; // Default rect
-              if (item.type === 'round' || item.type === 'sushi') shapeClass = 'rounded-full';
-              if (item.type === 'booth') shapeClass = 'rounded-[2.5rem]';
-
-              // Color Styles
-              let colorClass = 'bg-[#151921] border-white/10 text-gray-500'; // Free
-              if (isOccupied) colorClass = 'bg-blue-600 border-blue-400 text-white shadow-[0_0_30px_rgba(37,99,235,0.3)]';
-              if (isReserved) colorClass = 'bg-[#151921] border-amber-500 border-dashed text-amber-500';
-              if (isCalling) colorClass = 'bg-[#151921] border-red-500 text-red-500 shadow-[0_0_30px_rgba(239,68,68,0.2)] animate-pulse';
-
+            {/* Grid de mesas por zona */}
+            {Array.from(new Set(mesasFiltradas.map(m => m.zona))).map(zona => {
+              const mesasZona = mesasFiltradas.filter(m => m.zona === zona);
               return (
-                <div 
-                  key={item.id}
-                  onClick={() => { setSelectedTable(data); setIsModalOpen(true); }}
-                  className={`absolute cursor-pointer group flex items-center justify-center border-2 transition-all duration-300 hover:scale-105 ${shapeClass} ${colorClass}`}
-                  style={{
-                    left: `${item.x}%`,
-                    top: `${item.y}%`,
-                    width: item.type === 'sushi' ? '3.5%' : item.type === 'rect' ? '10%' : item.type === 'booth' ? '9%' : '7%',
-                    height: item.type === 'sushi' ? '3.5%' : item.type === 'rect' ? '7%' : item.type === 'booth' ? '9%' : '7%',
-                    aspectRatio: item.type === 'sushi' || item.type === 'round' ? '1/1' : 'auto'
-                  }}
-                >
-                  <span className="font-bold text-[10px] tracking-wider">{item.label}</span>
-                  
-                  {/* Chairs Visuals (Pseudo-chairs) */}
-                  {item.type !== 'sushi' && (
-                    <>
-                      <div className={`absolute -top-2 left-1/2 -translate-x-1/2 w-8 h-1.5 rounded-full ${isOccupied ? 'bg-blue-500' : 'bg-[#1F232C]'}`}></div>
-                      <div className={`absolute -bottom-2 left-1/2 -translate-x-1/2 w-8 h-1.5 rounded-full ${isOccupied ? 'bg-blue-500' : 'bg-[#1F232C]'}`}></div>
-                      {item.type === 'rect' && (
-                        <>
-                          <div className={`absolute top-1/2 -left-2 -translate-y-1/2 w-1.5 h-6 rounded-full ${isOccupied ? 'bg-blue-500' : 'bg-[#1F232C]'}`}></div>
-                          <div className={`absolute top-1/2 -right-2 -translate-y-1/2 w-1.5 h-6 rounded-full ${isOccupied ? 'bg-blue-500' : 'bg-[#1F232C]'}`}></div>
-                        </>
-                      )}
-                    </>
-                  )}
-
-                  {/* Reserved Time Label */}
-                  {isReserved && (
-                     <div className="absolute -top-6 bg-[#151921] px-2 py-0.5 rounded text-[9px] font-bold text-amber-500 border border-amber-500/30">
-                        20:30
-                     </div>
-                  )}
-
-                  {/* Calling Icon */}
-                  {isCalling && (
-                    <div className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full shadow-lg">
-                      <BellRing size={8} />
-                    </div>
-                  )}
+                <div key={zona} style={{ marginBottom:20 }}>
+                  <div style={{ fontSize:11, color:S.text3, fontWeight:700, textTransform:'uppercase' as const, letterSpacing:'.08em', marginBottom:10 }}>
+                    {zona} — {mesasZona.length} mesas
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(120px, 1fr))', gap:10 }}>
+                    {mesasZona.map(mesa => {
+                      const cfg = ESTADO_CFG[mesa.estado];
+                      const reservasMesa = reservasHoy.filter(r => r.mesa_id === mesa.id && ['confirmada','pendiente'].includes(r.estado));
+                      return (
+                        <div key={mesa.id}
+                          onClick={() => { setMesaSeleccionada(mesa); if (mesa.estado === 'libre') { setF('mesa_id', mesa.id); setTab('nueva'); } }}
+                          style={{ background:cfg.bg, border:`2px solid ${cfg.color}50`, borderRadius:14, padding:14, cursor:'pointer', transition:'all .2s', textAlign:'center' }}
+                          onMouseEnter={e => e.currentTarget.style.borderColor=cfg.color}
+                          onMouseLeave={e => e.currentTarget.style.borderColor=`${cfg.color}50`}>
+                          <div style={{ fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:900, color:S.text1 }}>{mesa.numero}</div>
+                          <div style={{ fontSize:10, color:cfg.color, fontWeight:700, marginTop:2 }}>{cfg.label}</div>
+                          <div style={{ fontSize:10, color:S.text3, marginTop:2 }}>👥 {mesa.capacidad}</div>
+                          {reservasMesa.length > 0 && (
+                            <div style={{ marginTop:6, fontSize:10, color:S.goldL, background:`${S.gold}15`, borderRadius:6, padding:'2px 6px' }}>
+                              {formatHora(reservasMesa[0].hora)} · {reservasMesa[0].nombre_cliente.split(' ')[0]}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })}
           </div>
+        )}
 
-          {/* Legend */}
-          <div className="absolute bottom-8 right-8 flex flex-col gap-3 bg-[#151921]/90 p-4 rounded-2xl backdrop-blur-md border border-white/5">
-             <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full border border-gray-600"></div><span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Free</span></div>
-             <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full bg-blue-600 border border-blue-400"></div><span className="text-[10px] font-bold uppercase text-gray-400 tracking-wider">Occupied</span></div>
-             <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full border border-dashed border-amber-500"></div><span className="text-[10px] font-bold uppercase text-amber-500 tracking-wider">Reserved</span></div>
-             <div className="flex items-center gap-3"><div className="w-3 h-3 rounded-full border border-red-500"></div><span className="text-[10px] font-bold uppercase text-red-500 tracking-wider">Calling</span></div>
-          </div>
-        </div>
-      </div>
-
-      {/* Right Sidebar */}
-      <div className="w-[380px] bg-[#0F1218] border-l border-white/5 p-6 flex flex-col gap-6 shrink-0 z-20">
-        
-        {/* Real-Time Metrics */}
-        <div className="bg-[#151921] rounded-3xl p-6 border border-white/5">
-          <div className="flex items-center gap-2 mb-6">
-            <LayoutGrid size={14} className="text-gray-500" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Real-Time Metrics</span>
-          </div>
-          
-          <div className="grid grid-cols-2 gap-8 mb-6">
-            <div>
-              <p className="text-[9px] font-bold uppercase text-gray-500 tracking-wider mb-1">Total Covers</p>
-              <p className="text-3xl font-bold text-white">{totalCovers}</p>
-            </div>
-            <div>
-              <p className="text-[9px] font-bold uppercase text-gray-500 tracking-wider mb-1">Waitlist</p>
-              <p className="text-3xl font-bold text-amber-500">0{waitlistCount}</p>
-            </div>
-          </div>
-
-          <div>
-            <div className="flex justify-between text-[10px] font-bold uppercase text-gray-500 mb-2">
-              <span>Occupancy Rate</span>
-              <span className="text-blue-500">{occupancyRate}%</span>
-            </div>
-            <div className="h-2 bg-[#0B0E14] rounded-full overflow-hidden">
-              <div className="h-full bg-blue-600 rounded-full transition-all duration-1000" style={{ width: `${occupancyRate}%` }}></div>
-            </div>
-          </div>
-        </div>
-
-        {/* Service Request Card */}
-        {callingTable ? (
-          <div className="bg-[#151921] rounded-3xl border border-red-500/20 overflow-hidden relative">
-             <div className="absolute top-0 left-0 w-1 h-full bg-red-500"></div>
-             <div className="p-4 bg-red-500/10 flex justify-between items-center border-b border-red-500/10">
-                <div className="flex items-center gap-2 text-red-500">
-                  <BellRing size={14} />
-                  <span className="text-[10px] font-bold uppercase tracking-widest">Service Request</span>
-                </div>
-                <span className="text-[10px] font-mono text-red-400">00:45s</span>
-             </div>
-             <div className="p-6 flex justify-between items-center">
-                <div>
-                   <h3 className="text-lg font-bold text-white">Table {callingTable.label || callingTable.id}</h3>
-                   <p className="text-xs text-gray-400 mt-1">{callingTable.zone} • {callingTable.seats || 4} Guests</p>
-                   <div className="mt-3 inline-block px-3 py-1 rounded-full bg-[#0B0E14] border border-white/10 text-[10px] text-gray-400">
-                      Sommelier Req
-                   </div>
-                </div>
-                <button 
-                  onClick={() => handleOpenTable(callingTable.id)}
-                  className="w-10 h-10 rounded-full bg-red-500 flex items-center justify-center hover:bg-red-400 transition-colors shadow-lg shadow-red-900/20"
-                >
-                   <Check size={20} className="text-white" />
+        {/* ── LISTA DE RESERVAS ── */}
+        {tab === 'lista' && (
+          <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+            {reservasHoy.length === 0 && (
+              <div style={{ background:S.bg2, border:`1px solid ${S.border}`, borderRadius:14, padding:40, textAlign:'center' }}>
+                <div style={{ fontSize:48, marginBottom:12 }}>📅</div>
+                <div style={{ fontSize:15, fontWeight:700, marginBottom:8 }}>Sin reservas para este día</div>
+                <button onClick={()=>setTab('nueva')} style={{ background:S.purple, color:'#fff', border:'none', padding:'10px 24px', borderRadius:10, fontSize:13, fontWeight:700, cursor:'pointer', marginTop:8 }}>
+                  + Crear reserva
                 </button>
-             </div>
-          </div>
-        ) : (
-          <div className="bg-[#151921] rounded-3xl border border-white/5 p-6 flex flex-col items-center justify-center text-center opacity-50">
-             <BellRing size={24} className="text-gray-600 mb-3" />
-             <p className="text-xs text-gray-500 font-bold uppercase tracking-widest">No Active Requests</p>
+              </div>
+            )}
+            {reservasHoy
+              .sort((a,b) => a.hora.localeCompare(b.hora))
+              .map(r => {
+                const cfg = RESERVA_CFG[r.estado];
+                return (
+                  <div key={r.id} onClick={() => setReservaDetalle(r)}
+                    style={{ background:S.bg2, border:`1px solid ${r.estado==='llegó'?S.green+'40':S.border}`, borderRadius:14, padding:16, cursor:'pointer', transition:'all .2s', display:'flex', alignItems:'center', gap:14 }}
+                    onMouseEnter={e => e.currentTarget.style.borderColor=S.purple+'50'}
+                    onMouseLeave={e => e.currentTarget.style.borderColor=r.estado==='llegó'?S.green+'40':S.border}>
+
+                    {/* Hora */}
+                    <div style={{ textAlign:'center', minWidth:50 }}>
+                      <div style={{ fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:900, color:S.goldL }}>{formatHora(r.hora)}</div>
+                      <div style={{ fontSize:10, color:S.text3 }}>{r.duracion_min}m</div>
+                    </div>
+
+                    {/* Número mesa */}
+                    <div style={{ width:40, height:40, borderRadius:10, background:S.bg3, border:`1px solid ${S.border}`, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                      <div style={{ fontSize:9, color:S.text3 }}>MESA</div>
+                      <div style={{ fontFamily:"'Syne',sans-serif", fontSize:15, fontWeight:900 }}>{r.mesa_numero}</div>
+                    </div>
+
+                    {/* Info principal */}
+                    <div style={{ flex:1 }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:3 }}>
+                        <span style={{ fontSize:14, fontWeight:700 }}>{r.nombre_cliente}</span>
+                        {r.vip_status && <span style={{ fontSize:10, color:S.gold }}>⭐ VIP</span>}
+                        {r.ocasion && <span style={{ fontSize:10, background:`${S.purple}15`, color:S.purple, padding:'1px 6px', borderRadius:10 }}>{r.ocasion}</span>}
+                      </div>
+                      <div style={{ fontSize:11, color:S.text3 }}>
+                        👥 {r.pax} personas · {r.mesa_zona} · {r.origen}
+                        {r.total_visits && <span style={{ marginLeft:6 }}>· {r.total_visits} visitas</span>}
+                      </div>
+                      {r.nota && <div style={{ fontSize:11, color:S.text2, marginTop:3 }}>📝 {r.nota}</div>}
+                    </div>
+
+                    {/* Estado */}
+                    <span style={{ background:`${cfg.color}20`, color:cfg.color, border:`1px solid ${cfg.color}40`, padding:'4px 12px', borderRadius:20, fontSize:11, fontWeight:700, flexShrink:0 }}>
+                      {cfg.icon} {cfg.label}
+                    </span>
+                  </div>
+                );
+              })}
           </div>
         )}
 
-        {/* Upcoming Reservations */}
-        <div className="bg-[#151921] rounded-3xl p-6 border border-white/5 flex-1 flex flex-col">
-          <div className="flex items-center gap-2 mb-6">
-            <Calendar size={14} className="text-gray-500" />
-            <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Upcoming</span>
+        {/* ── TIMELINE ── */}
+        {tab === 'timeline' && (
+          <div>
+            <div style={{ fontSize:12, color:S.text3, marginBottom:16 }}>Vista de disponibilidad por hora — {formatFecha(fechaFiltro)}</div>
+            {/* Horas de servicio */}
+            {['12:00','13:00','14:00','15:00','19:00','20:00','21:00','22:00','23:00'].map(hora => {
+              const reservasHora = reservasHoy.filter(r => formatHora(r.hora) === hora);
+              return (
+                <div key={hora} style={{ display:'flex', gap:10, marginBottom:8, alignItems:'flex-start' }}>
+                  <div style={{ minWidth:50, fontSize:12, fontWeight:700, color:S.goldL, paddingTop:10 }}>{hora}</div>
+                  <div style={{ flex:1, display:'flex', gap:8, flexWrap:'wrap' }}>
+                    {reservasHora.length > 0 ? reservasHora.map(r => {
+                      const cfg = RESERVA_CFG[r.estado];
+                      return (
+                        <div key={r.id} onClick={() => setReservaDetalle(r)}
+                          style={{ background:`${cfg.color}15`, border:`1px solid ${cfg.color}40`, borderRadius:10, padding:'8px 14px', cursor:'pointer', minWidth:160 }}>
+                          <div style={{ fontSize:13, fontWeight:700 }}>{r.nombre_cliente.split(' ')[0]}</div>
+                          <div style={{ fontSize:10, color:S.text3 }}>Mesa {r.mesa_numero} · {r.pax}pax · {cfg.label}</div>
+                        </div>
+                      );
+                    }) : (
+                      <div style={{ background:S.bg2, border:`1px dashed ${S.border}`, borderRadius:10, padding:'8px 14px', fontSize:11, color:S.text3 }}>
+                        Disponible
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
+        )}
 
-          <div className="space-y-3 overflow-y-auto pr-2 custom-scrollbar flex-1">
-            {dailyReservations.length > 0 ? dailyReservations.map((res, idx) => (
-              <div key={res.id} className="group flex items-center justify-between p-4 rounded-2xl bg-[#0B0E14] border border-white/5 hover:border-white/10 transition-all">
-                 <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-bold ${idx === 0 ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' : 'bg-[#151921] text-gray-500 border border-white/5'}`}>
-                       {new Date(res.reservation_time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                    </div>
-                    <div>
-                       <h4 className="text-sm font-bold text-white">{res.customers?.name}</h4>
-                       <p className="text-[10px] text-gray-500">{res.pax} Guests • {res.tables?.name || 'VIP Gold'}</p>
-                    </div>
-                 </div>
-                 <span className="text-[10px] font-bold text-gray-600">{res.tables?.name || 'T-14'}</span>
+        {/* ── NUEVA RESERVA ── */}
+        {tab === 'nueva' && (
+          <div style={{ maxWidth:600, display:'flex', flexDirection:'column', gap:14 }}>
+
+            {/* Info cliente */}
+            <div style={{ background:S.bg2, border:`1px solid ${S.border}`, borderRadius:14, padding:18 }}>
+              <div style={{ fontSize:11, color:S.purple, fontWeight:700, textTransform:'uppercase' as const, letterSpacing:'.08em', marginBottom:14 }}>Cliente</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                <div>
+                  <div style={{ fontSize:10, color:S.text3, marginBottom:4 }}>Nombre *</div>
+                  <input style={inp} placeholder="Nombre completo" value={form.nombre} onChange={e=>setF('nombre',e.target.value)} />
+                </div>
+                <div>
+                  <div style={{ fontSize:10, color:S.text3, marginBottom:4 }}>Personas *</div>
+                  <select style={inp} value={form.pax} onChange={e=>setF('pax',parseInt(e.target.value))}>
+                    {[1,2,3,4,5,6,7,8,10,12,15,20].map(n=><option key={n}>{n}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize:10, color:S.text3, marginBottom:4 }}>Teléfono / WhatsApp</div>
+                  <input style={inp} placeholder="+57 310 000 0000" value={form.telefono} onChange={e=>setF('telefono',e.target.value)} />
+                </div>
+                <div>
+                  <div style={{ fontSize:10, color:S.text3, marginBottom:4 }}>Email</div>
+                  <input style={inp} placeholder="email@correo.com" value={form.email} onChange={e=>setF('email',e.target.value)} />
+                </div>
               </div>
-            )) : (
-              <div className="text-center py-8 text-gray-600 text-xs">No upcoming reservations</div>
-            )}
-            
-            {/* Mock Data for visual fidelity if empty */}
-            {dailyReservations.length === 0 && (
-              <>
-                <div className="group flex items-center justify-between p-4 rounded-2xl bg-[#0B0E14] border border-white/5 hover:border-white/10 transition-all">
-                   <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-bold bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                         20:00
-                      </div>
-                      <div>
-                         <h4 className="text-sm font-bold text-white">Elena Fisher</h4>
-                         <p className="text-[10px] text-gray-500">2 Guests • VIP Gold</p>
-                      </div>
-                   </div>
-                   <span className="text-[10px] font-bold text-gray-400">T-14</span>
+            </div>
+
+            {/* Fecha, hora, mesa */}
+            <div style={{ background:S.bg2, border:`1px solid ${S.border}`, borderRadius:14, padding:18 }}>
+              <div style={{ fontSize:11, color:S.goldL, fontWeight:700, textTransform:'uppercase' as const, letterSpacing:'.08em', marginBottom:14 }}>Reserva</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:10, marginBottom:12 }}>
+                <div>
+                  <div style={{ fontSize:10, color:S.text3, marginBottom:4 }}>Fecha *</div>
+                  <input type="date" style={inp} value={form.fecha} onChange={e=>setF('fecha',e.target.value)} />
                 </div>
-                <div className="group flex items-center justify-between p-4 rounded-2xl bg-[#0B0E14] border border-white/5 hover:border-white/10 transition-all">
-                   <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-full flex items-center justify-center text-[10px] font-bold bg-[#151921] text-gray-500 border border-white/5">
-                         20:15
-                      </div>
-                      <div>
-                         <h4 className="text-sm font-bold text-white">Tech Corp Event</h4>
-                         <p className="text-[10px] text-gray-500">8 Guests • Main Lounge</p>
-                      </div>
-                   </div>
-                   <span className="text-[10px] font-bold text-gray-600 italic">Unassigned</span>
+                <div>
+                  <div style={{ fontSize:10, color:S.text3, marginBottom:4 }}>Hora *</div>
+                  <select style={inp} value={form.hora} onChange={e=>setF('hora',e.target.value)}>
+                    {['12:00','12:30','13:00','13:30','14:00','14:30','15:00','19:00','19:30','20:00','20:30','21:00','21:30','22:00','22:30'].map(h=><option key={h}>{h}</option>)}
+                  </select>
                 </div>
-              </>
-            )}
+                <div>
+                  <div style={{ fontSize:10, color:S.text3, marginBottom:4 }}>Duración</div>
+                  <select style={inp} value={form.duracion} onChange={e=>setF('duracion',parseInt(e.target.value))}>
+                    {[60,90,120,150,180].map(d=><option key={d} value={d}>{d} min</option>)}
+                  </select>
+                </div>
+              </div>
+
+              {/* Selector de mesa visual */}
+              <div style={{ fontSize:10, color:S.text3, marginBottom:8, fontWeight:700, textTransform:'uppercase' as const }}>Mesa * — haz clic para seleccionar</div>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(70px, 1fr))', gap:8 }}>
+                {mesas.map(m => {
+                  const cfg = ESTADO_CFG[m.estado];
+                  const selected = form.mesa_id === m.id;
+                  const disponible = m.estado === 'libre';
+                  return (
+                    <div key={m.id}
+                      onClick={() => disponible && setF('mesa_id', m.id)}
+                      style={{ background:selected?`${S.purple}20`:cfg.bg, border:`2px solid ${selected?S.purple:cfg.color+'40'}`, borderRadius:10, padding:'8px', textAlign:'center', cursor:disponible?'pointer':'not-allowed', opacity:disponible?1:0.5, transition:'all .2s' }}>
+                      <div style={{ fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:900, color:selected?S.purple:S.text1 }}>{m.numero}</div>
+                      <div style={{ fontSize:9, color:S.text3 }}>{m.capacidad}p</div>
+                      <div style={{ fontSize:9, color:cfg.color }}>{m.zona.slice(0,5)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Ocasión y notas */}
+            <div style={{ background:S.bg2, border:`1px solid ${S.border}`, borderRadius:14, padding:18 }}>
+              <div style={{ fontSize:11, color:S.text3, fontWeight:700, textTransform:'uppercase' as const, letterSpacing:'.08em', marginBottom:14 }}>Detalles</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+                <div>
+                  <div style={{ fontSize:10, color:S.text3, marginBottom:4 }}>Ocasión</div>
+                  <select style={inp} value={form.ocasion} onChange={e=>setF('ocasion',e.target.value)}>
+                    <option value="">Sin ocasión especial</option>
+                    {OCASIONES.map(o=><option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize:10, color:S.text3, marginBottom:4 }}>Origen</div>
+                  <select style={inp} value={form.origen} onChange={e=>setF('origen',e.target.value)}>
+                    {ORIGENES.map(o=><option key={o}>{o}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <div style={{ fontSize:10, color:S.text3, marginBottom:4 }}>Nota para el equipo</div>
+                <textarea style={{ ...inp, minHeight:70, resize:'vertical' as const }} placeholder="Ej: Mesa con vista, champagne de bienvenida, cliente VIP..." value={form.nota} onChange={e=>setF('nota',e.target.value)} />
+              </div>
+            </div>
+
+            <button onClick={crearReserva}
+              style={{ width:'100%', padding:14, borderRadius:12, border:'none', background:S.purple, color:'#fff', fontSize:14, fontWeight:900, cursor:'pointer', fontFamily:"'Syne',sans-serif" }}
+              onMouseEnter={e=>e.currentTarget.style.opacity='.85'}
+              onMouseLeave={e=>e.currentTarget.style.opacity='1'}>
+              ✓ Confirmar reserva
+            </button>
           </div>
-        </div>
+        )}
 
       </div>
-
-      {/* Modal for Table Details */}
-      {isModalOpen && selectedTable && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-8 animate-in fade-in backdrop-blur-sm bg-black/50">
-           <div className="bg-[#151921] border border-white/10 rounded-3xl w-full max-w-md relative z-10 overflow-hidden shadow-2xl">
-              <div className="p-6 border-b border-white/5 flex justify-between items-center">
-                 <div>
-                    <h3 className="text-xl font-bold text-white">Table {selectedTable.label || selectedTable.id}</h3>
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mt-1">{selectedTable.zone}</p>
-                 </div>
-                 <button onClick={() => setIsModalOpen(false)} className="p-2 hover:bg-white/5 rounded-full text-gray-400"><X size={20} /></button>
-              </div>
-              <div className="p-6 space-y-6">
-                 <div className="grid grid-cols-2 gap-4">
-                    <div className="bg-[#0B0E14] p-4 rounded-2xl border border-white/5">
-                       <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest block mb-1">Status</span>
-                       <span className={`text-sm font-bold uppercase ${selectedTable.status === 'free' ? 'text-green-500' : 'text-blue-500'}`}>{selectedTable.status}</span>
-                    </div>
-                    <div className="bg-[#0B0E14] p-4 rounded-2xl border border-white/5">
-                       <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest block mb-1">Capacity</span>
-                       <span className="text-sm font-bold text-white">{selectedTable.seats || 4} Guests</span>
-                    </div>
-                 </div>
-
-                 {selectedTable.status === 'free' ? (
-                    <button onClick={() => handleOpenTable(selectedTable.id)} className="w-full bg-blue-600 hover:bg-blue-500 py-4 rounded-xl text-xs font-bold uppercase tracking-widest text-white shadow-lg transition-all">
-                       Seating Guests
-                    </button>
-                 ) : (
-                    <div className="space-y-3">
-                       <button className="w-full bg-[#0B0E14] border border-white/10 hover:bg-white/5 py-4 rounded-xl text-xs font-bold uppercase tracking-widest text-white transition-all">
-                          View Order
-                       </button>
-                       <button onClick={() => handleOpenTable(selectedTable.id)} className="w-full bg-red-500/10 border border-red-500/20 hover:bg-red-500 hover:text-white py-4 rounded-xl text-xs font-bold uppercase tracking-widest text-red-500 transition-all">
-                          Release Table
-                       </button>
-                    </div>
-                 )}
-              </div>
-           </div>
-        </div>
-      )}
     </div>
   );
-};
-
-export default ReserveModule;
+}
