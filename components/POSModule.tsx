@@ -443,6 +443,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [mostrarTraspaso, setMostrarTraspaso] = useState(false);
   const [mesaDestino, setMesaDestino] = useState<number | null>(null);
   const [tipoTraspaso, setTipoTraspaso] = useState<'mesa'|'barra'|'barra-a-mesa'>('mesa');
+  const [miMenu, setMiMenu] = useState<any[]>([]);
+  const [miMenuFormOpen, setMiMenuFormOpen] = useState(false);
+  const [miMenuForm, setMiMenuForm] = useState({ nombre:'', precio:'', emoji:'🍽️', categoria:'Compartir', badge:'recomendado', carne: false });
   const [order, setOrder] = useState<OrderItem[]>([]);
   // Pedido pendiente de enviar a cocina (agregar a la orden)
   const [pendingOrder, setPendingOrder] = useState<OrderItem[]>([]);
@@ -2734,107 +2737,86 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             </>
           )}
 
-          {rightTab === 'Menú' && (() => {
-            const [miMenu, setMiMenu] = React.useState<any[]>([]);
-            const [formOpen, setFormOpen] = React.useState(false);
-            const [form, setForm] = React.useState({ nombre:'', precio:'', emoji:'🍽️', categoria:'Compartir', badge:'recomendado', carne: false });
-            const setF = (k: string, v: any) => setForm(p => ({...p, [k]: v}));
-            const emojisRapidos = ['🍣','🍜','🍱','🥩','🐙','🦐','🍹','🍷','🥗','🍮','☕','🍺','🍶','🥟','🌮'];
-            return (
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-[11px] font-bold text-[#9b72ff] uppercase tracking-wider">✦ Mi Menú personalizado</div>
-                  <button onClick={() => setFormOpen(p => !p)}
-                    className="px-2.5 py-1 rounded-lg bg-[#9b72ff]/15 border border-[#9b72ff]/30 text-[#9b72ff] text-[10px] font-bold hover:bg-[#9b72ff]/25 transition-all">
-                    {formOpen ? '✕ Cancelar' : '+ Agregar plato'}
+          {rightTab === 'Menú' && (
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="text-[11px] font-bold text-[#9b72ff] uppercase tracking-wider">✦ Mi Menú personalizado</div>
+                <button onClick={() => setMiMenuFormOpen(p => !p)}
+                  className="px-2.5 py-1 rounded-lg bg-[#9b72ff]/15 border border-[#9b72ff]/30 text-[#9b72ff] text-[10px] font-bold hover:bg-[#9b72ff]/25 transition-all">
+                  {miMenuFormOpen ? '✕ Cancelar' : '+ Agregar plato'}
+                </button>
+              </div>
+              {miMenuFormOpen && (
+                <div className="bg-[#1c1c1c] border border-[#9b72ff]/30 rounded-xl p-3 flex flex-col gap-2">
+                  <input value={miMenuForm.nombre} onChange={e => setMiMenuForm(p => ({...p, nombre: e.target.value}))}
+                    placeholder="Nombre del plato *"
+                    className="w-full bg-[#141414] border border-[#2a2a2a] focus:border-[#9b72ff] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none" />
+                  <div className="flex gap-2">
+                    <input value={miMenuForm.precio} onChange={e => setMiMenuForm(p => ({...p, precio: e.target.value}))}
+                      placeholder="$00.000"
+                      className="flex-1 bg-[#141414] border border-[#2a2a2a] focus:border-[#9b72ff] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none" />
+                    <select value={miMenuForm.categoria} onChange={e => setMiMenuForm(p => ({...p, categoria: e.target.value}))}
+                      className="flex-1 bg-[#141414] border border-[#2a2a2a] rounded-lg px-2 py-2 text-[12px] text-[#f0f0f0] outline-none">
+                      {categorias.map(c => <option key={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="text-[9px] text-[#606060] mb-1">Emoji</div>
+                    <div className="flex flex-wrap gap-1">
+                      {['🍣','🍜','🍱','🥩','🐙','🦐','🍹','🍷','🥗','🍮','☕','🍺','🍶','🥟','🌮'].map(e => (
+                        <button key={e} onClick={() => setMiMenuForm(p => ({...p, emoji: e}))}
+                          style={{ background: miMenuForm.emoji === e ? '#9b72ff20' : '#1a1a1a', border: `1px solid ${miMenuForm.emoji === e ? '#9b72ff' : '#2a2a2a'}` }}
+                          className="w-8 h-8 rounded-lg flex items-center justify-center text-[18px] transition-all">
+                          {e}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <select value={miMenuForm.badge} onChange={e => setMiMenuForm(p => ({...p, badge: e.target.value}))}
+                      className="flex-1 bg-[#141414] border border-[#2a2a2a] rounded-lg px-2 py-2 text-[11px] text-[#f0f0f0] outline-none">
+                      <option value="recomendado">Recomendado</option>
+                      <option value="gold">Alta rentabilidad</option>
+                      <option value="orange">Mover hoy</option>
+                    </select>
+                    <label className="flex items-center gap-1.5 text-[11px] text-[#a0a0a0] cursor-pointer">
+                      <input type="checkbox" checked={miMenuForm.carne} onChange={e => setMiMenuForm(p => ({...p, carne: e.target.checked}))} className="w-3 h-3" />
+                      Carne
+                    </label>
+                  </div>
+                  <button onClick={() => {
+                    if (!miMenuForm.nombre || !miMenuForm.precio) { showToast('⚠️ Nombre y precio obligatorios'); return; }
+                    setMiMenu(prev => [...prev, { ...miMenuForm, id: Date.now() }]);
+                    setMiMenuForm({ nombre:'', precio:'', emoji:'🍽️', categoria:'Compartir', badge:'recomendado', carne: false });
+                    setMiMenuFormOpen(false);
+                    showToast(`✓ ${miMenuForm.nombre} agregado a Mi Menú`);
+                  }} className="w-full py-2.5 rounded-xl bg-[#9b72ff] text-white text-[12px] font-bold hover:opacity-90 transition-all">
+                    ✓ Guardar plato
                   </button>
                 </div>
-
-                {/* Formulario nuevo plato */}
-                {formOpen && (
-                  <div className="bg-[#1c1c1c] border border-[#9b72ff]/30 rounded-xl p-3 flex flex-col gap-2">
-                    <input value={form.nombre} onChange={e => setF('nombre', e.target.value)}
-                      placeholder="Nombre del plato *"
-                      className="w-full bg-[#141414] border border-[#2a2a2a] focus:border-[#9b72ff] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none" />
-                    <div className="flex gap-2">
-                      <input value={form.precio} onChange={e => setF('precio', e.target.value)}
-                        placeholder="$00.000"
-                        className="flex-1 bg-[#141414] border border-[#2a2a2a] focus:border-[#9b72ff] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none" />
-                      <select value={form.categoria} onChange={e => setF('categoria', e.target.value)}
-                        className="flex-1 bg-[#141414] border border-[#2a2a2a] rounded-lg px-2 py-2 text-[12px] text-[#f0f0f0] outline-none">
-                        {categorias.map(c => <option key={c}>{c}</option>)}
-                      </select>
-                    </div>
-                    {/* Emoji picker rápido */}
-                    <div>
-                      <div className="text-[9px] text-[#606060] mb-1">Emoji</div>
-                      <div className="flex flex-wrap gap-1">
-                        {emojisRapidos.map(e => (
-                          <button key={e} onClick={() => setF('emoji', e)}
-                            style={{ background: form.emoji === e ? '#9b72ff20' : '#1a1a1a', border: `1px solid ${form.emoji === e ? '#9b72ff' : '#2a2a2a'}` }}
-                            className="w-8 h-8 rounded-lg flex items-center justify-center text-[18px] transition-all">
-                            {e}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <select value={form.badge} onChange={e => setF('badge', e.target.value)}
-                        className="flex-1 bg-[#141414] border border-[#2a2a2a] rounded-lg px-2 py-2 text-[11px] text-[#f0f0f0] outline-none">
-                        <option value="recomendado">Recomendado</option>
-                        <option value="gold">Alta rentabilidad</option>
-                        <option value="orange">Mover hoy</option>
-                      </select>
-                      <label className="flex items-center gap-1.5 text-[11px] text-[#a0a0a0] cursor-pointer">
-                        <input type="checkbox" checked={form.carne} onChange={e => setF('carne', e.target.checked)} className="w-3 h-3" />
-                        Carne
-                      </label>
-                    </div>
-                    <button onClick={() => {
-                      if (!form.nombre || !form.precio) { showToast('⚠️ Nombre y precio obligatorios'); return; }
-                      setMiMenu(prev => [...prev, { ...form, id: Date.now() }]);
-                      setForm({ nombre:'', precio:'', emoji:'🍽️', categoria:'Compartir', badge:'recomendado', carne: false });
-                      setFormOpen(false);
-                      showToast(`✓ ${form.nombre} agregado a Mi Menú`);
-                    }} className="w-full py-2.5 rounded-xl bg-[#9b72ff] text-white text-[12px] font-bold hover:opacity-90 transition-all">
-                      ✓ Guardar plato
-                    </button>
+              )}
+              {miMenu.length === 0 && !miMenuFormOpen && (
+                <div className="text-center py-8 text-[11px] text-[#606060]">
+                  <div className="text-[32px] mb-2">🍽️</div>
+                  Sin platos aún — crea tu menú personalizado
+                </div>
+              )}
+              {miMenu.map(p => (
+                <div key={p.id} className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl p-2.5 flex items-center gap-2.5">
+                  <span className="text-[22px]">{p.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12px] font-bold text-[#f0f0f0] truncate">{p.nombre}</div>
+                    <div className="text-[10px] text-[#d4943a] font-bold">{p.precio} · {p.categoria}</div>
                   </div>
-                )}
-
-                {/* Lista de platos creados */}
-                {miMenu.length === 0 && !formOpen && (
-                  <div className="text-center py-8 text-[11px] text-[#606060]">
-                    <div className="text-[32px] mb-2">🍽️</div>
-                    Sin platos aún — crea tu menú personalizado
+                  <div className="flex gap-1">
+                    <button onClick={() => agregarAOrden({ ...p })} className="px-2 py-1.5 rounded-lg bg-[#d4943a]/15 border border-[#d4943a]/30 text-[#d4943a] text-[9px] font-bold hover:bg-[#d4943a]/25 transition-all">+ Orden</button>
+                    <button onClick={() => marcharAhora({ ...p })} className="px-2 py-1.5 rounded-lg bg-[#4a8fd4]/15 border border-[#4a8fd4]/30 text-[#4a8fd4] text-[9px] font-bold hover:bg-[#4a8fd4]/25 transition-all">🔥</button>
+                    <button onClick={() => { setMiMenu(prev => prev.filter(x => x.id !== p.id)); showToast('Plato eliminado'); }} className="px-2 py-1.5 rounded-lg bg-[#e05050]/10 border border-[#e05050]/20 text-[#e05050] text-[9px] font-bold hover:bg-[#e05050]/20 transition-all">✕</button>
                   </div>
-                )}
-                {miMenu.map(p => (
-                  <div key={p.id} className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl p-2.5 flex items-center gap-2.5">
-                    <span className="text-[22px]">{p.emoji}</span>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-[12px] font-bold text-[#f0f0f0] truncate">{p.nombre}</div>
-                      <div className="text-[10px] text-[#d4943a] font-bold">{p.precio} · {p.categoria}</div>
-                    </div>
-                    <div className="flex gap-1">
-                      <button onClick={() => agregarAOrden({ ...p, categoria: p.categoria })}
-                        className="px-2 py-1.5 rounded-lg bg-[#d4943a]/15 border border-[#d4943a]/30 text-[#d4943a] text-[9px] font-bold hover:bg-[#d4943a]/25 transition-all">
-                        + Orden
-                      </button>
-                      <button onClick={() => marcharAhora({ ...p, categoria: p.categoria })}
-                        className="px-2 py-1.5 rounded-lg bg-[#4a8fd4]/15 border border-[#4a8fd4]/30 text-[#4a8fd4] text-[9px] font-bold hover:bg-[#4a8fd4]/25 transition-all">
-                        🔥
-                      </button>
-                      <button onClick={() => { setMiMenu(prev => prev.filter(x => x.id !== p.id)); showToast('Plato eliminado'); }}
-                        className="px-2 py-1.5 rounded-lg bg-[#e05050]/10 border border-[#e05050]/20 text-[#e05050] text-[9px] font-bold hover:bg-[#e05050]/20 transition-all">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
+                </div>
+              ))}
+            </div>
+          )}
 
             <div className="flex flex-col h-full">
               {/* Selector de rol emisor */}
@@ -2900,7 +2882,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             </div>
           )}
         </div>
-          </div>
+      </div>
     </div>
   );
 };
