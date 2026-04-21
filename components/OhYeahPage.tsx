@@ -559,7 +559,7 @@ export default function OhYeahPage({ onExit }: OhYeahProps) {
             {/* Tabs */}
             <div style={{ display:'flex', gap:0, borderBottom:'1px solid #1a1a1a', marginBottom:24 }}>
               {['MENÚ','EVENTOS','FOTOS','RESEÑAS'].map(t => (
-                <button key={t} style={{ padding:'12px 20px', background:'none', border:'none', color:'#666', fontSize:12, fontWeight:700, letterSpacing:'.06em', cursor:'none', borderBottom: t === 'MENÚ' ? '2px solid #FF007F' : '2px solid transparent', color: t === 'MENÚ' ? '#fff' : '#666' }}>{t}</button>
+                <button key={t} style={{ padding:'12px 20px', background:'none', border:'none', fontSize:12, fontWeight:700, letterSpacing:'.06em', cursor:'pointer', borderBottom: t === 'MENÚ' ? '2px solid #FF007F' : '2px solid transparent', color: t === 'MENÚ' ? '#fff' : '#666' }}>{t}</button>
               ))}
             </div>
             <div style={{ background:'#080808', borderRadius:14, padding:24, textAlign:'center' }}>
