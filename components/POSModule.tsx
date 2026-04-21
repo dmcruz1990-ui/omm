@@ -452,6 +452,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [toast, setToast] = useState('');
   const [modal, setModal] = useState<POSModal>({ open: false, title: '', content: null });
   const [chatMessage, setChatMessage] = useState('');
+  const [chatRol, setChatRol] = useState<'Mesero'|'Cocina'|'Host'|'Maître'>('Mesero');
 
   // ── Flow Store — sincronización con Book Flow ────────────
   const agregarPlatoFlow = (_data: any) => {}; // stub hasta que flowStore esté en el repo
@@ -2818,35 +2819,28 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             </div>
           )}
 
+          {rightTab === 'Chat' && (
             <div className="flex flex-col h-full">
-              {/* Selector de rol emisor */}
               <div className="flex gap-1.5 mb-3 flex-wrap">
                 {(['Mesero','Cocina','Host','Maître'] as const).map(rol => {
                   const colors: Record<string,string> = { Mesero:'#4a8fd4', Cocina:'#e05050', Host:'#3dba6f', Maître:'#9b72ff' };
-                  const [rolEmisor, setRolEmisor] = [
-                    (chatHistory.find(() => true) as any)?._rol ?? 'Mesero',
-                    (r: string) => setChatHistory(prev => { (prev as any)._rol = r; return [...prev]; })
-                  ];
-                  const active = ((chatHistory as any)._rol ?? 'Mesero') === rol;
                   return (
-                    <button key={rol}
-                      onClick={() => { (chatHistory as any)._rol = rol; setChatHistory(h => [...h]); }}
-                      style={{ borderColor: active ? colors[rol] : '#2a2a2a', background: active ? colors[rol]+'18' : 'transparent', color: active ? colors[rol] : '#606060' }}
+                    <button key={rol} onClick={() => setChatRol(rol)}
+                      style={{ borderColor: chatRol===rol ? colors[rol] : '#2a2a2a', background: chatRol===rol ? colors[rol]+'18' : 'transparent', color: chatRol===rol ? colors[rol] : '#606060' }}
                       className="flex-1 py-1 rounded-lg border text-[10px] font-bold transition-all">
                       {rol}
                     </button>
                   );
                 })}
               </div>
-              {/* Mensajes */}
               <div className="flex-1 overflow-y-auto flex flex-col gap-2 mb-3 pr-1">
                 {chatHistory.map((msg, idx) => {
-                  const colorMap: Record<string,string> = { Cocina:'#e05050', Host:'#3dba6f', Maître:'#9b72ff', Tú:'#4a8fd4', Mesero:'#4a8fd4' };
+                  const colorMap: Record<string,string> = { Cocina:'#e05050', Host:'#3dba6f', Maître:'#9b72ff', Mesero:'#4a8fd4', Tú:'#4a8fd4' };
                   const c = colorMap[msg.sender] ?? '#a0a0a0';
                   const isMine = msg.sender === 'Tú' || msg.sender === 'Mesero';
                   return (
                     <div key={idx} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
-                      <span className="text-[10px] text-[#606060] mb-0.5" style={{ color: c+'99' }}>{msg.sender} • {msg.time}</span>
+                      <span className="text-[10px] mb-0.5" style={{ color: c+'99' }}>{msg.sender} • {msg.time}</span>
                       <div className="p-2 px-3 rounded-xl text-[12px] max-w-[90%]"
                         style={{ background: c+'12', border: `1px solid ${c}30`, color: '#f0f0f0', borderBottomRightRadius: isMine ? 4 : 12, borderBottomLeftRadius: isMine ? 12 : 4 }}>
                         {msg.msg}
@@ -2855,27 +2849,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   );
                 })}
               </div>
-              {/* Input */}
               <div className="mt-auto flex gap-2">
                 <input type="text" value={chatMessage} onChange={e => setChatMessage(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && chatMessage.trim()) {
-                      const rol = (chatHistory as any)._rol ?? 'Mesero';
-                      const newMsg = { sender: rol, msg: chatMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-                      setChatHistory(prev => { const next = [...prev, newMsg]; (next as any)._rol = rol; return next; });
-                      setChatMessage('');
-                    }
-                  }}
-                  placeholder={`Mensaje como ${(chatHistory as any)._rol ?? 'Mesero'}...`}
+                  onKeyDown={e => { if (e.key === 'Enter' && chatMessage.trim()) { setChatHistory(prev => [...prev, { sender: chatRol, msg: chatMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]); setChatMessage(''); } }}
+                  placeholder={`Mensaje como ${chatRol}...`}
                   className="flex-1 bg-[#1c1c1c] border border-[#2a2a2a] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none focus:border-[#4a8fd4]" />
-                <button onClick={() => {
-                  if (chatMessage.trim()) {
-                    const rol = (chatHistory as any)._rol ?? 'Mesero';
-                    const newMsg = { sender: rol, msg: chatMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
-                    setChatHistory(prev => { const next = [...prev, newMsg]; (next as any)._rol = rol; return next; });
-                    setChatMessage('');
-                  }
-                }} className="w-9 h-9 rounded-lg bg-[#4a8fd4] text-white flex items-center justify-center hover:bg-[#3d7fc4] transition-all active:scale-95">
+                <button onClick={() => { if (chatMessage.trim()) { setChatHistory(prev => [...prev, { sender: chatRol, msg: chatMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]); setChatMessage(''); } }}
+                  className="w-9 h-9 rounded-lg bg-[#4a8fd4] text-white flex items-center justify-center hover:bg-[#3d7fc4] transition-all active:scale-95">
                   <MessageSquare size={14} />
                 </button>
               </div>
