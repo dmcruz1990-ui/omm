@@ -216,8 +216,7 @@ const iaRecsByCat: Record<string, any[]> = {
 const ritualStepsAll = ['Agua','Coctel','Compartir','Robata/Wok','Postre','Recomendar','Pousse-café','Café/Té','Vino','Licor'];
 const mesaRitualState: Record<number, string[]> = { 1: ['Agua'], 2: ['Agua', 'Aperitivo'], 3: ['Agua'], 4: [] };
 
-// ── MAPEO CATEGORÍA → PASO DEL RITUAL ─────────────────────
-// Cuando se agrega un producto de una categoría, se auto-marca el paso del ritual correspondiente
+// Mapeo categoría de producto → paso del ritual
 const CAT_TO_RITUAL: Record<string, string> = {
   'Agua': 'Agua',
   'Coctel': 'Coctel',
@@ -537,16 +536,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setTimeout(() => setToast(''), 2500);
   }, []);
 
-  // ── AUTO-CHECK DEL RITUAL ─────────────────────────────────
-  // Cuando se agrega un producto, marca automáticamente el paso del ritual
-  // correspondiente a su categoría (Agua → 'Agua', Café → 'Café/Té', etc.)
+  // Auto-marca el paso del ritual según la categoría del producto agregado
   const autoCheckRitual = (categoria: string | undefined) => {
     if (!categoria) return;
     const step = CAT_TO_RITUAL[categoria];
     if (!step) return;
     setRitualState(prev => {
       const current = prev[selectedTable.id] || [];
-      if (current.includes(step)) return prev; // ya marcado, no duplicar
+      if (current.includes(step)) return prev;
       return { ...prev, [selectedTable.id]: [...current, step] };
     });
   };
@@ -559,7 +556,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setAddedCards(prev => new Set([...prev, p.nombre]));
     setTimeout(() => setAddedCards(prev => { const n = new Set(prev); n.delete(p.nombre); return n; }), 1200);
     showToast(`✓ ${p.nombre} agregado al pedido`);
-    autoCheckRitual(p.categoria ?? currentCat); // ← auto-check ritual
+    autoCheckRitual(p.categoria ?? currentCat);
   };
 
   // ── Insertar pedido en Supabase → Flow lo ve en tiempo real ──
@@ -635,7 +632,6 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       urgente: totalEnCocina >= 10,
       termino: termino,
     });
-    // ── Auto-marcar paso del ritual según categoría ─────────
     autoCheckRitual(p.categoria ?? currentCat);
     setTimeout(() => setAddedCards(prev => { const n = new Set(prev); n.delete(p.nombre + '_marchar'); return n; }), 1500);
     setSelectedPlato(null);
@@ -650,7 +646,6 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setAddedCards(prev => new Set([...prev, p.nombre]));
     setTimeout(() => setAddedCards(prev => { const n = new Set(prev); n.delete(p.nombre); return n; }), 1200);
     showToast(`+ ${productoFinal.nombre} → orden Mesa ${selectedTable.num}`);
-    // ── Auto-marcar paso del ritual según categoría ─────────
     autoCheckRitual(p.categoria ?? currentCat);
     setSelectedPlato(null);
   };
@@ -2382,13 +2377,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           })()}
         </div>
 
-        {/* ══════════════════════════════════════════════════════ */}
-        {/* BARRA INFERIOR COLAPSABLE — con cambios visuales */}
-        {/* ══════════════════════════════════════════════════════ */}
+        {/* BARRA INFERIOR COLAPSABLE */}
         <div className="bg-[#0a0a0a] border-t border-[#2a2a2a] flex flex-col shrink-0">
 
-          {/* CAMBIO 1: Toggle bar — SIN fila mini de iconos redundante */}
-          {/* Solo queda el botón de ocultar/mostrar alineado a la derecha */}
+          {/* Toggle bar — siempre visible */}
           <div className="flex items-center justify-end px-3 py-1.5 border-b border-[#1a1a1a]">
             <button onClick={() => setBarraColapsada(p => !p)}
               className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-md border border-[#2a2a2a] text-[10px] font-bold text-[#606060] hover:border-[#d4943a] hover:text-[#d4943a] transition-all">
@@ -2399,11 +2391,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           {/* Contenido colapsable */}
           {!barraColapsada && (
             <>
-              {/* CAMBIO 2: FILA RITUAL — paddings aumentados para subir la barra */}
+              {/* FILA RITUAL — solo mesa activa */}
               <div className="border-b border-[#1a1a1a] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                 <div className="flex items-center px-3 py-2 gap-1.5">
-                  {/* Label mesa activa — tamaños aumentados */}
-                  <div className="flex items-center gap-1.5 shrink-0 mr-1">
+                  {/* Label mesa activa */}
+                  <div className="flex items-center gap-1 shrink-0 mr-1">
                     <span className="text-[10px] font-black px-2 py-0.5 rounded bg-[#d4943a] text-black">M{selectedTable.num}</span>
                     <span className="text-[9px] text-[#606060] font-medium">{selectedTable.cliente}</span>
                   </div>
@@ -2433,7 +2425,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 </div>
               </div>
 
-              {/* QUICK-ADD — paddings aumentados + auto-check con categoria */}
+              {/* QUICK-ADD */}
               <div className="border-b border-[#1a1a1a] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                 <div className="flex items-stretch min-w-max">
                   {[
@@ -2453,8 +2445,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                       </div>
                       <div className="flex gap-1 px-1.5 py-1.5">
                         {items.map(item => (
-                          <button key={item.n}
-                            onClick={() => agregarAOrden({ nombre: item.n, precio: item.p, emoji: item.e, categoria: cat })}
+                          <button key={item.n} onClick={() => agregarAOrden({ nombre: item.n, precio: item.p, emoji: item.e, categoria: cat })}
                             className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg border border-[#1a1a1a] bg-[#111] hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/25 active:border-[#3dba6f] transition-all" style={{ minWidth: 54 }}>
                             <span style={{ fontSize: 22 }}>{item.e}</span>
                             <span style={{ fontSize: 9, color: '#888', whiteSpace: 'nowrap' }}>{item.n}</span>
@@ -2467,7 +2458,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 </div>
               </div>
 
-              {/* IA RECS — paddings aumentados */}
+              {/* IA RECS */}
               <div className="flex items-center px-3 py-1.5 overflow-x-auto gap-2" style={{ scrollbarWidth: 'none', minHeight: 58 }}>
                 <div className="flex flex-col items-center shrink-0 mr-1">
                   <span style={{ fontSize: 13, color: '#d4943a' }}>✦</span>
