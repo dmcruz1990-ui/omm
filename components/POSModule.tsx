@@ -440,6 +440,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [rightTab, setRightTab] = useState<'IA' | 'Cuenta' | 'Chat' | 'Menú'>('IA');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showOrderPanel, setShowOrderPanel] = useState(false);
+  const [mostrarTraspaso, setMostrarTraspaso] = useState(false);
+  const [mesaDestino, setMesaDestino] = useState<number | null>(null);
+  const [tipoTraspaso, setTipoTraspaso] = useState<'mesa'|'barra'|'barra-a-mesa'>('mesa');
   const [order, setOrder] = useState<OrderItem[]>([]);
   // Pedido pendiente de enviar a cocina (agregar a la orden)
   const [pendingOrder, setPendingOrder] = useState<OrderItem[]>([]);
@@ -2156,81 +2159,66 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 </div>
 
                 {/* TRASPASO DE MESA */}
-                {(() => {
-                  const [mostrarTraspaso, setMostrarTraspaso] = React.useState(false);
-                  const [mesaDestino, setMesaDestino] = React.useState<number | null>(null);
-                  const [tipoTraspaso, setTipoTraspaso] = React.useState<'mesa'|'barra'|'barra-a-mesa'>('mesa');
-                  return (
-                    <div className="mt-3 pt-3 border-t border-[#2a2a2a]">
-                      <button onClick={() => setMostrarTraspaso(p => !p)}
-                        className="w-full flex items-center justify-between text-[10px] font-bold text-[#606060] uppercase tracking-wider hover:text-[#d4943a] transition-all">
-                        <span className="flex items-center gap-1.5">↔ Traspaso de mesa</span>
-                        <span>{mostrarTraspaso ? '▲' : '▼'}</span>
-                      </button>
-                      {mostrarTraspaso && (
-                        <div className="mt-2 flex flex-col gap-2">
-                          {/* Tipo de traspaso */}
-                          <div className="flex gap-1">
-                            {([
-                              { id:'mesa',         label:'Mesa → Mesa',    color:'#4a8fd4' },
-                              { id:'barra',         label:'Mesa → Barra',   color:'#9b72ff' },
-                              { id:'barra-a-mesa',  label:'Barra → Mesa',   color:'#d4943a' },
-                            ] as const).map(t => (
-                              <button key={t.id} onClick={() => setTipoTraspaso(t.id)}
-                                style={{ borderColor: tipoTraspaso===t.id ? t.color : '#2a2a2a', background: tipoTraspaso===t.id ? t.color+'18' : 'transparent', color: tipoTraspaso===t.id ? t.color : '#606060' }}
-                                className="flex-1 py-1.5 rounded-lg border text-[9px] font-bold transition-all">
-                                {t.label}
+                <div className="mt-3 pt-3 border-t border-[#2a2a2a]">
+                  <button onClick={() => setMostrarTraspaso(p => !p)}
+                    className="w-full flex items-center justify-between text-[10px] font-bold text-[#606060] uppercase tracking-wider hover:text-[#d4943a] transition-all">
+                    <span className="flex items-center gap-1.5">↔ Traspaso de mesa</span>
+                    <span>{mostrarTraspaso ? '▲' : '▼'}</span>
+                  </button>
+                  {mostrarTraspaso && (
+                    <div className="mt-2 flex flex-col gap-2">
+                      <div className="flex gap-1">
+                        {([
+                          { id:'mesa',        label:'Mesa → Mesa',  color:'#4a8fd4' },
+                          { id:'barra',        label:'Mesa → Barra', color:'#9b72ff' },
+                          { id:'barra-a-mesa', label:'Barra → Mesa', color:'#d4943a' },
+                        ] as const).map(t => (
+                          <button key={t.id} onClick={() => setTipoTraspaso(t.id)}
+                            style={{ borderColor: tipoTraspaso===t.id ? t.color : '#2a2a2a', background: tipoTraspaso===t.id ? t.color+'18' : 'transparent', color: tipoTraspaso===t.id ? t.color : '#606060' }}
+                            className="flex-1 py-1.5 rounded-lg border text-[9px] font-bold transition-all">
+                            {t.label}
+                          </button>
+                        ))}
+                      </div>
+                      <div className="text-[9px] text-[#606060]">
+                        Origen: <span className="text-[#f0f0f0] font-bold">Mesa {m.num} — {m.cliente}</span>
+                      </div>
+                      {tipoTraspaso !== 'barra' && (
+                        <div>
+                          <div className="text-[9px] text-[#606060] mb-1">Destino:</div>
+                          <div className="flex flex-wrap gap-1">
+                            {displayTables.filter(t => t.id !== selectedTableId).map(t => (
+                              <button key={t.id} onClick={() => setMesaDestino(mesaDestino === t.id ? null : t.id)}
+                                style={{ borderColor: mesaDestino===t.id ? '#d4943a' : '#2a2a2a', background: mesaDestino===t.id ? '#d4943a18' : '#1a1a1a', color: mesaDestino===t.id ? '#d4943a' : '#a0a0a0' }}
+                                className="px-2 py-1 rounded-lg border text-[10px] font-bold transition-all">
+                                M{t.num}
                               </button>
                             ))}
                           </div>
-                          {/* Origen */}
-                          <div className="text-[9px] text-[#606060]">
-                            Origen: <span className="text-[#f0f0f0] font-bold">Mesa {m.num} — {m.cliente}</span>
-                          </div>
-                          {/* Destino */}
-                          {tipoTraspaso !== 'barra' && (
-                            <div>
-                              <div className="text-[9px] text-[#606060] mb-1">Destino:</div>
-                              <div className="flex flex-wrap gap-1">
-                                {displayTables.filter(t => t.id !== selectedTableId).map(t => (
-                                  <button key={t.id} onClick={() => setMesaDestino(mesaDestino === t.id ? null : t.id)}
-                                    style={{ borderColor: mesaDestino===t.id ? '#d4943a' : '#2a2a2a', background: mesaDestino===t.id ? '#d4943a18' : '#1a1a1a', color: mesaDestino===t.id ? '#d4943a' : '#a0a0a0' }}
-                                    className="px-2 py-1 rounded-lg border text-[10px] font-bold transition-all">
-                                    M{t.num}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {tipoTraspaso === 'barra' && (
-                            <div className="text-[9px] text-[#9b72ff] bg-[#9b72ff]/10 border border-[#9b72ff]/20 rounded-lg px-2 py-1.5">
-                              La cuenta pasa a nombre de barra — el mesero de barra continúa el servicio
-                            </div>
-                          )}
-                          {/* Botón confirmar */}
-                          <button
-                            onClick={() => {
-                              if (tipoTraspaso === 'barra') {
-                                showToast(`↔ Mesa ${m.num} → Barra · ${m.cliente} traspasado`);
-                              } else if (mesaDestino) {
-                                const dest = displayTables.find(t => t.id === mesaDestino);
-                                showToast(`↔ Mesa ${m.num} → Mesa ${dest?.num} · Traspaso confirmado`);
-                                setSelectedTableId(mesaDestino);
-                              } else {
-                                showToast('⚠️ Selecciona mesa destino');
-                                return;
-                              }
-                              setMostrarTraspaso(false);
-                              setMesaDestino(null);
-                            }}
-                            className="w-full py-2 rounded-xl bg-[#d4943a] text-black text-[11px] font-bold hover:bg-[#f0b45a] transition-all">
-                            ✓ Confirmar traspaso
-                          </button>
                         </div>
                       )}
+                      {tipoTraspaso === 'barra' && (
+                        <div className="text-[9px] text-[#9b72ff] bg-[#9b72ff]/10 border border-[#9b72ff]/20 rounded-lg px-2 py-1.5">
+                          La cuenta pasa a nombre de barra — el mesero de barra continúa el servicio
+                        </div>
+                      )}
+                      <button onClick={() => {
+                        if (tipoTraspaso === 'barra') {
+                          showToast(`↔ Mesa ${m.num} → Barra · ${m.cliente} traspasado`);
+                        } else if (mesaDestino) {
+                          const dest = displayTables.find(t => t.id === mesaDestino);
+                          showToast(`↔ Mesa ${m.num} → Mesa ${dest?.num} · Traspaso confirmado`);
+                          setSelectedTableId(mesaDestino);
+                        } else {
+                          showToast('⚠️ Selecciona mesa destino'); return;
+                        }
+                        setMostrarTraspaso(false); setMesaDestino(null);
+                      }} className="w-full py-2 rounded-xl bg-[#d4943a] text-black text-[11px] font-bold hover:bg-[#f0b45a] transition-all">
+                        ✓ Confirmar traspaso
+                      </button>
                     </div>
-                  );
-                })()}
+                  )}
+                </div>
 
                 {/* ORDEN PENDIENTE — confirmación prominente */}
                 {pendingOrder.filter(o => o.mesa === selectedTable.num).length > 0 && (
