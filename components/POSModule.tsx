@@ -216,6 +216,26 @@ const iaRecsByCat: Record<string, any[]> = {
 const ritualStepsAll = ['Agua','Coctel','Compartir','Robata/Wok','Postre','Recomendar','Pousse-café','Café/Té','Vino','Licor'];
 const mesaRitualState: Record<number, string[]> = { 1: ['Agua'], 2: ['Agua', 'Aperitivo'], 3: ['Agua'], 4: [] };
 
+// ── MAPEO CATEGORÍA → PASO DEL RITUAL ─────────────────────
+// Cuando se agrega un producto de una categoría, se auto-marca el paso del ritual correspondiente
+const CAT_TO_RITUAL: Record<string, string> = {
+  'Agua': 'Agua',
+  'Coctel': 'Coctel',
+  'Cocteles': 'Coctel',
+  'Compartir': 'Compartir',
+  'Robata': 'Robata/Wok',
+  'Wok': 'Robata/Wok',
+  'Robata/Wok': 'Robata/Wok',
+  'Postres': 'Postre',
+  'Postre': 'Postre',
+  'Café': 'Café/Té',
+  'Café/Té': 'Café/Té',
+  'Vino': 'Vino',
+  'Licor': 'Licor',
+  'Sakes': 'Licor',
+  'Cervezas': 'Licor',
+};
+
 const notifications = [
   { id: 1, type: 'alert', title: 'Mesa 4 - Demora', desc: 'Tiempo de espera excedido en principales (>25m)', time: 'Hace 2 min' },
   { id: 2, type: 'request', title: 'Mesa 2 - Petición', desc: 'Cliente solicita la cuenta', time: 'Hace 5 min' },
@@ -517,6 +537,20 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setTimeout(() => setToast(''), 2500);
   }, []);
 
+  // ── AUTO-CHECK DEL RITUAL ─────────────────────────────────
+  // Cuando se agrega un producto, marca automáticamente el paso del ritual
+  // correspondiente a su categoría (Agua → 'Agua', Café → 'Café/Té', etc.)
+  const autoCheckRitual = (categoria: string | undefined) => {
+    if (!categoria) return;
+    const step = CAT_TO_RITUAL[categoria];
+    if (!step) return;
+    setRitualState(prev => {
+      const current = prev[selectedTable.id] || [];
+      if (current.includes(step)) return prev; // ya marcado, no duplicar
+      return { ...prev, [selectedTable.id]: [...current, step] };
+    });
+  };
+
   const closeModal = () => setModal({ open: false, title: '', content: null });
 
   const addToOrder = (p: any) => {
@@ -525,6 +559,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setAddedCards(prev => new Set([...prev, p.nombre]));
     setTimeout(() => setAddedCards(prev => { const n = new Set(prev); n.delete(p.nombre); return n; }), 1200);
     showToast(`✓ ${p.nombre} agregado al pedido`);
+    autoCheckRitual(p.categoria ?? currentCat); // ← auto-check ritual
   };
 
   // ── Insertar pedido en Supabase → Flow lo ve en tiempo real ──
@@ -600,6 +635,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       urgente: totalEnCocina >= 10,
       termino: termino,
     });
+    // ── Auto-marcar paso del ritual según categoría ─────────
+    autoCheckRitual(p.categoria ?? currentCat);
     setTimeout(() => setAddedCards(prev => { const n = new Set(prev); n.delete(p.nombre + '_marchar'); return n; }), 1500);
     setSelectedPlato(null);
   };
@@ -613,6 +650,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setAddedCards(prev => new Set([...prev, p.nombre]));
     setTimeout(() => setAddedCards(prev => { const n = new Set(prev); n.delete(p.nombre); return n; }), 1200);
     showToast(`+ ${productoFinal.nombre} → orden Mesa ${selectedTable.num}`);
+    // ── Auto-marcar paso del ritual según categoría ─────────
+    autoCheckRitual(p.categoria ?? currentCat);
     setSelectedPlato(null);
   };
 
@@ -2343,29 +2382,16 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           })()}
         </div>
 
-        {/* BARRA INFERIOR COLAPSABLE */}
+        {/* ══════════════════════════════════════════════════════ */}
+        {/* BARRA INFERIOR COLAPSABLE — con cambios visuales */}
+        {/* ══════════════════════════════════════════════════════ */}
         <div className="bg-[#0a0a0a] border-t border-[#2a2a2a] flex flex-col shrink-0">
 
-          {/* Toggle bar — siempre visible */}
-          <div className="flex items-center justify-between px-3 py-1 border-b border-[#1a1a1a]">
-            {/* Labels de ritual de la mesa activa en mini */}
-            <div className="flex items-center gap-1 overflow-x-auto flex-1 mr-2" style={{ scrollbarWidth: 'none' }}>
-              <span className="text-[8px] font-black text-[#d4943a] shrink-0 mr-1">M{selectedTable.num}</span>
-              {ritualStepsAll.map(step => {
-                const done = (ritualState[selectedTable.id] || []).includes(step);
-                const stepEmojis: Record<string,string> = { 'Agua':'💧','Coctel':'🍹','Compartir':'🥟','Robata/Wok':'🔥','Postre':'🍮','Recomendar':'⭐','Pousse-café':'🥃','Café/Té':'☕','Vino':'🍷','Licor':'🥂' };
-                const stepC: Record<string,string> = { 'Agua':'#4a8fd4','Coctel':'#9b72ff','Compartir':'#d4943a','Robata/Wok':'#e05050','Postre':'#f0b45a','Recomendar':'#3dba6f','Pousse-café':'#3dba6f','Café/Té':'#cd853f','Vino':'#e91e8c','Licor':'#ffd700' };
-                return (
-                  <button key={step} onClick={() => toggleRitualStep(selectedTable.id, step)}
-                    title={step}
-                    style={{ fontSize: 14, opacity: done ? 1 : 0.25, transition: 'all 0.15s', background: 'none', border: 'none', cursor: 'pointer', padding: '0 1px' }}>
-                    {done ? <span style={{ color: stepC[step] }}>✓</span> : stepEmojis[step]}
-                  </button>
-                );
-              })}
-            </div>
+          {/* CAMBIO 1: Toggle bar — SIN fila mini de iconos redundante */}
+          {/* Solo queda el botón de ocultar/mostrar alineado a la derecha */}
+          <div className="flex items-center justify-end px-3 py-1.5 border-b border-[#1a1a1a]">
             <button onClick={() => setBarraColapsada(p => !p)}
-              className="shrink-0 flex items-center gap-1 px-2 py-0.5 rounded-md border border-[#2a2a2a] text-[9px] font-bold text-[#606060] hover:border-[#d4943a] hover:text-[#d4943a] transition-all">
+              className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-md border border-[#2a2a2a] text-[10px] font-bold text-[#606060] hover:border-[#d4943a] hover:text-[#d4943a] transition-all">
               {barraColapsada ? '▲ Ver barra' : '▼ Ocultar'}
             </button>
           </div>
@@ -2373,13 +2399,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           {/* Contenido colapsable */}
           {!barraColapsada && (
             <>
-              {/* FILA RITUAL — solo mesa activa */}
+              {/* CAMBIO 2: FILA RITUAL — paddings aumentados para subir la barra */}
               <div className="border-b border-[#1a1a1a] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-                <div className="flex items-center px-2 py-1 gap-1">
-                  {/* Label mesa activa */}
-                  <div className="flex items-center gap-1 shrink-0 mr-1">
-                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-[#d4943a] text-black">M{selectedTable.num}</span>
-                    <span className="text-[8px] text-[#606060] font-medium">{selectedTable.cliente}</span>
+                <div className="flex items-center px-3 py-2 gap-1.5">
+                  {/* Label mesa activa — tamaños aumentados */}
+                  <div className="flex items-center gap-1.5 shrink-0 mr-1">
+                    <span className="text-[10px] font-black px-2 py-0.5 rounded bg-[#d4943a] text-black">M{selectedTable.num}</span>
+                    <span className="text-[9px] text-[#606060] font-medium">{selectedTable.cliente}</span>
                   </div>
                   {/* Steps solo de la mesa activa */}
                   {ritualStepsAll.map((step) => {
@@ -2398,16 +2424,16 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                         style={done
                           ? { background: activeBg, borderColor: activeColor+'80', color: activeColor }
                           : { background: 'transparent', borderColor: '#1e1e1e', color: '#444' }}
-                        className="flex items-center gap-0.5 px-1.5 py-1 rounded-md border text-[9px] font-bold whitespace-nowrap transition-all shrink-0 hover:opacity-90 active:scale-95">
-                        <span style={{ fontSize: 12 }}>{done ? '✓' : stepEmojis[step]}</span>
-                        <span style={{ fontSize: 8 }}>{shortLabel}</span>
+                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[10px] font-bold whitespace-nowrap transition-all shrink-0 hover:opacity-90 active:scale-95">
+                        <span style={{ fontSize: 15 }}>{done ? '✓' : stepEmojis[step]}</span>
+                        <span style={{ fontSize: 10 }}>{shortLabel}</span>
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* QUICK-ADD */}
+              {/* QUICK-ADD — paddings aumentados + auto-check con categoria */}
               <div className="border-b border-[#1a1a1a] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                 <div className="flex items-stretch min-w-max">
                   {[
@@ -2421,17 +2447,18 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     { cat:'Licor',emoji:'🥂',color:'#ffd700',items:[{n:'Sake',p:'$45k',e:'🍶'},{n:'Heineken',p:'$15k',e:'🍺'},{n:'Old F.',p:'$48k',e:'🥃'}]},
                   ].map(({ cat, emoji, color, items }) => (
                     <div key={cat} className="flex flex-col shrink-0 border-r border-[#1a1a1a] last:border-r-0">
-                      <div className="flex items-center gap-1 px-2 py-0.5 border-b border-[#1a1a1a]" style={{ background: color+'12' }}>
-                        <span style={{ fontSize: 10 }}>{emoji}</span>
-                        <span style={{ fontSize: 8, color, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, whiteSpace: 'nowrap' }}>{cat}</span>
+                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#1a1a1a]" style={{ background: color+'12' }}>
+                        <span style={{ fontSize: 13 }}>{emoji}</span>
+                        <span style={{ fontSize: 10, color, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, whiteSpace: 'nowrap' }}>{cat}</span>
                       </div>
-                      <div className="flex gap-0.5 px-1 py-1">
+                      <div className="flex gap-1 px-1.5 py-1.5">
                         {items.map(item => (
-                          <button key={item.n} onClick={() => agregarAOrden({ nombre: item.n, precio: item.p, emoji: item.e })}
-                            className="flex flex-col items-center gap-0 px-1.5 py-1 rounded-md border border-[#1a1a1a] bg-[#111] hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/25 active:border-[#3dba6f] transition-all" style={{ minWidth: 40 }}>
-                            <span style={{ fontSize: 16 }}>{item.e}</span>
-                            <span style={{ fontSize: 7, color: '#666', whiteSpace: 'nowrap' }}>{item.n}</span>
-                            <span style={{ fontSize: 7, color, fontWeight: 700 }}>{item.p}</span>
+                          <button key={item.n}
+                            onClick={() => agregarAOrden({ nombre: item.n, precio: item.p, emoji: item.e, categoria: cat })}
+                            className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg border border-[#1a1a1a] bg-[#111] hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/25 active:border-[#3dba6f] transition-all" style={{ minWidth: 54 }}>
+                            <span style={{ fontSize: 22 }}>{item.e}</span>
+                            <span style={{ fontSize: 9, color: '#888', whiteSpace: 'nowrap' }}>{item.n}</span>
+                            <span style={{ fontSize: 9, color, fontWeight: 700 }}>{item.p}</span>
                           </button>
                         ))}
                       </div>
@@ -2440,19 +2467,19 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 </div>
               </div>
 
-              {/* IA RECS */}
-              <div className="flex items-center px-2 py-1 overflow-x-auto gap-1.5" style={{ scrollbarWidth: 'none', minHeight: 46 }}>
+              {/* IA RECS — paddings aumentados */}
+              <div className="flex items-center px-3 py-1.5 overflow-x-auto gap-2" style={{ scrollbarWidth: 'none', minHeight: 58 }}>
                 <div className="flex flex-col items-center shrink-0 mr-1">
-                  <span style={{ fontSize: 10, color: '#d4943a' }}>✦</span>
-                  <span style={{ fontSize: 7, color: '#606060', fontWeight: 700, textTransform: 'uppercase' }}>IA</span>
+                  <span style={{ fontSize: 13, color: '#d4943a' }}>✦</span>
+                  <span style={{ fontSize: 9, color: '#606060', fontWeight: 700, textTransform: 'uppercase' }}>IA</span>
                 </div>
                 {recs.map((r, i) => (
                   <button key={i} onClick={() => addToOrder({ nombre: r.name, precio: r.precio, emoji: r.emoji })}
-                    className={`flex items-center gap-1.5 rounded-lg border px-2 py-1 shrink-0 hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/20 transition-all ${r.top ? 'border-[#d4943a]/30 bg-[#d4943a]/5' : 'border-[#1a1a1a] bg-[#111]'}`} style={{ minWidth: 120 }}>
-                    <span style={{ fontSize: 16 }}>{r.emoji}</span>
+                    className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 shrink-0 hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/20 transition-all ${r.top ? 'border-[#d4943a]/30 bg-[#d4943a]/5' : 'border-[#1a1a1a] bg-[#111]'}`} style={{ minWidth: 140 }}>
+                    <span style={{ fontSize: 20 }}>{r.emoji}</span>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#f0f0f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 100 }}>{r.name}</div>
-                      <div style={{ fontSize: 9, color: '#d4943a', fontWeight: 700 }}>{r.precio}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#f0f0f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{r.name}</div>
+                      <div style={{ fontSize: 10, color: '#d4943a', fontWeight: 700 }}>{r.precio}</div>
                     </div>
                   </button>
                 ))}
