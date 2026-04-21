@@ -437,7 +437,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
   const [selectedTableId, setSelectedTableId] = useState<number>(1);
   const [currentCat, setCurrentCat] = useState('Compartir');
-  const [rightTab, setRightTab] = useState<'IA' | 'Cuenta' | 'Chat'>('IA');
+  const [rightTab, setRightTab] = useState<'IA' | 'Cuenta' | 'Chat' | 'Menú'>('IA');
   const [showNotifications, setShowNotifications] = useState(false);
   const [showOrderPanel, setShowOrderPanel] = useState(false);
   const [order, setOrder] = useState<OrderItem[]>([]);
@@ -2098,9 +2098,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
                 {/* Botones de acción de mesa */}
                 <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => { setRightTab('Cuenta'); abrirPOS(m.id); }}
+                  <button onClick={() => { setRightTab('IA'); }}
                     className="py-3 rounded-xl border border-[#2a2a2a] text-[13px] font-semibold text-[#a0a0a0] hover:border-[#d4943a] hover:text-[#d4943a] active:bg-[#3dba6f]/20 active:border-[#3dba6f] active:text-[#3dba6f] transition-all">
-                    🧾 Ver cuenta
+                    🧠 Ver Brief
                   </button>
                   <button onClick={() => abrirModoCliente(m.id)}
                     className="py-3 rounded-xl bg-[#d4943a] text-black text-[13px] font-bold hover:bg-[#f0b45a] active:bg-[#3dba6f] active:text-white transition-all">
@@ -2154,6 +2154,83 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     )}
                   </div>
                 </div>
+
+                {/* TRASPASO DE MESA */}
+                {(() => {
+                  const [mostrarTraspaso, setMostrarTraspaso] = React.useState(false);
+                  const [mesaDestino, setMesaDestino] = React.useState<number | null>(null);
+                  const [tipoTraspaso, setTipoTraspaso] = React.useState<'mesa'|'barra'|'barra-a-mesa'>('mesa');
+                  return (
+                    <div className="mt-3 pt-3 border-t border-[#2a2a2a]">
+                      <button onClick={() => setMostrarTraspaso(p => !p)}
+                        className="w-full flex items-center justify-between text-[10px] font-bold text-[#606060] uppercase tracking-wider hover:text-[#d4943a] transition-all">
+                        <span className="flex items-center gap-1.5">↔ Traspaso de mesa</span>
+                        <span>{mostrarTraspaso ? '▲' : '▼'}</span>
+                      </button>
+                      {mostrarTraspaso && (
+                        <div className="mt-2 flex flex-col gap-2">
+                          {/* Tipo de traspaso */}
+                          <div className="flex gap-1">
+                            {([
+                              { id:'mesa',         label:'Mesa → Mesa',    color:'#4a8fd4' },
+                              { id:'barra',         label:'Mesa → Barra',   color:'#9b72ff' },
+                              { id:'barra-a-mesa',  label:'Barra → Mesa',   color:'#d4943a' },
+                            ] as const).map(t => (
+                              <button key={t.id} onClick={() => setTipoTraspaso(t.id)}
+                                style={{ borderColor: tipoTraspaso===t.id ? t.color : '#2a2a2a', background: tipoTraspaso===t.id ? t.color+'18' : 'transparent', color: tipoTraspaso===t.id ? t.color : '#606060' }}
+                                className="flex-1 py-1.5 rounded-lg border text-[9px] font-bold transition-all">
+                                {t.label}
+                              </button>
+                            ))}
+                          </div>
+                          {/* Origen */}
+                          <div className="text-[9px] text-[#606060]">
+                            Origen: <span className="text-[#f0f0f0] font-bold">Mesa {m.num} — {m.cliente}</span>
+                          </div>
+                          {/* Destino */}
+                          {tipoTraspaso !== 'barra' && (
+                            <div>
+                              <div className="text-[9px] text-[#606060] mb-1">Destino:</div>
+                              <div className="flex flex-wrap gap-1">
+                                {displayTables.filter(t => t.id !== selectedTableId).map(t => (
+                                  <button key={t.id} onClick={() => setMesaDestino(mesaDestino === t.id ? null : t.id)}
+                                    style={{ borderColor: mesaDestino===t.id ? '#d4943a' : '#2a2a2a', background: mesaDestino===t.id ? '#d4943a18' : '#1a1a1a', color: mesaDestino===t.id ? '#d4943a' : '#a0a0a0' }}
+                                    className="px-2 py-1 rounded-lg border text-[10px] font-bold transition-all">
+                                    M{t.num}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {tipoTraspaso === 'barra' && (
+                            <div className="text-[9px] text-[#9b72ff] bg-[#9b72ff]/10 border border-[#9b72ff]/20 rounded-lg px-2 py-1.5">
+                              La cuenta pasa a nombre de barra — el mesero de barra continúa el servicio
+                            </div>
+                          )}
+                          {/* Botón confirmar */}
+                          <button
+                            onClick={() => {
+                              if (tipoTraspaso === 'barra') {
+                                showToast(`↔ Mesa ${m.num} → Barra · ${m.cliente} traspasado`);
+                              } else if (mesaDestino) {
+                                const dest = displayTables.find(t => t.id === mesaDestino);
+                                showToast(`↔ Mesa ${m.num} → Mesa ${dest?.num} · Traspaso confirmado`);
+                                setSelectedTableId(mesaDestino);
+                              } else {
+                                showToast('⚠️ Selecciona mesa destino');
+                                return;
+                              }
+                              setMostrarTraspaso(false);
+                              setMesaDestino(null);
+                            }}
+                            className="w-full py-2 rounded-xl bg-[#d4943a] text-black text-[11px] font-bold hover:bg-[#f0b45a] transition-all">
+                            ✓ Confirmar traspaso
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* ORDEN PENDIENTE — confirmación prominente */}
                 {pendingOrder.filter(o => o.mesa === selectedTable.num).length > 0 && (
@@ -2223,8 +2300,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           </div>
           {/* Botones panel derecho + carrito */}
           <div className="ml-auto flex items-center gap-1 shrink-0">
-            {(['IA','Cuenta','Chat'] as const).map(tab => {
-              const icons = { IA: <Sparkles size={15}/>, Cuenta: <Receipt size={15}/>, Chat: <MessageSquare size={15}/> };
+            {(['IA','Cuenta','Chat','Menú'] as const).map(tab => {
+              const icons = { IA: <Sparkles size={15}/>, Cuenta: <Receipt size={15}/>, Chat: <MessageSquare size={15}/>, Menú: <ShoppingCart size={15}/> };
               return (
                 <button key={tab} onClick={() => setRightTab(tab)}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition-all ${rightTab === tab ? 'bg-[#d4943a]/15 border-[#d4943a] text-[#d4943a]' : 'bg-[#1c1c1c] border-[#2a2a2a] text-[#606060] hover:text-[#a0a0a0]'}`}>
@@ -2492,9 +2569,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
         {/* Tabs */}
         <div className="flex border-b border-[#2a2a2a] shrink-0">
-          {(['IA', 'Cuenta', 'Chat'] as const).map(tab => {
-            const icons = { IA: <Sparkles size={14} />, Cuenta: <Receipt size={14} />, Chat: <MessageSquare size={14} /> };
-            const activeColors = { IA: 'text-[#d4943a] border-b-[#d4943a]', Cuenta: 'text-[#f0f0f0] border-b-[#f0f0f0]', Chat: 'text-[#3dba6f] border-b-[#3dba6f]' };
+          {(['IA', 'Cuenta', 'Chat', 'Menú'] as const).map(tab => {
+            const icons = { IA: <Sparkles size={14} />, Cuenta: <Receipt size={14} />, Chat: <MessageSquare size={14} />, Menú: <ShoppingCart size={14} /> };
+            const activeColors = { IA: 'text-[#d4943a] border-b-[#d4943a]', Cuenta: 'text-[#f0f0f0] border-b-[#f0f0f0]', Chat: 'text-[#3dba6f] border-b-[#3dba6f]', Menú: 'text-[#9b72ff] border-b-[#9b72ff]' };
             return (
               <button key={tab} onClick={() => setRightTab(tab)}
                 className={`flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all border-b-2 ${rightTab === tab ? `${activeColors[tab]} bg-[#1c1c1c]` : 'text-[#606060] border-b-transparent hover:text-[#a0a0a0] hover:bg-[#1a1a1a]'}`}>
@@ -2669,25 +2746,166 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             </>
           )}
 
-          {rightTab === 'Chat' && (
-            <div className="flex flex-col h-full">
-              <div className="flex-1 overflow-y-auto flex flex-col gap-3 mb-3 pr-1">
-                {chatHistory.map((msg, idx) => (
-                  <div key={idx} className={`flex flex-col ${msg.sender === 'Cocina' ? 'items-start' : 'items-end'}`}>
-                    <span className="text-[10px] text-[#606060] mb-0.5">{msg.sender} • {msg.time}</span>
-                    <div className={`p-2 px-3 rounded-lg text-[12px] max-w-[85%] ${msg.sender === 'Cocina' ? 'bg-[#1c1c1c] border border-[#2a2a2a] text-[#f0f0f0]' : 'bg-[#3dba6f]/10 border border-[#3dba6f]/30 text-[#3dba6f]'}`}>
-                      {msg.msg}
+          {rightTab === 'Menú' && (() => {
+            const [miMenu, setMiMenu] = React.useState<any[]>([]);
+            const [formOpen, setFormOpen] = React.useState(false);
+            const [form, setForm] = React.useState({ nombre:'', precio:'', emoji:'🍽️', categoria:'Compartir', badge:'recomendado', carne: false });
+            const setF = (k: string, v: any) => setForm(p => ({...p, [k]: v}));
+            const emojisRapidos = ['🍣','🍜','🍱','🥩','🐙','🦐','🍹','🍷','🥗','🍮','☕','🍺','🍶','🥟','🌮'];
+            return (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] font-bold text-[#9b72ff] uppercase tracking-wider">✦ Mi Menú personalizado</div>
+                  <button onClick={() => setFormOpen(p => !p)}
+                    className="px-2.5 py-1 rounded-lg bg-[#9b72ff]/15 border border-[#9b72ff]/30 text-[#9b72ff] text-[10px] font-bold hover:bg-[#9b72ff]/25 transition-all">
+                    {formOpen ? '✕ Cancelar' : '+ Agregar plato'}
+                  </button>
+                </div>
+
+                {/* Formulario nuevo plato */}
+                {formOpen && (
+                  <div className="bg-[#1c1c1c] border border-[#9b72ff]/30 rounded-xl p-3 flex flex-col gap-2">
+                    <input value={form.nombre} onChange={e => setF('nombre', e.target.value)}
+                      placeholder="Nombre del plato *"
+                      className="w-full bg-[#141414] border border-[#2a2a2a] focus:border-[#9b72ff] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none" />
+                    <div className="flex gap-2">
+                      <input value={form.precio} onChange={e => setF('precio', e.target.value)}
+                        placeholder="$00.000"
+                        className="flex-1 bg-[#141414] border border-[#2a2a2a] focus:border-[#9b72ff] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none" />
+                      <select value={form.categoria} onChange={e => setF('categoria', e.target.value)}
+                        className="flex-1 bg-[#141414] border border-[#2a2a2a] rounded-lg px-2 py-2 text-[12px] text-[#f0f0f0] outline-none">
+                        {categorias.map(c => <option key={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    {/* Emoji picker rápido */}
+                    <div>
+                      <div className="text-[9px] text-[#606060] mb-1">Emoji</div>
+                      <div className="flex flex-wrap gap-1">
+                        {emojisRapidos.map(e => (
+                          <button key={e} onClick={() => setF('emoji', e)}
+                            style={{ background: form.emoji === e ? '#9b72ff20' : '#1a1a1a', border: `1px solid ${form.emoji === e ? '#9b72ff' : '#2a2a2a'}` }}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center text-[18px] transition-all">
+                            {e}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <select value={form.badge} onChange={e => setF('badge', e.target.value)}
+                        className="flex-1 bg-[#141414] border border-[#2a2a2a] rounded-lg px-2 py-2 text-[11px] text-[#f0f0f0] outline-none">
+                        <option value="recomendado">Recomendado</option>
+                        <option value="gold">Alta rentabilidad</option>
+                        <option value="orange">Mover hoy</option>
+                      </select>
+                      <label className="flex items-center gap-1.5 text-[11px] text-[#a0a0a0] cursor-pointer">
+                        <input type="checkbox" checked={form.carne} onChange={e => setF('carne', e.target.checked)} className="w-3 h-3" />
+                        Carne
+                      </label>
+                    </div>
+                    <button onClick={() => {
+                      if (!form.nombre || !form.precio) { showToast('⚠️ Nombre y precio obligatorios'); return; }
+                      setMiMenu(prev => [...prev, { ...form, id: Date.now() }]);
+                      setForm({ nombre:'', precio:'', emoji:'🍽️', categoria:'Compartir', badge:'recomendado', carne: false });
+                      setFormOpen(false);
+                      showToast(`✓ ${form.nombre} agregado a Mi Menú`);
+                    }} className="w-full py-2.5 rounded-xl bg-[#9b72ff] text-white text-[12px] font-bold hover:opacity-90 transition-all">
+                      ✓ Guardar plato
+                    </button>
+                  </div>
+                )}
+
+                {/* Lista de platos creados */}
+                {miMenu.length === 0 && !formOpen && (
+                  <div className="text-center py-8 text-[11px] text-[#606060]">
+                    <div className="text-[32px] mb-2">🍽️</div>
+                    Sin platos aún — crea tu menú personalizado
+                  </div>
+                )}
+                {miMenu.map(p => (
+                  <div key={p.id} className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl p-2.5 flex items-center gap-2.5">
+                    <span className="text-[22px]">{p.emoji}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[12px] font-bold text-[#f0f0f0] truncate">{p.nombre}</div>
+                      <div className="text-[10px] text-[#d4943a] font-bold">{p.precio} · {p.categoria}</div>
+                    </div>
+                    <div className="flex gap-1">
+                      <button onClick={() => agregarAOrden({ ...p, categoria: p.categoria })}
+                        className="px-2 py-1.5 rounded-lg bg-[#d4943a]/15 border border-[#d4943a]/30 text-[#d4943a] text-[9px] font-bold hover:bg-[#d4943a]/25 transition-all">
+                        + Orden
+                      </button>
+                      <button onClick={() => marcharAhora({ ...p, categoria: p.categoria })}
+                        className="px-2 py-1.5 rounded-lg bg-[#4a8fd4]/15 border border-[#4a8fd4]/30 text-[#4a8fd4] text-[9px] font-bold hover:bg-[#4a8fd4]/25 transition-all">
+                        🔥
+                      </button>
+                      <button onClick={() => { setMiMenu(prev => prev.filter(x => x.id !== p.id)); showToast('Plato eliminado'); }}
+                        className="px-2 py-1.5 rounded-lg bg-[#e05050]/10 border border-[#e05050]/20 text-[#e05050] text-[9px] font-bold hover:bg-[#e05050]/20 transition-all">
+                        ✕
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
+            );
+          })()}
+
+            <div className="flex flex-col h-full">
+              {/* Selector de rol emisor */}
+              <div className="flex gap-1.5 mb-3 flex-wrap">
+                {(['Mesero','Cocina','Host','Maître'] as const).map(rol => {
+                  const colors: Record<string,string> = { Mesero:'#4a8fd4', Cocina:'#e05050', Host:'#3dba6f', Maître:'#9b72ff' };
+                  const [rolEmisor, setRolEmisor] = [
+                    (chatHistory.find(() => true) as any)?._rol ?? 'Mesero',
+                    (r: string) => setChatHistory(prev => { (prev as any)._rol = r; return [...prev]; })
+                  ];
+                  const active = ((chatHistory as any)._rol ?? 'Mesero') === rol;
+                  return (
+                    <button key={rol}
+                      onClick={() => { (chatHistory as any)._rol = rol; setChatHistory(h => [...h]); }}
+                      style={{ borderColor: active ? colors[rol] : '#2a2a2a', background: active ? colors[rol]+'18' : 'transparent', color: active ? colors[rol] : '#606060' }}
+                      className="flex-1 py-1 rounded-lg border text-[10px] font-bold transition-all">
+                      {rol}
+                    </button>
+                  );
+                })}
+              </div>
+              {/* Mensajes */}
+              <div className="flex-1 overflow-y-auto flex flex-col gap-2 mb-3 pr-1">
+                {chatHistory.map((msg, idx) => {
+                  const colorMap: Record<string,string> = { Cocina:'#e05050', Host:'#3dba6f', Maître:'#9b72ff', Tú:'#4a8fd4', Mesero:'#4a8fd4' };
+                  const c = colorMap[msg.sender] ?? '#a0a0a0';
+                  const isMine = msg.sender === 'Tú' || msg.sender === 'Mesero';
+                  return (
+                    <div key={idx} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                      <span className="text-[10px] text-[#606060] mb-0.5" style={{ color: c+'99' }}>{msg.sender} • {msg.time}</span>
+                      <div className="p-2 px-3 rounded-xl text-[12px] max-w-[90%]"
+                        style={{ background: c+'12', border: `1px solid ${c}30`, color: '#f0f0f0', borderBottomRightRadius: isMine ? 4 : 12, borderBottomLeftRadius: isMine ? 12 : 4 }}>
+                        {msg.msg}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* Input */}
               <div className="mt-auto flex gap-2">
                 <input type="text" value={chatMessage} onChange={e => setChatMessage(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && chatMessage.trim()) { setChatHistory(prev => [...prev, { sender: 'Tú', msg: chatMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]); setChatMessage(''); } }}
-                  placeholder="Mensaje a cocina/host..."
-                  className="flex-1 bg-[#1c1c1c] border border-[#2a2a2a] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none focus:border-[#3dba6f]" />
-                <button onClick={() => { if (chatMessage.trim()) { setChatHistory(prev => [...prev, { sender: 'Tú', msg: chatMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]); setChatMessage(''); } }}
-                  className="w-9 h-9 rounded-lg bg-[#3dba6f] text-black flex items-center justify-center hover:bg-[#4ade80] transition-all active:bg-[#3dba6f] active:scale-95">
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && chatMessage.trim()) {
+                      const rol = (chatHistory as any)._rol ?? 'Mesero';
+                      const newMsg = { sender: rol, msg: chatMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+                      setChatHistory(prev => { const next = [...prev, newMsg]; (next as any)._rol = rol; return next; });
+                      setChatMessage('');
+                    }
+                  }}
+                  placeholder={`Mensaje como ${(chatHistory as any)._rol ?? 'Mesero'}...`}
+                  className="flex-1 bg-[#1c1c1c] border border-[#2a2a2a] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none focus:border-[#4a8fd4]" />
+                <button onClick={() => {
+                  if (chatMessage.trim()) {
+                    const rol = (chatHistory as any)._rol ?? 'Mesero';
+                    const newMsg = { sender: rol, msg: chatMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) };
+                    setChatHistory(prev => { const next = [...prev, newMsg]; (next as any)._rol = rol; return next; });
+                    setChatMessage('');
+                  }
+                }} className="w-9 h-9 rounded-lg bg-[#4a8fd4] text-white flex items-center justify-center hover:bg-[#3d7fc4] transition-all active:scale-95">
                   <MessageSquare size={14} />
                 </button>
               </div>
