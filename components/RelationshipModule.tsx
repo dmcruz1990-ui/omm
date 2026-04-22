@@ -10,7 +10,7 @@ const S = {
 const inp: React.CSSProperties = { background:S.bg3, border:`1px solid ${S.border}`, borderRadius:8, padding:'9px 14px', color:S.text1, fontSize:13, outline:'none', width:'100%' };
 const btn = (color:string): React.CSSProperties => ({ padding:'9px 18px', borderRadius:9, border:'none', background:color, color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' });
 
-type CTab = 'grid' | 'perfil' | 'nuevo' | 'analytics';
+type CTab = 'grid' | 'perfil' | 'nuevo' | 'analytics' | 'importar';
 type Segmento = 'todos' | 'vip' | 'recurrentes' | 'nuevos' | 'dormidos';
 
 interface Customer {
@@ -50,6 +50,15 @@ export default function CustomersModule() {
   const [nuevaNota, setNuevaNota] = useState('');
   const [form, setForm]         = useState<Partial<Customer>>({ tipo_documento:'CC', origen_captacion:'walk-in', activo:true });
   const [tagInput, setTagInput] = useState('');
+  const [csvRows, setCsvRows] = useState<any[]>([]);
+  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
+  const [csvMapping, setCsvMapping] = useState<Record<string,string>>({});
+  const [csvParsing, setCsvParsing] = useState(false);
+  const [csvImporting, setCsvImporting] = useState(false);
+  const [csvPreview, setCsvPreview] = useState<any[]>([]);
+  const [csvStep, setCsvStep] = useState<'upload'|'map'|'preview'|'done'>('upload');
+  const [csvResultado, setCsvResultado] = useState({ok:0,err:0});
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [rangoDias, setRangoDias] = useState(30);
   const [alergiasEdit, setAlergiasEdit] = useState<string[]>([]);
   const [prefsEdit, setPrefsEdit] = useState<string[]>([]);
@@ -204,6 +213,7 @@ export default function CustomersModule() {
             <option value="reciente">Más reciente</option>
             <option value="nombre">Nombre A-Z</option>
           </select>
+          <button onClick={()=>{setCtab('importar');setCsvStep('upload');setCsvRows([]);setCsvHeaders([]);setCsvMapping({});setCsvPreview([]);}} style={{...btn(ctab==='importar'?S.gold:'transparent'),padding:'8px 16px',border:`1px solid ${ctab==='importar'?S.gold:S.border}`,color:ctab==='importar'?'#fff':S.text3}}>📥 Importar CSV</button>
           <button onClick={()=>setCtab('analytics')} style={{...btn(ctab==='analytics'?S.purple:'transparent'),padding:'8px 16px',border:`1px solid ${ctab==='analytics'?S.purple:S.border}`,color:ctab==='analytics'?'#fff':S.text3}}>📊 Analytics</button>
           <button onClick={()=>setCtab('nuevo')} style={{...btn(S.purple),padding:'8px 16px'}}>+ Nuevo cliente</button>
         </div>
@@ -871,6 +881,221 @@ export default function CustomersModule() {
             </div>
           );
         })()}
+
+
+        {/* ── IMPORTAR CSV ── */}
+        {ctab==='importar' && (
+          <div style={{flex:1,overflowY:'auto',padding:16}}>
+            <input ref={fileInputRef} type="file" accept=".csv,.txt" style={{display:'none'}}
+              onChange={async e => {
+                const file = e.target.files?.[0]; if (!file) return;
+                setCsvParsing(true); setCsvStep('upload');
+                const text = await file.text();
+                const lines = text.split(/\r?\n/).filter(l=>l.trim());
+                if (lines.length < 2) { showToast('⚠️ CSV vacío'); setCsvParsing(false); return; }
+                // Detectar separador
+                const sep = lines[0].includes(';') ? ';' : ',';
+                const headers = lines[0].split(sep).map(h=>h.replace(/['"]/g,'').trim());
+                const rows = lines.slice(1).map(l=>{
+                  const vals = l.split(sep).map(v=>v.replace(/['"]/g,'').trim());
+                  const obj: Record<string,string> = {};
+                  headers.forEach((h,i)=>{ obj[h] = vals[i]||''; });
+                  return obj;
+                }).filter(r=>Object.values(r).some(v=>v));
+                setCsvHeaders(headers);
+                setCsvRows(rows);
+                // Auto-mapeo IA por nombre de columna
+                const NEXUM_FIELDS = ['name','apellido','phone','email','fecha_nacimiento','total_visits','notas_oh_yeah','alergias','preferencias','ciudad','vip_status','origen_captacion','notes'];
+                const ALIASES: Record<string,string> = {
+                  'nombre':'name','name':'name','first name':'name','primer nombre':'name',
+                  'apellido':'apellido','last name':'apellido','segundo nombre':'apellido',
+                  'celular':'phone','telefono':'phone','phone':'phone','móvil':'phone','movil':'phone','cel':'phone','whatsapp':'phone',
+                  'correo':'email','email':'email','e-mail':'email','mail':'email',
+                  'cumpleaños':'fecha_nacimiento','cumpleanos':'fecha_nacimiento','birthday':'fecha_nacimiento','fecha nacimiento':'fecha_nacimiento','fecha de nacimiento':'fecha_nacimiento','nacimiento':'fecha_nacimiento',
+                  'aniversario':'notas_oh_yeah','visitas':'total_visits','visitas totales':'total_visits','visits':'total_visits','cuantas visitas':'total_visits',
+                  'gustos':'notas_oh_yeah','gustos oh yeah':'notas_oh_yeah','datos oh yeah':'notas_oh_yeah','oh yeah':'notas_oh_yeah',
+                  'alergias':'alergias','alergia':'alergias','intolerancias':'alergias',
+                  'preferencias':'preferencias','preferencia':'preferencias',
+                  'ciudad':'ciudad','city':'ciudad',
+                  'vip':'vip_status','estado':'vip_status',
+                  'origen':'origen_captacion','canal':'origen_captacion','fuente':'origen_captacion',
+                  'notas':'notes','nota':'notes','observaciones':'notes','comments':'notes',
+                };
+                const autoMap: Record<string,string> = {};
+                headers.forEach(h => {
+                  const key = h.toLowerCase().trim();
+                  if (ALIASES[key]) autoMap[h] = ALIASES[key];
+                  else autoMap[h] = 'ignorar';
+                });
+                setCsvMapping(autoMap);
+                setCsvPreview(rows.slice(0,5));
+                setCsvParsing(false);
+                setCsvStep('map');
+              }}
+            />
+
+            <div style={{maxWidth:800}}>
+              {/* Steps indicator */}
+              <div style={{display:'flex',gap:0,marginBottom:24}}>
+                {(['upload','map','preview','done'] as const).map((s,i)=>{
+                  const labels = {upload:'1. Subir archivo',map:'2. Mapear columnas',preview:'3. Vista previa',done:'4. Importado'};
+                  const done = ['upload','map','preview','done'].indexOf(csvStep) > i;
+                  const active = csvStep===s;
+                  return (
+                    <div key={s} style={{flex:1,display:'flex',alignItems:'center'}}>
+                      <div style={{flex:1,padding:'8px 12px',background:active?`${S.gold}20`:done?`${S.green}10`:S.bg2,border:`1px solid ${active?S.gold:done?S.green:S.border}`,borderRadius:i===0?'8px 0 0 8px':i===3?'0 8px 8px 0':'0',textAlign:'center' as const}}>
+                        <div style={{fontSize:10,fontWeight:700,color:active?S.gold:done?S.green:S.text3}}>{done?'✓ ':''}{labels[s]}</div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* STEP 1 — Upload */}
+              {csvStep==='upload' && (
+                <div style={{background:S.bg2,border:`2px dashed ${S.border}`,borderRadius:16,padding:60,textAlign:'center' as const}}>
+                  <div style={{fontSize:48,marginBottom:16}}>📥</div>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,marginBottom:8}}>Importar base de clientes</div>
+                  <div style={{fontSize:13,color:S.text3,marginBottom:6}}>Acepta archivos CSV o TXT con separador coma (,) o punto y coma (;)</div>
+                  <div style={{fontSize:11,color:S.text3,marginBottom:24}}>La IA mapea automáticamente: nombre, teléfono, correo, cumpleaños, aniversario, visitas, gustos Oh Yeah, alergias, preferencias y más</div>
+                  <button onClick={()=>fileInputRef.current?.click()}
+                    style={{...btn(S.gold),padding:'12px 32px',fontSize:14}}>
+                    {csvParsing ? '⏳ Analizando...' : '📂 Seleccionar archivo CSV'}
+                  </button>
+                  <div style={{marginTop:20,fontSize:11,color:S.text3}}>
+                    Columnas soportadas: Nombre, Apellido, Celular, Correo, Cumpleaños, Aniversario, Visitas, Gustos Oh Yeah, Alergias, Preferencias, Ciudad, VIP, Estado, Origen, Notas
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2 — Mapeo */}
+              {csvStep==='map' && (
+                <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                  <div style={{background:S.bg2,border:`1px solid ${S.gold}40`,borderRadius:14,padding:18}}>
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:4}}>🧠 Mapeo automático de columnas</div>
+                    <div style={{fontSize:12,color:S.text3,marginBottom:16}}>La IA detectó {csvRows.length} clientes y {csvHeaders.length} columnas. Ajusta el mapeo si es necesario.</div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                      {csvHeaders.map(h=>(
+                        <div key={h} style={{background:S.bg3,borderRadius:10,padding:'10px 14px',display:'flex',alignItems:'center',gap:10}}>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:11,color:S.text3,marginBottom:2}}>Columna CSV:</div>
+                            <div style={{fontSize:13,fontWeight:700,color:S.gold}}>{h}</div>
+                            <div style={{fontSize:10,color:S.text3,marginTop:2}}>Ej: "{csvRows[0]?.[h]||'—'}"</div>
+                          </div>
+                          <div style={{fontSize:16}}>→</div>
+                          <div style={{flex:1}}>
+                            <div style={{fontSize:11,color:S.text3,marginBottom:4}}>Campo Nexum:</div>
+                            <select style={{...inp,fontSize:12,padding:'6px 10px'}}
+                              value={csvMapping[h]||'ignorar'}
+                              onChange={e=>setCsvMapping(p=>({...p,[h]:e.target.value}))}>
+                              <option value="ignorar">— Ignorar —</option>
+                              <option value="name">Nombre</option>
+                              <option value="apellido">Apellido</option>
+                              <option value="phone">Teléfono / Celular</option>
+                              <option value="email">Correo electrónico</option>
+                              <option value="fecha_nacimiento">Cumpleaños</option>
+                              <option value="notas_oh_yeah">Gustos Oh Yeah / Aniversario</option>
+                              <option value="alergias">Alergias</option>
+                              <option value="preferencias">Preferencias</option>
+                              <option value="total_visits">Visitas totales</option>
+                              <option value="ciudad">Ciudad</option>
+                              <option value="vip_status">VIP / Estado</option>
+                              <option value="origen_captacion">Origen / Canal</option>
+                              <option value="notes">Notas generales</option>
+                            </select>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:10}}>
+                    <button onClick={()=>setCsvStep('upload')} style={{...btn(S.text3),background:'transparent',border:`1px solid ${S.border}`,color:S.text3,flex:1}}>← Volver</button>
+                    <button onClick={()=>setCsvStep('preview')} style={{...btn(S.gold),flex:3}}>Ver vista previa →</button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 3 — Preview */}
+              {csvStep==='preview' && (
+                <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                  <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:18}}>
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:4}}>Vista previa — primeros 5 registros</div>
+                    <div style={{fontSize:12,color:S.text3,marginBottom:14}}>Se importarán {csvRows.length} clientes en total</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                      {csvPreview.map((row,i)=>{
+                        const mapped: Record<string,any> = {};
+                        Object.entries(csvMapping).forEach(([csvCol,nexumField])=>{
+                          if (nexumField!=='ignorar' && row[csvCol]) mapped[nexumField] = row[csvCol];
+                        });
+                        return (
+                          <div key={i} style={{background:i%2===0?S.bg3:S.bg4,borderRadius:10,padding:'10px 14px',display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
+                            <div style={{fontWeight:700,fontSize:13,minWidth:120}}>{mapped.name||'Sin nombre'} {mapped.apellido||''}</div>
+                            {mapped.phone && <span style={{fontSize:11,color:S.blue}}>📱 {mapped.phone}</span>}
+                            {mapped.email && <span style={{fontSize:11,color:S.purple}}>✉ {mapped.email}</span>}
+                            {mapped.fecha_nacimiento && <span style={{fontSize:11,color:S.gold}}>🎂 {mapped.fecha_nacimiento}</span>}
+                            {mapped.total_visits && <span style={{fontSize:11,color:S.green}}>👥 {mapped.total_visits} visitas</span>}
+                            {mapped.alergias && <span style={{fontSize:11,color:S.red}}>⚠️ {mapped.alergias}</span>}
+                            {mapped.notas_oh_yeah && <span style={{fontSize:11,color:S.pink}}>✦ {String(mapped.notas_oh_yeah).slice(0,40)}</span>}
+                            {mapped.vip_status && <span style={{fontSize:11,color:S.gold}}>⭐ VIP</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:10}}>
+                    <button onClick={()=>setCsvStep('map')} style={{...btn(S.text3),background:'transparent',border:`1px solid ${S.border}`,color:S.text3,flex:1}}>← Ajustar mapeo</button>
+                    <button disabled={csvImporting} onClick={async ()=>{
+                      setCsvImporting(true);
+                      let ok=0, err=0;
+                      for (const row of csvRows) {
+                        const mapped: Record<string,any> = {};
+                        Object.entries(csvMapping).forEach(([csvCol,nexumField])=>{
+                          if (nexumField!=='ignorar' && row[csvCol]?.trim()) mapped[nexumField] = row[csvCol].trim();
+                        });
+                        if (!mapped.name) { err++; continue; }
+                        // Transformaciones
+                        if (mapped.vip_status) mapped.vip_status = ['si','sí','yes','vip','1','true'].includes(String(mapped.vip_status).toLowerCase());
+                        if (mapped.total_visits) mapped.total_visits = parseInt(mapped.total_visits)||0;
+                        if (mapped.alergias) mapped.alergias = String(mapped.alergias).split(/[,;\/]/).map((s:string)=>s.trim()).filter(Boolean);
+                        if (mapped.preferencias) mapped.preferencias = String(mapped.preferencias).split(/[,;\/]/).map((s:string)=>s.trim()).filter(Boolean);
+                        if (mapped.notas_oh_yeah) {
+                          mapped.tags = [...(mapped.tags||[]), mapped.notas_oh_yeah];
+                          mapped.notes = (mapped.notes ? mapped.notes+' | ' : '') + 'Oh Yeah: '+mapped.notas_oh_yeah;
+                          delete mapped.notas_oh_yeah;
+                        }
+                        mapped.activo = true;
+                        const { error } = await supabase.from('customers').upsert(mapped, {onConflict:'email', ignoreDuplicates:false});
+                        if (error) err++; else ok++;
+                      }
+                      setCsvResultado({ok,err});
+                      setCsvImporting(false);
+                      setCsvStep('done');
+                      fetchClientes();
+                    }} style={{...btn(S.green),flex:3,opacity:csvImporting?.7:1}}>
+                      {csvImporting ? `⏳ Importando...` : `✓ Importar ${csvRows.length} clientes`}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 4 — Done */}
+              {csvStep==='done' && (
+                <div style={{background:S.bg2,border:`2px solid ${S.green}40`,borderRadius:16,padding:48,textAlign:'center' as const}}>
+                  <div style={{fontSize:48,marginBottom:16}}>✅</div>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,marginBottom:8}}>Importación completada</div>
+                  <div style={{fontSize:14,color:S.text3,marginBottom:24}}>
+                    <span style={{color:S.green,fontWeight:700}}>{csvResultado.ok} clientes</span> importados correctamente
+                    {csvResultado.err>0 && <span style={{color:S.red,fontWeight:700,marginLeft:12}}>{csvResultado.err} con error</span>}
+                  </div>
+                  <div style={{display:'flex',gap:10,justifyContent:'center'}}>
+                    <button onClick={()=>{setCsvStep('upload');setCsvRows([]);setCsvHeaders([]);setCsvMapping({});}} style={{...btn(S.gold),padding:'10px 24px'}}>📥 Importar otro archivo</button>
+                    <button onClick={()=>setCtab('grid')} style={{...btn(S.purple),padding:'10px 24px'}}>👥 Ver clientes</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
