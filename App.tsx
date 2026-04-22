@@ -24,6 +24,7 @@ import Login from './components/Login.tsx';
 const OhYeahPage = lazy(() => import('./components/OhYeahPage.tsx'));
 const MobileManagerApp = lazy(() => import('./components/MobileManagerApp.tsx'));
 const ReserveModule = lazy(() => import('./components/ReserveModule.tsx'));
+const MenuModule = lazy(() => import('./components/MenuModule.tsx'));
 const RelationshipModule = lazy(() => import('./components/RelationshipModule.tsx'));
 const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
 const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
@@ -371,6 +372,7 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.PAYROLL        && <PayrollModule />}
                 {activeModule === ModuleType.COMMAND        && <CommandModule onSimulateEvent={() => {}} />}
                 {activeModule === ModuleType.RELATIONSHIP   && <RelationshipModule />}
+                {activeModule === ModuleType.SUPPLY        && <MenuModule />}
                 {activeModule === ModuleType.STAFF_HUB      && <TeamIQ />}
                 {activeModule === ModuleType.SUPPLY         && <SupplyModule />}
                 {activeModule === ModuleType.CARE           && <CareModule />}
