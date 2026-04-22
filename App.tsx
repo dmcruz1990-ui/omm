@@ -24,7 +24,7 @@ import Login from './components/Login.tsx';
 const OhYeahPage = lazy(() => import('./components/OhYeahPage.tsx'));
 const MobileManagerApp = lazy(() => import('./components/MobileManagerApp.tsx'));
 const ReserveModule = lazy(() => import('./components/ReserveModule.tsx'));
-const RelationshipModule = lazy(() => import('./components/RelationshipModule.tsx'));
+const RelationshipModule = lazy(() => import('./components/CustomersModule.tsx'));
 const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
 const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
 const SupplyModule = lazy(() => import('./components/SupplyModule.tsx'));
