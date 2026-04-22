@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 import { supabase } from '../lib/supabase.ts';
 
 const S = {
@@ -724,17 +723,38 @@ export default function CustomersModule() {
                 <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:20}}>
                   <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,marginBottom:4}}>Origen de Clientes</div>
                   <div style={{fontSize:11,color:S.text3,marginBottom:16}}>De dónde vienen tus clientes</div>
-                  {pieData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <PieChart>
-                        <Pie data={pieData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3} dataKey="value">
-                          {pieData.map((_,i)=><Cell key={i} fill={PIE_COLORS[i%PIE_COLORS.length]}/>)}
-                        </Pie>
-                        <Tooltip contentStyle={{background:S.bg3,border:`1px solid ${S.border}`,borderRadius:8,fontSize:12}}/>
-                        <Legend iconType="circle" iconSize={8} wrapperStyle={{fontSize:11}}/>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
+                  {pieData.length > 0 ? (() => {
+                    const total = pieData.reduce((a,d)=>a+d.value,0);
+                    let cumAngle = -Math.PI/2;
+                    const cx=110, cy=110, ro=85, ri=52;
+                    const slices = pieData.map((d,i)=>{ const a=2*Math.PI*d.value/total; const s=cumAngle; cumAngle+=a; return {...d,startA:s,endA:cumAngle,color:PIE_COLORS[i%PIE_COLORS.length]}; });
+                    const arc=(sx:number,sy:number,ex:number,ey:number,large:number,r:number,ri:number)=>{
+                      const x1=cx+r*Math.cos(sx),y1=cy+r*Math.sin(sx),x2=cx+r*Math.cos(ey),y2=cy+r*Math.sin(ey);
+                      const ix1=cx+ri*Math.cos(sy),iy1=cy+ri*Math.sin(sy),ix2=cx+ri*Math.cos(ey),iy2=cy+ri*Math.sin(ey);
+                      return `M ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} L ${ix2} ${iy2} A ${ri} ${ri} 0 ${large} 0 ${ix1} ${iy1} Z`;
+                    };
+                    return (
+                      <div style={{display:'flex',gap:16,alignItems:'center'}}>
+                        <svg width="220" height="220" viewBox="0 0 220 220">
+                          {slices.map((s,i)=>{
+                            const large = s.endA-s.startA>Math.PI?1:0;
+                            return <path key={i} d={arc(s.startA,s.startA,s.endA,s.endA,large,ro,ri)} fill={s.color} stroke={S.bg2} strokeWidth="2"/>;
+                          })}
+                          <text x="110" y="106" textAnchor="middle" fill={S.text1} fontSize="18" fontWeight="900">{total}</text>
+                          <text x="110" y="122" textAnchor="middle" fill={S.text3} fontSize="10">total</text>
+                        </svg>
+                        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                          {slices.map((s,i)=>(
+                            <div key={i} style={{display:'flex',alignItems:'center',gap:7,fontSize:11}}>
+                              <div style={{width:8,height:8,borderRadius:'50%',background:s.color,flexShrink:0}}/>
+                              <span style={{color:S.text2}}>{s.name}</span>
+                              <span style={{color:s.color,fontWeight:700,marginLeft:'auto'}}>{s.value}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })() : (
                     <div style={{height:220,display:'flex',alignItems:'center',justifyContent:'center',color:S.text3,fontSize:12}}>Sin datos de origen</div>
                   )}
                 </div>
@@ -743,17 +763,34 @@ export default function CustomersModule() {
                 <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:20}}>
                   <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,marginBottom:4}}>Análisis Costo vs. Volumen</div>
                   <div style={{fontSize:11,color:S.text3,marginBottom:16}}>Adquisición mensual estimada</div>
-                  {barData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={220}>
-                      <BarChart data={barData} barGap={4}>
-                        <XAxis dataKey="mes" tick={{fontSize:10,fill:S.text3}} axisLine={false} tickLine={false}/>
-                        <YAxis tick={{fontSize:10,fill:S.text3}} axisLine={false} tickLine={false}/>
-                        <Tooltip contentStyle={{background:S.bg3,border:`1px solid ${S.border}`,borderRadius:8,fontSize:12}} formatter={(v:any,n:string)=>[n==='costo'?`$${Number(v).toLocaleString('es-CO')}`:v,n==='costo'?'Costo':'Clientes']}/>
-                        <Bar dataKey="clientes" fill={S.purple} radius={[4,4,0,0]} name="Clientes"/>
-                        <Bar dataKey="costo"    fill={`${S.gold}80`} radius={[4,4,0,0]} name="Costo est."/>
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
+                  {barData.length > 0 ? (() => {
+                    const maxC = Math.max(...barData.map(d=>d.clientes),1);
+                    const maxK = Math.max(...barData.map(d=>d.costo),1);
+                    const W=360, H=180, pad=32, barW=Math.max(10,Math.floor((W-pad*2)/(barData.length*2+1)));
+                    return (
+                      <div>
+                        <svg width="100%" viewBox={`0 0 ${W} ${H+24}`} style={{overflow:'visible'}}>
+                          {barData.map((d,i)=>{
+                            const x = pad + i*(barW*2+6);
+                            const hC = Math.round((d.clientes/maxC)*(H-20));
+                            const hK = Math.round((d.costo/maxK)*(H-20));
+                            return (
+                              <g key={i}>
+                                <rect x={x} y={H-hC} width={barW} height={hC} rx="3" fill={S.purple}/>
+                                <rect x={x+barW+2} y={H-hK} width={barW} height={hK} rx="3" fill={S.gold+'99'}/>
+                                <text x={x+barW} y={H+14} textAnchor="middle" fill={S.text3} fontSize="9">{d.mes}</text>
+                              </g>
+                            );
+                          })}
+                          <line x1={pad} y1={H} x2={W-pad} y2={H} stroke={S.border} strokeWidth="1"/>
+                        </svg>
+                        <div style={{display:'flex',gap:14,marginTop:4}}>
+                          <div style={{display:'flex',alignItems:'center',gap:5,fontSize:10,color:S.text3}}><div style={{width:8,height:8,borderRadius:2,background:S.purple}}/> Clientes</div>
+                          <div style={{display:'flex',alignItems:'center',gap:5,fontSize:10,color:S.text3}}><div style={{width:8,height:8,borderRadius:2,background:S.gold}}/> Costo est.</div>
+                        </div>
+                      </div>
+                    );
+                  })() : (
                     <div style={{height:220,display:'flex',alignItems:'center',justifyContent:'center',color:S.text3,fontSize:12}}>Sin datos mensuales</div>
                   )}
                 </div>
