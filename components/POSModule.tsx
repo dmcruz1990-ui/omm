@@ -291,7 +291,7 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
     const winner = Math.floor(Math.random() * PREMIOS_RULETA.length);
     const target = 8 * 360 + (360 - winner * segAngle - segAngle/2);
     setRotation(target);
-    setTimeout(() => { setSpinning(false); setSelected(winner); setGlowPulse(false); spawnConfetti(); }, 4200);
+    setTimeout(() => { setSpinning(false); setSelected(winner); setGlowPulse(false); spawnConfetti(); }, 7200);
   };
 
   const premio = selected !== null ? PREMIOS_RULETA[selected] : null;
@@ -350,7 +350,7 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
         <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:44, height:44, borderRadius:'50%', background:'linear-gradient(135deg,#FF2D78,#B388FF)', border:'3px solid #fff', zIndex:15, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, boxShadow:'0 0 20px rgba(255,45,120,0.8)' }}>✦</div>
         {/* SVG Ruleta */}
         <svg viewBox="0 0 320 320" width="320" height="320"
-          style={{ transform:`rotate(${rotation}deg)`, transition: spinning?'transform 4.2s cubic-bezier(0.12,0.8,0.1,1.0)':'none', borderRadius:'50%', boxShadow:'0 12px 60px rgba(0,0,0,.6), inset 0 0 40px rgba(0,0,0,.3)', display:'block' }}>
+          style={{ transform:`rotate(${rotation}deg)`, transition: spinning?'transform 7s cubic-bezier(0.08,0.82,0.06,1.0)':'none', borderRadius:'50%', boxShadow:'0 12px 60px rgba(0,0,0,.6), inset 0 0 40px rgba(0,0,0,.3)', display:'block' }}>
           {PREMIOS_RULETA.map((p, i) => {
             const sa = i * segAngle - 90, ea = sa + segAngle;
             const r = 160, cx = 160, cy = 160;
@@ -383,7 +383,38 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
           <div style={{ fontSize:72, marginBottom:8, filter:`drop-shadow(0 0 20px ${premio!.color})` }}>{premio!.emoji}</div>
           <div style={{ fontFamily:"'Syne',sans-serif", fontSize:24, fontWeight:900, color:premio!.color, marginBottom:6 }}>{premio!.label}</div>
           <div style={{ fontSize:14, color:'rgba(255,255,255,.7)', marginBottom:10 }}>{premio!.desc}</div>
-          <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', background:'rgba(255,255,255,.05)', borderRadius:8, padding:'6px 12px' }}>Muéstrale esta pantalla a tu mesero · Válido 30 días</div>
+          <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', background:'rgba(255,255,255,.05)', borderRadius:8, padding:'6px 12px', marginBottom:10 }}>Muéstrale esta pantalla a tu mesero · Válido 30 días</div>
+          {/* Card para mesero */}
+          <div style={{background:`linear-gradient(135deg,${premio!.color}30,${premio!.color}10)`,border:`2px dashed ${premio!.color}60`,borderRadius:14,padding:'14px 16px',marginBottom:12,textAlign:'center'}}>
+            <div style={{fontSize:10,color:'rgba(255,255,255,.5)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:6}}>📲 Premio para el mesero</div>
+            <div style={{fontSize:15,fontWeight:900,color:premio!.color}}>{premio!.emoji} {premio!.label}</div>
+            <div style={{fontSize:11,color:'rgba(255,255,255,.6)',marginTop:4}}>{premio!.desc}</div>
+          </div>
+          {/* Enviar a correo Oh Yeah */}
+          {!premioEnviado ? (
+            <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,padding:'12px 14px',marginBottom:8}}>
+              <div style={{fontSize:11,color:'rgba(255,255,255,.5)',marginBottom:8}}>📧 Recibe tu premio en Oh Yeah</div>
+              <div style={{display:'flex',gap:8}}>
+                <input value={correoEnvio} onChange={e=>setCorreoEnvio(e.target.value)}
+                  placeholder="tu@correo.com"
+                  style={{flex:1,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:9,padding:'9px 12px',color:'#fff',fontSize:12,outline:'none',fontFamily:"'DM Sans',sans-serif"}}/>
+                <button onClick={async()=>{
+                  if(!correoEnvio.includes('@')){return;}
+                  await supabase.from('xcare_encuestas').update({
+                    enviado_google:true,
+                    respuesta_ia:`PREMIO:${premio!.label}|EMAIL:${correoEnvio}`
+                  }).eq('mesa_numero',mesaNum).order('created_at',{ascending:false}).limit(1);
+                  setPremioEnviado(true);
+                }} style={{padding:'9px 14px',borderRadius:9,border:'none',background:`linear-gradient(135deg,${premio!.color},${premio!.color}cc)`,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  Enviar →
+                </button>
+              </div>
+            </div>
+          ):(
+            <div style={{background:'rgba(0,230,118,0.1)',border:'1px solid rgba(0,230,118,0.3)',borderRadius:12,padding:'10px 14px',marginBottom:8,textAlign:'center',fontSize:13,color:'#00E676'}}>
+              ✓ Premio enviado a {correoEnvio} — revisa tu Oh Yeah
+            </div>
+          )}
         </div>
       )}
 
@@ -1822,7 +1853,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           2:`Hola ${mesaCliente?.cliente?.split(' ')[0]||'amigo'},\n\nTu experiencia es importante. Nuestro equipo ya trabaja para que no vuelva a ocurrir.\n\nSerá un honor recibirte nuevamente.`,
           1:`Hola ${mesaCliente?.cliente?.split(' ')[0]||'amigo'},\n\nLo que nos compartiste merece toda nuestra atención. Ya tomamos acciones concretas.\n\nNos gustaría recibirte para ofrecerte una experiencia completamente distinta.`,
         };
-        const platosOrden = order.filter(o=>o.mesa===mesaCliente?.num).map(o=>o.nombre);
+        // Separar platos y bebidas del pedido real
+        const CATS_BEBIDA = ['Cocteles','Vinos','Sakes','Cervezas','Aguas','Café/Té'];
+        const CATS_COMIDA  = ['Para Compartir','Robata/Wok','Sushi Frío','Ensaladas','Postres','Especiales'];
+        const todosItems = order.filter(o=>o.mesa===mesaCliente?.num);
+        const platosOrden   = todosItems.filter(o=>!CATS_BEBIDA.some(cb=>o.nombre.toLowerCase().includes(cb.toLowerCase()))).map(o=>o.nombre);
+        const bebidasOrden  = todosItems.filter(o=>CATS_BEBIDA.some(cb=>o.nombre.toLowerCase().includes(cb.toLowerCase()))||['Gas','Espresso','Americano','Té','Sake','Heineken','Old','Malbec','Rosé','Blanco','Yin','Infinito','Gin'].some(k=>o.nombre.includes(k))).map(o=>o.nombre);
+        const todosItemsNombres = todosItems.map(o=>o.nombre);
         const toggleT = (arr: string[], set: React.Dispatch<React.SetStateAction<string[]>>, v: string) => set(p=>p.includes(v)?p.filter(x=>x!==v):[...p,v]);
         const isPos = clienteRating===5, isMed = clienteRating===4, isNeg = clienteRating<=3&&clienteRating>0;
         const tags = isPos||isMed ? TAGS5 : TAGS4;
@@ -1943,20 +1980,44 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               </div>
             )}
 
-            {/* PLATOS PROBLEMA */}
+            {/* PLATOS Y BEBIDAS PROBLEMA */}
             {xcareStep==='platos' && (
               <div style={{width:'100%',animation:'xcFadeUp .3s ease'}}>
-                <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
-                  {platosOrden.map(item=>{
-                    const sel=xcarePlatos.includes(item);
-                    return(
-                      <button key={item} onClick={()=>toggleT(xcarePlatos,setXcarePlatos,item)}
-                        style={{padding:'12px 16px',borderRadius:12,border:`2px solid ${sel?XC.red:'rgba(255,255,255,0.08)'}`,background:sel?'rgba(255,82,82,0.12)':'rgba(255,255,255,0.04)',color:sel?XC.red:XC.t2,cursor:'pointer',textAlign:'left' as const,fontSize:13,fontWeight:sel?700:400,transition:'all .2s'}}>
-                        {sel?'✕ ':''}{item}
-                      </button>
-                    );
-                  })}
-                </div>
+                {platosOrden.length>0&&(
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontSize:10,color:XC.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>🍽️ Comida</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                      {platosOrden.map(item=>{
+                        const sel=xcarePlatos.includes(item);
+                        return(
+                          <button key={item} onClick={()=>toggleT(xcarePlatos,setXcarePlatos,item)}
+                            style={{padding:'12px 16px',borderRadius:12,border:`2px solid ${sel?XC.red:'rgba(255,255,255,0.08)'}`,background:sel?'rgba(255,82,82,0.12)':'rgba(255,255,255,0.04)',color:sel?XC.red:XC.t2,cursor:'pointer',textAlign:'left',fontSize:13,fontWeight:sel?700:400,transition:'all .2s',display:'flex',alignItems:'center',gap:8}}>
+                            <span style={{fontSize:18}}>🍽️</span>{sel?'✕ ':''}{item}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {bebidasOrden.length>0&&(
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontSize:10,color:XC.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>🍸 Bebidas</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                      {bebidasOrden.map(item=>{
+                        const sel=xcarePlatos.includes(item);
+                        return(
+                          <button key={item} onClick={()=>toggleT(xcarePlatos,setXcarePlatos,item)}
+                            style={{padding:'12px 16px',borderRadius:12,border:`2px solid ${sel?XC.red:'rgba(255,255,255,0.08)'}`,background:sel?'rgba(255,82,82,0.12)':'rgba(255,255,255,0.04)',color:sel?XC.red:XC.t2,cursor:'pointer',textAlign:'left',fontSize:13,fontWeight:sel?700:400,transition:'all .2s',display:'flex',alignItems:'center',gap:8}}>
+                            <span style={{fontSize:18}}>🍸</span>{sel?'✕ ':''}{item}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {todosItemsNombres.length===0&&(
+                  <div style={{color:XC.t3,fontSize:13,textAlign:'center',padding:'20px 0'}}>No hay items registrados en esta mesa</div>
+                )}
                 <button onClick={()=>{if(xcarePlatos.length)setXcareStep('microtags');}} disabled={xcarePlatos.length===0}
                   style={{width:'100%',padding:'13px',borderRadius:14,border:'none',background:xcarePlatos.length?`linear-gradient(135deg,${XC.pink},#cc2260)`:'rgba(255,255,255,0.05)',color:'#fff',fontSize:14,fontWeight:900,cursor:xcarePlatos.length?'pointer':'not-allowed',fontFamily:"'Syne',sans-serif"}}>
                   Siguiente →
