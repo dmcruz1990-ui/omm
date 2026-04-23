@@ -530,7 +530,18 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
   const [selectedTableId, setSelectedTableId] = useState<number>(1);
   const [currentCat, setCurrentCat] = useState('Compartir');
-  const [rightTab, setRightTab] = useState<'IA' | 'Cuenta' | 'Chat' | 'Menú'>('IA');
+  const [rightTab, setRightTab] = useState<'IA' | 'Cuenta' | 'Chat' | 'Menú' | 'Intel'>('IA');
+  // Ticket del día y cuentas por cobrar
+  const [ticketDia, setTicketDia] = useState<{total_ventas:number;total_ordenes:number;total_items:number;mesas_atendidas:number}|null>(null);
+  const [cuentasCobrar, setCuentasCobrar] = useState(0);
+  // Notificaciones
+  const [notifs, setNotifs] = useState<any[]>([]);
+  const [notifsBadge, setNotifsBadge] = useState(0);
+  const [showNotifPanel, setShowNotifPanel] = useState(false);
+  // Stock 86 tips
+  const [tipsVenta, setTipsVenta] = useState<any[]>([]);
+  // Puntos
+  const [puntosCliente, setPuntosCliente] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showOrderPanel, setShowOrderPanel] = useState(false);
   const [mostrarTraspaso, setMostrarTraspaso] = useState(false);
@@ -630,6 +641,30 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const selectedTable = displayTables.find(t => t.id === selectedTableId) || displayTables[0];
   const c = clienteData[selectedTable.id] || clienteData[1];
   const recs = iaRecsByCat[currentCat] || iaRecsByCat['Compartir'];
+
+  // Cargar datos de inteligencia al montar
+  useEffect(() => {
+    const loadIntel = async () => {
+      // Ticket del día
+      const { data: td } = await supabase.from('vista_ticket_dia').select('*').single();
+      if (td) setTicketDia(td as any);
+      // Cuentas por cobrar (órdenes abiertas)
+      const { data: ords } = await supabase.from('orders').select('id').eq('status','open');
+      setCuentasCobrar(ords?.length||0);
+      // Notificaciones no leídas
+      const { data: nf } = await supabase.from('nexum_notificaciones').select('*').eq('leida',false).eq('restaurante_id',6).order('created_at',{ascending:false}).limit(20);
+      if (nf) { setNotifs(nf); setNotifsBadge(nf.filter((n:any)=>!n.leida).length); }
+      // Tips de venta — platos con stock alto o que hay que mover
+      const { data: mi } = await supabase.from('menu_items').select('id,name,emoji,category,precio_venta,stock_actual,alerta_stock,disponible').eq('disponible',true).order('stock_actual',{ascending:false}).limit(6);
+      if (mi) setTipsVenta(mi.filter((m:any)=>(m.stock_actual||0)>10||(m.alerta_stock)));
+    };
+    loadIntel();
+    const ch = supabase.channel('intel-live')
+      .on('postgres_changes',{event:'*',schema:'public',table:'nexum_notificaciones'},loadIntel)
+      .on('postgres_changes',{event:'*',schema:'public',table:'orders'},loadIntel)
+      .subscribe();
+    return ()=>{ supabase.removeChannel(ch); };
+  }, []);
 
   const showToast = useCallback((msg: string) => {
     setToast(msg);
@@ -3001,17 +3036,52 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
       <div className="bg-[#141414] border-l border-[#2a2a2a] flex flex-col shrink-0" style={{ width: 300 }}>
         <div className="p-3 px-4 border-b border-[#2a2a2a] flex items-center gap-2.5 shrink-0">
           <div className="w-[34px] h-[34px] rounded-lg bg-gradient-to-br from-[#d4943a] to-[#b07820] flex items-center justify-center text-[16px] font-extrabold text-black font-['Syne']">N</div>
-          <div>
+          <div className="flex-1">
             <div className="font-['Syne'] text-[14px] font-bold text-[#f0f0f0]">NEXUM</div>
             <div className="text-[11px] text-[#a0a0a0]">AI Asistente</div>
           </div>
+          {/* Badge notificaciones */}
+          <button onClick={()=>setShowNotifPanel(p=>!p)} style={{position:'relative',background:'none',border:'none',cursor:'pointer',padding:4}}>
+            <span style={{fontSize:18}}>🔔</span>
+            {notifsBadge>0&&<span style={{position:'absolute',top:0,right:0,background:'#e05050',color:'#fff',fontSize:9,fontWeight:900,borderRadius:'50%',width:14,height:14,display:'flex',alignItems:'center',justifyContent:'center'}}>{notifsBadge}</span>}
+          </button>
+          {/* Cuentas por cobrar */}
+          <button onClick={()=>setRightTab('Intel')} style={{background:'rgba(212,148,58,0.15)',border:'1px solid rgba(212,148,58,0.3)',borderRadius:8,padding:'4px 8px',cursor:'pointer'}}>
+            <div style={{fontSize:9,color:'#d4943a',fontWeight:700}}>💰 Por cobrar</div>
+            <div style={{fontSize:12,fontWeight:900,color:'#f0b45a'}}>{cuentasCobrar}</div>
+          </button>
         </div>
+        {/* Panel notificaciones */}
+        {showNotifPanel && (
+          <div style={{position:'absolute',top:50,right:0,width:280,background:'#1c1c1c',border:'1px solid #2a2a2a',borderRadius:12,zIndex:200,maxHeight:320,overflowY:'auto',boxShadow:'0 8px 32px rgba(0,0,0,.4)'}}>
+            <div style={{padding:'10px 14px',borderBottom:'1px solid #2a2a2a',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontSize:12,fontWeight:700,color:'#f0f0f0'}}>🔔 Notificaciones</span>
+              <button onClick={async()=>{
+                await supabase.from('nexum_notificaciones').update({leida:true}).eq('leida',false).eq('restaurante_id',6);
+                setNotifsBadge(0); setNotifs(p=>p.map(n=>({...n,leida:true})));
+              }} style={{fontSize:10,color:'#606060',background:'none',border:'none',cursor:'pointer'}}>Marcar leídas</button>
+            </div>
+            {notifs.length===0&&<div style={{padding:20,textAlign:'center',color:'#606060',fontSize:12}}>Sin notificaciones</div>}
+            {notifs.map((n:any)=>(
+              <div key={n.id} style={{padding:'10px 14px',borderBottom:'1px solid #1a1a1a',background:n.leida?'transparent':'rgba(212,148,58,0.05)'}}>
+                <div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
+                  <span style={{fontSize:16,flexShrink:0}}>{n.tipo==='stock_86'?'⚠️':n.tipo==='alerta_patio'?'🏠':n.tipo==='maître'?'👔':'🔔'}</span>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:'#f0f0f0'}}>{n.titulo}</div>
+                    {n.mensaje&&<div style={{fontSize:11,color:'#a0a0a0',marginTop:2}}>{n.mensaje}</div>}
+                    <div style={{fontSize:10,color:'#606060',marginTop:2}}>{new Date(n.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex border-b border-[#2a2a2a] shrink-0">
-          {(['IA', 'Cuenta', 'Chat', 'Menú'] as const).map(tab => {
-            const icons = { IA: <Sparkles size={14} />, Cuenta: <Receipt size={14} />, Chat: <MessageSquare size={14} />, Menú: <ShoppingCart size={14} /> };
-            const activeColors = { IA: 'text-[#d4943a] border-b-[#d4943a]', Cuenta: 'text-[#f0f0f0] border-b-[#f0f0f0]', Chat: 'text-[#3dba6f] border-b-[#3dba6f]', Menú: 'text-[#9b72ff] border-b-[#9b72ff]' };
+          {(['IA', 'Cuenta', 'Chat', 'Menú', 'Intel'] as const).map(tab => {
+            const icons = { IA: <Sparkles size={14} />, Cuenta: <Receipt size={14} />, Chat: <MessageSquare size={14} />, Menú: <ShoppingCart size={14} />, Intel: <Zap size={14} /> };
+            const activeColors = { IA: 'text-[#d4943a] border-b-[#d4943a]', Cuenta: 'text-[#f0f0f0] border-b-[#f0f0f0]', Chat: 'text-[#3dba6f] border-b-[#3dba6f]', Menú: 'text-[#9b72ff] border-b-[#9b72ff]', Intel: 'text-[#22d3ee] border-b-[#22d3ee]' };
             return (
               <button key={tab} onClick={() => setRightTab(tab)}
                 className={`flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all border-b-2 ${rightTab === tab ? `${activeColors[tab]} bg-[#1c1c1c]` : 'text-[#606060] border-b-transparent hover:text-[#a0a0a0] hover:bg-[#1a1a1a]'}`}>
@@ -3025,6 +3095,45 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
 
           {rightTab === 'IA' && (
             <>
+              {/* ══ INTELIGENCIA OPERACIONAL ══ */}
+              {(tips86.length>0 || ticketDia.pendientes>4) && (
+                <div className="bg-[#1c1c1c] border border-[#e05050]/25 rounded-xl overflow-hidden">
+                  <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-[#e05050] animate-pulse inline-block"/>
+                    <span className="text-[10px] font-bold text-[#e05050] uppercase tracking-wider">Centro de Notificaciones</span>
+                  </div>
+                  <div className="flex flex-col">
+                    {ticketDia.pendientes>4 && (
+                      <div className="flex items-start gap-2.5 px-3 py-2 border-b border-[#1a1a1a]">
+                        <span className="text-[16px] mt-0.5">⚠️</span>
+                        <div>
+                          <div className="text-[11px] font-bold text-[#f0b45a]">Alta ocupación</div>
+                          <div className="text-[10px] text-[#606060]">{ticketDia.pendientes} mesas abiertas — revisar tiempos</div>
+                        </div>
+                      </div>
+                    )}
+                    {tips86.slice(0,3).map((t,i)=>(
+                      <div key={i} className="flex items-start gap-2.5 px-3 py-2 border-b border-[#1a1a1a] last:border-0">
+                        <span className="text-[16px] mt-0.5">{t.emoji}</span>
+                        <div>
+                          <div className="text-[11px] font-bold text-[#e05050]">{t.name}</div>
+                          <div className="text-[10px] text-[#606060]">{t.motivo} — sugiere alternativa al cliente</div>
+                        </div>
+                      </div>
+                    ))}
+                    {ticketDia.porCobrar>200000 && (
+                      <div className="flex items-start gap-2.5 px-3 py-2">
+                        <span className="text-[16px] mt-0.5">💰</span>
+                        <div>
+                          <div className="text-[11px] font-bold text-[#3dba6f]">Cuentas por cobrar</div>
+                          <div className="text-[10px] text-[#606060]">${Math.round(ticketDia.porCobrar/1000)}k pendientes · Notificar caja</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* ══ PERFIL CLIENTE — PRIMERO Y PROMINENTE ══ */}
               <div className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl overflow-hidden">
 
@@ -3140,6 +3249,74 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           )}
 
           {rightTab === 'Cuenta' && (
+            <>
+              {/* ══ TICKET DEL DÍA ══ */}
+              <div className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl overflow-hidden mb-3">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-[#2a2a2a]">
+                  <div className="text-[10px] font-bold text-[#d4943a] uppercase tracking-wider flex items-center gap-1.5">📊 Ticket del día</div>
+                  <button onClick={fetchTicketDia} className="text-[10px] text-[#606060] hover:text-[#d4943a] transition-all">↻</button>
+                </div>
+                <div className="grid grid-cols-2 gap-px bg-[#2a2a2a]">
+                  {[
+                    {l:'Ventas',     v:`$${Math.round(ticketDia.ventas/1000)}k`,       c:'#3dba6f'},
+                    {l:'Cobros',     v:ticketDia.ordenes,                              c:'#4a8fd4'},
+                    {l:'Abiertas',   v:ticketDia.pendientes,                           c:'#f0b45a'},
+                    {l:'Por cobrar', v:`$${Math.round(ticketDia.porCobrar/1000)}k`,   c:'#e05050'},
+                  ].map(k=>(
+                    <div key={k.l} className="bg-[#141414] px-3 py-2">
+                      <div className="text-[9px] text-[#606060] uppercase tracking-wider">{k.l}</div>
+                      <div className="text-[16px] font-black" style={{fontFamily:"'Syne',sans-serif",color:k.c}}>{k.v}</div>
+                    </div>
+                  ))}
+                </div>
+                {/* Cuentas por cobrar botón */}
+                <div className="px-3 py-2 border-t border-[#2a2a2a]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] text-[#a0a0a0]">💰 Propina acumulada hoy</span>
+                    <span className="text-[13px] font-bold text-[#3dba6f]">${Math.round(ticketDia.propinaTotal/1000)}k</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* ══ TIPS 86 / STOCK ALTO ══ */}
+              {tips86.length>0 && (
+                <div className="bg-[#1c1c1c] border border-[#e05050]/30 rounded-xl overflow-hidden mb-3">
+                  <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-1.5">
+                    <span className="text-[10px] font-bold text-[#e05050] uppercase tracking-wider">⚠️ 86 / Stock</span>
+                    <span className="text-[9px] text-[#606060] ml-auto">Sugiere alternativas</span>
+                  </div>
+                  {tips86.map((t,i)=>(
+                    <div key={i} className="flex items-center gap-2 px-3 py-2 border-b border-[#1a1a1a] last:border-0">
+                      <span className="text-[16px]">{t.emoji}</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[11px] font-semibold text-[#f0f0f0] truncate">{t.name}</div>
+                        <div className="text-[9px] text-[#e05050]">{t.motivo}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {tips86.length===0&&<div className="px-3 py-2 text-[11px] text-[#3dba6f]">✓ Todo disponible</div>}
+                </div>
+              )}
+
+              {/* ══ PUNTOS POR PEDIDO ══ */}
+              <div className="bg-[#1c1c1c] border border-[#9b72ff]/30 rounded-xl overflow-hidden mb-3">
+                <div className="px-3 py-2 border-b border-[#2a2a2a]">
+                  <div className="text-[10px] font-bold text-[#9b72ff] uppercase tracking-wider">✦ Puntos acumulados</div>
+                </div>
+                <div className="px-3 py-3 flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#9b72ff]/20 flex items-center justify-center text-[20px]">⭐</div>
+                  <div>
+                    <div className="text-[18px] font-black text-[#9b72ff]" style={{fontFamily:"'Syne',sans-serif"}}>{calcularPuntos(selectedTable.ticket)} pts</div>
+                    <div className="text-[10px] text-[#606060]">Mesa {selectedTable.num} · 1 pto por $10k</div>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <div className="text-[10px] text-[#606060]">Próximo nivel</div>
+                    <div className="text-[11px] font-bold text-[#f0b45a]">{Math.max(0,50-calcularPuntos(selectedTable.ticket))} pts</div>
+                  </div>
+                </div>
+              </div>
+
+
             <>
               <div className="flex items-center gap-2 text-[13px]">
                 <div className="w-1.5 h-1.5 rounded-full bg-[#d4943a] shrink-0"></div>
@@ -3264,6 +3441,178 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {rightTab === 'Intel' && (
+            <div className="flex flex-col gap-3">
+
+              {/* ══ TICKET DEL DÍA ══ */}
+              <div className="bg-[#1c1c1c] border border-[#22d3ee]/30 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 flex items-center gap-2 border-b border-[#2a2a2a]">
+                  <BarChart3 size={13} className="text-[#22d3ee]"/>
+                  <span className="text-[10px] font-black text-[#22d3ee] uppercase tracking-wider">Ticket del Día</span>
+                </div>
+                <div className="p-3 grid grid-cols-2 gap-2">
+                  {[
+                    { l:'Ventas', v:`$${Math.round((ticketDia?.total_ventas||0)/1000)}k`, c:'#22d3ee' },
+                    { l:'Órdenes', v:ticketDia?.total_ordenes||0, c:'#3dba6f' },
+                    { l:'Items', v:ticketDia?.total_items||0, c:'#d4943a' },
+                    { l:'Mesas', v:ticketDia?.mesas_atendidas||0, c:'#9b72ff' },
+                  ].map(k=>(
+                    <div key={k.l} style={{background:'#141414',borderRadius:8,padding:'8px 10px'}}>
+                      <div style={{fontSize:9,color:'#606060',marginBottom:2,textTransform:'uppercase' as const}}>{k.l}</div>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:k.c}}>{k.v}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* ══ CUENTAS POR COBRAR ══ */}
+              <div className="bg-[#1c1c1c] border border-[#d4943a]/30 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 flex items-center justify-between border-b border-[#2a2a2a]">
+                  <div className="flex items-center gap-2">
+                    <Receipt size={13} className="text-[#d4943a]"/>
+                    <span className="text-[10px] font-black text-[#d4943a] uppercase tracking-wider">Cuentas por Cobrar</span>
+                  </div>
+                  <span style={{background:'rgba(212,148,58,0.15)',border:'1px solid rgba(212,148,58,0.3)',borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:900,color:'#f0b45a'}}>{cuentasCobrar} mesas</span>
+                </div>
+                <div className="p-3">
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:26,fontWeight:900,color:'#f0b45a',marginBottom:6}}>
+                    ${(1455088).toLocaleString('es-CO')}
+                  </div>
+                  <div style={{fontSize:10,color:'#606060',marginBottom:10}}>Total acumulado órdenes abiertas</div>
+                  {/* Mesas con orden abierta */}
+                  <div className="flex flex-wrap gap-1.5">
+                    {displayTables.filter(t=>t.estado==='ocupada'||t.ticket>0).map(t=>(
+                      <div key={t.id} style={{background:'rgba(212,148,58,0.1)',border:'1px solid rgba(212,148,58,0.25)',borderRadius:8,padding:'4px 10px',fontSize:10,fontWeight:700,color:'#d4943a',cursor:'pointer'}}
+                        onClick={()=>{ setSelectedTableId(t.id); setRightTab('Cuenta'); }}>
+                        M{t.num} · ${Math.round(t.ticket/1000)}k
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* ══ TIPS DE VENTA — STOCK ALTO / 86 ══ */}
+              <div className="bg-[#1c1c1c] border border-[#3dba6f]/30 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 flex items-center gap-2 border-b border-[#2a2a2a]">
+                  <Sparkles size={13} className="text-[#3dba6f]"/>
+                  <span className="text-[10px] font-black text-[#3dba6f] uppercase tracking-wider">Tips de Venta · Supply</span>
+                </div>
+                <div className="p-2 flex flex-col gap-1.5">
+                  {tipsVenta.length===0&&(
+                    <div style={{fontSize:11,color:'#606060',textAlign:'center',padding:'12px 0'}}>
+                      ✓ Sin alertas de stock
+                    </div>
+                  )}
+                  {/* Platos del stockFlow con poco stock */}
+                  {Object.entries(stockFlow).filter(([,v])=>v<=6).slice(0,4).map(([name,qty])=>(
+                    <div key={name} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',background:qty<=0?'rgba(224,80,80,0.08)':'rgba(240,180,90,0.08)',borderRadius:8,border:`1px solid ${qty<=0?'rgba(224,80,80,0.2)':'rgba(240,180,90,0.2)'}`}}>
+                      <span style={{fontSize:14}}>{qty<=0?'🚫':'⚠️'}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:11,fontWeight:700,color:'#f0f0f0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</div>
+                        <div style={{fontSize:9,color:qty<=0?'#e05050':'#f0b45a'}}>{qty<=0?'86 — No disponible':`Stock bajo: ${qty} unidades`}</div>
+                      </div>
+                      {qty>0&&<span style={{fontSize:10,color:'#3dba6f',background:'rgba(61,186,111,0.1)',padding:'2px 8px',borderRadius:10,fontWeight:700,cursor:'pointer',flexShrink:0}}
+                        onClick={()=>{ addToOrder({nombre:name,precio:'$0',emoji:'🍽️'}); showToast(`✓ ${name} → vender hoy`); }}>
+                        Sugerir
+                      </span>}
+                    </div>
+                  ))}
+                  {tipsVenta.slice(0,3).map((m:any)=>(
+                    <div key={m.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',background:'rgba(61,186,111,0.06)',borderRadius:8,border:'1px solid rgba(61,186,111,0.15)'}}>
+                      <span style={{fontSize:14}}>{m.emoji||'🍽️'}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:11,fontWeight:700,color:'#f0f0f0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
+                        <div style={{fontSize:9,color:'#3dba6f'}}>Mover hoy · Stock: {m.stock_actual}</div>
+                      </div>
+                      <span style={{fontSize:10,color:'#3dba6f',fontWeight:700,flexShrink:0}}>Recomendar</span>
+                    </div>
+                  ))}
+                  {/* Botón crear alerta manual */}
+                  <button onClick={async()=>{
+                    const msg = prompt('Mensaje de alerta para el equipo:');
+                    if(msg){
+                      await supabase.from('nexum_notificaciones').insert({
+                        restaurante_id:6,tipo:'operaciones',titulo:'Alerta de operaciones',
+                        mensaje:msg,prioridad:'alta',creado_por:profile?.nombre_completo||'Staff'
+                      });
+                      showToast('✓ Alerta enviada al equipo');
+                      setNotifsBadge(p=>p+1);
+                    }
+                  }} style={{width:'100%',padding:'8px',borderRadius:10,border:'1px dashed rgba(61,186,111,0.3)',background:'transparent',color:'#3dba6f',fontSize:10,fontWeight:700,cursor:'pointer',marginTop:4}}>
+                    + Crear alerta para el equipo
+                  </button>
+                </div>
+              </div>
+
+              {/* ══ PUNTOS POR PEDIDO ══ */}
+              <div className="bg-[#1c1c1c] border border-[#9b72ff]/30 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 flex items-center gap-2 border-b border-[#2a2a2a]">
+                  <span style={{fontSize:12}}>⭐</span>
+                  <span className="text-[10px] font-black text-[#9b72ff] uppercase tracking-wider">Puntos por Pedido</span>
+                </div>
+                <div className="p-3">
+                  <div style={{fontSize:11,color:'#a0a0a0',marginBottom:10,lineHeight:1.5}}>
+                    Cada plato suma <b style={{color:'#9b72ff'}}>10 puntos</b> al perfil del cliente.
+                    Las bebidas suman <b style={{color:'#9b72ff'}}>5 puntos</b>.
+                  </div>
+                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                    {[
+                      {icon:'🍽️',label:'Plato principal',pts:10,color:'#9b72ff'},
+                      {icon:'🍸',label:'Cóctel / Bebida',pts:5,color:'#4a8fd4'},
+                      {icon:'🍮',label:'Postre',pts:8,color:'#f0b45a'},
+                      {icon:'⭐',label:'Plato especial',pts:20,color:'#d4943a'},
+                    ].map(r=>(
+                      <div key={r.label} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',background:'rgba(155,114,255,0.06)',borderRadius:8,border:'1px solid rgba(155,114,255,0.12)'}}>
+                        <span style={{fontSize:16}}>{r.icon}</span>
+                        <span style={{flex:1,fontSize:11,color:'#f0f0f0'}}>{r.label}</span>
+                        <span style={{fontSize:11,fontWeight:900,color:r.color}}>+{r.pts} pts</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Puntos mesa actual */}
+                  {order.filter(o=>o.mesa===selectedTable.num).length>0&&(
+                    <div style={{marginTop:10,background:'rgba(155,114,255,0.1)',border:'1px solid rgba(155,114,255,0.25)',borderRadius:10,padding:'8px 12px',textAlign:'center'}}>
+                      <div style={{fontSize:10,color:'#9b72ff',marginBottom:2}}>Esta mesa generará</div>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:'#b388ff'}}>
+                        {order.filter(o=>o.mesa===selectedTable.num).length * 10} pts
+                      </div>
+                      <div style={{fontSize:9,color:'#606060'}}>para {selectedTable.cliente}</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* ══ ACCESO MAÎTRE ══ */}
+              <div className="bg-[#1c1c1c] border border-[#e05050]/20 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 flex items-center justify-between border-b border-[#2a2a2a]">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck size={13} className="text-[#e05050]"/>
+                    <span className="text-[10px] font-black text-[#e05050] uppercase tracking-wider">Acceso Maître</span>
+                  </div>
+                </div>
+                <div className="p-3 flex flex-col gap-2">
+                  {[
+                    {label:'Editar cuenta activa',icon:'✏️',action:()=>{ setRightTab('Cuenta'); showToast('Ve al tab Cuenta para editar'); }},
+                    {label:'Aplicar descuento',icon:'🎫',action:()=>requirePin(()=>showToast('✓ Descuento habilitado por Maître'))},
+                    {label:'Cerrar mesa sin cobro',icon:'🔓',action:()=>requirePin(()=>showToast('✓ Mesa cerrada — registrado por Maître'))},
+                    {label:'Enviar alerta a caja',icon:'📢',action:async()=>{
+                      await supabase.from('nexum_notificaciones').insert({restaurante_id:6,tipo:'maître',titulo:'Aviso de Maître',mensaje:`Mesa ${selectedTable.num} requiere revisión`,prioridad:'alta',mesa_numero:selectedTable.num,creado_por:'Maître'});
+                      showToast('✓ Caja notificada');
+                    }},
+                  ].map(a=>(
+                    <button key={a.label} onClick={a.action}
+                      style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'rgba(224,80,80,0.05)',border:'1px solid rgba(224,80,80,0.15)',borderRadius:8,cursor:'pointer',width:'100%',textAlign:'left' as const}}>
+                      <span style={{fontSize:14}}>{a.icon}</span>
+                      <span style={{fontSize:11,color:'#f0f0f0',fontWeight:600}}>{a.label}</span>
+                      <span style={{marginLeft:'auto',fontSize:10,color:'#606060'}}>🔐 PIN</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
             </div>
           )}
 
