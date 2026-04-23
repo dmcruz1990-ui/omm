@@ -2271,7 +2271,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           rating={clienteRating}
         />
       )}
-    </div>
     </>
   );
 
