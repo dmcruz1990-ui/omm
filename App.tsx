@@ -248,7 +248,7 @@ const Dashboard: React.FC = () => {
               id: 'control', label: 'CONTROL & SUMINISTROS',
               icon: <ShieldCheck size={14} className="text-green-500" />,
               modules: [
-                { type: ModuleType.SUPPLY,    label: 'SUPPLY',    sub: 'STOCK IA',          icon: <Truck size={18} /> },
+                { type: ModuleType.SUPPLY,    label: 'MI MENÚ',   sub: 'Ingeniería de menú', icon: <Truck size={18} /> },
                 { type: ModuleType.CARE,      label: 'CARE',      sub: 'SOPORTE CX',        icon: <HeartPulse size={18} /> },
                 // ── CAMBIO 2: Label y sub actualizados ──────────────────────
                 { type: ModuleType.STAFF_HUB, label: 'TEAM IQ™',  sub: 'HUMAN PERFORMANCE', icon: <Brain size={18} /> }
