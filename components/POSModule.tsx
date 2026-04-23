@@ -1259,6 +1259,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [clientePropina, setClientePropina] = useState<number>(10);
   const [clienteRating, setClienteRating] = useState<number>(0);
   const [clienteRatings, setClienteRatings] = useState({ comida: 0, servicio: 0, ambiente: 0 });
+  // X-CARE estados
+  const [xcareStep, setXcareStep] = useState<'rating'|'tags'|'platos'|'microtags'|'redes'|'done'>('rating');
+  const [xcareTags, setXcareTags] = useState<string[]>([]);
+  const [xcarePlatos, setXcarePlatos] = useState<string[]>([]);
+  const [xcareMicro, setXcareMicro] = useState<string[]>([]);
+  const [xcareComentario, setXcareComentario] = useState('');
 
   const abrirModoCliente = (tableId: number) => {
     setClienteTableId(tableId);
@@ -1266,6 +1272,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setClientePropina(10);
     setClienteRating(0);
     setClienteRatings({ comida: 0, servicio: 0, ambiente: 0 });
+    setXcareStep('rating');
+    setXcareTags([]); setXcarePlatos([]); setXcareMicro([]); setXcareComentario('');
     setClienteMode(true);
     closeModal();
   };
@@ -1796,16 +1804,232 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         </div>
       )}
 
-      {/* ═══ PASO 4: ENCUESTA ═══ */}
-      {clientePaso === 'encuesta' && (
-        <XCareEncuesta
-          mesaNumero={mesaCliente?.num}
-          nombreCliente={mesaCliente?.cliente||''}
-          platosConsumidos={order.filter(o=>o.mesa===mesaCliente?.num).map(o=>o.nombre)}
-          onClose={()=>{ setClienteMode(false); setOrder(prev=>prev.filter(o=>o.mesa!==mesaCliente?.num)); showToast(`Mesa ${mesaCliente?.num} cerrada`); }}
-          onComplete={(data)=>{ setClienteRating(data.estrellas); setClientePaso('premio'); }}
-        />
-      )}
+      {/* ═══ PASO 4: X-CARE™ ENCUESTA INTELIGENTE ═══ */}
+      {clientePaso === 'encuesta' && (() => {
+        const XC = {
+          bg:'#06060f', bg2:'#0d0d1a', bg3:'#141425',
+          pink:'#FF2D78', gold:'#FFB547', green:'#00E676',
+          blue:'#448AFF', purple:'#B388FF', red:'#FF5252',
+          t1:'#FFFFFF', t2:'#A0A0C0', t3:'#50507A',
+        };
+        const starColors = ['','#FF5252','#FF7043','#FFB547','#69F0AE','#00E676'];
+        const starLabels = ['','Muy mala','Mala','Regular','Muy buena','¡Increíble!'];
+        const TAGS5 = [{icon:'🍽️',l:'Comida'},{icon:'🍸',l:'Cócteles'},{icon:'🤵',l:'Servicio'},{icon:'👨‍🍳',l:'Chef'},{icon:'🎶',l:'Ambiente'},{icon:'🕯️',l:'Experiencia'}];
+        const TAGS4 = [{icon:'⏱️',l:'Tiempo'},{icon:'🌡️',l:'Temperatura'},{icon:'🍽️',l:'Sabor'},{icon:'🍸',l:'Balance'},{icon:'🤵',l:'Atención'},{icon:'🎶',l:'Ambiente'}];
+        const TAGS_NEG = [{icon:'🌡️',l:'Frío'},{icon:'⏱️',l:'Demora'},{icon:'🧂',l:'Sabor'},{icon:'🍸',l:'Muy dulce'},{icon:'🍸',l:'Muy fuerte'},{icon:'🤵',l:'Atención'},{icon:'🎶',l:'Ruido'},{icon:'💬',l:'Otro'}];
+        const RESP_IA: Record<number,string> = {
+          3:`Hola ${mesaCliente?.cliente?.split(' ')[0]||'amigo'},\n\nGracias por confiar en nosotros hoy. Hemos revisado tu experiencia y ya estamos ajustando los detalles.\n\nTu próxima visita será atendida con especial cuidado.`,
+          2:`Hola ${mesaCliente?.cliente?.split(' ')[0]||'amigo'},\n\nTu experiencia es importante. Nuestro equipo ya trabaja para que no vuelva a ocurrir.\n\nSerá un honor recibirte nuevamente.`,
+          1:`Hola ${mesaCliente?.cliente?.split(' ')[0]||'amigo'},\n\nLo que nos compartiste merece toda nuestra atención. Ya tomamos acciones concretas.\n\nNos gustaría recibirte para ofrecerte una experiencia completamente distinta.`,
+        };
+        const platosOrden = order.filter(o=>o.mesa===mesaCliente?.num).map(o=>o.nombre);
+        const toggleT = (arr: string[], set: React.Dispatch<React.SetStateAction<string[]>>, v: string) => set(p=>p.includes(v)?p.filter(x=>x!==v):[...p,v]);
+        const isPos = clienteRating===5, isMed = clienteRating===4, isNeg = clienteRating<=3&&clienteRating>0;
+        const tags = isPos||isMed ? TAGS5 : TAGS4;
+        const sc = starColors[clienteRating]||XC.gold;
+
+        const guardarXCare = async () => {
+          await supabase.from('xcare_encuestas').insert({
+            restaurante_id:6, mesa_numero:mesaCliente?.num, nombre_cliente:mesaCliente?.cliente||null,
+            estrellas:clienteRating, tags_positivos:isPos||isMed?xcareTags:null,
+            tags_negativos:isNeg?[...xcareTags,...xcareMicro]:null,
+            platos_problema:isNeg?xcarePlatos:null,
+            comentario:xcareComentario||null,
+            nps_score:clienteRating===5?10:clienteRating===4?8:clienteRating===3?6:clienteRating===2?3:1,
+            alerta_gerente:clienteRating<=3,
+          });
+          if (clienteRating<=3) {
+            await supabase.from('xcare_alertas').insert({
+              restaurante_id:6, mesa_numero:mesaCliente?.num, tipo:'encuesta_negativa',
+              descripcion:`${mesaCliente?.cliente||'Cliente'} — ${clienteRating}★ — ${xcareTags.join(', ')||'Sin tags'}`, activa:true,
+            });
+          }
+        };
+
+        return (
+          <div style={{flex:1,overflowY:'auto',background:XC.bg,display:'flex',flexDirection:'column',alignItems:'center',padding:'28px 24px 32px',position:'relative',minHeight:'100%'}}>
+            <style>{`
+              @keyframes xcFadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+              @keyframes xcBounce{0%{transform:scale(0)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
+              @keyframes xcPulse{0%,100%{opacity:1}50%{opacity:.6}}
+            `}</style>
+
+            {/* Header X-CARE */}
+            <div style={{textAlign:'center',marginBottom:28,animation:'xcFadeUp .4s ease',width:'100%'}}>
+              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginBottom:12}}>
+                <div style={{width:30,height:30,borderRadius:9,background:`linear-gradient(135deg,${XC.pink},${XC.purple})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,boxShadow:`0 0 14px rgba(255,45,120,0.4)`}}>✦</div>
+                <span style={{fontSize:10,fontWeight:900,color:XC.pink,letterSpacing:'.18em',textTransform:'uppercase' as const}}>X-CARE™</span>
+              </div>
+
+              {/* PASO RATING */}
+              {xcareStep==='rating' && (
+                <div>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:XC.t1,marginBottom:6,lineHeight:1.2}}>
+                    {mesaCliente?.cliente?`¿Cómo estuvo tu experiencia
+${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
+                  </div>
+                  <div style={{fontSize:12,color:XC.t3}}>Tu opinión transforma nuestro servicio</div>
+                </div>
+              )}
+
+              {/* PASO TAGS */}
+              {xcareStep==='tags' && (
+                <div>
+                  {clienteRating>=4
+                    ? <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:XC.t1,lineHeight:1.3}}>{clienteRating===5?'🔥 Nos encanta saberlo.':'✨ Gracias.'}</div>
+                    : <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:XC.t1,lineHeight:1.3}}>🙏 Queremos hacerlo mejor.</div>
+                  }
+                  <div style={{fontSize:12,color:XC.t3,marginTop:4}}>
+                    {clienteRating===5?'¿Qué fue lo que más destacarías?':clienteRating===4?'¿Qué faltó para que fuera perfecta?':'Ayúdanos a entender qué pasó.'}
+                  </div>
+                </div>
+              )}
+
+              {xcareStep==='platos' && <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:XC.t1}}>🍽️ ¿Con qué plato tuviste el problema?</div>}
+              {xcareStep==='microtags' && <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:XC.t1}}>¿Qué tipo de problema fue?</div>}
+              {xcareStep==='redes' && <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:XC.t1}}>🌟 Tu experiencia puede inspirar a otros.</div>}
+              {xcareStep==='done' && <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:XC.t1}}>{clienteRating>=4?'¡Hasta pronto!':clienteRating===3?'Gracias por tu honestidad.':'Gracias por contarnos.'}</div>}
+            </div>
+
+            {/* RATING — Estrellas */}
+            {xcareStep==='rating' && (
+              <div style={{width:'100%',textAlign:'center',animation:'xcFadeUp .4s ease'}}>
+                <div style={{display:'flex',justifyContent:'center',gap:10,marginBottom:14}}>
+                  {[1,2,3,4,5].map(n=>(
+                    <button key={n} onClick={()=>setClienteRating(n)}
+                      style={{fontSize:clienteRating>=n?56:44,opacity:clienteRating>=n?1:0.2,transition:'all .2s cubic-bezier(.34,1.56,.64,1)',background:'none',border:'none',cursor:'pointer',transform:clienteRating>=n?'scale(1.1)':'scale(0.95)',filter:clienteRating>=n?`drop-shadow(0 0 10px ${starColors[n]})`:'none'}}>⭐</button>
+                  ))}
+                </div>
+                <div style={{height:28,fontSize:15,fontWeight:900,fontFamily:"'Syne',sans-serif",color:clienteRating?starColors[clienteRating]:XC.t3,transition:'all .3s'}}>
+                  {clienteRating?starLabels[clienteRating]:'Toca para calificar'}
+                </div>
+                {clienteRating>0&&(
+                  <button onClick={()=>setXcareStep('tags')} style={{marginTop:20,padding:'13px 44px',borderRadius:50,border:'none',background:`linear-gradient(135deg,${XC.pink},#cc2260)`,color:'#fff',fontSize:15,fontWeight:900,cursor:'pointer',fontFamily:"'Syne',sans-serif",boxShadow:`0 6px 24px rgba(255,45,120,0.4)`}}>
+                    Continuar →
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* TAGS */}
+            {xcareStep==='tags' && (
+              <div style={{width:'100%',animation:'xcFadeUp .3s ease'}}>
+                <div style={{display:'flex',gap:6,marginBottom:6,justifyContent:'center'}}>
+                  {[1,2,3,4,5].map(n=><span key={n} style={{fontSize:16,opacity:n<=clienteRating?1:0.2,filter:n<=clienteRating?`drop-shadow(0 0 4px ${sc})`:'none'}}>⭐</span>)}
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:14}}>
+                  {tags.map(t=>{
+                    const sel=xcareTags.includes(t.l);
+                    return(
+                      <button key={t.l} onClick={()=>toggleT(xcareTags,setXcareTags,t.l)}
+                        style={{padding:'12px 8px',borderRadius:14,border:`2px solid ${sel?XC.pink:'rgba(255,255,255,0.08)'}`,background:sel?`rgba(255,45,120,0.12)`:'rgba(255,255,255,0.04)',color:sel?XC.pink:XC.t2,cursor:'pointer',textAlign:'center' as const,transition:'all .2s'}}>
+                        <div style={{fontSize:26,marginBottom:4}}>{t.icon}</div>
+                        <div style={{fontSize:11,fontWeight:700}}>{t.l}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                <textarea style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'10px 14px',color:XC.t1,fontSize:13,outline:'none',width:'100%',minHeight:64,resize:'none' as const,marginBottom:12,fontFamily:"'DM Sans',sans-serif"}}
+                  placeholder="Comentario opcional..." value={xcareComentario} onChange={e=>setXcareComentario(e.target.value)} />
+                <button onClick={async()=>{
+                  if(isNeg&&platosOrden.length>0){ setXcareStep('platos'); return; }
+                  await guardarXCare();
+                  if(clienteRating===5){setXcareStep('redes');}else{setXcareStep('done');}
+                }} disabled={xcareTags.length===0}
+                  style={{width:'100%',padding:'13px',borderRadius:14,border:'none',background:xcareTags.length?`linear-gradient(135deg,${XC.pink},#cc2260)`:'rgba(255,255,255,0.05)',color:'#fff',fontSize:14,fontWeight:900,cursor:xcareTags.length?'pointer':'not-allowed',fontFamily:"'Syne',sans-serif"}}>
+                  {isNeg&&platosOrden.length>0?'Siguiente →':'Enviar ✓'}
+                </button>
+                <button onClick={()=>setXcareStep('rating')} style={{background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12,marginTop:8,width:'100%'}}>← Volver</button>
+              </div>
+            )}
+
+            {/* PLATOS PROBLEMA */}
+            {xcareStep==='platos' && (
+              <div style={{width:'100%',animation:'xcFadeUp .3s ease'}}>
+                <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:16}}>
+                  {platosOrden.map(item=>{
+                    const sel=xcarePlatos.includes(item);
+                    return(
+                      <button key={item} onClick={()=>toggleT(xcarePlatos,setXcarePlatos,item)}
+                        style={{padding:'12px 16px',borderRadius:12,border:`2px solid ${sel?XC.red:'rgba(255,255,255,0.08)'}`,background:sel?'rgba(255,82,82,0.12)':'rgba(255,255,255,0.04)',color:sel?XC.red:XC.t2,cursor:'pointer',textAlign:'left' as const,fontSize:13,fontWeight:sel?700:400,transition:'all .2s'}}>
+                        {sel?'✕ ':''}{item}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button onClick={()=>{if(xcarePlatos.length)setXcareStep('microtags');}} disabled={xcarePlatos.length===0}
+                  style={{width:'100%',padding:'13px',borderRadius:14,border:'none',background:xcarePlatos.length?`linear-gradient(135deg,${XC.pink},#cc2260)`:'rgba(255,255,255,0.05)',color:'#fff',fontSize:14,fontWeight:900,cursor:xcarePlatos.length?'pointer':'not-allowed',fontFamily:"'Syne',sans-serif"}}>
+                  Siguiente →
+                </button>
+                <button onClick={()=>setXcareStep('tags')} style={{background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12,marginTop:8,width:'100%'}}>← Volver</button>
+              </div>
+            )}
+
+            {/* MICRO TAGS */}
+            {xcareStep==='microtags' && (
+              <div style={{width:'100%',animation:'xcFadeUp .3s ease'}}>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
+                  {[{icon:'🌡️',l:'Frío'},{icon:'⏱️',l:'Demora'},{icon:'🧂',l:'Sabor'},{icon:'🍸',l:'Muy dulce'},{icon:'🍸',l:'Muy fuerte'},{icon:'🤵',l:'Atención'},{icon:'🎶',l:'Ruido'},{icon:'💬',l:'Otro'}].map(t=>{
+                    const sel=xcareMicro.includes(t.l);
+                    return(
+                      <button key={t.l} onClick={()=>toggleT(xcareMicro,setXcareMicro,t.l)}
+                        style={{padding:'12px',borderRadius:12,border:`2px solid ${sel?XC.red:'rgba(255,255,255,0.08)'}`,background:sel?'rgba(255,82,82,0.12)':'rgba(255,255,255,0.04)',color:sel?XC.red:XC.t2,cursor:'pointer',display:'flex',alignItems:'center',gap:8,fontSize:13,fontWeight:sel?700:400,transition:'all .2s'}}>
+                        <span style={{fontSize:20}}>{t.icon}</span>{t.l}
+                      </button>
+                    );
+                  })}
+                </div>
+                <textarea style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'10px 14px',color:XC.t1,fontSize:13,outline:'none',width:'100%',minHeight:64,resize:'none' as const,marginBottom:12,fontFamily:"'DM Sans',sans-serif"}}
+                  placeholder="Cuéntanos un poco más..." value={xcareComentario} onChange={e=>setXcareComentario(e.target.value)} />
+                {RESP_IA[clienteRating]&&(
+                  <div style={{background:'rgba(179,136,255,0.08)',border:'1px solid rgba(179,136,255,0.2)',borderRadius:12,padding:'12px 14px',marginBottom:12,fontSize:12,color:XC.purple,lineHeight:1.6}}>
+                    {RESP_IA[clienteRating].split('\n').map((l,i)=><div key={i}>{l||' '}</div>)}
+                  </div>
+                )}
+                <button onClick={async()=>{ await guardarXCare(); setXcareStep('done'); }}
+                  style={{width:'100%',padding:'13px',borderRadius:14,border:'none',background:`linear-gradient(135deg,${XC.pink},#cc2260)`,color:'#fff',fontSize:14,fontWeight:900,cursor:'pointer',fontFamily:"'Syne',sans-serif"}}>
+                  Enviar ✓
+                </button>
+                <button onClick={()=>setXcareStep('platos')} style={{background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12,marginTop:8,width:'100%'}}>← Volver</button>
+              </div>
+            )}
+
+            {/* REDES (5 estrellas) */}
+            {xcareStep==='redes' && (
+              <div style={{width:'100%',textAlign:'center',animation:'xcFadeUp .4s ease'}}>
+                <div style={{fontSize:13,color:XC.t2,marginBottom:24,lineHeight:1.6}}>Tu opinión ayuda a que más personas vivan momentos memorables en OMM.</div>
+                <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:20}}>
+                  <a href="https://g.page/r/review" target="_blank" style={{display:'block',padding:'14px',borderRadius:14,background:'linear-gradient(135deg,#4285F4,#0F9D58)',color:'#fff',fontSize:14,fontWeight:800,textDecoration:'none',fontFamily:"'Syne',sans-serif"}}>⭐ Opinar en Google</a>
+                  <a href="https://tripadvisor.com" target="_blank" style={{display:'block',padding:'14px',borderRadius:14,background:'linear-gradient(135deg,#00AA6C,#007A4D)',color:'#fff',fontSize:14,fontWeight:800,textDecoration:'none',fontFamily:"'Syne',sans-serif"}}>🦉 Opinar en TripAdvisor</a>
+                </div>
+                <button onClick={()=>{ setClientePaso('premio'); }} style={{background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:13,textDecoration:'underline'}}>Omitir por ahora →</button>
+              </div>
+            )}
+
+            {/* DONE */}
+            {xcareStep==='done' && (
+              <div style={{textAlign:'center',animation:'xcFadeUp .4s ease'}}>
+                <div style={{fontSize:72,marginBottom:16,animation:'xcBounce .6s ease',filter:`drop-shadow(0 0 24px ${clienteRating>=4?XC.green:XC.gold})`}}>{clienteRating>=4?'🎉':clienteRating===3?'🙏':'💎'}</div>
+                <div style={{fontSize:14,color:XC.t2,lineHeight:1.6,maxWidth:280,margin:'0 auto',marginBottom:28}}>
+                  {clienteRating>=4?'Fue un placer tenerte aquí. ¡Hasta pronto!':clienteRating===3?'Ya estamos trabajando en mejorarlo.':'Tu voz genera cambios reales en nuestro equipo.'}
+                </div>
+                <button onClick={()=>{ setClienteRating(clienteRating); setClientePaso('premio'); }}
+                  style={{padding:'13px 44px',borderRadius:50,border:'none',background:`linear-gradient(135deg,${XC.pink},#cc2260)`,color:'#fff',fontSize:15,fontWeight:900,cursor:'pointer',fontFamily:"'Syne',sans-serif",boxShadow:`0 6px 24px rgba(255,45,120,0.4)`}}>
+                  🎰 Ver mi premio →
+                </button>
+              </div>
+            )}
+
+            {/* Skip siempre visible */}
+            {xcareStep==='rating' && (
+              <button onClick={()=>{ setClienteMode(false); setOrder(prev=>prev.filter(o=>o.mesa!==mesaCliente?.num)); showToast(`Mesa ${mesaCliente?.num} cerrada`); }}
+                style={{position:'absolute',bottom:16,background:'none',border:'none',fontSize:11,color:'rgba(255,255,255,0.15)',cursor:'pointer'}}>
+                Omitir encuesta
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* ═══ PASO 5: RULETA DE PREMIOS ═══ */}
       {clientePaso === 'premio' && (
