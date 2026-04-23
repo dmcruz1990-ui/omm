@@ -1292,6 +1292,20 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [clienteRatings, setClienteRatings] = useState({ comida: 0, servicio: 0, ambiente: 0 });
   // X-CARE estados
   const [xcareStep, setXcareStep] = useState<'rating'|'tags'|'platos'|'microtags'|'redes'|'done'>('rating');
+  // Edición de cuenta con PIN Maître
+  const [editCuenta, setEditCuenta] = useState(false);
+  const [pinMaitre, setPinMaitre] = useState('');
+  const [pinMaitreError, setPinMaitreError] = useState('');
+  const [pinMaitreOk, setPinMaitreOk] = useState(false);
+  const [itemsEliminados, setItemsEliminados] = useState<string[]>([]);
+  const [motivoEdicion, setMotivoEdicion] = useState('');
+  // Factura
+  const [facturaCorreo, setFacturaCorreo] = useState('');
+  const [facturaTipo, setFacturaTipo] = useState<'digital'|'correo'|'electronica'>('digital');
+  // Pago mixto
+  const [pagoMixto, setPagoMixto] = useState(false);
+  const [pagoEfectivo, setPagoEfectivo] = useState(0);
+  const [pagoTarjeta, setPagoTarjeta] = useState(0);
   const [xcareTags, setXcareTags] = useState<string[]>([]);
   const [xcarePlatos, setXcarePlatos] = useState<string[]>([]);
   const [xcareMicro, setXcareMicro] = useState<string[]>([]);
@@ -1305,6 +1319,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setClienteRatings({ comida: 0, servicio: 0, ambiente: 0 });
     setXcareStep('rating');
     setXcareTags([]); setXcarePlatos([]); setXcareMicro([]); setXcareComentario('');
+    setEditCuenta(false); setPinMaitreOk(false); setPinMaitre(''); setItemsEliminados([]);
+    setFacturaTipo('digital'); setFacturaCorreo(''); setPagoMixto(false);
     setClienteMode(true);
     closeModal();
   };
@@ -1563,28 +1579,108 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           {/* Línea separadora */}
           <div style={{ height: 1, background: S.border, margin: '0 20px 8px' }}></div>
 
-          {/* Items */}
+          {/* Trazabilidad — mesero y platos servidos */}
+          <div style={{ padding: '0 20px 8px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span style={{ fontSize:11, color:S.text3 }}>Cobrado por: <b style={{color:S.text}}>{profile?.nombre_completo?.split(' ')[0]||'Mesero'}</b></span>
+            <span style={{ fontSize:11, color:S.text3 }}>Platos: <b style={{color:S.text}}>{itemsCliente.length + (mesaCliente.ticket>0?1:0)}</b></span>
+          </div>
+
+          {/* Editar cuenta — requiere PIN Maître */}
+          <div style={{ padding:'0 20px 8px' }}>
+            {!editCuenta ? (
+              <button onClick={()=>setEditCuenta(true)} style={{ width:'100%', padding:'10px', borderRadius:12, border:'1px dashed rgba(212,148,58,0.4)', background:'rgba(212,148,58,0.06)', color:'#d4943a', fontSize:12, fontWeight:700, cursor:'pointer' }}>
+                ✏️ Editar platos · Requiere Maître
+              </button>
+            ) : !pinMaitreOk ? (
+              <div style={{ background:'rgba(212,148,58,0.08)', border:'1px solid rgba(212,148,58,0.3)', borderRadius:14, padding:'14px' }}>
+                <div style={{ fontSize:12, color:'#d4943a', fontWeight:700, marginBottom:8 }}>🔐 PIN Maître requerido</div>
+                <div style={{ fontSize:11, color:'#888', marginBottom:8 }}>Flujo: Maître → Resuelve → Notifica → Caja revise</div>
+                <input type="password" value={pinMaitre} onChange={e=>setPinMaitre(e.target.value)} placeholder="••••" maxLength={4}
+                  style={{ width:'100%', padding:'10px', borderRadius:10, border:`1px solid ${pinMaitreError?'#e05050':'rgba(212,148,58,0.4)'}`, background:'#fff', fontSize:18, textAlign:'center', letterSpacing:6, outline:'none', marginBottom:6 }}/>
+                {pinMaitreError && <div style={{ fontSize:11, color:'#e05050', marginBottom:6 }}>{pinMaitreError}</div>}
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={()=>{setEditCuenta(false);setPinMaitre('');setPinMaitreError('');}} style={{ flex:1, padding:'9px', borderRadius:10, border:'1px solid #ddd', background:'#fff', fontSize:12, cursor:'pointer' }}>Cancelar</button>
+                  <button onClick={()=>{ if(pinMaitre==='1234'){setPinMaitreOk(true);setPinMaitreError('');}else{setPinMaitreError('PIN incorrecto');} }} style={{ flex:1, padding:'9px', borderRadius:10, border:'none', background:'#d4943a', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>Confirmar</button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ background:'rgba(61,186,111,0.06)', border:'1px solid rgba(61,186,111,0.3)', borderRadius:14, padding:'12px 14px' }}>
+                <div style={{ fontSize:11, color:'#3dba6f', fontWeight:700, marginBottom:8 }}>✓ Maître autorizado — Selecciona platos a eliminar</div>
+                <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
+                  {itemsCliente.filter(i=>!itemsEliminados.includes(i.nombre)).map((item,i)=>(
+                    <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 10px', background:'#fff', borderRadius:8, border:'1px solid #eee' }}>
+                      <span style={{ fontSize:13 }}>{item.nombre}</span>
+                      <button onClick={()=>setItemsEliminados(p=>[...p,item.nombre])} style={{ background:'rgba(224,80,80,0.1)', border:'1px solid rgba(224,80,80,0.3)', color:'#e05050', fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:6, cursor:'pointer' }}>✕ Eliminar</button>
+                    </div>
+                  ))}
+                  {itemsEliminados.length>0&&(
+                    <div style={{ fontSize:11, color:'#e05050' }}>Eliminados: {itemsEliminados.join(', ')} — guardado en facturas pendientes</div>
+                  )}
+                </div>
+                <input value={motivoEdicion} onChange={e=>setMotivoEdicion(e.target.value)} placeholder="Motivo de la edición..." style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1px solid #ddd', fontSize:12, outline:'none', marginBottom:8 }}/>
+                <button onClick={async()=>{
+                  if(itemsEliminados.length&&motivoEdicion){
+                    await supabase.from('cuenta_ediciones').insert({
+                      restaurante_id:6, mesa_numero:mesaCliente.num, tipo:'eliminar_plato',
+                      plato_nombre:itemsEliminados.join(', '), motivo:motivoEdicion,
+                      autorizado_por:'Maître', mesero:profile?.nombre_completo||'Mesero', estado:'aprobado', notificado_caja:true,
+                    });
+                    showToast('✓ Editado — Guardado en facturas pendientes · Caja notificada');
+                    setEditCuenta(false); setPinMaitreOk(false); setPinMaitre('');
+                  }
+                }} style={{ width:'100%', padding:'9px', borderRadius:10, border:'none', background:'#3dba6f', color:'#fff', fontSize:12, fontWeight:700, cursor:'pointer' }}>✓ Confirmar edición → Notificar Caja</button>
+              </div>
+            )}
+          </div>
+
+          {/* Items con indicadores estado */}
           <div style={{ padding: '0 20px', flexShrink: 0 }}>
             {mesaCliente.ticket > 0 && (
               <div style={{ display: 'flex', alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${S.border}` }}>
                 <div style={{ width: 28, height: 28, borderRadius: '50%', background: S.bg2, border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: S.text3, flexShrink: 0, marginRight: 12 }}>📊</div>
                 <span style={{ flex: 1, fontSize: 16, color: S.text2 }}>Consumo base mesa</span>
-                <span style={{ fontSize: 16, fontWeight: 600, color: S.text }}>${formatPrecio(mesaCliente.ticket)}</span>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ fontSize:10, color:'#3dba6f', background:'rgba(61,186,111,0.1)', padding:'2px 8px', borderRadius:20, fontWeight:700 }}>✓ Entregado</span>
+                  <span style={{ fontSize: 16, fontWeight: 600, color: S.text }}>${formatPrecio(mesaCliente.ticket)}</span>
+                </div>
               </div>
             )}
-            {itemsCliente.map((item, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${S.border}` }}>
-                <div style={{ width: 28, height: 28, borderRadius: '50%', background: S.bg2, border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, marginRight: 12 }}>1</div>
-                <span style={{ flex: 1, fontSize: 16, color: S.text }}>{item.nombre}</span>
-                <span style={{ fontSize: 16, color: S.text }}>{item.precio}</span>
+            {itemsCliente.filter(i=>!itemsEliminados.includes(i.nombre)).map((item, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${S.border}`, opacity: itemsEliminados.includes(item.nombre) ? 0.3 : 1 }}>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', background: S.bg2, border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, marginRight: 12 }}>{item.emoji||'🍽️'}</div>
+                <span style={{ flex: 1, fontSize: 15, color: S.text }}>{item.nombre}</span>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ fontSize:10, padding:'2px 8px', borderRadius:20, fontWeight:700, background:'rgba(61,186,111,0.1)', color:'#3dba6f' }}>✓ Listo</span>
+                  <span style={{ fontSize: 15, color: S.text }}>{item.precio}</span>
+                </div>
               </div>
             ))}
-            {/* Impuesto */}
+            {/* IVA */}
             <div style={{ display: 'flex', alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${S.border}` }}>
               <div style={{ width: 28, height: 28, borderRadius: '50%', background: S.bg2, border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: S.text3, flexShrink: 0, marginRight: 12 }}>%</div>
-              <span style={{ flex: 1, fontSize: 16, color: S.text2 }}>IVA (8%)</span>
+              <span style={{ flex: 1, fontSize: 16, color: S.text2 }}>Impoconsumo (8%)</span>
               <span style={{ fontSize: 16, color: S.text2 }}>${formatPrecio(ivaCliente)}</span>
             </div>
+          </div>
+
+          {/* Factura */}
+          <div style={{ padding:'12px 20px' }}>
+            <div style={{ fontSize:11, color:S.text3, fontWeight:700, marginBottom:8, textTransform:'uppercase', letterSpacing:'.06em' }}>Factura</div>
+            <div style={{ display:'flex', gap:6, marginBottom:10 }}>
+              {([
+                {id:'digital', l:'Digital', icon:'📱'},
+                {id:'correo',  l:'Correo',  icon:'✉️'},
+                {id:'electronica', l:'Electrónica', icon:'🏢'},
+              ] as const).map(f=>(
+                <button key={f.id} onClick={()=>setFacturaTipo(f.id)}
+                  style={{ flex:1, padding:'8px 4px', borderRadius:10, border:`1px solid ${facturaTipo===f.id?S.black:'#ddd'}`, background:facturaTipo===f.id?S.black:'#fff', color:facturaTipo===f.id?'#fff':S.text2, fontSize:11, fontWeight:700, cursor:'pointer', textAlign:'center' }}>
+                  <div>{f.icon}</div><div style={{marginTop:2}}>{f.l}</div>
+                </button>
+              ))}
+            </div>
+            {facturaTipo==='correo'&&(
+              <input value={facturaCorreo} onChange={e=>setFacturaCorreo(e.target.value)} placeholder="correo@email.com" style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #ddd', fontSize:13, outline:'none' }}/>
+            )}
           </div>
 
           {/* Términos + botón */}
@@ -1594,7 +1690,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             </p>
             <button onClick={() => setClientePaso('propina')}
               style={{ width: '100%', padding: '18px', borderRadius: 100, background: S.black, color: '#fff', fontSize: 17, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
-              Pagar o dividir la cuenta
+              Continuar al pago
             </button>
           </div>
         </div>
@@ -1605,37 +1701,42 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '32px 24px 32px' }}>
           {/* Título */}
           <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 36, fontWeight: 800, lineHeight: 1.2, color: S.black, marginBottom: 8 }}>
-              Da las gracias a<br/><span style={{ fontWeight: 900 }}>{nombreMesero}</span><br/>con una propina
+            <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.2, color: S.black, marginBottom: 4 }}>
+              ¿Deseas dejar propina<br/>a <span style={{ fontWeight: 900 }}>{nombreMesero}</span>?
+            </div>
+            <div style={{ fontSize:12, color:S.text3, marginBottom:8 }}>10% propina voluntaria · Colombia</div>
+            {/* Badge legal Colombia */}
+            <div style={{ display:'inline-flex', alignItems:'center', gap:5, background:'rgba(61,186,111,0.08)', border:'1px solid rgba(61,186,111,0.25)', borderRadius:20, padding:'4px 14px', fontSize:11, color:'#3dba6f', marginBottom:4 }}>
+              ✓ 10% sugerido por ley · Ley 1258 Colombia
             </div>
           </div>
 
           {/* Botones de propina */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
             {[
-              { pct: 10, emoji: '😊' },
-              { pct: 20, emoji: '😘', popular: true },
-              { pct: 30, emoji: '❤️' },
-            ].map(({ pct, emoji, popular }) => (
+              { pct: 0,  emoji: '—',  label:'Sin propina' },
+              { pct: 10, emoji: '😊', label:'Legal', badge:'✓ Ley' },
+              { pct: 20, emoji: '😘', label:'Generoso', popular: true },
+              { pct: 30, emoji: '❤️', label:'Increíble' },
+            ].map(({ pct, emoji, label, popular, badge }) => (
               <div key={pct} style={{ position: 'relative' }}>
-                {popular && (
-                  <div style={{ position: 'absolute', top: -10, left: '50%', transform: 'translateX(-50%)', background: S.black, color: '#fff', fontSize: 10, fontWeight: 700, padding: '3px 10px', borderRadius: 20, whiteSpace: 'nowrap', zIndex: 1 }}>POPULAR</div>
-                )}
+                {popular && <div style={{ position: 'absolute', top:-10, left:'50%', transform:'translateX(-50%)', background:S.black, color:'#fff', fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap', zIndex:1 }}>POPULAR</div>}
+                {badge && <div style={{ position: 'absolute', top:-10, left:'50%', transform:'translateX(-50%)', background:'#3dba6f', color:'#fff', fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap', zIndex:1 }}>{badge}</div>}
                 <button onClick={() => setClientePropina(pct)}
-                  style={{
-                    width: '100%', aspectRatio: '1', borderRadius: 24,
-                    border: `2px solid ${clientePropina === pct ? S.black : S.border}`,
-                    background: clientePropina === pct ? S.bg2 : '#fff',
-                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                    cursor: 'pointer', transition: 'all 0.15s', gap: 4
-                  }}>
-                  {clientePropina === pct && <span style={{ fontSize: 14, fontWeight: 700, color: S.black }}>✓</span>}
-                  <span style={{ fontSize: 30, fontWeight: 900, color: S.black }}>{pct}%</span>
-                  <span style={{ fontSize: 22 }}>{emoji}</span>
+                  style={{ width:'100%', aspectRatio:'1', borderRadius:20, border:`2px solid ${clientePropina===pct?S.black:S.border}`, background:clientePropina===pct?S.bg2:'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'all 0.15s', gap:2 }}>
+                  {clientePropina===pct&&<span style={{ fontSize:12, fontWeight:700, color:S.black }}>✓</span>}
+                  <span style={{ fontSize:22, fontWeight:900, color:S.black }}>{pct}%</span>
+                  <span style={{ fontSize:16 }}>{emoji}</span>
+                  <span style={{ fontSize:9, color:S.text3 }}>{label}</span>
                 </button>
               </div>
             ))}
           </div>
+          {/* Botón modificar propina */}
+          <button onClick={()=>{const v=prompt('Ingresa el porcentaje de propina (0-50):'); if(v!==null){const n=parseInt(v); if(!isNaN(n)&&n>=0&&n<=50)setClientePropina(n);}}}
+            style={{ width:'100%', padding:'11px', borderRadius:50, border:'2px dashed rgba(212,148,58,0.4)', background:'rgba(212,148,58,0.04)', color:'#d4943a', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+            ✏️ Deseo modificar mi propina
+          </button>
 
           {/* Total en vivo */}
           <div style={{ background: '#fff', borderRadius: 16, padding: '16px 20px' }}>
@@ -1702,8 +1803,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           </button>
 
           {/* Efectivo */}
-          <button onClick={() => setClientePaso('encuesta')}
-            style={{ width: '100%', padding: '18px 20px', borderRadius: 16, border: `1px solid ${S.border}`, background: '#fff', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+          <button onClick={async()=>{
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:profile?.nombre_completo||'Mesero', total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Efectivo', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null });
+              setClientePaso('encuesta');
+            }} style={{ width: '100%', padding: '18px 20px', borderRadius: 16, border: `1px solid ${S.border}`, background: '#fff', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <div style={{ width: 24, height: 24, borderRadius: '50%', border: `1.5px solid ${S.border}` }}></div>
             <span style={{ fontSize: 17, fontWeight: 600, color: S.text }}>Efectivo</span>
             <span style={{ marginLeft: 'auto', fontSize: 13, color: S.text3 }}>con el mesero</span>
@@ -1720,6 +1823,39 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <span style={{ marginLeft: 'auto', fontSize: 18 }}>🎁</span>
           </button>
 
+          {/* Pago mixto */}
+          {!pagoMixto ? (
+            <button onClick={()=>setPagoMixto(true)}
+              style={{ width:'100%', padding:'18px 20px', borderRadius:16, border:`1px solid rgba(74,143,212,0.4)`, background:'rgba(74,143,212,0.04)', display:'flex', alignItems:'center', gap:12, cursor:'pointer' }}>
+              <div style={{ width:24, height:24, borderRadius:'50%', border:`1.5px solid rgba(74,143,212,0.4)` }}/>
+              <div>
+                <span style={{ fontSize:17, fontWeight:600, color:S.text, display:'block' }}>Pago mixto</span>
+                <span style={{ fontSize:12, color:'#4a8fd4' }}>Parte efectivo + parte tarjeta</span>
+              </div>
+              <span style={{ marginLeft:'auto', fontSize:18 }}>💳+💵</span>
+            </button>
+          ) : (
+            <div style={{ background:'rgba(74,143,212,0.06)', border:`1px solid rgba(74,143,212,0.3)`, borderRadius:16, padding:'14px 16px' }}>
+              <div style={{ fontSize:12, color:'#4a8fd4', fontWeight:700, marginBottom:10 }}>Pago mixto — Total: ${formatPrecio(totalCliente)}</div>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+                <div>
+                  <div style={{ fontSize:11, color:S.text3, marginBottom:4 }}>💵 Efectivo</div>
+                  <input type="number" value={pagoEfectivo||''} onChange={e=>{const v=parseFloat(e.target.value)||0; setPagoEfectivo(v); setPagoTarjeta(Math.max(0,totalCliente-v));}} style={{ width:'100%', padding:'8px', borderRadius:8, border:'1px solid #ddd', fontSize:14, outline:'none' }} placeholder="$0"/>
+                </div>
+                <div>
+                  <div style={{ fontSize:11, color:S.text3, marginBottom:4 }}>💳 Tarjeta</div>
+                  <input type="number" value={pagoTarjeta||''} onChange={e=>{const v=parseFloat(e.target.value)||0; setPagoTarjeta(v); setPagoEfectivo(Math.max(0,totalCliente-v));}} style={{ width:'100%', padding:'8px', borderRadius:8, border:'1px solid #ddd', fontSize:14, outline:'none' }} placeholder="$0"/>
+                </div>
+              </div>
+              <div style={{ fontSize:11, color:pagoEfectivo+pagoTarjeta===totalCliente?'#3dba6f':'#e05050', marginBottom:8 }}>
+                {pagoEfectivo+pagoTarjeta===totalCliente?'✓ Montos correctos':`Falta: $${formatPrecio(totalCliente-pagoEfectivo-pagoTarjeta)}`}
+              </div>
+              <button onClick={()=>{ if(pagoEfectivo+pagoTarjeta===totalCliente) setClientePaso('encuesta'); else showToast('⚠️ Los montos no coinciden'); }}
+                style={{ width:'100%', padding:'10px', borderRadius:12, border:'none', background:pagoEfectivo+pagoTarjeta===totalCliente?'#3dba6f':'#ccc', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                ✓ Confirmar pago mixto
+              </button>
+            </div>
+          )}
           {/* Dividir */}
           <button onClick={() => { abrirDivision(clienteTableId, totalCliente, mesaCliente.pax); setClienteMode(false); }}
             style={{ width: '100%', padding: '18px 20px', borderRadius: 16, border: `1px solid ${S.border}`, background: '#fff', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
