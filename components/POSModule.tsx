@@ -3249,7 +3249,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           )}
 
           {rightTab === 'Cuenta' && (
-            <>
+            <div className="flex flex-col gap-2">
               {/* ══ TICKET DEL DÍA ══ */}
               <div className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl overflow-hidden mb-3">
                 <div className="flex items-center justify-between px-3 py-2 border-b border-[#2a2a2a]">
@@ -3317,7 +3317,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               </div>
 
 
-            <>
+            <div className="flex flex-col gap-2 mt-2">
               <div className="flex items-center gap-2 text-[13px]">
                 <div className="w-1.5 h-1.5 rounded-full bg-[#d4943a] shrink-0"></div>
                 <span className="text-[#a0a0a0]">Ticket:</span>
@@ -3360,7 +3360,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 <button onClick={() => showToast('↔ Transferir próximamente')} className="flex-1 min-w-[80px] py-2 px-2.5 rounded-lg text-[12px] font-semibold border border-[#2a2a2a] text-[#a0a0a0] hover:border-[#a0a0a0] transition-all active:bg-[#3dba6f]/20">↔ Transferir</button>
                 <button onClick={() => { showToast(`Mesa ${selectedTable.num} cerrada`); setOrder(prev => prev.filter(o => o.mesa !== selectedTable.num)); }} className="flex-1 min-w-[80px] py-2 px-2.5 rounded-lg text-[12px] font-semibold bg-[#e05050]/15 border border-[#e05050]/30 text-[#e05050] hover:bg-[#e05050]/25 transition-all active:bg-[#3dba6f]/20 active:border-[#3dba6f] active:text-[#3dba6f]">Cerrar Mesa</button>
               </div>
-            </>
+            </div>
           )}
 
           {rightTab === 'Menú' && (
