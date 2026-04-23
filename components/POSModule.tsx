@@ -268,47 +268,109 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
   const [spinning, setSpinning] = useState(false);
   const [selected, setSelected] = useState<number|null>(null);
   const [rotation, setRotation] = useState(0);
+  const [particles, setParticles] = useState<{x:number;y:number;c:string;id:number;angle:number;dist:number}[]>([]);
+  const [glowPulse, setGlowPulse] = useState(false);
+  const pidRef = useRef(0);
   const segAngle = 360 / PREMIOS_RULETA.length;
+
+  const spawnConfetti = () => {
+    const colors = ['#FFB547','#FF2D78','#00E676','#448AFF','#B388FF','#FF5252','#FFD700','#fff'];
+    const ps = Array.from({length:60},(_,i)=>({
+      x:50+(Math.random()-0.5)*20, y:50+(Math.random()-0.5)*20,
+      c:colors[i%colors.length], id:pidRef.current++,
+      angle:Math.random()*360, dist:80+Math.random()*120,
+    }));
+    setParticles(ps);
+    setTimeout(()=>setParticles([]),2000);
+  };
 
   const girar = () => {
     if (spinning || selected !== null) return;
     setSpinning(true);
+    setGlowPulse(true);
     const winner = Math.floor(Math.random() * PREMIOS_RULETA.length);
-    const target = 6 * 360 + (360 - winner * segAngle - segAngle / 2);
+    const target = 8 * 360 + (360 - winner * segAngle - segAngle/2);
     setRotation(target);
-    setTimeout(() => { setSpinning(false); setSelected(winner); }, 3800);
+    setTimeout(() => { setSpinning(false); setSelected(winner); setGlowPulse(false); spawnConfetti(); }, 4200);
   };
 
   const premio = selected !== null ? PREMIOS_RULETA[selected] : null;
 
   return (
-    <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'20px 20px 32px', background: premio ? premio.bg : '#fff', transition:'background .8s' }}>
-      <div style={{ fontSize:24, fontWeight:900, color: premio ? premio.color : '#000', marginBottom:4, textAlign:'center', transition:'color .5s' }}>
-        {selected === null ? (spinning ? '✨ Girando...' : '¡Gira tu ruleta!') : `¡Ganaste ${premio!.label}!`}
-      </div>
-      <div style={{ fontSize:13, color: premio ? 'rgba(255,255,255,.7)' : '#888', marginBottom:20, textAlign:'center' }}>
-        {selected === null ? 'Premio por responder la encuesta' : premio!.desc}
+    <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'24px 20px 32px', background: premio ? premio.bg : '#080810', transition:'background 1s', position:'relative', overflow:'hidden' }}>
+      <style>{`
+        @keyframes roulettePulse{0%,100%{box-shadow:0 0 40px #FF2D78,0 0 80px #FF2D7840}50%{box-shadow:0 0 80px #FF2D78,0 0 160px #FF2D7860}}
+        @keyframes confettiFloat{0%{transform:translate(0,0) rotate(0deg) scale(1);opacity:1}100%{transform:translate(var(--tx),var(--ty)) rotate(var(--r)) scale(0);opacity:0}}
+        @keyframes prizeReveal{0%{transform:scale(0) rotate(-10deg);opacity:0}60%{transform:scale(1.1) rotate(3deg)}100%{transform:scale(1) rotate(0deg);opacity:1}}
+        @keyframes starsSpin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        @keyframes tickerBounce{0%,100%{transform:translateX(-50%) scaleY(1)}50%{transform:translateX(-50%) scaleY(1.3)}}
+      `}</style>
+
+      {/* Partículas confetti */}
+      {particles.map(p=>(
+        <div key={p.id} style={{
+          position:'absolute', left:`${p.x}%`, top:`${p.y}%`,
+          width:8, height:8, borderRadius:p.id%3===0?'50%':2,
+          background:p.c, pointerEvents:'none', zIndex:20,
+          animation:`confettiFloat 2s ease-out forwards`,
+          '--tx':`${Math.cos(p.angle*Math.PI/180)*p.dist}px`,
+          '--ty':`${Math.sin(p.angle*Math.PI/180)*p.dist}px`,
+          '--r':`${p.angle*3}deg`,
+        } as any}/>
+      ))}
+
+      {/* Header */}
+      <div style={{ textAlign:'center', marginBottom:20, zIndex:5 }}>
+        <div style={{ fontSize:11, color:'#FF2D78', fontWeight:900, letterSpacing:'.15em', textTransform:'uppercase' as const, marginBottom:8 }}>✦ OMM REWARDS</div>
+        <div style={{ fontFamily:"'Syne',sans-serif", fontSize:26, fontWeight:900, color: premio ? premio.color : '#fff', transition:'color .8s', lineHeight:1.2 }}>
+          {selected===null?(spinning?'✨ ¡Girando!...':'¡Gira y gana!'): `¡Ganaste!`}
+        </div>
+        <div style={{ fontSize:13, color:'rgba(255,255,255,.5)', marginTop:4 }}>
+          {selected===null?'Premio por tu experiencia en OMM':premio!.desc}
+        </div>
       </div>
 
-      {/* Ruleta SVG */}
-      <div style={{ position:'relative', width:260, height:260, marginBottom:20, flexShrink:0 }}>
-        <div style={{ position:'absolute', top:-18, left:'50%', transform:'translateX(-50%)', zIndex:10, fontSize:32 }}>▼</div>
-        <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:36, height:36, borderRadius:'50%', background:'#fff', border:'3px solid #ddd', zIndex:10, display:'flex', alignItems:'center', justifyContent:'center', fontSize:16 }}>⭐</div>
-        <svg viewBox="0 0 260 260" width="260" height="260"
-          style={{ transform:`rotate(${rotation}deg)`, transition: spinning ? 'transform 3.8s cubic-bezier(0.17,0.67,0.08,1.0)' : 'none', borderRadius:'50%', boxShadow:'0 8px 32px rgba(0,0,0,.25)' }}>
+      {/* Ruleta principal */}
+      <div style={{ position:'relative', width:320, height:320, marginBottom:24, flexShrink:0, zIndex:5 }}>
+        {/* Anillo exterior giratorio decorativo */}
+        <div style={{ position:'absolute', inset:-16, borderRadius:'50%', border:'2px dashed rgba(255,45,120,0.3)', animation: spinning?'starsSpin 3s linear infinite':'none' }}>
+          {[0,45,90,135,180,225,270,315].map(a=>(
+            <div key={a} style={{ position:'absolute', top:'50%', left:'50%', width:8, height:8, borderRadius:'50%', background:'#FF2D78', transform:`translate(-50%,-50%) rotate(${a}deg) translateY(-${160+16}px)`, boxShadow:'0 0 6px #FF2D78' }}/>
+          ))}
+        </div>
+        {/* Glow ring */}
+        <div style={{ position:'absolute', inset:0, borderRadius:'50%', animation: glowPulse?'roulettePulse 0.8s ease-in-out infinite':'none', pointerEvents:'none' }}/>
+        {/* Ticker */}
+        <div style={{ position:'absolute', top:-20, left:'50%', zIndex:15, fontSize:0, animation:spinning?'tickerBounce 0.15s ease-in-out infinite':'none' }}>
+          <svg width="28" height="36" viewBox="0 0 28 36" style={{ transform:'translateX(-50%)', filter:'drop-shadow(0 2px 8px rgba(255,45,120,0.8))' }}>
+            <polygon points="14,2 26,34 14,26 2,34" fill="#FF2D78" stroke="#fff" strokeWidth="1.5"/>
+          </svg>
+        </div>
+        {/* Centro */}
+        <div style={{ position:'absolute', top:'50%', left:'50%', transform:'translate(-50%,-50%)', width:44, height:44, borderRadius:'50%', background:'linear-gradient(135deg,#FF2D78,#B388FF)', border:'3px solid #fff', zIndex:15, display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, boxShadow:'0 0 20px rgba(255,45,120,0.8)' }}>✦</div>
+        {/* SVG Ruleta */}
+        <svg viewBox="0 0 320 320" width="320" height="320"
+          style={{ transform:`rotate(${rotation}deg)`, transition: spinning?'transform 4.2s cubic-bezier(0.12,0.8,0.1,1.0)':'none', borderRadius:'50%', boxShadow:'0 12px 60px rgba(0,0,0,.6), inset 0 0 40px rgba(0,0,0,.3)', display:'block' }}>
           {PREMIOS_RULETA.map((p, i) => {
             const sa = i * segAngle - 90, ea = sa + segAngle;
-            const r = 130, cx = 130, cy = 130;
+            const r = 160, cx = 160, cy = 160;
             const x1 = cx + r * Math.cos(sa * Math.PI/180), y1 = cy + r * Math.sin(sa * Math.PI/180);
             const x2 = cx + r * Math.cos(ea * Math.PI/180), y2 = cy + r * Math.sin(ea * Math.PI/180);
             const ma = sa + segAngle/2;
-            const tx = cx + r*0.62 * Math.cos(ma*Math.PI/180), ty = cy + r*0.62 * Math.sin(ma*Math.PI/180);
-            const ex = cx + r*0.82 * Math.cos(ma*Math.PI/180), ey = cy + r*0.82 * Math.sin(ma*Math.PI/180);
+            const tx = cx + r*0.58 * Math.cos(ma*Math.PI/180), ty = cy + r*0.58 * Math.sin(ma*Math.PI/180);
+            const ex = cx + r*0.78 * Math.cos(ma*Math.PI/180), ey = cy + r*0.78 * Math.sin(ma*Math.PI/180);
+            const darkColor = p.color + 'cc';
             return (
               <g key={i}>
-                <path d={`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2} Z`} fill={p.color} stroke="#fff" strokeWidth="2"/>
-                <text x={tx} y={ty+4} textAnchor="middle" fontSize="8" fontWeight="800" fill="#fff">{p.label}</text>
-                <text x={ex} y={ey+5} textAnchor="middle" fontSize="15">{p.emoji}</text>
+                <defs>
+                  <linearGradient id={`grad${i}`} x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" stopColor={p.color} stopOpacity="1"/>
+                    <stop offset="100%" stopColor={darkColor} stopOpacity="1"/>
+                  </linearGradient>
+                </defs>
+                <path d={`M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 0 1 ${x2} ${y2} Z`} fill={`url(#grad${i})`} stroke="rgba(255,255,255,0.15)" strokeWidth="1.5"/>
+                <text x={tx} y={ty+4} textAnchor="middle" fontSize="11" fontWeight="900" fill="rgba(255,255,255,0.9)">{p.label}</text>
+                <text x={ex} y={ey+8} textAnchor="middle" fontSize="20">{p.emoji}</text>
               </g>
             );
           })}
@@ -317,35 +379,35 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
 
       {/* Premio ganado */}
       {selected !== null && (
-        <div style={{ background:'rgba(255,255,255,.15)', border:`2px solid ${premio!.color}`, borderRadius:20, padding:'20px 28px', textAlign:'center', marginBottom:20 }}>
-          <div style={{ fontSize:56, marginBottom:8 }}>{premio!.emoji}</div>
-          <div style={{ fontSize:22, fontWeight:900, color:premio!.color, marginBottom:4 }}>{premio!.label}</div>
-          <div style={{ fontSize:13, color:'rgba(255,255,255,.8)', marginBottom:8 }}>{premio!.desc}</div>
-          <div style={{ fontSize:11, color:'rgba(255,255,255,.5)' }}>Muéstrale esta pantalla a tu mesero · Válido 30 días</div>
+        <div style={{ background:`linear-gradient(135deg,${premio!.color}20,${premio!.color}08)`, border:`2px solid ${premio!.color}60`, borderRadius:24, padding:'24px 32px', textAlign:'center', marginBottom:20, animation:'prizeReveal .6s cubic-bezier(.34,1.56,.64,1) forwards', boxShadow:`0 8px 40px ${premio!.color}30`, zIndex:5 }}>
+          <div style={{ fontSize:72, marginBottom:8, filter:`drop-shadow(0 0 20px ${premio!.color})` }}>{premio!.emoji}</div>
+          <div style={{ fontFamily:"'Syne',sans-serif", fontSize:24, fontWeight:900, color:premio!.color, marginBottom:6 }}>{premio!.label}</div>
+          <div style={{ fontSize:14, color:'rgba(255,255,255,.7)', marginBottom:10 }}>{premio!.desc}</div>
+          <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', background:'rgba(255,255,255,.05)', borderRadius:8, padding:'6px 12px' }}>Muéstrale esta pantalla a tu mesero · Válido 30 días</div>
         </div>
       )}
 
-      {/* Botones */}
-      {selected === null ? (
+      {/* Botón */}
+      {selected===null ? (
         <button onClick={girar} disabled={spinning}
-          style={{ padding:'16px 48px', borderRadius:100, background: spinning ? '#ccc':'#000', color:'#fff', fontSize:17, fontWeight:900, border:'none', cursor: spinning?'not-allowed':'pointer', boxShadow: spinning?'none':'0 4px 20px rgba(0,0,0,.3)' }}>
-          {spinning ? '✨ Girando...' : '🎰 ¡GIRAR!'}
+          style={{ padding:'16px 56px', borderRadius:50, background:spinning?'rgba(255,255,255,.1)':`linear-gradient(135deg,#FF2D78,#cc2260)`, color:'#fff', fontSize:18, fontWeight:900, border:'none', cursor:spinning?'not-allowed':'pointer', boxShadow:spinning?'none':'0 6px 30px rgba(255,45,120,0.5)', transition:'all .3s', fontFamily:"'Syne',sans-serif", letterSpacing:'.04em', zIndex:5, position:'relative' }}>
+          {spinning ? '✨ ¡Girando!...' : '🎰 ¡GIRAR!'}
         </button>
       ) : (
         <button onClick={onClose}
-          style={{ padding:'16px 48px', borderRadius:100, background:premio!.color, color:'#fff', fontSize:16, fontWeight:900, border:'none', cursor:'pointer', boxShadow:`0 4px 20px ${premio!.color}60` }}>
-          ✓ ¡Listo! Cerrar
+          style={{ padding:'16px 56px', borderRadius:50, background:`linear-gradient(135deg,${premio!.color},${premio!.color}cc)`, color:'#fff', fontSize:17, fontWeight:900, border:'none', cursor:'pointer', boxShadow:`0 6px 30px ${premio!.color}60`, fontFamily:"'Syne',sans-serif", zIndex:5, position:'relative' }}>
+          🎉 ¡Genial! Cerrar
         </button>
       )}
-
-      {selected === null && !spinning && (
-        <button onClick={onClose} style={{ background:'none', border:'none', fontSize:12, color:'rgba(0,0,0,.4)', cursor:'pointer', marginTop:12, textDecoration:'underline' }}>
+      {selected===null && !spinning && (
+        <button onClick={onClose} style={{ background:'none', border:'none', fontSize:12, color:'rgba(255,255,255,.2)', cursor:'pointer', marginTop:14, zIndex:5, position:'relative' }}>
           Omitir ruleta
         </button>
       )}
     </div>
   );
 };
+
 
 const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisionAI }) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -1736,48 +1798,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
       {/* ═══ PASO 4: ENCUESTA ═══ */}
       {clientePaso === 'encuesta' && (
-        <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '48px 24px 32px' }}>
-          {/* Logo */}
-          <div style={{ width: 72, height: 72, borderRadius: '50%', background: '#fff', border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
-            <span style={{ fontWeight: 900, fontSize: 14, letterSpacing: -0.5, color: S.black }}>OMM</span>
-          </div>
-
-          <div style={{ fontSize: 26, fontWeight: 800, textAlign: 'center', color: S.black, marginBottom: 8, lineHeight: 1.3 }}>
-            En escala de 1 a 5,<br/>¿Cómo calificarías tu<br/>experiencia hoy?
-          </div>
-          <div style={{ fontSize: 14, color: S.text3, marginBottom: 40, textAlign: 'center' }}>Haz clic en las estrellas para calificar de 1 a 5</div>
-
-          {/* Estrellas generales grandes */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
-            {[1,2,3,4,5].map(s => (
-              <button key={s} onClick={() => setClienteRating(s)}
-                style={{ fontSize: 52, opacity: clienteRating >= s ? 1 : 0.2, transition: 'all 0.15s', background: 'none', border: 'none', cursor: 'pointer', transform: clienteRating >= s ? 'scale(1.1)' : 'scale(0.95)' }}>⭐</button>
-            ))}
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', width: '100%', maxWidth: 280, fontSize: 13, color: S.text3, marginBottom: 40 }}>
-            <span>Malo</span><span>Bueno</span>
-          </div>
-
-          {/* Categorías */}
-          {clienteRating > 0 && (
-            <div style={{ width: '100%', background: '#fff', borderRadius: 16, padding: '0 20px', marginBottom: 32 }}>
-              <StarRowCliente label="Comida" field="comida" />
-              <StarRowCliente label="Servicio" field="servicio" />
-              <StarRowCliente label="Ambiente" field="ambiente" />
-            </div>
-          )}
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, width: '100%', marginTop: 'auto' }}>
-            <button onClick={() => clienteRating > 0 ? setClientePaso('premio') : showToast('Selecciona tu calificación primero')}
-              style={{ width: '100%', padding: '18px', borderRadius: 100, background: S.black, color: '#fff', fontSize: 17, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
-              Enviar →
-            </button>
-            <button onClick={() => { setClienteMode(false); setOrder(prev => prev.filter(o => o.mesa !== mesaCliente.num)); showToast(`Mesa ${mesaCliente.num} cerrada`); }}
-              style={{ background: 'none', border: 'none', fontSize: 13, color: S.text3, cursor: 'pointer', textDecoration: 'underline', textAlign: 'center' }}>
-              Omitir encuesta
-            </button>
-          </div>
-        </div>
+        <XCareEncuesta
+          mesaNumero={mesaCliente?.num}
+          nombreCliente={mesaCliente?.cliente||''}
+          platosConsumidos={order.filter(o=>o.mesa===mesaCliente?.num).map(o=>o.nombre)}
+          onClose={()=>{ setClienteMode(false); setOrder(prev=>prev.filter(o=>o.mesa!==mesaCliente?.num)); showToast(`Mesa ${mesaCliente?.num} cerrada`); }}
+          onComplete={(data)=>{ setClienteRating(data.estrellas); setClientePaso('premio'); }}
+        />
       )}
 
       {/* ═══ PASO 5: RULETA DE PREMIOS ═══ */}
