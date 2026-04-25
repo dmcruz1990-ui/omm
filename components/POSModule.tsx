@@ -2759,8 +2759,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               </>
             );
           })()}
-        </div>
-      </div>
       <div className="flex-1 flex flex-col bg-[#0a0a0a] min-w-0">
         {/* Category tabs + botones drawer */}
         <div className="bg-[#141414] border-b border-[#2a2a2a] px-3 flex items-center h-[44px] shrink-0">
@@ -3315,8 +3313,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 </div>
               </div>
 
-
-            <div className="flex flex-col gap-2 mt-2">
               <div className="flex items-center gap-2 text-[13px]">
                 <div className="w-1.5 h-1.5 rounded-full bg-[#d4943a] shrink-0"></div>
                 <span className="text-[#a0a0a0]">Ticket:</span>
