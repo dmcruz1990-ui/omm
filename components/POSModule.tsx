@@ -2288,6 +2288,9 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           rating={clienteRating}
         />
       )}
+      </div>{/* cierre paso encuesta/premio */}
+      </div>{/* cierre panel interior */}
+      </div>{/* cierre panel cliente */}
     </>
   );
 
