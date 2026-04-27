@@ -2283,14 +2283,19 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
       {/* ═══ PASO 5: RULETA DE PREMIOS ═══ */}
       {clientePaso === 'premio' && (
         <RuletaPremios
-          onClose={() => { setClienteMode(false); setOrder(prev => prev.filter(o => o.mesa !== mesaCliente?.num)); showToast('¡Gracias! Mesa cerrada'); }}
+          onClose={() => { 
+            setClienteMode(false); 
+            setOrder(prev => prev.filter(o => o.mesa !== mesaCliente?.num)); 
+            setClientePaso('cuenta');
+            setXcareStep('rating');
+            showToast(`✓ Mesa ${mesaCliente?.num} cerrada — ¡Gracias!`); 
+          }}
           mesaNum={mesaCliente?.num ?? 0}
           rating={clienteRating}
         />
       )}
-      </div>{/* cierre paso encuesta/premio */}
-      </div>{/* cierre panel interior */}
-      </div>{/* cierre panel cliente */}
+    </div>{/* cierre contenido panel */}
+    </div>{/* cierre panel cliente fijo */}
     </>
   );
 
