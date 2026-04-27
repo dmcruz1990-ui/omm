@@ -2294,8 +2294,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           rating={clienteRating}
         />
       )}
-    </div>{/* cierre contenido panel */}
-    </div>{/* cierre panel cliente fijo */}
+    </div>
     </>
   );
 
