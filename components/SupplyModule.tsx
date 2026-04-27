@@ -1,411 +1,767 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabase.ts';
 
-import React, { useState, useEffect } from 'react';
-import { 
-  AlertTriangle, 
-  Zap, 
-  RefreshCw,
-  Loader2,
-  Truck,
-  Store,
-  Search,
-  TrendingUp,
-  TrendingDown,
-  Scale,
-  Plus,
-  Minus,
-  FileSearch,
-  AlertCircle,
-  Database,
-  FileUp,
-  Activity,
-  ShieldAlert,
-  ClipboardCheck,
-  Eye
-} from 'lucide-react';
-import { jsPDF } from 'https://esm.sh/jspdf';
-import autoTable from 'https://esm.sh/jspdf-autotable';
-import { SupplyItem } from '../types.ts';
-import SupplyMarketplace from './SupplyMarketplace.tsx';
-import { useAuth } from '../contexts/AuthContext.tsx';
+const S = {
+  bg:'#08080f', bg2:'#111118', bg3:'#18181f', bg4:'#22222a',
+  border:'rgba(255,255,255,0.07)', border2:'rgba(255,255,255,0.12)',
+  t1:'#FFFFFF', t2:'#A0A0B8', t3:'#50506A',
+  gold:'#FFB547', goldD:'#d4943a',
+  green:'#00E676', greenD:'#3dba6f',
+  red:'#FF5252', blue:'#448AFF',
+  purple:'#B388FF', cyan:'#22d3ee',
+  orange:'#FF7043',
+};
 
-interface TabItemProps {
-  active: boolean;
-  onClick: () => void;
-  label: string;
-  icon: React.ReactNode;
-}
+const C = {
+  carnico:'#FF5252', pescado:'#448AFF', lacteo:'#B388FF',
+  bebidas:'#22d3ee', licores:'#FFB547', abarrotes:'#00E676',
+  frutas:'#FF7043', verduras:'#69F0AE', secos:'#d4943a',
+  panaderia:'#f0b45a', limpieza:'#9b72ff', empaques:'#60a5fa',
+};
 
-interface StatCardProps {
-  label: string;
-  value: string;
-  status: string;
-  icon: React.ReactNode;
-  color?: string;
-}
+type Tab = 'dashboard' | 'proveedores' | 'materias' | 'subpreps' | 'recetas' | 'compras' | 'alertas' | 'recepcion' | 'conteos';
 
-const SupplyModule: React.FC = () => {
-  const { profile } = useAuth();
-  const [items, setItems] = useState<SupplyItem[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<'inventory' | 'receiving' | 'marketplace' | 'pending' | 'history' | 'live_recon'>('inventory');
-  
-  // Recon States
-  const [reconCounts, setReconCounts] = useState<Record<string, number>>({});
-  const [isSyncingRecon, setIsSyncingRecon] = useState(false);
+const inp: React.CSSProperties = {
+  background:'rgba(255,255,255,0.05)', border:`1px solid ${S.border2}`,
+  borderRadius:8, padding:'9px 14px', color:S.t1, fontSize:13, outline:'none', width:'100%',
+};
+const fmt = (n:number) => `$${Math.round(n).toLocaleString('es-CO')}`;
+const fmtKg = (n:number, u='gr') => n>=1000?`${(n/1000).toFixed(2)}kg`:n>=1?`${Math.round(n)}${u}`:`${n}${u}`;
 
-  const isAdmin = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
+interface Supplier { id:number; nombre:string; categoria:string; contacto_nombre?:string; contacto_telefono?:string; ciudad?:string; lead_time_dias:number; score_total:number; score_calidad:number; score_cumplimiento:number; score_precio:number; score_confiabilidad:number; activo:boolean; condiciones_pago?:string; dias_despacho?:string[]; }
+interface MateriaPrima { id:number; nombre:string; categoria:string; unidad_compra:string; costo_unitario:number; rendimiento_pct:number; merma_pct:number; costo_real_post_merma:number; stock_actual:number; stock_minimo:number; stock_maximo:number; vida_util_dias:number; criticidad:string; alerta_stock:boolean; consumo_diario_promedio:number; proveedor_principal_id?:number; }
+interface Subprep { id:number; nombre:string; tipo:string; rendimiento_total:number; unidad_rendimiento:string; costo_total:number; costo_por_unidad:number; vida_util_dias:number; stock_actual:number; stock_minimo:number; responsable?:string; }
+interface PurchaseOrder { id:number; estado:string; tipo:string; total_estimado:number; generada_por:string; fecha_sugerida:string; fecha_entrega_esperada?:string; notas?:string; supplier_id:number; }
 
-  const fetchInventory = async () => {
-    setLoading(true);
-    // Simulación de datos con varianza calculada
-    const mockItems: SupplyItem[] = [
-      { id: '1', name: 'Atún Bluefin Premium', theoretical: 20, real: 18.5, unit: 'kg', category: 'Proteínas', pyg_category: 'Costo de alimentos', nature: 'COSTO', costPerUnit: 185000, lastCostIncrease: 0, expirationDate: '', status: 'optimal', pending_invoice: true, received_quantity: 5, confidence_score: 0.96, niif_mapping: 'IAS 2 Inventarios', last_recon_at: '2025-03-05T10:00:00Z', variance_pct: -7.5 },
-      { id: '2', name: 'Salmón Noruego', theoretical: 15, real: 14.8, unit: 'kg', category: 'Proteínas', pyg_category: 'Costo de alimentos', nature: 'COSTO', costPerUnit: 85000, lastCostIncrease: 5, expirationDate: '2025-03-20', status: 'optimal', pending_invoice: false, confidence_score: 0.98, niif_mapping: 'IAS 2 Inventarios', last_recon_at: '2025-03-06T08:00:00Z', variance_pct: -1.3 },
-      { id: '3', name: 'Aceite de Trufa OMM', theoretical: 12, real: 9.5, unit: 'L', category: 'Abarrotes Lujo', pyg_category: 'Costo de alimentos', nature: 'COSTO', costPerUnit: 120000, lastCostIncrease: 2, expirationDate: '2025-06-01', status: 'variance_alert', pending_invoice: false, confidence_score: 0.82, niif_mapping: 'IAS 2 Inventarios', last_recon_at: '2025-03-06T12:00:00Z', variance_pct: -20.8 },
-      { id: '4', name: 'Gin Suntory Roku', theoretical: 24, real: 24, unit: 'bot', category: 'Licores', pyg_category: 'Costo de bebidas', nature: 'COSTO', costPerUnit: 145000, lastCostIncrease: 0, expirationDate: '', status: 'optimal', pending_invoice: false, confidence_score: 1.0, niif_mapping: 'IAS 2 Inventarios', last_recon_at: '2025-03-06T11:00:00Z', variance_pct: 0 },
-    ];
-    setItems(mockItems);
+const CATS_MP = ['carnico','pescado','ave','lacteo','fruta','verdura','abarrote','seco','bebida','licor','bar','panaderia','pasteleria','empaque','limpieza','desechable'];
+const TIPOS_SUBPREP = ['salsa','fondo','jarabe','vinagreta','pure','marinada','aceite','cordial','arroz','otro'];
+const CRITICIDAD_CFG: Record<string,{c:string;l:string}> = { alta:{c:S.red,l:'Alta'}, media:{c:S.gold,l:'Media'}, baja:{c:S.green,l:'Baja'} };
+
+export default function SupplyModule() {
+  const [tab, setTab]                 = useState<Tab>('dashboard');
+  const [suppliers, setSuppliers]     = useState<Supplier[]>([]);
+  const [materias, setMaterias]       = useState<MateriaPrima[]>([]);
+  const [subpreps, setSubpreps]       = useState<Subprep[]>([]);
+  const [orders, setOrders]           = useState<PurchaseOrder[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [toast, setToast]             = useState('');
+  const [busqueda, setBusqueda]       = useState('');
+  // Modales
+  const [modalProveedor, setModalProveedor] = useState(false);
+  const [modalMateria, setModalMateria]     = useState(false);
+  const [modalSubprep, setModalSubprep]     = useState(false);
+  const [editItem, setEditItem]             = useState<any>(null);
+  // Forms
+  const [fProv, setFProv] = useState<any>({ nombre:'', categoria:'carnico', ciudad:'Bogotá', lead_time_dias:2, condiciones_pago:'30 dias', score_calidad:80, score_cumplimiento:80, score_precio:80, score_confiabilidad:80 });
+  const [fMP, setFMP]     = useState<any>({ nombre:'', categoria:'carnico', unidad_compra:'kg', costo_unitario:0, rendimiento_pct:100, merma_pct:0, stock_actual:0, stock_minimo:0, stock_maximo:100, vida_util_dias:7, criticidad:'media', consumo_diario_promedio:0 });
+  const [fSP, setFSP]     = useState<any>({ nombre:'', tipo:'salsa', rendimiento_total:1000, unidad_rendimiento:'ml', costo_total:0, vida_util_dias:5, stock_actual:0, stock_minimo:0, responsable:'' });
+
+  const showToast = useCallback((m:string)=>{ setToast(m); setTimeout(()=>setToast(''),3000); },[]);
+
+  const fetchAll = async () => {
+    const [{ data:s },{ data:m },{ data:sp },{ data:o }] = await Promise.all([
+      supabase.from('suppliers').select('*').eq('restaurante_id',6).order('score_total',{ascending:false}),
+      supabase.from('materias_primas').select('*').eq('restaurante_id',6).order('nombre'),
+      supabase.from('subpreparaciones').select('*').eq('restaurante_id',6).order('nombre'),
+      supabase.from('purchase_orders').select('*').eq('restaurante_id',6).order('created_at',{ascending:false}).limit(20),
+    ]);
+    if(s) setSuppliers(s); if(m) setMaterias(m); if(sp) setSubpreps(sp); if(o) setOrders(o);
     setLoading(false);
   };
 
-  useEffect(() => {
-    fetchInventory();
-  }, []);
+  useEffect(()=>{ fetchAll(); },[]);
 
-  const downloadAuditPDF = (item: SupplyItem) => {
-    // eslint-disable-next-line react-hooks/purity
-    const timestamp = Date.now();
-    const doc = new jsPDF();
-    const date = new Date().toLocaleString();
-    
-    doc.setFillColor(10, 10, 12);
-    doc.rect(0, 0, 210, 45, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(22);
-    doc.setFont('helvetica', 'bold');
-    doc.text('GRUPO SERATTA SAS', 20, 25);
-    doc.setFontSize(9);
-    doc.text('REPORTE DE VARIANZA CRÍTICA - AUDITORÍA INTERNA', 20, 33);
-    
-    doc.setTextColor(10, 10, 12);
-    doc.setFontSize(12);
-    doc.text(`PRODUCTO: ${item.name.toUpperCase()}`, 20, 60);
-    doc.text(`FECHA RECONCILIACIÓN: ${date}`, 20, 68);
-    doc.text(`PERSONAL RESPONSABLE: ${profile?.full_name}`, 20, 76);
-
-    autoTable(doc, {
-      startY: 90,
-      head: [['MÉTRICA', 'VALOR', 'UNIDAD']],
-      body: [
-        ['Stock Teórico (Sistema)', item.theoretical, item.unit],
-        ['Stock Real (Físico)', item.real, item.unit],
-        ['Varianza Neta', (item.real - item.theoretical).toFixed(2), item.unit],
-        ['% Desviación', `${item.variance_pct}%`, '-'],
-        ['Impacto Financiero', `$ ${Math.abs((item.real - item.theoretical) * item.costPerUnit).toLocaleString()}`, 'COP']
-      ],
-      theme: 'grid',
-      headStyles: { fillColor: [10, 10, 12] }
-    });
-
-    const finalY = (doc as any).lastAutoTable.finalY || 150;
-    doc.setDrawColor(239, 68, 68);
-    doc.setLineWidth(1);
-    doc.rect(20, finalY + 10, 170, 30);
-    doc.setTextColor(239, 68, 68);
-    doc.setFontSize(10);
-    doc.text('ALERTA DISPARADA: La desviación supera el umbral del 3% permitido.', 25, finalY + 20);
-    doc.text('Requiere inspección de cámaras y revisión de mermas.', 25, finalY + 28);
-
-    doc.save(`AUDIT_${item.id}_${timestamp}.pdf`);
+  // ── Guardar proveedor ──────────────────────────────────────────────────
+  const guardarProveedor = async () => {
+    if(!fProv.nombre){ showToast('⚠️ Nombre requerido'); return; }
+    if(editItem){ await supabase.from('suppliers').update(fProv).eq('id',editItem.id); }
+    else { await supabase.from('suppliers').insert({...fProv, restaurante_id:6, activo:true}); }
+    showToast(`✓ Proveedor ${fProv.nombre} guardado`);
+    setModalProveedor(false); setEditItem(null);
+    setFProv({ nombre:'', categoria:'carnico', ciudad:'Bogotá', lead_time_dias:2, condiciones_pago:'30 dias', score_calidad:80, score_cumplimiento:80, score_precio:80, score_confiabilidad:80 });
+    fetchAll();
   };
 
-  const handleUpdateCount = (id: string, val: number) => {
-    setReconCounts(prev => ({ ...prev, [id]: val }));
+  // ── Guardar materia prima ──────────────────────────────────────────────
+  const guardarMateria = async () => {
+    if(!fMP.nombre){ showToast('⚠️ Nombre requerido'); return; }
+    if(editItem){ await supabase.from('materias_primas').update(fMP).eq('id',editItem.id); }
+    else { await supabase.from('materias_primas').insert({...fMP, restaurante_id:6, activo:true}); }
+    showToast(`✓ ${fMP.nombre} guardado`);
+    setModalMateria(false); setEditItem(null);
+    setFMP({ nombre:'', categoria:'carnico', unidad_compra:'kg', costo_unitario:0, rendimiento_pct:100, merma_pct:0, stock_actual:0, stock_minimo:0, stock_maximo:100, vida_util_dias:7, criticidad:'media', consumo_diario_promedio:0 });
+    fetchAll();
   };
 
-  const syncRecon = async () => {
-    setIsSyncingRecon(true);
-    // Simular lógica de guardado y cálculo de varianza
-    await new Promise(r => setTimeout(r, 1500));
-    
-    const updatedItems = items.map(item => {
-      if (reconCounts[item.id] !== undefined) {
-        const newReal = reconCounts[item.id];
-        const newVariance = ((newReal - item.theoretical) / item.theoretical) * 100;
-        return {
-          ...item,
-          real: newReal,
-          variance_pct: Number(newVariance.toFixed(1)),
-          status: (Math.abs(newVariance) > 5 ? 'variance_alert' : 'optimal') as SupplyItem['status'],
-          last_recon_at: new Date().toISOString()
-        };
-      }
-      return item;
-    });
+  // ── Guardar subpreparación ─────────────────────────────────────────────
+  const guardarSubprep = async () => {
+    if(!fSP.nombre){ showToast('⚠️ Nombre requerido'); return; }
+    const costoPorUnidad = fSP.rendimiento_total > 0 ? fSP.costo_total / fSP.rendimiento_total : 0;
+    if(editItem){ await supabase.from('subpreparaciones').update({...fSP, costo_por_unidad:costoPorUnidad}).eq('id',editItem.id); }
+    else { await supabase.from('subpreparaciones').insert({...fSP, costo_por_unidad:costoPorUnidad, restaurante_id:6, activo:true}); }
+    showToast(`✓ ${fSP.nombre} guardada`);
+    setModalSubprep(false); setEditItem(null);
+    setFSP({ nombre:'', tipo:'salsa', rendimiento_total:1000, unidad_rendimiento:'ml', costo_total:0, vida_util_dias:5, stock_actual:0, stock_minimo:0, responsable:'' });
+    fetchAll();
+  };
 
-    setItems(updatedItems);
-    setReconCounts({});
-    setIsSyncingRecon(false);
-    
-    if (updatedItems.some(i => i.status === 'variance_alert')) {
-      alert("⚠️ ALERTA: Se han detectado varianzas críticas. Los registros han sido enviados a Gerencia.");
+  // ── Generar orden de compra IA ─────────────────────────────────────────
+  const generarOrdenIA = async () => {
+    const criticas = materias.filter(m => m.stock_actual <= m.stock_minimo);
+    if(criticas.length===0){ showToast('✓ Sin materias por debajo del mínimo'); return; }
+    const { data:order } = await supabase.from('purchase_orders').insert({
+      restaurante_id:6, estado:'sugerida', tipo:'semanal', generada_por:'Nexum IA',
+      total_estimado: criticas.reduce((a,m)=>a+(m.stock_minimo*2-m.stock_actual)*m.costo_real_post_merma,0),
+      fecha_sugerida: new Date().toISOString().split('T')[0],
+    }).select().single();
+    if(order) {
+      await supabase.from('purchase_order_items').insert(
+        criticas.map(m=>({
+          order_id:(order as any).id, materia_prima_id:m.id, nombre:m.nombre,
+          stock_actual:m.stock_actual, stock_necesario:m.stock_minimo*2,
+          cantidad_sugerida:Math.max(0,m.stock_minimo*2-m.stock_actual),
+          unidad:m.unidad_compra, precio_unitario:m.costo_unitario,
+          total:Math.max(0,m.stock_minimo*2-m.stock_actual)*m.costo_unitario,
+        }))
+      );
     }
+    showToast(`✓ Orden IA generada — ${criticas.length} items`);
+    setTab('compras'); fetchAll();
   };
 
-  if (loading) return <div className="py-40 text-center opacity-40"><Loader2 className="animate-spin mx-auto mb-4" />Sincronizando Live Inventory...</div>;
+  // ── KPIs ───────────────────────────────────────────────────────────────
+  const alertas = materias.filter(m=>m.stock_actual<=m.stock_minimo);
+  const proxVencer = materias.filter(m=>m.vida_util_dias<=3&&m.stock_actual>0);
+  const kpis = [
+    { l:'Proveedores',   v:suppliers.length,              c:S.blue   },
+    { l:'Ingredientes',  v:materias.length,               c:S.green  },
+    { l:'Subpreps',      v:subpreps.length,               c:S.purple },
+    { l:'🔴 Alertas',    v:alertas.length,                c:S.red    },
+    { l:'Órdenes IA',    v:orders.filter(o=>o.estado==='sugerida').length, c:S.gold },
+  ];
 
-  if (view === 'marketplace') {
-    return <SupplyMarketplace items={items} onBack={() => setView('inventory')} />;
-  }
-
+  // ── RENDER ─────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-10 animate-in fade-in duration-700 max-w-7xl mx-auto pb-20 text-left">
-      
-      {/* Header Intelligence */}
-      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-6 border-b border-white/5 pb-10">
-        <div>
-          <h2 className="text-4xl font-black italic tracking-tighter uppercase leading-none">Intelligence Supply</h2>
-          <p className="text-gray-500 text-[10px] font-black uppercase tracking-[0.4em] mt-3 italic">Control Real vs Teórico V4</p>
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:S.bg,color:S.t1,fontFamily:"'DM Sans',sans-serif"}}>
+
+      {/* Toast */}
+      {toast && <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:S.bg3,border:`1px solid ${S.goldD}`,color:S.t1,padding:'10px 24px',borderRadius:50,fontSize:13,zIndex:9999,whiteSpace:'nowrap'}}>{toast}</div>}
+
+      {/* ── Modal Proveedor ── */}
+      {modalProveedor && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:700,display:'flex',alignItems:'center',justifyContent:'center',padding:16,backdropFilter:'blur(8px)'}}>
+          <div style={{background:S.bg3,border:`1px solid ${S.border2}`,borderRadius:20,padding:24,width:'100%',maxWidth:520,maxHeight:'90vh',overflowY:'auto'}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:900,marginBottom:20}}>{editItem?'Editar':'Nuevo'} Proveedor</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              {[{k:'nombre',l:'Nombre *'},{k:'ciudad',l:'Ciudad'},{k:'contacto_nombre',l:'Contacto'},{k:'contacto_telefono',l:'Teléfono'},{k:'contacto_email',l:'Email'},{k:'condiciones_pago',l:'Condiciones pago'}].map(f=>(
+                <div key={f.k}><div style={{fontSize:10,color:S.t3,marginBottom:4}}>{f.l}</div><input style={inp} value={fProv[f.k]||''} onChange={e=>setFProv((p:any)=>({...p,[f.k]:e.target.value}))}/></div>
+              ))}
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Categoría</div>
+                <select style={inp} value={fProv.categoria} onChange={e=>setFProv((p:any)=>({...p,categoria:e.target.value}))}>
+                  {['carnico','pescado','lacteo','bebidas','licores','abarrotes','frutas','verduras','panaderia','limpieza'].map(c=><option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Lead time (días)</div><input type="number" style={inp} value={fProv.lead_time_dias} onChange={e=>setFProv((p:any)=>({...p,lead_time_dias:parseInt(e.target.value)||1}))}/></div>
+            </div>
+            <div style={{marginTop:16}}>
+              <div style={{fontSize:11,color:S.gold,fontWeight:700,marginBottom:10}}>Score IA (0-100)</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
+                {[{k:'score_calidad',l:'Calidad'},{k:'score_cumplimiento',l:'Cumplimiento'},{k:'score_precio',l:'Precio'},{k:'score_confiabilidad',l:'Confiabilidad'}].map(f=>(
+                  <div key={f.k}>
+                    <div style={{fontSize:10,color:S.t3,marginBottom:4}}>{f.l}</div>
+                    <input type="number" min={0} max={100} style={inp} value={fProv[f.k]||80} onChange={e=>setFProv((p:any)=>({...p,[f.k]:parseInt(e.target.value)||0}))}/>
+                    <div style={{height:4,background:S.bg4,borderRadius:2,marginTop:4,overflow:'hidden'}}>
+                      <div style={{height:'100%',background:S.green,width:`${fProv[f.k]||80}%`,borderRadius:2}}/>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div style={{display:'flex',gap:10,marginTop:20}}>
+              <button onClick={()=>{setModalProveedor(false);setEditItem(null);}} style={{flex:1,padding:11,borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t3,cursor:'pointer',fontSize:13}}>Cancelar</button>
+              <button onClick={guardarProveedor} style={{flex:2,padding:11,borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.goldD},#b07830)`,color:'#fff',cursor:'pointer',fontSize:13,fontWeight:700}}>✓ Guardar</button>
+            </div>
+          </div>
         </div>
-        <div className="flex bg-[#111114] p-1.5 rounded-2xl border border-white/5 items-center overflow-x-auto no-scrollbar">
-           <TabItem active={view === 'inventory'} onClick={() => setView('inventory')} label="BODEGA" icon={<Database size={14} />} />
-           <TabItem active={view === 'live_recon'} onClick={() => setView('live_recon')} label="INVENTARIO VIVO" icon={<ClipboardCheck size={14} />} />
-           <TabItem active={view === 'receiving'} onClick={() => setView('receiving')} label="RECEPCIÓN IA" icon={<FileUp size={14} />} />
-           <TabItem active={view === 'pending'} onClick={() => setView('pending')} label="PENDIENTES" icon={<Truck size={14} />} />
-           <div className="w-[1px] h-6 bg-white/10 mx-4 shrink-0"></div>
-           <button onClick={() => setView('marketplace')} className="bg-amber-500 hover:bg-amber-400 text-black px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shrink-0">
-             <Store size={14} fill="black" /> MARKETPLACE
-           </button>
+      )}
+
+      {/* ── Modal Materia Prima ── */}
+      {modalMateria && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:700,display:'flex',alignItems:'center',justifyContent:'center',padding:16,backdropFilter:'blur(8px)'}}>
+          <div style={{background:S.bg3,border:`1px solid ${S.border2}`,borderRadius:20,padding:24,width:'100%',maxWidth:600,maxHeight:'90vh',overflowY:'auto'}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:900,marginBottom:20}}>{editItem?'Editar':'Nueva'} Materia Prima</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
+              <div style={{gridColumn:'1/-1'}}><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Nombre *</div><input style={inp} value={fMP.nombre||''} onChange={e=>setFMP((p:any)=>({...p,nombre:e.target.value}))}/></div>
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Categoría</div>
+                <select style={inp} value={fMP.categoria} onChange={e=>setFMP((p:any)=>({...p,categoria:e.target.value}))}>
+                  {CATS_MP.map(c=><option key={c}>{c}</option>)}
+                </select>
+              </div>
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Unidad de compra</div>
+                <select style={inp} value={fMP.unidad_compra} onChange={e=>setFMP((p:any)=>({...p,unidad_compra:e.target.value}))}>
+                  {['kg','lt','unidad','gr','ml','caja','bolsa'].map(u=><option key={u}>{u}</option>)}
+                </select>
+              </div>
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Costo unitario ($)</div><input type="number" style={inp} value={fMP.costo_unitario||''} onChange={e=>setFMP((p:any)=>({...p,costo_unitario:parseFloat(e.target.value)||0}))}/></div>
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Criticidad</div>
+                <select style={inp} value={fMP.criticidad} onChange={e=>setFMP((p:any)=>({...p,criticidad:e.target.value}))}>
+                  {['alta','media','baja'].map(c=><option key={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+            {/* Rendimiento y merma */}
+            <div style={{background:`${S.orange}08`,border:`1px solid ${S.orange}25`,borderRadius:12,padding:14,marginBottom:14}}>
+              <div style={{fontSize:11,color:S.orange,fontWeight:700,marginBottom:10}}>⚖️ Rendimiento y merma</div>
+              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                <div>
+                  <div style={{fontSize:10,color:S.t3,marginBottom:4}}>Rendimiento real (%)</div>
+                  <input type="number" min={0} max={100} style={inp} value={fMP.rendimiento_pct||100} onChange={e=>setFMP((p:any)=>({...p,rendimiento_pct:parseFloat(e.target.value)||100,merma_pct:100-(parseFloat(e.target.value)||100)}))}/>
+                </div>
+                <div>
+                  <div style={{fontSize:10,color:S.t3,marginBottom:4}}>Merma (%)</div>
+                  <input type="number" min={0} max={100} style={inp} value={fMP.merma_pct||0} onChange={e=>setFMP((p:any)=>({...p,merma_pct:parseFloat(e.target.value)||0,rendimiento_pct:100-(parseFloat(e.target.value)||0)}))}/>
+                </div>
+              </div>
+              {fMP.costo_unitario>0 && (
+                <div style={{marginTop:10,background:S.bg4,borderRadius:8,padding:'8px 12px',fontSize:12}}>
+                  <span style={{color:S.t3}}>Costo post-merma: </span>
+                  <span style={{color:S.orange,fontWeight:700}}>{fmt(fMP.costo_unitario/(fMP.rendimiento_pct/100||1))}</span>
+                  <span style={{color:S.t3}}> / {fMP.unidad_compra}</span>
+                </div>
+              )}
+            </div>
+            {/* Stock */}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:14}}>
+              {[{k:'stock_actual',l:'Stock actual'},{k:'stock_minimo',l:'Stock mínimo'},{k:'stock_maximo',l:'Stock máximo'},{k:'vida_util_dias',l:'Vida útil (días)'},{k:'consumo_diario_promedio',l:'Consumo diario'}].map(f=>(
+                <div key={f.k}><div style={{fontSize:10,color:S.t3,marginBottom:4}}>{f.l}</div><input type="number" style={inp} value={(fMP as any)[f.k]||''} onChange={e=>setFMP((p:any)=>({...p,[f.k]:parseFloat(e.target.value)||0}))}/></div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>{setModalMateria(false);setEditItem(null);}} style={{flex:1,padding:11,borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t3,cursor:'pointer',fontSize:13}}>Cancelar</button>
+              <button onClick={guardarMateria} style={{flex:2,padding:11,borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.green},#00b85a)`,color:'#000',cursor:'pointer',fontSize:13,fontWeight:700}}>✓ Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Subpreparación ── */}
+      {modalSubprep && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:700,display:'flex',alignItems:'center',justifyContent:'center',padding:16,backdropFilter:'blur(8px)'}}>
+          <div style={{background:S.bg3,border:`1px solid ${S.border2}`,borderRadius:20,padding:24,width:'100%',maxWidth:480}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:900,marginBottom:20}}>{editItem?'Editar':'Nueva'} Subpreparación</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
+              <div style={{gridColumn:'1/-1'}}><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Nombre *</div><input style={inp} value={fSP.nombre||''} onChange={e=>setFSP((p:any)=>({...p,nombre:e.target.value}))}/></div>
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Tipo</div>
+                <select style={inp} value={fSP.tipo} onChange={e=>setFSP((p:any)=>({...p,tipo:e.target.value}))}>
+                  {TIPOS_SUBPREP.map(t=><option key={t}>{t}</option>)}
+                </select>
+              </div>
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Responsable</div><input style={inp} value={fSP.responsable||''} onChange={e=>setFSP((p:any)=>({...p,responsable:e.target.value}))}/></div>
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Rendimiento total</div>
+                <div style={{display:'flex',gap:6}}>
+                  <input type="number" style={{...inp,flex:1}} value={fSP.rendimiento_total||''} onChange={e=>setFSP((p:any)=>({...p,rendimiento_total:parseFloat(e.target.value)||0}))}/>
+                  <select style={{...inp,width:70}} value={fSP.unidad_rendimiento} onChange={e=>setFSP((p:any)=>({...p,unidad_rendimiento:e.target.value}))}>
+                    {['ml','gr','lt','kg','unidad'].map(u=><option key={u}>{u}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Costo total ($)</div><input type="number" style={inp} value={fSP.costo_total||''} onChange={e=>setFSP((p:any)=>({...p,costo_total:parseFloat(e.target.value)||0}))}/></div>
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Vida útil (días)</div><input type="number" style={inp} value={fSP.vida_util_dias||''} onChange={e=>setFSP((p:any)=>({...p,vida_util_dias:parseInt(e.target.value)||0}))}/></div>
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Stock actual</div><input type="number" style={inp} value={fSP.stock_actual||''} onChange={e=>setFSP((p:any)=>({...p,stock_actual:parseFloat(e.target.value)||0}))}/></div>
+              <div><div style={{fontSize:10,color:S.t3,marginBottom:4}}>Stock mínimo</div><input type="number" style={inp} value={fSP.stock_minimo||''} onChange={e=>setFSP((p:any)=>({...p,stock_minimo:parseFloat(e.target.value)||0}))}/></div>
+            </div>
+            {fSP.costo_total>0&&fSP.rendimiento_total>0&&(
+              <div style={{background:`${S.purple}10`,border:`1px solid ${S.purple}25`,borderRadius:8,padding:'8px 12px',marginBottom:14,fontSize:12}}>
+                Costo por {fSP.unidad_rendimiento}: <span style={{color:S.purple,fontWeight:700}}>{fmt(fSP.costo_total/fSP.rendimiento_total)}</span>
+              </div>
+            )}
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>{setModalSubprep(false);setEditItem(null);}} style={{flex:1,padding:11,borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t3,cursor:'pointer',fontSize:13}}>Cancelar</button>
+              <button onClick={guardarSubprep} style={{flex:2,padding:11,borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.purple},#7040d0)`,color:'#fff',cursor:'pointer',fontSize:13,fontWeight:700}}>✓ Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Header */}
+      <div style={{padding:'12px 20px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,background:S.bg2,flexWrap:'wrap',gap:10}}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{width:40,height:40,borderRadius:12,background:`linear-gradient(135deg,${S.goldD},${S.green})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,boxShadow:`0 0 20px rgba(212,148,58,0.3)`}}>🏪</div>
+          <div>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,letterSpacing:'-0.02em'}}>SUPPLY IA</div>
+            <div style={{fontSize:10,color:S.t3,textTransform:'uppercase' as const,letterSpacing:'.1em'}}>Abastecimiento inteligente — OMM</div>
+          </div>
+        </div>
+        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+          <input placeholder="🔍 Buscar..." value={busqueda} onChange={e=>setBusqueda(e.target.value)}
+            style={{...inp,width:200,padding:'7px 14px',fontSize:12}}/>
+          {tab==='proveedores'&&<button onClick={()=>{setEditItem(null);setModalProveedor(true);}} style={{padding:'8px 16px',borderRadius:10,border:'none',background:S.goldD,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>+ Proveedor</button>}
+          {tab==='materias'&&<button onClick={()=>{setEditItem(null);setModalMateria(true);}} style={{padding:'8px 16px',borderRadius:10,border:'none',background:S.green,color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>+ Materia prima</button>}
+          {tab==='subpreps'&&<button onClick={()=>{setEditItem(null);setModalSubprep(true);}} style={{padding:'8px 16px',borderRadius:10,border:'none',background:S.purple,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>+ Subprep</button>}
+          {tab==='compras'&&<button onClick={generarOrdenIA} style={{padding:'8px 16px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.goldD},${S.green})`,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>🧠 Generar orden IA</button>}
         </div>
       </div>
 
-      {/* Alerta de Varianzas para Gerencia */}
-      {isAdmin && items.some(i => i.status === 'variance_alert') && (
-        <div className="bg-red-600/10 border-2 border-red-500/30 p-8 rounded-[3rem] flex flex-col md:flex-row items-center justify-between gap-6 animate-pulse">
-           <div className="flex items-center gap-6">
-              <div className="w-16 h-16 bg-red-600 rounded-2xl flex items-center justify-center text-white shadow-[0_0_40px_rgba(220,38,38,0.4)]">
-                 <ShieldAlert size={32} />
-              </div>
-              <div>
-                 <h4 className="text-xl font-black uppercase italic text-red-500">Alerta: Fuga de Inventario Detectada</h4>
-                 <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Hay {items.filter(i => i.status === 'variance_alert').length} insumos con varianza crítica entre físico y sistema.</p>
-              </div>
-           </div>
-           <div className="flex gap-4">
-              <button className="bg-white/5 border border-white/10 text-white px-6 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest">Ignorar</button>
-              <button onClick={() => setView('live_recon')} className="bg-red-600 text-white px-8 py-3 rounded-xl text-[9px] font-black uppercase tracking-widest shadow-xl">INSPECCIONAR AHORA</button>
-           </div>
-        </div>
-      )}
+      {/* KPIs */}
+      <div style={{display:'flex',gap:0,borderBottom:`1px solid ${S.border}`,flexShrink:0,background:S.bg2}}>
+        {kpis.map((k,i)=>(
+          <div key={k.l} style={{flex:1,padding:'10px 16px',borderRight:i<kpis.length-1?`1px solid ${S.border}`:'none'}}>
+            <div style={{fontSize:9,color:S.t3,textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:3}}>{k.l}</div>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:k.c}}>{k.v}</div>
+          </div>
+        ))}
+      </div>
 
-      {view === 'live_recon' && (
-        <div className="space-y-10 animate-in slide-in-from-bottom-4 duration-500">
-           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 bg-[#111114] border border-white/5 rounded-[4rem] overflow-hidden shadow-2xl">
-                 <div className="p-10 bg-black/20 border-b border-white/5 flex justify-between items-center">
+      {/* Tabs */}
+      <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,flexShrink:0,background:S.bg2,padding:'0 20px',overflowX:'auto'}}>
+        {([
+          {id:'dashboard', l:'📊 Dashboard'},
+          {id:'proveedores',l:`🏭 Proveedores (${suppliers.length})`},
+          {id:'materias',  l:`🥩 Materias (${materias.length})`},
+          {id:'subpreps',  l:`🫙 Subpreps (${subpreps.length})`},
+          {id:'recetas',   l:'📋 Recetas'},
+          {id:'compras',   l:`🛒 Compras (${orders.filter(o=>o.estado==='sugerida').length})`},
+          {id:'alertas',   l:`⚠️ Alertas (${alertas.length})`},
+          {id:'recepcion', l:'📦 Recepción'},
+          {id:'conteos',   l:'🔢 Conteos'},
+        ] as const).map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)}
+            style={{padding:'10px 14px',background:'none',border:'none',borderBottom:`2px solid ${tab===t.id?S.goldD:'transparent'}`,color:tab===t.id?S.goldD:S.t3,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
+            {t.l}
+          </button>
+        ))}
+      </div>
+
+      <div style={{flex:1,overflowY:'auto',padding:16}}>
+
+        {/* ══ DASHBOARD ══ */}
+        {tab==='dashboard' && (
+          <div style={{display:'flex',flexDirection:'column',gap:16}}>
+
+            {/* REGLA MADRE — responde las 10 preguntas */}
+            <div style={{background:`linear-gradient(135deg,${S.bg3},${S.bg4})`,border:`1px solid ${S.goldD}30`,borderRadius:16,padding:20}}>
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:4,display:'flex',alignItems:'center',gap:8}}>
+                🧠 Nexum Supply IA — {new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})}
+              </div>
+              <div style={{fontSize:12,color:S.t3,marginBottom:16,fontStyle:'italic'}}>
+                "NEXUM no compra por intuición. Compra por demanda proyectada, inventario real, rendimientos, mermas, vida útil y rentabilidad."
+              </div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8}}>
+                {[
+                  {q:'¿Qué tengo?',     v:`${materias.length} items`, c:S.blue},
+                  {q:'¿Qué falta?',     v:`${alertas.length} items`,  c:S.red},
+                  {q:'¿Qué se vence?',  v:`${proxVencer.length} items`,c:S.orange},
+                  {q:'¿Qué comprar?',   v:`${orders.filter(o=>o.estado==='sugerida').length} órdenes`, c:S.gold},
+                  {q:'¿Qué producir?',  v:`${subpreps.filter(s=>s.stock_actual<=s.stock_minimo).length} subpreps`, c:S.purple},
+                ].map(item=>(
+                  <div key={item.q} style={{background:S.bg,borderRadius:10,padding:'10px 12px',textAlign:'center'}}>
+                    <div style={{fontSize:9,color:S.t3,marginBottom:4}}>{item.q}</div>
+                    <div style={{fontSize:14,fontWeight:900,color:item.c,fontFamily:"'Syne',sans-serif"}}>{item.v}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16}}>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16,alignItems:'start'}}>
+
+            {/* Alertas críticas */}
+            <div style={{background:S.bg2,border:`1px solid ${S.red}30`,borderRadius:14,overflow:'hidden'}}>
+              <div style={{padding:'12px 16px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',gap:8}}>
+                <div style={{width:8,height:8,borderRadius:'50%',background:S.red,boxShadow:`0 0 8px ${S.red}`,animation:'pulse 1.5s infinite'}}/>
+                <span style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900}}>Alertas de stock</span>
+                <span style={{marginLeft:'auto',background:`${S.red}20`,color:S.red,fontSize:11,fontWeight:700,padding:'2px 8px',borderRadius:20}}>{alertas.length}</span>
+              </div>
+              <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}`}</style>
+              {alertas.length===0
+                ? <div style={{padding:20,fontSize:12,color:S.t3,textAlign:'center'}}>✓ Todo en niveles correctos</div>
+                : alertas.slice(0,8).map(m=>(
+                  <div key={m.id} style={{padding:'10px 16px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',gap:10}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:700}}>{m.nombre}</div>
+                      <div style={{fontSize:10,color:S.t3}}>{m.categoria} · mín: {m.stock_minimo} {m.unidad_compra}</div>
+                    </div>
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontSize:14,fontWeight:900,color:m.stock_actual===0?S.red:S.gold}}>{m.stock_actual===0?'86':fmtKg(m.stock_actual,m.unidad_compra)}</div>
+                      <div style={{fontSize:9,color:S.red}}>BAJO MÍNIMO</div>
+                    </div>
+                  </div>
+                ))
+              }
+            </div>
+
+            {/* Ranking proveedores */}
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <div style={{padding:'12px 16px',borderBottom:`1px solid ${S.border}`}}>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900}}>🏆 Ranking proveedores IA</div>
+              </div>
+              {suppliers.slice(0,5).map((s,i)=>(
+                <div key={s.id} style={{padding:'10px 16px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',gap:10}}>
+                  <div style={{width:24,height:24,borderRadius:8,background:i===0?`${S.gold}20`:S.bg3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:900,color:i===0?S.gold:S.t3,flexShrink:0}}>
+                    {i+1}
+                  </div>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,fontWeight:700}}>{s.nombre}</div>
+                    <div style={{fontSize:10,color:S.t3}}>{s.categoria} · {s.ciudad}</div>
+                  </div>
+                  <div style={{textAlign:'right'}}>
+                    <div style={{fontSize:16,fontWeight:900,color:s.score_total>=85?S.green:s.score_total>=70?S.gold:S.red}}>{s.score_total}</div>
+                    <div style={{fontSize:9,color:S.t3}}>SCORE</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Producción sugerida IA */}
+            <div style={{background:S.bg2,border:`1px solid ${S.purple}30`,borderRadius:14,overflow:'hidden'}}>
+              <div style={{padding:'12px 16px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',gap:8}}>
+                <span style={{color:S.purple,fontSize:16}}>🤖</span>
+                <span style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900}}>Producción sugerida</span>
+              </div>
+              {subpreps.filter(s=>s.stock_actual<=s.stock_minimo).length===0
+                ? <div style={{padding:20,fontSize:12,color:S.t3,textAlign:'center'}}>✓ Producción al día</div>
+                : subpreps.filter(s=>s.stock_actual<=s.stock_minimo).map(s=>(
+                  <div key={s.id} style={{padding:'10px 16px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',gap:10}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:700}}>{s.nombre}</div>
+                      <div style={{fontSize:10,color:S.t3}}>{s.tipo} · stock: {s.stock_actual} {s.unidad_rendimiento}</div>
+                    </div>
+                    <div style={{fontSize:11,color:S.purple,fontWeight:700}}>Producir {s.stock_minimo*2} {s.unidad_rendimiento}</div>
+                  </div>
+                ))
+              }
+            </div>
+          </div>
+            </div>
+          </div>
+        )}
+
+        {/* ══ PROVEEDORES ══ */}
+        {tab==='proveedores' && (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(320px,1fr))',gap:12}}>
+            {suppliers.filter(s=>!busqueda||s.nombre.toLowerCase().includes(busqueda.toLowerCase())).map(s=>{
+              const sc = s.score_total;
+              return (
+                <div key={s.id} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:16,padding:18,cursor:'pointer',transition:'all .2s'}}
+                  onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.borderColor=S.goldD}
+                  onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.borderColor=S.border}>
+                  <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:12}}>
                     <div>
-                       <h3 className="text-xl font-black italic uppercase tracking-tighter">Mesa de Conteo Directo</h3>
-                       <p className="text-[9px] text-gray-500 font-bold uppercase tracking-widest mt-1 italic">Ingresa el stock físico actual de Cocina y Bar</p>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900}}>{s.nombre}</div>
+                      <div style={{fontSize:11,color:S.t3,marginTop:2}}>{s.categoria} · {s.ciudad} · Lead {s.lead_time_dias}d</div>
                     </div>
-                    <button 
-                      onClick={syncRecon}
-                      disabled={isSyncingRecon || Object.keys(reconCounts).length === 0}
-                      className="bg-blue-600 hover:bg-blue-500 disabled:opacity-30 text-white px-10 py-4 rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all flex items-center gap-3 shadow-xl active:scale-95"
-                    >
-                       {isSyncingRecon ? <Loader2 size={16} className="animate-spin" /> : <><RefreshCw size={16} /> SINCRONIZAR CONTEO</>}
-                    </button>
-                 </div>
-                 
-                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
-                       <thead>
-                          <tr className="bg-black/20 text-[8px] font-black text-gray-600 uppercase tracking-[0.5em]">
-                             <th className="px-10 py-6">INSUMO</th>
-                             <th className="px-10 py-6 text-center">TEÓRICO (SYS)</th>
-                             <th className="px-10 py-6 text-center w-48">CONTEO FÍSICO</th>
-                             <th className="px-10 py-6 text-right">GAP VIVO</th>
-                          </tr>
-                       </thead>
-                       <tbody className="divide-y divide-white/5">
-                          {items.map(item => {
-                            const count = reconCounts[item.id] !== undefined ? reconCounts[item.id] : item.real;
-                            const variance = count - item.theoretical;
-                            const isHighVariance = Math.abs((variance / item.theoretical) * 100) > 5;
-
-                            return (
-                               <tr key={item.id} className={`group transition-all ${isHighVariance ? 'bg-red-600/[0.02]' : 'hover:bg-white/[0.01]'}`}>
-                                  <td className="px-10 py-8">
-                                     <div className="flex flex-col">
-                                        <span className="text-sm font-black italic uppercase text-white leading-none mb-2">{item.name}</span>
-                                        <span className="text-[9px] text-gray-600 font-bold uppercase">{item.category}</span>
-                                     </div>
-                                  </td>
-                                  <td className="px-10 py-8 text-center font-mono text-gray-500">
-                                     {item.theoretical} {item.unit}
-                                  </td>
-                                  <td className="px-10 py-8">
-                                     <div className="flex items-center gap-3 bg-black/40 border border-white/5 rounded-2xl p-1">
-                                        <button onClick={() => handleUpdateCount(item.id, Math.max(0, count - 1))} className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-gray-400 hover:bg-white/10 hover:text-white transition-all"><Minus size={14} /></button>
-                                        <input 
-                                          type="number" 
-                                          value={count}
-                                          onChange={(e) => handleUpdateCount(item.id, parseFloat(e.target.value) || 0)}
-                                          className="w-full bg-transparent text-center font-black italic text-lg outline-none text-white"
-                                        />
-                                        <button onClick={() => handleUpdateCount(item.id, count + 1)} className="w-10 h-10 bg-white/5 rounded-xl flex items-center justify-center text-gray-400 hover:bg-white/10 hover:text-white transition-all"><Plus size={14} /></button>
-                                     </div>
-                                  </td>
-                                  <td className="px-10 py-8 text-right">
-                                     <div className={`flex flex-col items-end ${variance < 0 ? 'text-red-500' : variance > 0 ? 'text-blue-400' : 'text-green-500'}`}>
-                                        <span className="text-lg font-black italic">{variance > 0 ? '+' : ''}{variance.toFixed(2)} {item.unit}</span>
-                                        <span className="text-[8px] font-bold uppercase tracking-widest">Desviación</span>
-                                     </div>
-                                  </td>
-                               </tr>
-                            );
-                          })}
-                       </tbody>
-                    </table>
-                 </div>
-              </div>
-
-              <div className="space-y-8">
-                 <div className="bg-[#111114] border border-white/5 p-8 rounded-[3rem] shadow-2xl relative overflow-hidden">
-                    <div className="absolute top-0 right-0 p-6 opacity-5"><Zap size={80} className="text-blue-500" /></div>
-                    <div className="relative z-10 space-y-6">
-                       <h4 className="text-xs font-black text-gray-500 uppercase tracking-widest flex items-center gap-2">
-                          <Activity size={16} className="text-blue-500" /> Auditoría de Personal
-                       </h4>
-                       <div className="space-y-4">
-                          <div className="flex justify-between items-center">
-                             <span className="text-[10px] text-gray-400 font-bold uppercase">Último Recon</span>
-                             <span className="text-xs font-black italic text-white">Hace 14 min</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                             <span className="text-[10px] text-gray-400 font-bold uppercase">Responsable</span>
-                             <span className="text-xs font-black italic text-blue-500">{profile?.full_name}</span>
-                          </div>
-                       </div>
-                       <button className="w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded-2xl text-[9px] font-black uppercase tracking-widest flex items-center justify-center gap-3 transition-all">
-                          <Fingerprint size={16} /> FIRMAR REGISTRO
-                       </button>
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:sc>=85?S.green:sc>=70?S.gold:S.red}}>{sc}</div>
+                      <div style={{fontSize:9,color:S.t3}}>SCORE</div>
                     </div>
-                 </div>
-
-                 <div className="bg-gradient-to-br from-red-600/20 to-transparent border border-red-500/20 p-10 rounded-[3rem] shadow-xl">
-                    <h4 className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-4 flex items-center gap-2 italic">
-                       <AlertCircle size={14} /> Riesgo Financiero
-                    </h4>
-                    <p className="text-sm text-gray-400 italic leading-relaxed">
-                      "La varianza actual representa una pérdida proyectada de **$1.8M COP** este turno si no se corrigen los gramajes en cocina."
-                    </p>
-                    <button onClick={() => {}} className="mt-8 w-full bg-red-600 text-white py-4 rounded-2xl font-black text-[9px] uppercase tracking-widest shadow-xl">GENERAR REPORTE CRÍTICO</button>
-                 </div>
-              </div>
-           </div>
-        </div>
-      )}
-
-      {view === 'inventory' && (
-        <div className="space-y-12">
-           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <StatCard label="Exactitud Inventario" value="92.8%" status="ALERTA" color="text-yellow-500" icon={<Scale className="text-yellow-500" />} />
-              <StatCard label="Mermas Registradas" value="4.2%" status="BIEN" icon={<TrendingDown className="text-green-500" />} />
-              <StatCard label="Items en Riesgo" value={items.filter(i => i.status === 'variance_alert').length.toString()} status="CRÍTICO" color="text-red-500" icon={<AlertTriangle className="text-red-500" />} />
-              <StatCard label="Valor en Bodega" value="$148M" status="ÓPTIMO" color="text-green-500" icon={<TrendingUp className="text-green-500" />} />
-           </div>
-
-           <div className="bg-[#111114] border border-white/5 rounded-[4rem] overflow-hidden shadow-2xl">
-              <div className="p-10 bg-black/20 border-b border-white/5 flex flex-col md:flex-row justify-between items-center gap-6">
-                 <h3 className="text-xs font-black uppercase tracking-[0.4em] text-gray-500 italic">Maestro de Existencias OMM</h3>
-                 <div className="relative w-full md:w-96">
-                    <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600" />
-                    <input type="text" placeholder="Filtrar insumos..." className="w-full bg-black/40 border border-white/10 rounded-2xl py-4 pl-14 pr-6 text-[10px] font-black text-white uppercase outline-none focus:border-blue-500 transition-all" />
-                 </div>
-              </div>
-              <table className="w-full text-left">
-                 <thead>
-                    <tr className="bg-black/20 text-[8px] font-black text-gray-600 uppercase tracking-[0.5em]">
-                       <th className="px-12 py-8">Insumo</th>
-                       <th className="px-12 py-8 text-center">Varianza %</th>
-                       <th className="px-12 py-8">Mapeo NIIF</th>
-                       <th className="px-12 py-8 text-right">Acciones</th>
-                    </tr>
-                 </thead>
-                 <tbody className="divide-y divide-white/5">
-                    {items.map(item => (
-                       <tr key={item.id} className="hover:bg-white/[0.01] group transition-all">
-                          <td className="px-12 py-10">
-                             <div className="flex flex-col">
-                                <span className="text-sm font-black italic uppercase text-white leading-none mb-2 tracking-tight group-hover:text-blue-400 transition-colors">{item.name}</span>
-                                <span className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">{item.pyg_category}</span>
-                             </div>
-                          </td>
-                          <td className="px-12 py-10 text-center">
-                             <div className="flex flex-col items-center gap-1.5">
-                                <span className={`text-[10px] font-black italic ${Math.abs(item.variance_pct || 0) > 5 ? 'text-red-500' : 'text-green-500'}`}>
-                                   {item.variance_pct}%
-                                </span>
-                                <div className="w-20 h-1 bg-white/5 rounded-full overflow-hidden">
-                                   <div className={`h-full ${Math.abs(item.variance_pct || 0) > 5 ? 'bg-red-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, Math.abs(item.variance_pct || 0) * 4)}%` }}></div>
-                                </div>
-                             </div>
-                          </td>
-                          <td className="px-12 py-10">
-                             <span className="text-[10px] font-bold text-gray-500 uppercase italic tracking-wider">{item.niif_mapping}</span>
-                          </td>
-                          <td className="px-12 py-10 text-right">
-                             <div className="flex items-center justify-end gap-3">
-                                {Math.abs(item.variance_pct || 0) > 5 && (
-                                   <button 
-                                      onClick={() => downloadAuditPDF(item)}
-                                      className="p-3 bg-red-600/10 text-red-500 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-lg"
-                                      title="Generar Reporte de Varianza"
-                                   >
-                                      <FileSearch size={18} />
-                                   </button>
-                                )}
-                                <button className="p-3 bg-white/5 text-gray-500 hover:text-white hover:bg-blue-600 rounded-xl transition-all">
-                                   <Eye size={18} />
-                                </button>
-                             </div>
-                          </td>
-                       </tr>
+                  </div>
+                  {/* Score bars */}
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:12}}>
+                    {[{l:'Calidad',v:s.score_calidad},{l:'Cumplimiento',v:s.score_cumplimiento},{l:'Precio',v:s.score_precio},{l:'Confiabilidad',v:s.score_confiabilidad}].map(m=>(
+                      <div key={m.l}>
+                        <div style={{display:'flex',justifyContent:'space-between',fontSize:9,color:S.t3,marginBottom:2}}><span>{m.l}</span><span>{m.v}</span></div>
+                        <div style={{height:3,background:S.bg4,borderRadius:2,overflow:'hidden'}}>
+                          <div style={{height:'100%',background:m.v>=85?S.green:m.v>=70?S.gold:S.red,width:`${m.v}%`,borderRadius:2}}/>
+                        </div>
+                      </div>
                     ))}
-                 </tbody>
-              </table>
-           </div>
-        </div>
-      )}
+                  </div>
+                  {s.contacto_nombre && <div style={{fontSize:11,color:S.t2,marginBottom:4}}>👤 {s.contacto_nombre}</div>}
+                  <div style={{display:'flex',gap:6}}>
+                    <button onClick={()=>{ setEditItem(s); setFProv(s); setModalProveedor(true); }} style={{flex:1,padding:'6px',borderRadius:8,border:`1px solid ${S.border}`,background:'transparent',color:S.t3,fontSize:11,cursor:'pointer'}}>✏️ Editar</button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ══ MATERIAS PRIMAS ══ */}
+        {tab==='materias' && (
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:12}}>
+              <thead>
+                <tr style={{background:S.bg3,position:'sticky',top:0}}>
+                  {['Nombre','Cat.','Unidad','Costo','Rendimiento','Merma','Costo real','Stock','Mín','Máx','Vida útil','Criticidad',''].map(h=>(
+                    <th key={h} style={{padding:'10px 12px',textAlign:'left' as const,fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.05em',whiteSpace:'nowrap',borderBottom:`1px solid ${S.border}`}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {materias.filter(m=>!busqueda||m.nombre.toLowerCase().includes(busqueda.toLowerCase())).map((m,i)=>{
+                  const bajo = m.stock_actual<=m.stock_minimo;
+                  const cc = CRITICIDAD_CFG[m.criticidad]||CRITICIDAD_CFG.media;
+                  return (
+                    <tr key={m.id} style={{background:i%2===0?S.bg:S.bg2,borderBottom:`1px solid ${S.border}`,cursor:'pointer'}}
+                      onMouseEnter={e=>(e.currentTarget as HTMLTableRowElement).style.background=`${S.goldD}08`}
+                      onMouseLeave={e=>(e.currentTarget as HTMLTableRowElement).style.background=i%2===0?S.bg:S.bg2}>
+                      <td style={{padding:'9px 12px',fontWeight:700}}>{m.nombre}</td>
+                      <td style={{padding:'9px 12px'}}>
+                        <span style={{fontSize:10,background:`${(C as any)[m.categoria]||S.blue}15`,color:(C as any)[m.categoria]||S.blue,padding:'2px 8px',borderRadius:20}}>{m.categoria}</span>
+                      </td>
+                      <td style={{padding:'9px 12px',color:S.t2}}>{m.unidad_compra}</td>
+                      <td style={{padding:'9px 12px',color:S.gold,fontWeight:700}}>{fmt(m.costo_unitario)}</td>
+                      <td style={{padding:'9px 12px'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:6}}>
+                          <div style={{width:40,height:4,background:S.bg4,borderRadius:2,overflow:'hidden'}}>
+                            <div style={{height:'100%',background:S.green,width:`${m.rendimiento_pct}%`}}/>
+                          </div>
+                          <span style={{color:S.green,fontWeight:700}}>{m.rendimiento_pct}%</span>
+                        </div>
+                      </td>
+                      <td style={{padding:'9px 12px',color:S.orange}}>{m.merma_pct}%</td>
+                      <td style={{padding:'9px 12px',color:S.orange,fontWeight:700}}>{fmt(m.costo_real_post_merma)}</td>
+                      <td style={{padding:'9px 12px'}}>
+                        <span style={{color:bajo?S.red:S.green,fontWeight:700}}>{m.stock_actual}{m.unidad_compra}</span>
+                        {bajo&&<span style={{marginLeft:4,fontSize:9,color:S.red}}>⚠️</span>}
+                      </td>
+                      <td style={{padding:'9px 12px',color:S.t3}}>{m.stock_minimo}</td>
+                      <td style={{padding:'9px 12px',color:S.t3}}>{m.stock_maximo}</td>
+                      <td style={{padding:'9px 12px',color:m.vida_util_dias<=3?S.red:S.t2}}>{m.vida_util_dias}d</td>
+                      <td style={{padding:'9px 12px'}}>
+                        <span style={{fontSize:10,background:`${cc.c}15`,color:cc.c,padding:'2px 8px',borderRadius:20,fontWeight:700}}>{cc.l}</span>
+                      </td>
+                      <td style={{padding:'9px 12px'}}>
+                        <button onClick={()=>{ setEditItem(m); setFMP(m); setModalMateria(true); }} style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${S.border}`,background:'transparent',color:S.t3,fontSize:10,cursor:'pointer'}}>✏️</button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* ══ SUBPREPARACIONES ══ */}
+        {tab==='subpreps' && (
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
+            {subpreps.filter(s=>!busqueda||s.nombre.toLowerCase().includes(busqueda.toLowerCase())).map(s=>{
+              const bajo = s.stock_actual<=s.stock_minimo;
+              return (
+                <div key={s.id} style={{background:S.bg2,border:`1.5px solid ${bajo?S.red+'40':S.border}`,borderRadius:16,padding:16}}>
+                  <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:10}}>
+                    <div>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900}}>{s.nombre}</div>
+                      <div style={{fontSize:10,color:S.t3,marginTop:2}}>{s.tipo} · {s.responsable||'Sin asignar'}</div>
+                    </div>
+                    <span style={{fontSize:10,background:`${S.purple}15`,color:S.purple,padding:'2px 8px',borderRadius:20}}>{s.tipo}</span>
+                  </div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:10}}>
+                    {[
+                      {l:'Rendimiento',  v:`${s.rendimiento_total}${s.unidad_rendimiento}`, c:S.blue},
+                      {l:'Costo total',  v:fmt(s.costo_total),                              c:S.gold},
+                      {l:'Costo/unidad', v:fmt(s.costo_por_unidad),                         c:S.orange},
+                      {l:'Stock',        v:`${s.stock_actual}${s.unidad_rendimiento}`,      c:bajo?S.red:S.green},
+                      {l:'Mínimo',       v:`${s.stock_minimo}${s.unidad_rendimiento}`,      c:S.t3},
+                      {l:'Vida útil',    v:`${s.vida_util_dias}d`,                          c:s.vida_util_dias<=2?S.red:S.t2},
+                    ].map(m=>(
+                      <div key={m.l} style={{background:S.bg3,borderRadius:8,padding:'6px 8px'}}>
+                        <div style={{fontSize:9,color:S.t3,marginBottom:2}}>{m.l}</div>
+                        <div style={{fontSize:12,fontWeight:700,color:m.c}}>{m.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {bajo&&<div style={{fontSize:11,color:S.red,background:`${S.red}10`,borderRadius:8,padding:'6px 10px',marginBottom:8}}>⚠️ Stock bajo — producir {s.stock_minimo*2} {s.unidad_rendimiento}</div>}
+                  <button onClick={()=>{ setEditItem(s); setFSP(s); setModalSubprep(true); }} style={{width:'100%',padding:'7px',borderRadius:10,border:`1px solid ${S.border}`,background:'transparent',color:S.t3,fontSize:11,cursor:'pointer'}}>✏️ Editar</button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ══ RECETAS ══ */}
+        {tab==='recetas' && (
+          <div>
+            <div style={{background:`${S.blue}08`,border:`1px solid ${S.blue}20`,borderRadius:14,padding:20,marginBottom:16}}>
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:8}}>📋 Recetas técnicas — Regla clave</div>
+              <div style={{fontSize:12,color:S.t2,lineHeight:1.7}}>
+                Cada plato debe tener receta técnica con: ingredientes directos, subpreparaciones, salsas, gramaje exacto, costo por componente, costo total, precio de venta, margen bruto y food cost %.
+                <br/><br/>
+                <span style={{color:S.gold,fontWeight:700}}>Si una receta no está completa, el sistema no permite análisis real de rentabilidad.</span>
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:16}}>
+              {[
+                {icon:'🥩',title:'Ingredientes directos',desc:'Materias primas con gramaje exacto y costo post-merma'},
+                {icon:'🫙',title:'Subpreparaciones',desc:'Salsas, fondos, jarabes — costo por ml/gr'},
+                {icon:'📊',title:'Food Cost %',desc:'Costo total / Precio venta × 100. Objetivo: < 30%'},
+              ].map(item=>(
+                <div key={item.title} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:16}}>
+                  <div style={{fontSize:24,marginBottom:8}}>{item.icon}</div>
+                  <div style={{fontSize:12,fontWeight:700,marginBottom:4}}>{item.title}</div>
+                  <div style={{fontSize:11,color:S.t3}}>{item.desc}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{textAlign:'center',padding:'30px 0'}}>
+              <button onClick={()=>showToast('🔗 Vinculación con MenuModule — próxima sesión')} style={{padding:'12px 32px',borderRadius:50,border:`1px solid ${S.goldD}`,background:`${S.goldD}15`,color:S.goldD,fontSize:13,fontWeight:700,cursor:'pointer'}}>
+                🔗 Vincular recetas con platos del menú
+              </button>
+              <div style={{fontSize:11,color:S.t3,marginTop:10}}>Conecta MenuModule ↔ SupplyModule para descuento automático de inventario</div>
+            </div>
+          </div>
+        )}
+
+        {/* ══ ÓRDENES DE COMPRA ══ */}
+        {tab==='compras' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            {orders.length===0&&(
+              <div style={{textAlign:'center',padding:60,color:S.t3}}>
+                <div style={{fontSize:40,marginBottom:12}}>🛒</div>
+                <div style={{fontSize:14,fontWeight:700}}>Sin órdenes generadas</div>
+                <div style={{fontSize:12,marginTop:6}}>Presiona "Generar orden IA" para crear una orden automática</div>
+              </div>
+            )}
+            {orders.map(o=>{
+              const ESTADO_CFG: Record<string,{c:string;l:string}> = {
+                sugerida:{c:S.gold,l:'Sugerida IA'}, aprobada:{c:S.blue,l:'Aprobada'},
+                enviada:{c:S.purple,l:'Enviada'}, recibida:{c:S.green,l:'Recibida'}, cancelada:{c:S.red,l:'Cancelada'},
+              };
+              const ec = ESTADO_CFG[o.estado]||ESTADO_CFG.sugerida;
+              return (
+                <div key={o.id} style={{background:S.bg2,border:`1px solid ${ec.c}30`,borderRadius:14,padding:18}}>
+                  <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:12}}>
+                    <div>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900}}>Orden #{o.id} — {o.tipo}</div>
+                      <div style={{fontSize:11,color:S.t3}}>Generada por {o.generada_por} · {o.fecha_sugerida}</div>
+                    </div>
+                    <div style={{display:'flex',alignItems:'center',gap:10}}>
+                      <span style={{fontSize:18,fontWeight:900,fontFamily:"'Syne',sans-serif",color:S.goldL}}>{fmt(o.total_estimado)}</span>
+                      <span style={{background:`${ec.c}20`,color:ec.c,border:`1px solid ${ec.c}40`,padding:'4px 12px',borderRadius:50,fontSize:11,fontWeight:700}}>{ec.l}</span>
+                    </div>
+                  </div>
+                  {o.estado==='sugerida'&&(
+                    <div style={{display:'flex',gap:8}}>
+                      <button onClick={async()=>{ await supabase.from('purchase_orders').update({estado:'aprobada'}).eq('id',o.id); showToast('✓ Orden aprobada'); fetchAll(); }}
+                        style={{flex:1,padding:'9px',borderRadius:10,border:'none',background:S.blue,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>✓ Aprobar</button>
+                      <button onClick={async()=>{ await supabase.from('purchase_orders').update({estado:'cancelada'}).eq('id',o.id); showToast('Orden cancelada'); fetchAll(); }}
+                        style={{flex:1,padding:'9px',borderRadius:10,border:`1px solid ${S.red}40`,background:`${S.red}08`,color:S.red,fontSize:12,fontWeight:700,cursor:'pointer'}}>✕ Cancelar</button>
+                    </div>
+                  )}
+                  {o.notas&&<div style={{marginTop:10,fontSize:12,color:S.t2}}>📝 {o.notas}</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ══ ALERTAS ══ */}
+        {tab==='alertas' && (
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {alertas.length===0&&proxVencer.length===0&&(
+              <div style={{textAlign:'center',padding:60,color:S.t3}}>
+                <div style={{fontSize:40,marginBottom:12}}>✅</div>
+                <div style={{fontSize:14,fontWeight:700}}>Sin alertas activas</div>
+              </div>
+            )}
+            {alertas.map(m=>(
+              <div key={m.id} style={{background:S.bg2,border:`1px solid ${S.red}30`,borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+                <div style={{width:36,height:36,borderRadius:10,background:`${S.red}15`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>⚠️</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700}}>{m.nombre}</div>
+                  <div style={{fontSize:11,color:S.t3}}>Stock: {m.stock_actual} {m.unidad_compra} — Mínimo: {m.stock_minimo} {m.unidad_compra}</div>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontSize:14,fontWeight:900,color:m.stock_actual===0?S.red:S.gold}}>{m.stock_actual===0?'86':fmtKg(m.stock_actual,m.unidad_compra)}</div>
+                  <div style={{fontSize:10,fontWeight:700,color:m.criticidad==='alta'?S.red:S.gold}}>{CRITICIDAD_CFG[m.criticidad]?.l||'Media'}</div>
+                </div>
+              </div>
+            ))}
+            {proxVencer.map(m=>(
+              <div key={`v${m.id}`} style={{background:S.bg2,border:`1px solid ${S.orange}30`,borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+                <div style={{width:36,height:36,borderRadius:10,background:`${S.orange}15`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>⏰</div>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700}}>{m.nombre}</div>
+                  <div style={{fontSize:11,color:S.t3}}>Vida útil: {m.vida_util_dias} días · Stock: {m.stock_actual} {m.unidad_compra}</div>
+                </div>
+                <span style={{fontSize:11,color:S.orange,fontWeight:700}}>Próximo a vencer</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ══ RECEPCIÓN DE MERCANCÍA ══ */}
+        {tab==='recepcion' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <div style={{background:`${S.green}08`,border:`1px solid ${S.green}20`,borderRadius:14,padding:18}}>
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:8}}>📦 Recepción de mercancía — Regla 27</div>
+              <div style={{fontSize:12,color:S.t2,lineHeight:1.7,marginBottom:14}}>Al recibir, validar: cantidad pedida vs recibida, precio cotizado vs facturado, calidad, temperatura, fecha vencimiento, lote y responsable. Si hay diferencia → novedad automática.</div>
+              <button onClick={async()=>{
+                const { data } = await supabase.from('recepciones').insert({ restaurante_id:6, estado:'pendiente', responsable:'Staff', fecha:new Date().toISOString().split('T')[0] }).select().single();
+                if(data) showToast('✓ Recepción creada — agrega los items recibidos');
+                fetchAll();
+              }} style={{padding:'10px 24px',borderRadius:10,border:'none',background:S.green,color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                + Nueva recepción
+              </button>
+            </div>
+            {/* Checklist de recepción */}
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:18}}>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:14,color:S.green}}>✅ Checklist de recepción</div>
+              {[
+                {l:'Cantidad pedida vs recibida',     done:true},
+                {l:'Precio cotizado vs facturado',    done:true},
+                {l:'Estado y calidad del producto',   done:false},
+                {l:'Temperatura (carnes/pescados)',    done:false},
+                {l:'Fecha de vencimiento y lote',     done:false},
+                {l:'Factura y documentos',            done:false},
+                {l:'Responsable de recepción firmó',  done:false},
+              ].map((item,i)=>(
+                <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${S.border}`}}>
+                  <div style={{width:20,height:20,borderRadius:6,background:item.done?`${S.green}20`:S.bg3,border:`2px solid ${item.done?S.green:S.border}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                    {item.done&&<span style={{fontSize:12,color:S.green}}>✓</span>}
+                  </div>
+                  <span style={{fontSize:12,color:item.done?S.t1:S.t3}}>{item.l}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ══ CONTEOS DE INVENTARIO ══ */}
+        {tab==='conteos' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <div style={{background:`${S.purple}08`,border:`1px solid ${S.purple}20`,borderRadius:14,padding:18}}>
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:8}}>🔢 Inventario teórico vs físico — Regla 11</div>
+              <div style={{fontSize:12,color:S.t2,lineHeight:1.7}}>
+                El sistema compara lo que <b style={{color:S.blue}}>debería haber</b> (según ventas + compras - mermas) vs lo que hay <b style={{color:S.green}}>físicamente</b>. Diferencias generan alerta: mala porcionación, robo, error de receta o merma no registrada.
+              </div>
+            </div>
+            {/* Frecuencia de conteo según regla 31 */}
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:18}}>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:14}}>📅 Frecuencia de conteo — Regla 31</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+                {[
+                  {freq:'Diario',    cats:['carnico','pescado','licores'],   c:S.red},
+                  {freq:'Semanal',   cats:['lacteo','abarrotes','frutas'],   c:S.gold},
+                  {freq:'Quincenal', cats:['limpieza','empaques','secos'],   c:S.blue},
+                ].map(item=>(
+                  <div key={item.freq} style={{background:S.bg3,borderRadius:10,padding:14}}>
+                    <div style={{fontSize:11,fontWeight:700,color:item.c,marginBottom:8}}>{item.freq}</div>
+                    {item.cats.map(cat=>(
+                      <div key={cat} style={{fontSize:11,color:S.t2,padding:'3px 0',display:'flex',alignItems:'center',gap:6}}>
+                        <div style={{width:6,height:6,borderRadius:'50%',background:item.c,flexShrink:0}}/>
+                        {cat}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {/* Tipos de merma */}
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:18}}>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:14}}>⚖️ Clasificación de mermas — Regla 6</div>
+              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+                {['Natural','Por limpieza','Por cocción','Por vencimiento','Por error','Por devolución','Por diferencia no explicada (robo)'].map(tipo=>(
+                  <span key={tipo} style={{fontSize:11,background:tipo.includes('robo')?`${S.red}15`:S.bg3,color:tipo.includes('robo')?S.red:S.t2,border:`1px solid ${tipo.includes('robo')?S.red+'30':S.border}`,padding:'4px 12px',borderRadius:20}}>
+                    {tipo}
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+      </div>
     </div>
   );
-};
-
-const TabItem = ({ active, onClick, label, icon }: TabItemProps) => (
-  <button 
-    onClick={onClick}
-    className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-3 shrink-0 relative ${
-      active ? 'bg-blue-600 text-white shadow-xl' : 'text-gray-500 hover:text-white'
-    }`}
-  >
-    {icon} 
-    {label}
-  </button>
-);
-
-const StatCard = ({ label, value, status, icon, color }: StatCardProps) => (
-  <div className="bg-[#111114] border border-white/5 p-10 rounded-[3rem] shadow-2xl flex flex-col justify-between h-48 group hover:border-blue-500/20 transition-all">
-    <div className="flex items-center justify-between">
-      <div className="p-4 bg-white/5 rounded-2xl group-hover:bg-blue-600/10 transition-all shadow-xl">{icon}</div>
-      <span className={`text-[8px] font-black px-3 py-1 rounded-full uppercase tracking-widest ${status === 'ÓPTIMO' || status === 'BIEN' ? 'bg-green-500/10 text-green-500' : 'bg-red-500/10 text-red-500'}`}>
-         {status}
-      </span>
-    </div>
-    <div>
-      <span className="text-[9px] text-gray-600 font-black uppercase tracking-widest block mb-2">{label}</span>
-      <div className={`text-3xl font-black italic tracking-tighter ${color || 'text-white'}`}>{value}</div>
-    </div>
-  </div>
-);
-
-export default SupplyModule;
+}
