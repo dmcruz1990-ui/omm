@@ -270,6 +270,8 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
   const [rotation, setRotation] = useState(0);
   const [particles, setParticles] = useState<{x:number;y:number;c:string;id:number;angle:number;dist:number}[]>([]);
   const [glowPulse, setGlowPulse] = useState(false);
+  const [correoEnvio, setCorreoEnvio] = useState('');
+  const [premioEnviado, setPremioEnviado] = useState(false);
   const pidRef = useRef(0);
   const segAngle = 360 / PREMIOS_RULETA.length;
 
@@ -540,6 +542,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [showNotifPanel, setShowNotifPanel] = useState(false);
   // Stock 86 tips
   const [tipsVenta, setTipsVenta] = useState<any[]>([]);
+  const [tips86, setTips86] = useState<any[]>([]);
   // Puntos
   const [puntosCliente, setPuntosCliente] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -670,6 +673,20 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setToast(msg);
     setTimeout(() => setToast(''), 2500);
   }, []);
+
+  // ── Ticket del día ─────────────────────────────────────
+  const calcularPuntos = (monto: number) => Math.floor(monto / 10000);
+
+  const fetchTicketDia = async () => {
+    const { data: cobros } = await supabase.from('cobros_trazabilidad').select('total,propina').eq('restaurante_id',6);
+    const { data: ordAbiertas } = await supabase.from('orders').select('id,table_id').eq('status','open');
+    const { data: ois } = await supabase.from('order_items').select('price_at_time,quantity,order_id').neq('status','cancelled');
+    const ventasTotal = cobros?.reduce((a:number,cc:any)=>a+Number(cc.total||0),0)||0;
+    const propinaTotal = cobros?.reduce((a:number,cc:any)=>a+Number(cc.propina||0),0)||0;
+    const porCobrar = ois?.filter((i:any)=>ordAbiertas?.some((o:any)=>o.id===i.order_id)).reduce((a:number,i:any)=>a+Number(i.price_at_time||0)*Number(i.quantity||1),0)||0;
+    setTicketDia({ ventas:ventasTotal, ordenes:cobros?.length||0, pendientes:ordAbiertas?.length||0, porCobrar, propinaTotal, total_ventas:ventasTotal, total_ordenes:cobros?.length||0, total_items:ois?.length||0, mesas_atendidas:cobros?.length||0 });
+    setCuentasCobrar(ordAbiertas?.length||0);
+  };
 
   // Auto-marca el paso del ritual según la categoría del producto agregado
   const autoCheckRitual = (categoria: string | undefined) => {
