@@ -534,7 +534,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [currentCat, setCurrentCat] = useState('Compartir');
   const [rightTab, setRightTab] = useState<'IA' | 'Cuenta' | 'Chat' | 'Menú' | 'Intel'>('IA');
   // Ticket del día y cuentas por cobrar
-  const [ticketDia, setTicketDia] = useState<{total_ventas:number;total_ordenes:number;total_items:number;mesas_atendidas:number}|null>(null);
+  const [ticketDia, setTicketDia] = useState<any>({ ventas:0, ordenes:0, pendientes:0, porCobrar:0, propinaTotal:0, total_ventas:0, total_ordenes:0, total_items:0, mesas_atendidas:0 });
   const [cuentasCobrar, setCuentasCobrar] = useState(0);
   // Notificaciones
   const [notifs, setNotifs] = useState<any[]>([]);
@@ -648,18 +648,23 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // Cargar datos de inteligencia al montar
   useEffect(() => {
     const loadIntel = async () => {
-      // Ticket del día
-      const { data: td } = await supabase.from('vista_ticket_dia').select('*').single();
-      if (td) setTicketDia(td as any);
-      // Cuentas por cobrar (órdenes abiertas)
-      const { data: ords } = await supabase.from('orders').select('id').eq('status','open');
-      setCuentasCobrar(ords?.length||0);
-      // Notificaciones no leídas
-      const { data: nf } = await supabase.from('nexum_notificaciones').select('*').eq('leida',false).eq('restaurante_id',6).order('created_at',{ascending:false}).limit(20);
-      if (nf) { setNotifs(nf); setNotifsBadge(nf.filter((n:any)=>!n.leida).length); }
-      // Tips de venta — platos con stock alto o que hay que mover
-      const { data: mi } = await supabase.from('menu_items').select('id,name,emoji,category,precio_venta,stock_actual,alerta_stock,disponible').eq('disponible',true).order('stock_actual',{ascending:false}).limit(6);
-      if (mi) setTipsVenta(mi.filter((m:any)=>(m.stock_actual||0)>10||(m.alerta_stock)));
+      try {
+        // Ticket del día — usar limit(1) en vez de .single() para evitar crash
+        const { data: td } = await supabase.from('vista_ticket_dia').select('*').limit(1);
+        if (td && td.length > 0) setTicketDia((prev:any) => ({...prev, ...td[0]}));
+        // Cuentas por cobrar
+        const { data: ords } = await supabase.from('orders').select('id').eq('status','open');
+        setCuentasCobrar(ords?.length||0);
+        setTicketDia((prev:any) => ({...prev, pendientes: ords?.length||0}));
+        // Notificaciones no leídas
+        const { data: nf } = await supabase.from('nexum_notificaciones').select('*').eq('leida',false).eq('restaurante_id',6).order('created_at',{ascending:false}).limit(20);
+        if (nf) { setNotifs(nf); setNotifsBadge(nf.length); }
+        // Tips de venta
+        const { data: mi } = await supabase.from('menu_items').select('id,name,emoji,category,precio_venta,stock_actual,alerta_stock,disponible').eq('disponible',true).order('stock_actual',{ascending:false}).limit(6);
+        if (mi) setTipsVenta(mi.filter((m:any)=>(m.stock_actual||0)>10||(m.alerta_stock)));
+      } catch(e) {
+        console.warn('Intel load error:', e);
+      }
     };
     loadIntel();
     const ch = supabase.channel('intel-live')
@@ -678,14 +683,16 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const calcularPuntos = (monto: number) => Math.floor(monto / 10000);
 
   const fetchTicketDia = async () => {
-    const { data: cobros } = await supabase.from('cobros_trazabilidad').select('total,propina').eq('restaurante_id',6);
-    const { data: ordAbiertas } = await supabase.from('orders').select('id,table_id').eq('status','open');
-    const { data: ois } = await supabase.from('order_items').select('price_at_time,quantity,order_id').neq('status','cancelled');
-    const ventasTotal = cobros?.reduce((a:number,cc:any)=>a+Number(cc.total||0),0)||0;
-    const propinaTotal = cobros?.reduce((a:number,cc:any)=>a+Number(cc.propina||0),0)||0;
-    const porCobrar = ois?.filter((i:any)=>ordAbiertas?.some((o:any)=>o.id===i.order_id)).reduce((a:number,i:any)=>a+Number(i.price_at_time||0)*Number(i.quantity||1),0)||0;
-    setTicketDia({ ventas:ventasTotal, ordenes:cobros?.length||0, pendientes:ordAbiertas?.length||0, porCobrar, propinaTotal, total_ventas:ventasTotal, total_ordenes:cobros?.length||0, total_items:ois?.length||0, mesas_atendidas:cobros?.length||0 });
-    setCuentasCobrar(ordAbiertas?.length||0);
+    try {
+      const { data: cobros } = await supabase.from('cobros_trazabilidad').select('total,propina').eq('restaurante_id',6);
+      const { data: ordAbiertas } = await supabase.from('orders').select('id,table_id').eq('status','open');
+      const { data: ois } = await supabase.from('order_items').select('price_at_time,quantity,order_id').neq('status','cancelled');
+      const ventasTotal = cobros?.reduce((a:number,cc:any)=>a+Number(cc.total||0),0)||0;
+      const propinaTotal = cobros?.reduce((a:number,cc:any)=>a+Number(cc.propina||0),0)||0;
+      const porCobrar = ois?.filter((i:any)=>ordAbiertas?.some((o:any)=>o.id===i.order_id)).reduce((a:number,i:any)=>a+Number(i.price_at_time||0)*Number(i.quantity||1),0)||0;
+      setTicketDia((prev:any) => ({ ...prev, ventas:ventasTotal, ordenes:cobros?.length||0, pendientes:ordAbiertas?.length||0, porCobrar, propinaTotal, total_ventas:ventasTotal, total_ordenes:cobros?.length||0, total_items:ois?.length||0, mesas_atendidas:cobros?.length||0 }));
+      setCuentasCobrar(ordAbiertas?.length||0);
+    } catch(e) { console.warn('fetchTicketDia error:', e); }
   };
 
   // Auto-marca el paso del ritual según la categoría del producto agregado
