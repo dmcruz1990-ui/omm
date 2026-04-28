@@ -253,6 +253,7 @@ export default function MenuModule() {
                             {item.name}
                             {item.es_especial && <span style={{fontSize:9,background:`${S.gold}20`,color:S.gold,padding:'1px 6px',borderRadius:10,fontWeight:700}}>ESPECIAL</span>}
                             {!item.disponible && <span style={{fontSize:9,background:`${S.red}20`,color:S.red,padding:'1px 6px',borderRadius:10}}>86</span>}
+                            {(item.margen_real||item.margen||0)>=70 && <span style={{fontSize:9,background:'rgba(212,148,58,0.15)',color:'#d4943a',padding:'1px 6px',borderRadius:10,fontWeight:700}}>★ Alta Rent.</span>}
                           </div>
                         </td>
                         {/* Categoría */}
