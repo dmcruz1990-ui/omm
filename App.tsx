@@ -28,7 +28,7 @@ const MenuModule = lazy(() => import('./components/MenuModule.tsx'));
 const RelationshipModule = lazy(() => import('./components/RelationshipModule.tsx'));
 const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
 const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
-const SupplyModule = lazy(() => import('./components/SupplyModule.tsx'));
+const SupplyModule = lazy(() => import('./components/SupplyModule.tsx')); // Supply IA real
 const CareModule = lazy(() => import('./components/CareModule.tsx'));
 const FinanceHub = lazy(() => import('./components/FinanceHub.tsx'));
 const CommandModule = lazy(() => import('./components/CommandModule.tsx'));
@@ -59,6 +59,7 @@ const Dashboard: React.FC = () => {
   const [isCockpitOpen, setIsCockpitOpen] = useState(false);
   
   const [isVisionAIOpen, setIsVisionAIOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // retráctil por defecto cerrado
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
 
@@ -248,7 +249,7 @@ const Dashboard: React.FC = () => {
               id: 'control', label: 'CONTROL & SUMINISTROS',
               icon: <ShieldCheck size={14} className="text-green-500" />,
               modules: [
-                { type: ModuleType.SUPPLY,    label: 'MI MENÚ',   sub: 'Ingeniería de menú', icon: <Truck size={18} /> },
+                { type: ModuleType.SUPPLY,    label: 'SUPPLY IA', sub: 'Abastecimiento', icon: <Truck size={18} /> },
                 { type: ModuleType.CARE,      label: 'CARE',      sub: 'SOPORTE CX',        icon: <HeartPulse size={18} /> },
                 // ── CAMBIO 2: Label y sub actualizados ──────────────────────
                 { type: ModuleType.STAFF_HUB, label: 'TEAM IQ™',  sub: 'HUMAN PERFORMANCE', icon: <Brain size={18} /> }
@@ -304,39 +305,37 @@ const Dashboard: React.FC = () => {
       </nav>
 
       <main className="flex-1 flex flex-col overflow-hidden relative bg-[#0f1115]">
-        <header className="h-16 border-b border-white/5 flex items-center justify-between px-8 z-40 bg-[#0f1115] shrink-0">
-          <div className="flex items-center gap-4">
-             <div className="w-8 h-8 flex items-center justify-center">
-               <Zap className="text-blue-500" size={20} fill="currentColor" />
-             </div>
-             <h1 className="text-lg font-bold tracking-widest text-white flex items-center gap-3">
-               NEXUM V4 <span className="text-gray-600 font-light">//</span> <span className="text-gray-300">HOSPITALITY INTELLIGENCE</span>
-             </h1>
+        <header className="h-10 border-b border-white/5 flex items-center justify-between px-4 z-40 bg-[#0a0a0c] shrink-0">
+          {/* Izquierda: toggle sidebar + nombre */}
+          <div className="flex items-center gap-2">
+            <button onClick={() => setSidebarOpen(p=>!p)}
+              className="w-7 h-7 rounded-lg bg-[#1a1d24] border border-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:border-blue-500/40 transition-all"
+              title={sidebarOpen ? 'Ocultar menú' : 'Mostrar menú'}>
+              <LayoutPanelLeft size={13} />
+            </button>
+            <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white/5 border border-white/5">
+              <div className="w-5 h-5 rounded-full bg-blue-900/40 border border-blue-500/40 flex items-center justify-center text-blue-400 text-[9px] font-black">
+                {(profile?.nombre_completo || profile?.full_name || 'U').charAt(0).toUpperCase()}
+              </div>
+              <span className="text-[10px] font-bold text-white">
+                {profile?.nombre_completo?.split(' ')[0] || profile?.full_name?.split(' ')[0] || 'Usuario'}
+              </span>
+              <span className="text-[8px] font-bold text-blue-400 uppercase tracking-wider px-1.5 py-0.5 bg-blue-500/10 rounded">
+                {profile?.role === 'admin' ? 'Admin' : profile?.role === 'gerencia' ? 'Gerencia' : profile?.role === 'desarrollo' ? 'Dev' : 'Mesero'}
+              </span>
+              <button onClick={signOut} className="ml-1 text-gray-600 hover:text-red-400 transition-colors" title="Cerrar sesión">
+                <LogOut size={11} />
+              </button>
+            </div>
           </div>
-          
-          <div className="flex items-center gap-6">
-             <div className="flex items-center gap-2 bg-green-500/10 border border-green-500/20 px-3 py-1 rounded-full">
-               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-               <span className="text-[10px] font-mono text-green-500 uppercase tracking-widest">SYSTEM: ONLINE</span>
-             </div>
-             <div className="text-[10px] font-mono text-gray-400 uppercase tracking-widest flex items-center gap-2">
-               OPERATIONAL CORE <span className="text-gray-600">//</span>
-               <span className="text-white">
-                 {/* ── CAMBIO 3b: header muestra Team IQ en vez de STAFF HUB ── */}
-                 {activeModule === ModuleType.STAFF_HUB ? 'TEAM IQ™' : activeModule.replace('_', ' ')}
-               </span>
-             </div>
-             <div className="flex items-center gap-3 ml-4">
-               <button className="w-8 h-8 rounded-full bg-[#1a1d24] flex items-center justify-center text-gray-400 hover:text-white transition-colors">
-                 <BellRing size={14} />
-               </button>
-               <button className="w-8 h-8 rounded-full bg-[#1a1d24] flex items-center justify-center text-gray-400 hover:text-white transition-colors">
-                 <Settings size={14} />
-               </button>
-               <div className="w-8 h-8 rounded-full bg-blue-900/30 border border-blue-500/30 flex items-center justify-center text-blue-400 text-xs font-bold">
-                 {profile?.full_name?.substring(0, 2).toUpperCase() || 'JD'}
-               </div>
-             </div>
+
+          {/* Derecha: solo campana */}
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="System Online"/>
+            <button className="w-7 h-7 rounded-lg bg-[#1a1d24] border border-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:border-yellow-500/40 transition-all relative">
+              <BellRing size={13} />
+              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500"/>
+            </button>
           </div>
         </header>
 
@@ -372,7 +371,7 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.PAYROLL        && <PayrollModule />}
                 {activeModule === ModuleType.COMMAND        && <CommandModule onSimulateEvent={() => {}} />}
                 {activeModule === ModuleType.RELATIONSHIP   && <RelationshipModule />}
-                {activeModule === ModuleType.SUPPLY        && <MenuModule />}
+                {activeModule === ModuleType.SUPPLY        && <SupplyModule />}
                 {activeModule === ModuleType.STAFF_HUB      && <TeamIQ />}
                 {activeModule === ModuleType.SUPPLY         && <SupplyModule />}
                 {activeModule === ModuleType.CARE           && <CareModule />}
