@@ -2554,26 +2554,74 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
 
       {/* LEFT PANEL */}
       <div className="bg-[#141414] border-r border-[#2a2a2a] flex flex-col shrink-0" style={{ width: 200 }}>
-        <div className="p-3.5 px-4 pb-2.5 flex items-center gap-2.5 border-b border-[#2a2a2a] shrink-0 relative">
-          <span>🪑</span>
-          <h2 className="font-['Syne'] text-[15px] font-bold flex-1">Mis Mesas</h2>
-          <div className="flex gap-2">
-            <div onClick={onOpenVisionAI} className="w-[34px] h-[34px] rounded-lg bg-[#1c1c1c] border border-[#2a2a2a] flex items-center justify-center cursor-pointer text-[#a0a0a0] hover:text-[#d4943a] hover:border-[#d4943a] transition-all" title="Vision AI">
-              <MonitorPlay size={16} />
+        <div className="p-3 px-3 pb-2.5 flex items-center gap-2 border-b border-[#2a2a2a] shrink-0 relative">
+          {/* Nombre y rol del usuario */}
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#d4943a] to-[#b07820] flex items-center justify-center text-[12px] font-black text-black shrink-0 font-['Syne']">
+              {(profile?.nombre_completo || profile?.role || 'U').charAt(0).toUpperCase()}
             </div>
+            <div className="min-w-0">
+              <div className="text-[12px] font-bold text-[#f0f0f0] truncate leading-tight">
+                {profile?.nombre_completo?.split(' ')[0] || 'Usuario'}
+              </div>
+              <div className="text-[9px] text-[#d4943a] font-bold uppercase tracking-wider">
+                {profile?.role === 'admin' ? 'Admin' : profile?.role === 'gerencia' ? 'Gerencia' : profile?.role === 'desarrollo' ? 'Dev' : 'Mesero'}
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-1.5 shrink-0">
+            {/* Cerebro — abre tab IA en right panel */}
+            <div onClick={() => { setRightTab('IA'); onOpenVisionAI?.(); }}
+              className="w-[30px] h-[30px] rounded-lg bg-[#1c1c1c] border border-[#2a2a2a] flex items-center justify-center cursor-pointer text-[#a0a0a0] hover:text-[#d4943a] hover:border-[#d4943a] transition-all"
+              title="Cerebro Nexum IA">
+              <Sparkles size={14} />
+            </div>
+            {/* Notificaciones */}
             <div onClick={() => setShowNotifications(!showNotifications)}
-              className={`w-[34px] h-[34px] rounded-lg border flex items-center justify-center cursor-pointer transition-all relative ${showNotifications ? 'bg-[#d4943a]/10 border-[#d4943a] text-[#d4943a]' : 'bg-[#1c1c1c] border-[#2a2a2a] text-[#a0a0a0] hover:text-[#d4943a] hover:border-[#d4943a]'}`}>
-              <BellRing size={16} />
-              <div className="absolute top-1.5 right-1.5 w-[7px] h-[7px] rounded-full bg-[#e05050] border-[1.5px] border-[#141414]"></div>
+              className={`w-[30px] h-[30px] rounded-lg border flex items-center justify-center cursor-pointer transition-all relative ${showNotifications ? 'bg-[#d4943a]/10 border-[#d4943a] text-[#d4943a]' : 'bg-[#1c1c1c] border-[#2a2a2a] text-[#a0a0a0] hover:text-[#d4943a] hover:border-[#d4943a]'}`}
+              title="Notificaciones">
+              <BellRing size={14} />
+              <div className="absolute top-1 right-1 w-[6px] h-[6px] rounded-full bg-[#e05050] border border-[#141414]"></div>
             </div>
           </div>
           {showNotifications && (
-            <div className="absolute top-[60px] right-4 w-[280px] bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl shadow-2xl z-50 overflow-hidden">
+            <div className="absolute top-[52px] left-2 w-[300px] bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl shadow-2xl z-50 overflow-hidden" style={{maxHeight:400,overflowY:'auto'}}>
               <div className="p-3 border-b border-[#2a2a2a] flex justify-between items-center bg-[#141414]">
-                <span className="font-['Syne'] text-[13px] font-bold">Notificaciones</span>
-                <span onClick={() => setShowNotifications(false)} className="text-[10px] text-[#d4943a] cursor-pointer hover:underline">Cerrar</span>
+                <div className="flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#e05050] animate-pulse inline-block"/>
+                  <span className="font-['Syne'] text-[12px] font-bold">Centro de Notificaciones</span>
+                  {notifsBadge>0 && <span className="bg-[#e05050] text-white text-[9px] font-black px-1.5 rounded-full">{notifsBadge}</span>}
+                </div>
+                <div className="flex gap-2 items-center">
+                  <button onClick={async()=>{
+                    await supabase.from('nexum_notificaciones').update({leida:true}).eq('leida',false).eq('restaurante_id',6);
+                    setNotifsBadge(0); setNotifs((p:any[])=>p.map((n:any)=>({...n,leida:true})));
+                  }} className="text-[9px] text-[#d4943a] hover:underline cursor-pointer">✓ Todo leído</button>
+                  <span onClick={() => setShowNotifications(false)} className="text-[10px] text-[#606060] cursor-pointer hover:text-white">✕</span>
+                </div>
               </div>
-              {notifications.map(n => (
+              {/* Notificaciones de Supabase */}
+              {notifs.length === 0 && notifications.every(n=>true) && (
+                <div className="p-4 text-center text-[11px] text-[#606060]">Sin notificaciones nuevas</div>
+              )}
+              {notifs.map((n:any) => (
+                <div key={n.id} className="p-3 border-b border-[#1a1a1a] hover:bg-[#222] cursor-pointer flex gap-2.5"
+                  style={{background: n.leida ? 'transparent' : 'rgba(212,148,58,0.04)'}}>
+                  <span className="text-[16px] shrink-0 mt-0.5">
+                    {n.tipo==='stock_86'?'⚠️':n.tipo==='alerta_patio'?'🏠':n.tipo==='encuesta_negativa'?'⭐':n.tipo==='maître'?'👔':'🔔'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex justify-between gap-2">
+                      <span className="text-[11px] font-bold text-[#f0f0f0] truncate">{n.titulo||'Notificación'}</span>
+                      <span className="text-[9px] text-[#606060] shrink-0">{new Date(n.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>
+                    </div>
+                    {n.mensaje && <div className="text-[10px] text-[#a0a0a0] mt-0.5 truncate">{n.mensaje}</div>}
+                    {!n.leida && <div className="w-1.5 h-1.5 rounded-full bg-[#d4943a] mt-1"/>}
+                  </div>
+                </div>
+              ))}
+              {/* Notificaciones locales hardcoded como fallback */}
+              {notifs.length === 0 && notifications.map(n => (
                 <div key={n.id} className="p-3 border-b border-[#2a2a2a] hover:bg-[#222] cursor-pointer flex gap-3">
                   <span className="text-[14px] mt-0.5">{n.type === 'alert' ? '⚠️' : n.type === 'request' ? '🛎️' : 'ℹ️'}</span>
                   <div className="flex-1">
@@ -2827,18 +2875,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               </button>
             ))}
           </div>
-          {/* Botones panel derecho + carrito */}
-          <div className="ml-auto flex items-center gap-1 shrink-0">
-            {(['IA','Cuenta','Chat','Menú'] as const).map(tab => {
-              const icons = { IA: <Sparkles size={15}/>, Cuenta: <Receipt size={15}/>, Chat: <MessageSquare size={15}/>, Menú: <ShoppingCart size={15}/> };
-              return (
-                <button key={tab} onClick={() => setRightTab(tab)}
-                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold transition-all ${rightTab === tab ? 'bg-[#d4943a]/15 border-[#d4943a] text-[#d4943a]' : 'bg-[#1c1c1c] border-[#2a2a2a] text-[#606060] hover:text-[#a0a0a0]'}`}>
-                  {icons[tab]}<span className="hidden lg:inline">{tab}</span>
-                </button>
-              );
-            })}
-          </div>
+          {/* Botones panel derecho — eliminados de aquí, solo quedan en el right panel */}
         </div>
 
         {/* Products grid */}
