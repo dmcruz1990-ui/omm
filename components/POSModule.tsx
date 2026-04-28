@@ -3698,6 +3698,8 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               </div>
 
             </div>
+          </div>
+          </div>
           )}
 
           {rightTab === 'Chat' && (
