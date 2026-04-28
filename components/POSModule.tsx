@@ -791,6 +791,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       urgente: totalEnCocina >= 10,
       termino: termino,
     });
+    // ── CRÍTICO: agregar al order para que sume al total de mesa ──
+    setOrder(prev => [...prev, { 
+      nombre: productoFinal.nombre, 
+      precio: p.precio, 
+      emoji: p.emoji ?? '🍽️', 
+      mesa: selectedTable?.num ?? 0 
+    }]);
     autoCheckRitual(p.categoria ?? currentCat);
     setTimeout(() => setAddedCards(prev => { const n = new Set(prev); n.delete(p.nombre + '_marchar'); return n; }), 1500);
     setSelectedPlato(null);
@@ -2487,14 +2494,14 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
       <button
         onClick={toggleFullscreen}
         title={isFullscreen ? 'Salir pantalla completa' : 'Pantalla completa (tablet)'}
-        className={`fixed top-3 right-3 z-[9000] flex items-center gap-1.5 px-3 py-2 rounded-xl border font-semibold text-[12px] transition-all shadow-lg ${
+        className={`fixed top-2 right-2 z-[9000] flex items-center justify-center w-8 h-8 rounded-lg border font-semibold transition-all shadow-lg ${
           isFullscreen
             ? 'bg-[#d4943a] border-[#d4943a] text-black'
             : 'bg-[#1c1c1c] border-[#d4943a]/60 text-[#d4943a] hover:bg-[#d4943a] hover:text-black'
-        }`}>
+        }`} title={isFullscreen?'Salir pantalla completa':'Pantalla completa'}>
         {isFullscreen
-          ? <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg> Salir</>
-          : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg> Pantalla completa</>
+          ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
+          : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
         }
       </button>
 
@@ -2517,14 +2524,14 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           });
         }}
         title={sidebarCollapsed ? 'Mostrar navegación' : 'Ocultar navegación (más espacio)'}
-        className={`fixed top-3 z-[9000] flex items-center gap-1.5 px-3 py-2 rounded-xl border font-semibold text-[12px] transition-all shadow-lg ${
+        className={`fixed top-2 z-[9000] flex items-center justify-center w-8 h-8 rounded-lg border font-semibold transition-all shadow-lg ${
           sidebarCollapsed
             ? 'bg-[#3dba6f] border-[#3dba6f] text-black'
             : 'bg-[#1c1c1c] border-[#3dba6f]/60 text-[#3dba6f] hover:bg-[#3dba6f] hover:text-black'
-        }`} style={{ right: isFullscreen ? '110px' : '180px' }}>
+        }`} style={{ right:'44px' }} title={sidebarCollapsed?'Mostrar nav':'Ocultar nav'}>
         {sidebarCollapsed
-          ? <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg> Nav</>
-          : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg> Ocultar nav</>
+          ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
+          : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
         }
       </button>
 
@@ -3121,24 +3128,42 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           })}
         </div>
 
+        {/* ══ TICKET DEL DÍA — GLOBAL, siempre visible ══ */}
+        <div className="border-b border-[#2a2a2a] bg-[#0d0d0d] px-3 py-2 flex items-center gap-2 shrink-0">
+          <button onClick={fetchTicketDia} className="text-[9px] text-[#d4943a] font-bold uppercase tracking-wider flex items-center gap-1 hover:opacity-80">📊 Jornada ↻</button>
+          <div className="flex gap-3 ml-2 flex-1 overflow-x-auto" style={{scrollbarWidth:'none'}}>
+            {[
+              {l:'Ventas', v:`$${Math.round((ticketDia?.ventas||0)/1000)}k`, c:'#3dba6f'},
+              {l:'Cobros', v:ticketDia?.ordenes||0,                         c:'#4a8fd4'},
+              {l:'Abiertas',v:ticketDia?.pendientes||0,                     c:'#f0b45a'},
+              {l:'Por cobrar',v:`$${Math.round((ticketDia?.porCobrar||0)/1000)}k`, c:'#e05050'},
+              {l:'Propinas',v:`$${Math.round((ticketDia?.propinaTotal||0)/1000)}k`, c:'#9b72ff'},
+            ].map(k=>(
+              <div key={k.l} className="flex items-center gap-1 shrink-0">
+                <span className="text-[9px] text-[#606060]">{k.l}</span>
+                <span className="text-[11px] font-black" style={{color:k.c}}>{k.v}</span>
+              </div>
+            ))}
+          </div>
+        </div>
         <div className="flex-1 p-3 px-3.5 flex flex-col gap-2.5 overflow-y-auto">
 
           {rightTab === 'IA' && (
             <>
               {/* ══ INTELIGENCIA OPERACIONAL ══ */}
-              {(tips86.length>0 || ticketDia.pendientes>4) && (
+              {(tips86.length>0 || (ticketDia?.pendientes||0)>4) && (
                 <div className="bg-[#1c1c1c] border border-[#e05050]/25 rounded-xl overflow-hidden">
                   <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-[#e05050] animate-pulse inline-block"/>
                     <span className="text-[10px] font-bold text-[#e05050] uppercase tracking-wider">Centro de Notificaciones</span>
                   </div>
                   <div className="flex flex-col">
-                    {ticketDia.pendientes>4 && (
+                    {(ticketDia?.pendientes||0)>4 && (
                       <div className="flex items-start gap-2.5 px-3 py-2 border-b border-[#1a1a1a]">
                         <span className="text-[16px] mt-0.5">⚠️</span>
                         <div>
                           <div className="text-[11px] font-bold text-[#f0b45a]">Alta ocupación</div>
-                          <div className="text-[10px] text-[#606060]">{ticketDia.pendientes} mesas abiertas — revisar tiempos</div>
+                          <div className="text-[10px] text-[#606060]">{ticketDia?.pendientes||0} mesas abiertas — revisar tiempos</div>
                         </div>
                       </div>
                     )}
@@ -3151,12 +3176,12 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                         </div>
                       </div>
                     ))}
-                    {ticketDia.porCobrar>200000 && (
+                    {(ticketDia?.porCobrar||0)>200000 && (
                       <div className="flex items-start gap-2.5 px-3 py-2">
                         <span className="text-[16px] mt-0.5">💰</span>
                         <div>
                           <div className="text-[11px] font-bold text-[#3dba6f]">Cuentas por cobrar</div>
-                          <div className="text-[10px] text-[#606060]">${Math.round(ticketDia.porCobrar/1000)}k pendientes · Notificar caja</div>
+                          <div className="text-[10px] text-[#606060]">${Math.round((ticketDia?.porCobrar||0)/1000)}k pendientes · Notificar caja</div>
                         </div>
                       </div>
                     )}
@@ -3280,35 +3305,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
 
           {rightTab === 'Cuenta' && (
             <div className="flex flex-col gap-2">
-              {/* ══ TICKET DEL DÍA ══ */}
-              <div className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl overflow-hidden mb-3">
-                <div className="flex items-center justify-between px-3 py-2 border-b border-[#2a2a2a]">
-                  <div className="text-[10px] font-bold text-[#d4943a] uppercase tracking-wider flex items-center gap-1.5">📊 Ticket del día</div>
-                  <button onClick={fetchTicketDia} className="text-[10px] text-[#606060] hover:text-[#d4943a] transition-all">↻</button>
-                </div>
-                <div className="grid grid-cols-2 gap-px bg-[#2a2a2a]">
-                  {[
-                    {l:'Ventas',     v:`$${Math.round(ticketDia.ventas/1000)}k`,       c:'#3dba6f'},
-                    {l:'Cobros',     v:ticketDia.ordenes,                              c:'#4a8fd4'},
-                    {l:'Abiertas',   v:ticketDia.pendientes,                           c:'#f0b45a'},
-                    {l:'Por cobrar', v:`$${Math.round(ticketDia.porCobrar/1000)}k`,   c:'#e05050'},
-                  ].map(k=>(
-                    <div key={k.l} className="bg-[#141414] px-3 py-2">
-                      <div className="text-[9px] text-[#606060] uppercase tracking-wider">{k.l}</div>
-                      <div className="text-[16px] font-black" style={{fontFamily:"'Syne',sans-serif",color:k.c}}>{k.v}</div>
-                    </div>
-                  ))}
-                </div>
-                {/* Cuentas por cobrar botón */}
-                <div className="px-3 py-2 border-t border-[#2a2a2a]">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-[#a0a0a0]">💰 Propina acumulada hoy</span>
-                    <span className="text-[13px] font-bold text-[#3dba6f]">${Math.round(ticketDia.propinaTotal/1000)}k</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* ══ TIPS 86 / STOCK ALTO ══ */}
+                  {/* ══ TIPS 86 / STOCK ALTO ══ */}
               {tips86.length>0 && (
                 <div className="bg-[#1c1c1c] border border-[#e05050]/30 rounded-xl overflow-hidden mb-3">
                   <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-1.5">
