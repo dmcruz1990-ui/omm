@@ -3627,6 +3627,50 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 </div>
               </div>
 
+              {/* ══ ANÁLISIS DE TIEMPOS Y CARGA ══ */}
+              <div className="bg-[#1c1c1c] border border-[#22d3ee]/20 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 flex items-center gap-2 border-b border-[#2a2a2a]">
+                  <span style={{fontSize:12}}>⏱️</span>
+                  <span className="text-[10px] font-black text-[#22d3ee] uppercase tracking-wider">Tiempos & Carga por Estación</span>
+                </div>
+                <div className="p-3">
+                  {/* Platos con más tiempo de prep */}
+                  <div style={{fontSize:10,color:'#606060',marginBottom:8,fontWeight:700}}>Platos más lentos (avg)</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:5,marginBottom:12}}>
+                    {[
+                      {nombre:'Arroz Gohan',tiempo:15,estacion:'Cocina'},
+                      {nombre:'Edamame Robata',tiempo:12,estacion:'Robata'},
+                      {nombre:'Pulpo Ton',tiempo:18,estacion:'Robata'},
+                      {nombre:'Bao Pato Pekin',tiempo:14,estacion:'Cocina'},
+                    ].map(p=>(
+                      <div key={p.nombre} style={{display:'flex',alignItems:'center',gap:8,padding:'4px 0'}}>
+                        <div style={{flex:1,fontSize:11,color:'#f0f0f0'}}>{p.nombre}</div>
+                        <span style={{fontSize:9,color:'#606060'}}>{p.estacion}</span>
+                        <div style={{width:60,height:4,background:'#1a1a1a',borderRadius:2,overflow:'hidden'}}>
+                          <div style={{height:'100%',background:p.tiempo>=15?'#e05050':p.tiempo>=12?'#f0b45a':'#3dba6f',width:`${(p.tiempo/20)*100}%`}}/>
+                        </div>
+                        <span style={{fontSize:10,fontWeight:700,color:p.tiempo>=15?'#e05050':p.tiempo>=12?'#f0b45a':'#3dba6f',minWidth:28}}>{p.tiempo}m</span>
+                      </div>
+                    ))}
+                  </div>
+                  {/* Carga por estación */}
+                  <div style={{fontSize:10,color:'#606060',marginBottom:8,fontWeight:700}}>Carga actual por estación</div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6}}>
+                    {[
+                      {l:'Cocina', v:order.filter(o=>o.mesa===selectedTable.num&&!['Cocteles','Sakes','Cervezas'].some(c=>o.nombre.includes(c))).length, c:'#e05050'},
+                      {l:'Bar',    v:order.filter(o=>o.mesa===selectedTable.num&&['Coctel','Sake','Cerveza','Gin','Yin','Mule'].some(c=>o.nombre.includes(c))).length, c:'#448AFF'},
+                      {l:'Total',  v:order.filter(o=>o.mesa===selectedTable.num).length, c:'#22d3ee'},
+                    ].map(e=>(
+                      <div key={e.l} style={{background:'#141414',borderRadius:8,padding:'8px 10px',textAlign:'center'}}>
+                        <div style={{fontSize:9,color:'#606060',marginBottom:2}}>{e.l}</div>
+                        <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:e.c}}>{e.v}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              </div>
+
               {/* ══ ACCESO MAÎTRE ══ */}
               <div className="bg-[#1c1c1c] border border-[#e05050]/20 rounded-xl overflow-hidden">
                 <div className="px-3 py-2 flex items-center justify-between border-b border-[#2a2a2a]">
