@@ -257,11 +257,13 @@ function getBadgeLabel(b: string): string {
 // ── Componente independiente para la ruleta ───────────────
 const PREMIOS_RULETA = [
   { emoji:'☕', label:'Café gratis',   color:'#cd853f', bg:'#3d2a1a', desc:'Un espresso en tu próxima visita' },
-  { emoji:'🍷', label:'Copa de vino',  color:'#e91e8c', bg:'#3d0d25', desc:'Una copa de la casa' },
-  { emoji:'💸', label:'10% OFF',       color:'#d4943a', bg:'#3d2a00', desc:'En tu próxima cuenta' },
-  { emoji:'🍮', label:'Postre gratis', color:'#f0b45a', bg:'#3d2d00', desc:'El postre del chef' },
-  { emoji:'🥂', label:'2x1 Coctel',    color:'#9b72ff', bg:'#1e1040', desc:'Dos por el precio de uno' },
-  { emoji:'🎁', label:'20% OFF',       color:'#3dba6f', bg:'#0d3020', desc:'Descuento especial Seratta' },
+  { emoji:'🍷', label:'Copa de vino',  color:'#e91e8c', bg:'#3d0d25', desc:'Una copa de la casa en tu próxima visita' },
+  { emoji:'💸', label:'10% OFF',       color:'#d4943a', bg:'#3d2a00', desc:'10% descuento en tu próxima cuenta' },
+  { emoji:'🍮', label:'Postre gratis', color:'#f0b45a', bg:'#3d2d00', desc:'El postre del chef — cortesía de OMM' },
+  { emoji:'🥂', label:'2x1 Coctel',    color:'#9b72ff', bg:'#1e1040', desc:'Dos cócteles por el precio de uno' },
+  { emoji:'🎁', label:'20% OFF',       color:'#3dba6f', bg:'#0d3020', desc:'Descuento especial OMM · Válido 30 días' },
+  { emoji:'🥧', label:'Pie Central',   color:'#e07830', bg:'#3d1a00', desc:'Pie Central de cortesía — postre insignia' },
+  { emoji:'🍸', label:'Cóctel Firma',  color:'#448AFF', bg:'#001440', desc:'Cóctel insignia OMM de cortesía' },
 ];
 
 const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: number }> = ({ onClose, mesaNum, rating }) => {
@@ -1367,6 +1369,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [motivoEdicion, setMotivoEdicion] = useState('');
   // Factura
   const [facturaCorreo, setFacturaCorreo] = useState('');
+  const [facturaCorreoOculto, setFacturaCorreoOculto] = useState(false);
   const [facturaTipo, setFacturaTipo] = useState<'digital'|'correo'|'electronica'>('digital');
   // Pago mixto
   const [pagoMixto, setPagoMixto] = useState(false);
@@ -1706,7 +1709,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 <div style={{ width: 28, height: 28, borderRadius: '50%', background: S.bg2, border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: S.text3, flexShrink: 0, marginRight: 12 }}>📊</div>
                 <span style={{ flex: 1, fontSize: 16, color: S.text2 }}>Consumo base mesa</span>
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ fontSize:10, color:'#3dba6f', background:'rgba(61,186,111,0.1)', padding:'2px 8px', borderRadius:20, fontWeight:700 }}>✓ Entregado</span>
+                  <span style={{ fontSize:10, color:'#3dba6f', background:'rgba(61,186,111,0.12)', padding:'2px 8px', borderRadius:20, fontWeight:700, border:'1px solid rgba(61,186,111,0.25)' }}>✓ Entregado</span>
                   <span style={{ fontSize: 16, fontWeight: 600, color: S.text }}>${formatPrecio(mesaCliente.ticket)}</span>
                 </div>
               </div>
@@ -1716,7 +1719,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 <div style={{ width: 28, height: 28, borderRadius: '50%', background: S.bg2, border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, marginRight: 12 }}>{item.emoji||'🍽️'}</div>
                 <span style={{ flex: 1, fontSize: 15, color: S.text }}>{item.nombre}</span>
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ fontSize:10, padding:'2px 8px', borderRadius:20, fontWeight:700, background:'rgba(61,186,111,0.1)', color:'#3dba6f' }}>✓ Listo</span>
+                  <span style={{ fontSize:10, padding:'2px 8px', borderRadius:20, fontWeight:700, background:'rgba(61,186,111,0.12)', color:'#3dba6f', border:'1px solid rgba(61,186,111,0.25)' }}>✓ Listo</span>
                   <span style={{ fontSize: 15, color: S.text }}>{item.precio}</span>
                 </div>
               </div>
@@ -1745,7 +1748,21 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               ))}
             </div>
             {facturaTipo==='correo'&&(
-              <input value={facturaCorreo} onChange={e=>setFacturaCorreo(e.target.value)} placeholder="correo@email.com" style={{ width:'100%', padding:'10px 14px', borderRadius:10, border:'1px solid #ddd', fontSize:13, outline:'none' }}/>
+              <div>
+                <div style={{position:'relative'}}>
+                  <input value={facturaCorreo} onChange={e=>setFacturaCorreo(e.target.value)} 
+                    placeholder="correo@email.com"
+                    type={facturaCorreoOculto?'password':'email'}
+                    style={{ width:'100%', padding:'10px 44px 10px 14px', borderRadius:10, border:'1px solid #ddd', fontSize:13, outline:'none' }}/>
+                  <button onClick={()=>setFacturaCorreoOculto(p=>!p)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16}}>
+                    {facturaCorreoOculto?'👁️':'🙈'}
+                  </button>
+                </div>
+                <div style={{fontSize:11,color:'#999',marginTop:6,display:'flex',alignItems:'center',gap:6}}>
+                  <input type="checkbox" checked={facturaCorreoOculto} onChange={e=>setFacturaCorreoOculto(e.target.checked)} style={{cursor:'pointer'}}/>
+                  Ocultar correo (protección de datos)
+                </div>
+              </div>
             )}
           </div>
 
@@ -1782,7 +1799,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             {[
               { pct: 0,  emoji: '—',  label:'Sin propina' },
               { pct: 10, emoji: '😊', label:'Legal', badge:'✓ Ley' },
-              { pct: 20, emoji: '😘', label:'Generoso', popular: true },
+              { pct: 20, emoji: '🔥', label:'Generoso', popular: true },
               { pct: 30, emoji: '❤️', label:'Increíble' },
             ].map(({ pct, emoji, label, popular, badge }) => (
               <div key={pct} style={{ position: 'relative' }}>
