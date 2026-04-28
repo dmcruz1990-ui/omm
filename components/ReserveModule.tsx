@@ -30,6 +30,17 @@ const MOTIVOS_BLOQUEO = ['Mantenimiento','Evento privado','Daño en mobiliario',
 
 const hoy = () => new Date().toISOString().split('T')[0];
 const fmtHora = (h:string) => h?.slice(0,5) ?? '';
+const tiempoTranscurrido = (horaStr:string) => {
+  if (!horaStr) return '';
+  const [h,m] = horaStr.split(':').map(Number);
+  const ahora = new Date();
+  const entrada = new Date();
+  entrada.setHours(h, m, 0);
+  const diff = Math.floor((ahora.getTime() - entrada.getTime()) / 60000);
+  if (diff < 0) return '';
+  if (diff < 60) return `${diff}min`;
+  return `${Math.floor(diff/60)}h ${diff%60}min`;
+};
 const fmtFecha = (f:string) => {
   if (!f) return '';
   const d = new Date(f + 'T00:00:00');
@@ -91,6 +102,9 @@ export default function ReserveModule() {
   const [vistaTab, setVistaTab] = useState<'mapa'|'lista'|'timeline'>('mapa');
   const [zonaFiltro, setZonaFiltro] = useState('Todas');
   const [panelMesa, setPanelMesa]   = useState<Mesa|null>(null);
+  // Drag & Drop reservas
+  const [dragReserva, setDragReserva] = useState<Reserva|null>(null);
+  const [dragOver, setDragOver]       = useState<number|null>(null);
   const [panelReserva, setPanelReserva] = useState<Reserva|null>(null);
   const [modalNueva, setModalNueva] = useState(false);
   const [modalBloqueo, setModalBloqueo] = useState<Mesa|null>(null);
@@ -171,6 +185,16 @@ export default function ReserveModule() {
     showToast(`✓ Reserva confirmada — ${form.nombre}`);
     setModalNueva(false);
     setForm({nombre:'',telefono:'',email:'',pax:2,fecha:hoy(),hora:'20:00',duracion:90,mesa_id:0,ocasion:'',nota:'',origen:'whatsapp'});
+    fetchData();
+  };
+
+  // Reasignar reserva a mesa por drag & drop
+  const reasignarMesa = async (reservaId:number, nuevaMesaId:number) => {
+    const mesaNueva = mesas.find(m=>m.id===nuevaMesaId);
+    if (!mesaNueva) return;
+    await supabase.from('reservas').update({ mesa_id:nuevaMesaId }).eq('id', reservaId);
+    showToast(`↔ Reserva movida a Mesa ${mesaNueva.numero}`);
+    setDragReserva(null); setDragOver(null);
     fetchData();
   };
 
@@ -518,6 +542,33 @@ export default function ReserveModule() {
         {/* MAPA */}
         {vistaTab==='mapa' && (
           <div style={{height:'100%',overflowY:'auto',padding:20}}>
+            {/* ── Reservas del día arrastrables ── */}
+            {resHoy.filter(r=>['confirmada','pendiente'].includes(r.estado)).length>0 && (
+              <div style={{marginBottom:20}}>
+                <div style={{fontSize:10,color:C.t3,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.1em',marginBottom:10}}>
+                  🖱️ Arrastra una reserva sobre una mesa para asignarla
+                </div>
+                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+                  {resHoy.filter(r=>['confirmada','pendiente'].includes(r.estado)).map(r=>(
+                    <div key={r.id}
+                      draggable
+                      onDragStart={()=>setDragReserva(r)}
+                      onDragEnd={()=>{ setDragReserva(null); setDragOver(null); }}
+                      style={{background:dragReserva?.id===r.id?`${C.pink}20`:C.bg3,border:`1px solid ${dragReserva?.id===r.id?C.pink:C.border2}`,borderRadius:10,padding:'7px 12px',cursor:'grab',display:'flex',alignItems:'center',gap:8,transition:'all .15s',userSelect:'none' as const}}>
+                      <div style={{textAlign:'center',minWidth:36}}>
+                        <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,color:C.goldL}}>{r.hora?.slice(0,5)}</div>
+                      </div>
+                      <div>
+                        <div style={{fontSize:12,fontWeight:700,color:C.t1}}>{r.nombre_cliente.split(' ')[0]}</div>
+                        <div style={{fontSize:10,color:C.t3}}>{r.pax}p · M{r.mesa_numero}</div>
+                      </div>
+                      {r.vip_status && <span style={{fontSize:10,color:C.gold}}>⭐</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {Array.from(new Set(mesasFiltradas.map(m=>m.zona))).map(zona=>{
               const mesasZona = mesasFiltradas.filter(m=>m.zona===zona);
               const zc = ZONA_COLOR[zona] || C.t2;
@@ -539,16 +590,31 @@ export default function ReserveModule() {
                       return (
                         <div key={mesa.id}
                           onClick={()=>{ if (resaMesa) setPanelReserva(resaMesa); else if(ocuMesa) setPanelReserva(ocuMesa); else setPanelMesa(mesa); }}
-                          style={{background:C.bg3,border:`1.5px solid ${cfg.c}30`,borderRadius:18,padding:16,cursor:'pointer',transition:'all .2s',position:'relative',overflow:'hidden'}}
-                          onMouseEnter={e=>{ (e.currentTarget as HTMLDivElement).style.borderColor=cfg.c; (e.currentTarget as HTMLDivElement).style.boxShadow=`0 0 20px ${cfg.c}15`; }}
-                          onMouseLeave={e=>{ (e.currentTarget as HTMLDivElement).style.borderColor=`${cfg.c}30`; (e.currentTarget as HTMLDivElement).style.boxShadow='none'; }}>
+                          onDragOver={e=>{ e.preventDefault(); setDragOver(mesa.id); }}
+                          onDragLeave={()=>setDragOver(null)}
+                          onDrop={()=>{ if(dragReserva) reasignarMesa(dragReserva.id, mesa.id); }}
+                          style={{background:dragOver===mesa.id?`${C.pink}15`:C.bg3,border:`1.5px solid ${dragOver===mesa.id?C.pink:cfg.c}30`,borderRadius:18,padding:16,cursor:dragReserva?'copy':'pointer',transition:'all .2s',position:'relative',overflow:'hidden',boxShadow:dragOver===mesa.id?`0 0 20px ${C.pink}30`:'none'}}
+                          onMouseEnter={e=>{ if(!dragReserva){(e.currentTarget as HTMLDivElement).style.borderColor=cfg.c; (e.currentTarget as HTMLDivElement).style.boxShadow=`0 0 20px ${cfg.c}15`; }}}
+                          onMouseLeave={e=>{ if(!dragReserva){(e.currentTarget as HTMLDivElement).style.borderColor=`${cfg.c}30`; (e.currentTarget as HTMLDivElement).style.boxShadow='none'; }}}>
+                          {dragOver===mesa.id && (
+                            <div style={{position:'absolute',inset:0,background:`${C.pink}10`,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:18,zIndex:5}}>
+                              <span style={{fontSize:20}}>📌</span>
+                            </div>
+                          )}
 
                           {/* Glow dot estado */}
                           <div style={{position:'absolute',top:12,right:12,width:8,height:8,borderRadius:'50%',background:cfg.c,boxShadow:`0 0 8px ${cfg.c}`}}/>
 
                           <div style={{fontFamily:"'Syne',sans-serif",fontSize:28,fontWeight:900,color:C.t1,marginBottom:2}}>{mesa.numero}</div>
                           <div style={{fontSize:10,color:cfg.c,fontWeight:700,marginBottom:6}}>{cfg.label.toUpperCase()}</div>
-                          <div style={{fontSize:10,color:C.t3,marginBottom:resaMesa?8:0}}>👥 {mesa.capacidad} · {zona}</div>
+                          <div style={{fontSize:10,color:C.t3,marginBottom:resaMesa?8:0,display:'flex',alignItems:'center',gap:6}}>
+                            <span>👥 {mesa.capacidad} · {zona}</span>
+                            {mesa.estado==='ocupada' && ocuMesa && tiempoTranscurrido(ocuMesa.hora) && (
+                              <span style={{fontSize:9,color:C.red,background:`${C.red}12`,padding:'1px 6px',borderRadius:10,fontWeight:700}}>
+                                ⏱ {tiempoTranscurrido(ocuMesa.hora)}
+                              </span>
+                            )}
+                          </div>
 
                           {resaMesa && (
                             <div style={{background:`${C.pink}10`,border:`1px solid ${C.pink}20`,borderRadius:8,padding:'6px 8px',marginTop:6}}>
@@ -601,7 +667,10 @@ export default function ReserveModule() {
                 const cfg = RES_CFG[r.estado] || RES_CFG.pendiente;
                 return (
                   <div key={r.id} onClick={()=>setPanelReserva(r)}
-                    style={{background:C.bg3,border:`1px solid ${r.estado==='llegó'?C.green+'30':C.border}`,borderRadius:16,padding:'14px 18px',cursor:'pointer',display:'flex',alignItems:'center',gap:14,transition:'all .15s'}}
+                    draggable
+                    onDragStart={e=>{ e.dataTransfer.setData('reserva_id',String(r.id)); (e.currentTarget as HTMLDivElement).style.opacity='.5'; }}
+                    onDragEnd={e=>{ (e.currentTarget as HTMLDivElement).style.opacity='1'; }}
+                    style={{background:C.bg3,border:`1px solid ${r.estado==='llegó'?C.green+'30':C.border}`,borderRadius:16,padding:'14px 18px',cursor:'grab',display:'flex',alignItems:'center',gap:14,transition:'all .15s'}}
                     onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.borderColor=`${C.pink}40`}
                     onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.borderColor=r.estado==='llegó'?`${C.green}30`:C.border}>
 
