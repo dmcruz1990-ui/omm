@@ -534,7 +534,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
   const [selectedTableId, setSelectedTableId] = useState<number>(1);
   const [currentCat, setCurrentCat] = useState('Compartir');
-  const [rightTab, setRightTab] = useState<'IA' | 'Cuenta' | 'Chat' | 'Menú' | 'Intel'>('IA');
+  const [rightTab, setRightTab] = useState<'IA' | 'Cuenta' | 'Chat' | 'Intel'>('IA');
   // Ticket del día y cuentas por cobrar
   const [ticketDia, setTicketDia] = useState<any>({ ventas:0, ordenes:0, pendientes:0, porCobrar:0, propinaTotal:0, total_ventas:0, total_ordenes:0, total_items:0, mesas_atendidas:0 });
   const [cuentasCobrar, setCuentasCobrar] = useState(0);
@@ -2694,9 +2694,15 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                     className="py-3 rounded-xl border border-[#2a2a2a] text-[13px] font-semibold text-[#a0a0a0] hover:border-[#d4943a] hover:text-[#d4943a] active:bg-[#3dba6f]/20 active:border-[#3dba6f] active:text-[#3dba6f] transition-all">
                     🧠 Ver Brief
                   </button>
-                  <button onClick={() => abrirModoCliente(m.id)}
-                    className="py-3 rounded-xl bg-[#d4943a] text-black text-[13px] font-bold hover:bg-[#f0b45a] active:bg-[#3dba6f] active:text-white transition-all">
-                    📲 Cobrar
+                  <button onClick={() => {
+                    if (isGerencia || pinUnlocked) {
+                      abrirModoCliente(m.id);
+                    } else {
+                      requirePin(() => abrirModoCliente(m.id));
+                    }
+                  }}
+                    className="py-3 rounded-xl text-[13px] font-bold transition-all bg-[#d4943a] text-black hover:bg-[#f0b45a] active:bg-[#3dba6f] active:text-white">
+                    {isGerencia || pinUnlocked ? '💳 Cobrar' : '🔐 Cobrar'}
                   </button>
                 </div>
 
@@ -3170,9 +3176,9 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
 
         {/* Tabs */}
         <div className="flex border-b border-[#2a2a2a] shrink-0">
-          {(['IA', 'Cuenta', 'Chat', 'Menú', 'Intel'] as const).map(tab => {
-            const icons = { IA: <Sparkles size={14} />, Cuenta: <Receipt size={14} />, Chat: <MessageSquare size={14} />, Menú: <ShoppingCart size={14} />, Intel: <Zap size={14} /> };
-            const activeColors = { IA: 'text-[#d4943a] border-b-[#d4943a]', Cuenta: 'text-[#f0f0f0] border-b-[#f0f0f0]', Chat: 'text-[#3dba6f] border-b-[#3dba6f]', Menú: 'text-[#9b72ff] border-b-[#9b72ff]', Intel: 'text-[#22d3ee] border-b-[#22d3ee]' };
+          {(['IA', 'Cuenta', 'Chat', 'Intel'] as const).map(tab => {
+            const icons = { IA: <Sparkles size={14} />, Cuenta: <Receipt size={14} />, Chat: <MessageSquare size={14} />, Intel: <Zap size={14} /> };
+            const activeColors = { IA: 'text-[#d4943a] border-b-[#d4943a]', Cuenta: 'text-[#f0f0f0] border-b-[#f0f0f0]', Chat: 'text-[#3dba6f] border-b-[#3dba6f]', Intel: 'text-[#22d3ee] border-b-[#22d3ee]' };
             return (
               <button key={tab} onClick={() => setRightTab(tab)}
                 className={`flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all border-b-2 ${rightTab === tab ? `${activeColors[tab]} bg-[#1c1c1c]` : 'text-[#606060] border-b-transparent hover:text-[#a0a0a0] hover:bg-[#1a1a1a]'}`}>
@@ -3442,86 +3448,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
             </div>
           )}
 
-          {rightTab === 'Menú' && (
-            <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div className="text-[11px] font-bold text-[#9b72ff] uppercase tracking-wider">✦ Mi Menú personalizado</div>
-                <button onClick={() => setMiMenuFormOpen(p => !p)}
-                  className="px-2.5 py-1 rounded-lg bg-[#9b72ff]/15 border border-[#9b72ff]/30 text-[#9b72ff] text-[10px] font-bold hover:bg-[#9b72ff]/25 transition-all">
-                  {miMenuFormOpen ? '✕ Cancelar' : '+ Agregar plato'}
-                </button>
-              </div>
-              {miMenuFormOpen && (
-                <div className="bg-[#1c1c1c] border border-[#9b72ff]/30 rounded-xl p-3 flex flex-col gap-2">
-                  <input value={miMenuForm.nombre} onChange={e => setMiMenuForm(p => ({...p, nombre: e.target.value}))}
-                    placeholder="Nombre del plato *"
-                    className="w-full bg-[#141414] border border-[#2a2a2a] focus:border-[#9b72ff] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none" />
-                  <div className="flex gap-2">
-                    <input value={miMenuForm.precio} onChange={e => setMiMenuForm(p => ({...p, precio: e.target.value}))}
-                      placeholder="$00.000"
-                      className="flex-1 bg-[#141414] border border-[#2a2a2a] focus:border-[#9b72ff] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none" />
-                    <select value={miMenuForm.categoria} onChange={e => setMiMenuForm(p => ({...p, categoria: e.target.value}))}
-                      className="flex-1 bg-[#141414] border border-[#2a2a2a] rounded-lg px-2 py-2 text-[12px] text-[#f0f0f0] outline-none">
-                      {categorias.map(c => <option key={c}>{c}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <div className="text-[9px] text-[#606060] mb-1">Emoji</div>
-                    <div className="flex flex-wrap gap-1">
-                      {['🍣','🍜','🍱','🥩','🐙','🦐','🍹','🍷','🥗','🍮','☕','🍺','🍶','🥟','🌮'].map(e => (
-                        <button key={e} onClick={() => setMiMenuForm(p => ({...p, emoji: e}))}
-                          style={{ background: miMenuForm.emoji === e ? '#9b72ff20' : '#1a1a1a', border: `1px solid ${miMenuForm.emoji === e ? '#9b72ff' : '#2a2a2a'}` }}
-                          className="w-8 h-8 rounded-lg flex items-center justify-center text-[18px] transition-all">
-                          {e}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <select value={miMenuForm.badge} onChange={e => setMiMenuForm(p => ({...p, badge: e.target.value}))}
-                      className="flex-1 bg-[#141414] border border-[#2a2a2a] rounded-lg px-2 py-2 text-[11px] text-[#f0f0f0] outline-none">
-                      <option value="recomendado">Recomendado</option>
-                      <option value="gold">Alta rentabilidad</option>
-                      <option value="orange">Mover hoy</option>
-                    </select>
-                    <label className="flex items-center gap-1.5 text-[11px] text-[#a0a0a0] cursor-pointer">
-                      <input type="checkbox" checked={miMenuForm.carne} onChange={e => setMiMenuForm(p => ({...p, carne: e.target.checked}))} className="w-3 h-3" />
-                      Carne
-                    </label>
-                  </div>
-                  <button onClick={() => {
-                    if (!miMenuForm.nombre || !miMenuForm.precio) { showToast('⚠️ Nombre y precio obligatorios'); return; }
-                    setMiMenu(prev => [...prev, { ...miMenuForm, id: Date.now() }]);
-                    setMiMenuForm({ nombre:'', precio:'', emoji:'🍽️', categoria:'Compartir', badge:'recomendado', carne: false });
-                    setMiMenuFormOpen(false);
-                    showToast(`✓ ${miMenuForm.nombre} agregado a Mi Menú`);
-                  }} className="w-full py-2.5 rounded-xl bg-[#9b72ff] text-white text-[12px] font-bold hover:opacity-90 transition-all">
-                    ✓ Guardar plato
-                  </button>
-                </div>
-              )}
-              {miMenu.length === 0 && !miMenuFormOpen && (
-                <div className="text-center py-8 text-[11px] text-[#606060]">
-                  <div className="text-[32px] mb-2">🍽️</div>
-                  Sin platos aún — crea tu menú personalizado
-                </div>
-              )}
-              {miMenu.map(p => (
-                <div key={p.id} className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl p-2.5 flex items-center gap-2.5">
-                  <span className="text-[22px]">{p.emoji}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[12px] font-bold text-[#f0f0f0] truncate">{p.nombre}</div>
-                    <div className="text-[10px] text-[#d4943a] font-bold">{p.precio} · {p.categoria}</div>
-                  </div>
-                  <div className="flex gap-1">
-                    <button onClick={() => agregarAOrden({ ...p })} className="px-2 py-1.5 rounded-lg bg-[#d4943a]/15 border border-[#d4943a]/30 text-[#d4943a] text-[9px] font-bold hover:bg-[#d4943a]/25 transition-all">+ Orden</button>
-                    <button onClick={() => marcharAhora({ ...p })} className="px-2 py-1.5 rounded-lg bg-[#4a8fd4]/15 border border-[#4a8fd4]/30 text-[#4a8fd4] text-[9px] font-bold hover:bg-[#4a8fd4]/25 transition-all">🔥</button>
-                    <button onClick={() => { setMiMenu(prev => prev.filter(x => x.id !== p.id)); showToast('Plato eliminado'); }} className="px-2 py-1.5 rounded-lg bg-[#e05050]/10 border border-[#e05050]/20 text-[#e05050] text-[9px] font-bold hover:bg-[#e05050]/20 transition-all">✕</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
+          {/* Tab Menú eliminado */}
 
           {rightTab === 'Intel' && (
             <div className="flex flex-col gap-3">
