@@ -21,9 +21,11 @@ export enum ModuleType {
   DIAN = 'DIAN',
   CONTABILIDAD = 'CONTABILIDAD',
   OH_YEAH_ADMIN = 'OH_YEAH_ADMIN',
+  CHAT_FLOW = 'CHAT_FLOW',
   GENESIS = 'GENESIS',
   MOBILE_MGR = 'MOBILE_MGR',
-  OH_YEAH = 'OH_YEAH'
+  OH_YEAH = 'OH_YEAH',
+  MARKETPLACE = 'MARKETPLACE'
 }
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo';
