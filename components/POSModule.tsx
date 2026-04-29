@@ -721,8 +721,34 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   };
 
   // ── Insertar pedido en Supabase → Flow lo ve en tiempo real ──
-  const insertarPedidoFlow = async (nombrePlato: string, categoria: string, mesaNum: number) => {
+  const insertarPedidoFlow = async (nombrePlato: string, categoria: string, mesaNum: number, precio?: number) => {
     try {
+      const meseroActivo = profile?.nombre_completo || profile?.full_name || 'Mesero';
+
+      // Determinar estación por categoría/nombre del plato
+      const inferirEstacion = (nombre: string, cat: string): string => {
+        const n = (nombre + ' ' + cat).toUpperCase();
+        if (['ROBATA','YAKITORI','BRASA'].some(k => n.includes(k))) return 'robata';
+        if (['COCTEL','GIN','RUM','WHISKY','VODKA','SAKE','CERVEZA','JUGO','LIMONADA','CAFÉ','LATTE','AMERICANO'].some(k => n.includes(k))) return 'bar';
+        if (['VINO','COPA','CAVA','CHAMPAGNE','PROSECCO'].some(k => n.includes(k))) return 'cava';
+        if (['POSTRE','CHEESECAKE','MOCHI','HELADO','YOROKOBI','KYOTO','PIE'].some(k => n.includes(k))) return 'postres';
+        if (['MAKI','SUSHI','NIGIRI','SASHIMI','TEMAKI','TIRADITO','CEVICHE','TATAKI','CARPACCIO'].some(k => n.includes(k))) return 'cocina_fria';
+        return 'cocina_caliente';
+      };
+
+      // Cocinero por estación
+      const COCINEROS: Record<string, string> = {
+        cocina_caliente: 'Chef Pablo Gómez',
+        cocina_fria:     'Chef Ricardo Soto',
+        robata:          'Chef María Castro',
+        postres:         'Chef Jorge Suárez',
+        bar:             'Bartender Mateo Díaz',
+        cava:            'Somelier Juan Reyes',
+      };
+
+      const estacion = inferirEstacion(nombrePlato, categoria);
+      const cocinero = COCINEROS[estacion] || 'Chef Pablo Gómez';
+
       // 1. Buscar orden abierta de esta mesa
       const { data: ordenes } = await supabase
         .from('orders')
@@ -732,37 +758,45 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         .limit(1);
 
       let orderId: string;
-
       if (ordenes && ordenes.length > 0) {
         orderId = ordenes[0].id;
+        // Actualizar mesero_nombre si no tiene
+        await supabase.from('orders').update({ mesero_nombre: meseroActivo }).eq('id', orderId).is('mesero_nombre', null);
       } else {
-        // Crear orden nueva si no existe
         const { data: nuevaOrden } = await supabase
           .from('orders')
-          .insert({ table_id: mesaNum, status: 'open' })
+          .insert({ table_id: mesaNum, status: 'open', mesero_nombre: meseroActivo, restaurante_id: 6 })
           .select('id')
           .single();
         if (!nuevaOrden) return;
         orderId = nuevaOrden.id;
       }
 
-      // 2. Buscar menu_item por nombre (si existe)
+      // 2. Buscar menu_item por nombre
       const { data: menuItem } = await supabase
         .from('menu_items')
-        .select('id')
+        .select('id,price')
         .ilike('name', `%${nombrePlato.split('(')[0].trim()}%`)
         .limit(1);
 
-      // 3. Insertar en order_items con notes = nombre completo del plato
+      const precioFinal = precio || Number(menuItem?.[0]?.price) || 0;
+
+      // 3. Insertar en order_items con TODOS los campos
       await supabase.from('order_items').insert({
-        order_id: orderId,
-        menu_item_id: menuItem?.[0]?.id ?? null,
-        quantity: 1,
-        status: 'pending',
-        notes: nombrePlato,
-        price_at_time: 0,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        order_id:        orderId,
+        menu_item_id:    menuItem?.[0]?.id ?? null,
+        quantity:        1,
+        status:          'pending',
+        notes:           nombrePlato,
+        nombre_plato:    nombrePlato,
+        categoria:       categoria,
+        estacion:        estacion,
+        mesero:          meseroActivo,
+        cocinero:        cocinero,
+        price_at_time:   precioFinal,
+        restaurante_id:  6,
+        created_at:      new Date().toISOString(),
+        updated_at:      new Date().toISOString(),
       });
     } catch (e) {
       console.error('Flow sync error:', e);
@@ -782,7 +816,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       showToast(`🍽️ ${productoFinal.nombre} marchando → Cocina`);
     }
     // ── Sincronizar con Supabase → Flow lo ve en tiempo real ─
-    insertarPedidoFlow(productoFinal.nombre, p.categoria ?? currentCat, selectedTable?.num ?? 0);
+    insertarPedidoFlow(productoFinal.nombre, p.categoria ?? currentCat, selectedTable?.num ?? 0, p.precio ? parsePrecio(p.precio) : 0);
     // ── Sincronizar con flowStore (Book Flow) ─────────────────
     agregarPlatoFlow({
       mesa: selectedTable?.num ?? 0,
