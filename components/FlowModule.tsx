@@ -13,9 +13,10 @@ type MainTab = 'live' | 'historial';
 
 interface FlowItem {
   id: string; order_id: string; status: 'pending' | 'preparing' | 'served';
-  quantity: number; notes: string | null; created_at: string; updated_at: string;
+  quantity: number; notes: string | null; nombre_plato?: string | null;
+  created_at: string; updated_at: string;
   table_id: number | null; menu_name: string | null; category: string | null;
-  mesero?: string | null; estacion?: string | null;
+  mesero?: string | null; estacion?: string | null; cocinero?: string | null;
 }
 
 interface PedidoDia {
@@ -102,7 +103,7 @@ export default function FlowModule() {
 
       const { data: ois } = await supabase
         .from('order_items')
-        .select('id,order_id,status,quantity,notes,created_at,updated_at,mesero,estacion')
+        .select('id,order_id,status,quantity,notes,nombre_plato,created_at,updated_at,mesero,estacion,cocinero,precio_unitario:price_at_time')
         .in('order_id', orders.map(o => o.id))
         .neq('status','cancelled')
         .order('created_at', { ascending: false });
@@ -153,7 +154,7 @@ export default function FlowModule() {
     if (status === 'served') fetchPedidosDia();
   };
 
-  const getNombre = (item: FlowItem) => item.menu_name ?? item.notes ?? 'Plato';
+  const getNombre = (item: FlowItem) => item.nombre_plato ?? item.menu_name ?? item.notes ?? 'Plato';
   const getStation = (item: FlowItem): Station => inferStation(item.estacion ?? item.category ?? item.menu_name ?? item.notes ?? '');
   const filtered = activeStation === 'ALL' ? items : items.filter(i => getStation(i) === activeStation);
   const count = (s: Station) => s === 'ALL' ? items.length : items.filter(i => getStation(i) === s).length;
@@ -255,6 +256,7 @@ export default function FlowModule() {
                           <span style={{ background:'rgba(255,255,255,.05)', padding:'2px 9px', borderRadius:8, fontWeight:900, fontStyle:'italic', fontSize:13, color:'#3b82f6' }}>M{item.table_id ?? '?'}</span>
                           <span style={{ fontSize:9, color: ESTACION_COLOR[stationLabel] || '#4b5563', textTransform:'uppercase', fontWeight:700 }}>{stationLabel}</span>
                           {item.mesero && <span style={{ fontSize:9, color:'#6b7280', background:'rgba(255,255,255,.05)', padding:'2px 6px', borderRadius:20 }}>👤 {item.mesero}</span>}
+                          {item.cocinero && <span style={{ fontSize:9, color: ESTACION_COLOR[getStation(item)] || '#9ca3af', background:'rgba(255,255,255,.04)', padding:'2px 6px', borderRadius:20 }}>👨‍🍳 {item.cocinero.split(' ').slice(-2).join(' ')}</span>}
                         </div>
                         <div style={{ display:'flex', alignItems:'center', gap:4, fontFamily:'monospace', fontSize:12, fontWeight:900, color: isAlert ? '#ef4444' : isPreparing ? '#60a5fa' : '#6b7280' }}>
                           <Clock size={11}/> {mins}:{secs.toString().padStart(2,'0')}
