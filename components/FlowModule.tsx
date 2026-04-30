@@ -14,7 +14,7 @@ type MainTab = 'live' | 'historial';
 interface FlowItem {
   id: string; order_id: string; status: 'pending' | 'preparing' | 'served';
   quantity: number; notes: string | null; nombre_plato?: string | null;
-  created_at: string; updated_at: string;
+  created_at: string; updated_at: string; tiempo_inicio?: string | null;
   table_id: number | null; menu_name: string | null; category: string | null;
   mesero?: string | null; estacion?: string | null; cocinero?: string | null;
 }
@@ -103,7 +103,7 @@ export default function FlowModule() {
 
       const { data: ois } = await supabase
         .from('order_items')
-        .select('id,order_id,status,quantity,notes,nombre_plato,created_at,updated_at,mesero,estacion,cocinero,precio_unitario:price_at_time')
+        .select('id,order_id,status,quantity,notes,nombre_plato,created_at,updated_at,tiempo_inicio,mesero,estacion,cocinero,precio_unitario:price_at_time')
         .in('order_id', orders.map(o => o.id))
         .neq('status','cancelled')
         .order('created_at', { ascending: false });
@@ -149,9 +149,34 @@ export default function FlowModule() {
     const now_ts = new Date().toISOString();
     const updates: any = { status, updated_at: now_ts };
     if (status === 'preparing') updates.tiempo_inicio = now_ts;
-    if (status === 'served') updates.tiempo_listo = now_ts;
+    if (status === 'served') {
+      updates.tiempo_listo = now_ts;
+      // Calcular duración real
+      const item = items.find(i => i.id === id);
+      if (item?.updated_at && status === 'served') {
+        const startTime = item.tiempo_inicio || item.updated_at;
+        const dur = Math.floor((new Date(now_ts).getTime() - new Date(startTime).getTime()) / 1000);
+        updates.duracion_seg = dur > 0 ? dur : null;
+      }
+    }
     await supabase.from('order_items').update(updates).eq('id', id);
-    if (status === 'served') fetchPedidosDia();
+    
+    // Cuando listo → insertar alerta en flow_alertas para el POS
+    if (status === 'served') {
+      const item = items.find(i => i.id === id);
+      if (item) {
+        await supabase.from('flow_alertas').insert({
+          restaurante_id: 6,
+          mesa_num: item.table_id,
+          plato: getNombre(item),
+          mesero: item.mesero || null,
+          cocinero: item.cocinero || null,
+          estacion: item.estacion || getStation(item),
+          leida: false,
+        });
+      }
+      fetchPedidosDia();
+    }
   };
 
   const getNombre = (item: FlowItem) => item.nombre_plato ?? item.menu_name ?? item.notes ?? 'Plato';
@@ -267,11 +292,16 @@ export default function FlowModule() {
                           {item.quantity}x {getNombre(item)}
                         </div>
                         {/* Hora real del pedido */}
-                        <div style={{ fontSize:10, color:'#4b5563', display:'flex', alignItems:'center', gap:6 }}>
-                          <Clock size={9}/>
-                          {new Date(item.created_at).toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit', hour12:true })}
-                          <span style={{ width:3, height:3, borderRadius:'50%', background: isPreparing ? '#3b82f6' : '#374151', display:'inline-block' }}/>
-                          <span style={{ color: isPreparing ? '#60a5fa' : '#374151', textTransform:'uppercase' }}>{item.status}</span>
+                        <div style={{ fontSize:10, color:'#4b5563', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                          <span style={{ display:'flex', alignItems:'center', gap:3 }}>
+                            <Clock size={9}/> Pedido: {new Date(item.created_at).toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit', hour12:true })}
+                          </span>
+                          {item.tiempo_inicio && (
+                            <span style={{ display:'flex', alignItems:'center', gap:3, color: isPreparing ? '#f59e0b' : '#6b7280' }}>
+                              🍳 Prod: {Math.floor((now - new Date(item.tiempo_inicio).getTime())/60000)}m {Math.floor(((now - new Date(item.tiempo_inicio).getTime())%60000)/1000)}s
+                            </span>
+                          )}
+                          <span style={{ marginLeft:'auto', color: isPreparing ? '#60a5fa' : item.status==='served'?'#22c55e':'#374151', fontWeight:700, fontSize:9, textTransform:'uppercase' }}>{item.status==='pending'?'⏳ Pendiente':item.status==='preparing'?'🔥 Prep.':'✅ Listo'}</span>
                         </div>
                       </div>
                       <div style={{ padding:'0 14px 14px', display:'flex', gap:6 }}>
