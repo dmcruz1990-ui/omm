@@ -3857,7 +3857,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           )}
         </div>
       </div>
-    </div>
 
       {/* ══ MODAL HISTORIAL DE PEDIDOS ══ */}
       {showHistorial && (
