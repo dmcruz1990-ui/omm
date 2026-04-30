@@ -676,6 +676,25 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     return ()=>{ supabase.removeChannel(ch); };
   }, []);
 
+  // ── Flow alertas (platos listos) ─────────────────────────────────────
+  const [flowAlertas, setFlowAlertas] = useState<any[]>([]);
+  const [historialPedidos, setHistorialPedidos] = useState<any[]>([]);
+  const [showHistorial, setShowHistorial] = useState(false);
+  // Audio para alertas
+  const playAlert = useCallback(() => {
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain); gain.connect(ctx.destination);
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      osc.frequency.setValueAtTime(660, ctx.currentTime + 0.1);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
+    } catch(e) {}
+  }, []);
+
   const showToast = useCallback((msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(''), 2500);
@@ -683,6 +702,81 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
   // ── Ticket del día ─────────────────────────────────────
   const calcularPuntos = (monto: number) => Math.floor(monto / 10000);
+
+  // ── Suscripción a alertas de platos listos (Flow → POS) ─────────────
+  useEffect(() => {
+    const fetchAlertas = async () => {
+      const { data } = await supabase.from('flow_alertas')
+        .select('*').eq('leida', false).eq('restaurante_id', 6)
+        .order('created_at', { ascending: false });
+      if (data && data.length > 0) {
+        const prevLen = flowAlertas.length;
+        setFlowAlertas(data);
+        if (data.length > prevLen) playAlert();
+      } else {
+        setFlowAlertas([]);
+      }
+    };
+    fetchAlertas();
+    const ch = supabase.channel('flow-alertas-pos')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'flow_alertas' }, (payload) => {
+        setFlowAlertas(p => [payload.new, ...p]);
+        playAlert();
+        showToast(`🍽️ ${(payload.new as any).plato} — Mesa ${(payload.new as any).mesa_num} listo para entrega`);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, []);
+
+  // ── Historial de facturas del mesero ──────────────────────────────────
+  const fetchHistorial = async () => {
+    const { data } = await supabase.from('facturacion')
+      .select('*').eq('restaurante_id', 6)
+      .order('cerrada_en', { ascending: false }).limit(50);
+    if (data) setHistorialPedidos(data);
+  };
+
+  // ── Guardar factura en BD ────────────────────────────────────────────
+  const guardarFactura = async (metodoPago: string) => {
+    try {
+      const ahora = new Date();
+      const itemsData = itemsCliente.map((it:any) => ({
+        nombre: it.nombre, precio: it.precio, estado: it.estado
+      }));
+      const desc = Math.round(totalCliente * (posDescuento||0) / 100);
+      const totalFinal = totalCliente - desc + propinaCliente;
+      const meseroNombre = profile?.nombre_completo || 'Mesero';
+      
+      // Guardar en facturacion
+      await supabase.from('facturacion').insert({
+        restaurante_id: 6,
+        mesa_num: mesaCliente?.num ?? 0,
+        mesero: meseroNombre,
+        items: itemsData,
+        subtotal: Math.round(totalCliente),
+        iva: Math.round(totalCliente * 0.08),
+        propina: Math.round(propinaCliente),
+        descuento: desc,
+        total: Math.round(totalFinal),
+        metodo_pago: metodoPago,
+        factura_tipo: facturaTipo,
+        cliente_email: facturaCorreo || null,
+        puntos_generados: calcularPuntos(totalFinal),
+        cerrada_en: ahora.toISOString(),
+        fecha: ahora.toISOString().split('T')[0],
+        hora: ahora.toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' }),
+      });
+
+      // Cerrar la orden en Supabase
+      const { data: ordenes } = await supabase.from('orders').select('id')
+        .eq('table_id', mesaCliente?.num ?? 0).eq('status','open').limit(1);
+      if (ordenes?.[0]) {
+        await supabase.from('orders').update({ status:'closed' }).eq('id', ordenes[0].id);
+        await supabase.from('order_items').update({ status:'served' })
+          .eq('order_id', ordenes[0].id).neq('status','cancelled');
+      }
+    } catch(e) { console.error('guardarFactura error:', e); }
+  };
 
   const fetchTicketDia = async () => {
     try {
@@ -1264,10 +1358,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   {/* Monto descuento */}
                   {posCategDesc && (
                     <div className="flex flex-wrap gap-1 mb-1.5">
-                      {[0, 5, 10, 15, 20, 25, 30, 50, 100].map(p => (
+                      {[0, 10, 20, 30, 50, 100].map(p => (
                         <button key={p} onClick={() => { setPosDescuento(p); }}
-                          className={`px-2 py-1 rounded-md text-[10px] font-bold border transition-all ${posDescuento === p ? 'border-[#d4943a] bg-[#d4943a]/15 text-[#d4943a]' : 'border-[#2a2a2a] text-[#606060] hover:border-[#606060]'}`}>
-                          {p === 0 ? '—' : p === 100 ? '100%' : `${p}%`}
+                          className={`flex-1 py-2 rounded-lg text-[11px] font-black border transition-all ${posDescuento === p ? 'border-[#d4943a] bg-[#d4943a]/15 text-[#d4943a]' : 'border-[#2a2a2a] text-[#606060] hover:border-[#606060]'}`}>
+                          {p === 0 ? '—' : p === 100 ? '🆓 100%' : `${p}%`}
                         </button>
                       ))}
                     </div>
@@ -1922,6 +2016,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           {/* Efectivo */}
           <button onClick={async()=>{
               await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:profile?.nombre_completo||'Mesero', total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Efectivo', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null });
+              await guardarFactura('Efectivo');
               setClientePaso('encuesta');
             }} style={{ width: '100%', padding: '18px 20px', borderRadius: 16, border: `1px solid ${S.border}`, background: '#fff', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <div style={{ width: 24, height: 24, borderRadius: '50%', border: `1.5px solid ${S.border}` }}></div>
@@ -1967,7 +2062,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               <div style={{ fontSize:11, color:pagoEfectivo+pagoTarjeta===totalCliente?'#3dba6f':'#e05050', marginBottom:8 }}>
                 {pagoEfectivo+pagoTarjeta===totalCliente?'✓ Montos correctos':`Falta: $${formatPrecio(totalCliente-pagoEfectivo-pagoTarjeta)}`}
               </div>
-              <button onClick={()=>{ if(pagoEfectivo+pagoTarjeta===totalCliente) setClientePaso('encuesta'); else showToast('⚠️ Los montos no coinciden'); }}
+              <button onClick={()=>{ if(pagoEfectivo+pagoTarjeta===totalCliente){ await guardarFactura('Mixto'); setClientePaso('encuesta'); }; else showToast('⚠️ Los montos no coinciden'); }}
                 style={{ width:'100%', padding:'10px', borderRadius:12, border:'none', background:pagoEfectivo+pagoTarjeta===totalCliente?'#3dba6f':'#ccc', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
                 ✓ Confirmar pago mixto
               </button>
@@ -2588,43 +2683,31 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
 
       {/* LEFT PANEL */}
       <div className="bg-[#141414] border-r border-[#2a2a2a] flex flex-col shrink-0" style={{ width: 200 }}>
-        <div className="p-3 px-3 pb-2.5 flex items-center gap-2 border-b border-[#2a2a2a] shrink-0 relative">
-          {/* Nombre y rol del usuario */}
-          <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#d4943a] to-[#b07820] flex items-center justify-center text-[12px] font-black text-black shrink-0 font-['Syne']">
-              {(profile?.nombre_completo || profile?.role || 'U').charAt(0).toUpperCase()}
-            </div>
-            <div className="min-w-0">
-              <div className="text-[12px] font-bold text-[#f0f0f0] truncate leading-tight">
-                {profile?.nombre_completo?.split(' ')[0] || 'Usuario'}
-              </div>
-              <div className="text-[9px] text-[#d4943a] font-bold uppercase tracking-wider">
-                {profile?.role === 'admin' ? 'Admin' : profile?.role === 'gerencia' ? 'Gerencia' : profile?.role === 'desarrollo' ? 'Dev' : 'Mesero'}
-              </div>
-            </div>
-          </div>
-          <div className="flex gap-1.5 shrink-0">
-            {/* Cerebro — abre tab IA en right panel */}
+        <div className="p-2 px-3 pb-2 flex items-center gap-2 border-b border-[#2a2a2a] shrink-0 relative">
+          {/* Solo Cerebro + Campana de alertas Flow en izquierda */}
+          <span className="text-[11px] font-bold text-[#a0a0a0]">🪑 Mesas</span>
+          <div className="flex gap-1.5 ml-auto shrink-0">
+            {/* Cerebro */}
             <div onClick={() => { setRightTab('IA'); onOpenVisionAI?.(); }}
-              className="w-[30px] h-[30px] rounded-lg bg-[#1c1c1c] border border-[#2a2a2a] flex items-center justify-center cursor-pointer text-[#a0a0a0] hover:text-[#d4943a] hover:border-[#d4943a] transition-all"
+              className="w-[28px] h-[28px] rounded-lg bg-[#1c1c1c] border border-[#2a2a2a] flex items-center justify-center cursor-pointer text-[#a0a0a0] hover:text-[#d4943a] hover:border-[#d4943a] transition-all"
               title="Cerebro Nexum IA">
-              <Sparkles size={14} />
+              <Sparkles size={13} />
             </div>
-            {/* Notificaciones */}
+            {/* Campana Flow — alertas platos listos */}
             <div onClick={() => setShowNotifications(!showNotifications)}
-              className={`w-[30px] h-[30px] rounded-lg border flex items-center justify-center cursor-pointer transition-all relative ${showNotifications ? 'bg-[#d4943a]/10 border-[#d4943a] text-[#d4943a]' : 'bg-[#1c1c1c] border-[#2a2a2a] text-[#a0a0a0] hover:text-[#d4943a] hover:border-[#d4943a]'}`}
-              title="Notificaciones">
-              <BellRing size={14} />
-              <div className="absolute top-1 right-1 w-[6px] h-[6px] rounded-full bg-[#e05050] border border-[#141414]"></div>
+              className={`w-[28px] h-[28px] rounded-lg border flex items-center justify-center cursor-pointer transition-all relative ${flowAlertas.length > 0 ? 'bg-[#3dba6f]/15 border-[#3dba6f] text-[#3dba6f] animate-pulse' : showNotifications ? 'bg-[#d4943a]/10 border-[#d4943a] text-[#d4943a]' : 'bg-[#1c1c1c] border-[#2a2a2a] text-[#a0a0a0] hover:text-[#3dba6f] hover:border-[#3dba6f]'}`}
+              title="Alertas platos listos">
+              <BellRing size={13} />
+              {flowAlertas.length > 0 && <div className="absolute -top-1 -right-1 w-[14px] h-[14px] rounded-full bg-[#3dba6f] flex items-center justify-center text-[8px] font-black text-black">{flowAlertas.length}</div>}
             </div>
           </div>
           {showNotifications && (
-            <div className="absolute top-[52px] left-2 w-[300px] bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl shadow-2xl z-50 overflow-hidden" style={{maxHeight:400,overflowY:'auto'}}>
+            <div className="absolute top-[44px] left-2 w-[310px] bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl shadow-2xl z-50 overflow-hidden" style={{maxHeight:420,overflowY:'auto'}}>
               <div className="p-3 border-b border-[#2a2a2a] flex justify-between items-center bg-[#141414]">
                 <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-[#e05050] animate-pulse inline-block"/>
-                  <span className="font-['Syne'] text-[12px] font-bold">Centro de Notificaciones</span>
-                  {notifsBadge>0 && <span className="bg-[#e05050] text-white text-[9px] font-black px-1.5 rounded-full">{notifsBadge}</span>}
+                  <span className={`w-2 h-2 rounded-full inline-block ${flowAlertas.length>0?'bg-[#3dba6f] animate-pulse':'bg-[#606060]'}`}/>
+                  <span className="font-['Syne'] text-[12px] font-bold">🍽️ Platos Listos para Entrega</span>
+                  {flowAlertas.length>0 && <span className="bg-[#3dba6f] text-black text-[9px] font-black px-1.5 rounded-full">{flowAlertas.length}</span>}
                 </div>
                 <div className="flex gap-2 items-center">
                   <button onClick={async()=>{
@@ -2634,37 +2717,31 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                   <span onClick={() => setShowNotifications(false)} className="text-[10px] text-[#606060] cursor-pointer hover:text-white">✕</span>
                 </div>
               </div>
-              {/* Notificaciones de Supabase */}
-              {notifs.length === 0 && notifications.every(n=>true) && (
-                <div className="p-4 text-center text-[11px] text-[#606060]">Sin notificaciones nuevas</div>
+              {/* Platos listos de Flow */}
+              {flowAlertas.length === 0 && (
+                <div className="p-5 text-center text-[11px] text-[#606060]">
+                  <div className="text-2xl mb-2">✅</div>
+                  <div>Todas las entregas al día</div>
+                </div>
               )}
-              {notifs.map((n:any) => (
-                <div key={n.id} className="p-3 border-b border-[#1a1a1a] hover:bg-[#222] cursor-pointer flex gap-2.5"
-                  style={{background: n.leida ? 'transparent' : 'rgba(212,148,58,0.04)'}}>
-                  <span className="text-[16px] shrink-0 mt-0.5">
-                    {n.tipo==='stock_86'?'⚠️':n.tipo==='alerta_patio'?'🏠':n.tipo==='encuesta_negativa'?'⭐':n.tipo==='maître'?'👔':'🔔'}
-                  </span>
+              {flowAlertas.map((a:any) => (
+                <div key={a.id} className="p-3 border-b border-[#1a1a1a] hover:bg-[#222] cursor-pointer flex gap-2.5"
+                  style={{background:'rgba(61,186,111,0.04)'}}>
+                  <span className="text-[18px] shrink-0">🍽️</span>
                   <div className="flex-1 min-w-0">
                     <div className="flex justify-between gap-2">
-                      <span className="text-[11px] font-bold text-[#f0f0f0] truncate">{n.titulo||'Notificación'}</span>
-                      <span className="text-[9px] text-[#606060] shrink-0">{new Date(n.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>
+                      <span className="text-[12px] font-bold text-[#3dba6f] truncate">{a.plato}</span>
+                      <span className="text-[10px] font-black text-[#3dba6f] shrink-0">M{a.mesa_num}</span>
                     </div>
-                    {n.mensaje && <div className="text-[10px] text-[#a0a0a0] mt-0.5 truncate">{n.mensaje}</div>}
-                    {!n.leida && <div className="w-1.5 h-1.5 rounded-full bg-[#d4943a] mt-1"/>}
-                  </div>
-                </div>
-              ))}
-              {/* Notificaciones locales hardcoded como fallback */}
-              {notifs.length === 0 && notifications.map(n => (
-                <div key={n.id} className="p-3 border-b border-[#2a2a2a] hover:bg-[#222] cursor-pointer flex gap-3">
-                  <span className="text-[14px] mt-0.5">{n.type === 'alert' ? '⚠️' : n.type === 'request' ? '🛎️' : 'ℹ️'}</span>
-                  <div className="flex-1">
-                    <div className="flex justify-between mb-0.5">
-                      <span className={`text-[12px] font-bold ${n.type === 'alert' ? 'text-[#e05050]' : 'text-[#f0f0f0]'}`}>{n.title}</span>
-                      <span className="text-[9px] text-[#606060]">{n.time}</span>
+                    <div className="text-[10px] text-[#a0a0a0] mt-0.5">
+                      👤 {a.mesero||'—'} · 👨‍🍳 {a.cocinero||'—'}
                     </div>
-                    <div className="text-[11px] text-[#a0a0a0]">{n.desc}</div>
+                    <div className="text-[9px] text-[#606060] mt-0.5">
+                      {new Date(a.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})} · {a.estacion||'—'}
+                    </div>
                   </div>
+                  <button onClick={async(e)=>{ e.stopPropagation(); await supabase.from('flow_alertas').update({leida:true}).eq('id',a.id); setFlowAlertas(p=>p.filter((x:any)=>x.id!==a.id)); }}
+                    className="text-[10px] text-[#606060] hover:text-[#3dba6f] px-1 self-start mt-1">✓</button>
                 </div>
               ))}
             </div>
@@ -3165,11 +3242,26 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
 
       {/* RIGHT PANEL — FIJO SIEMPRE VISIBLE */}
       <div className="bg-[#141414] border-l border-[#2a2a2a] flex flex-col shrink-0" style={{ width: 300 }}>
+        {/* ── Barra usuario arriba derecha ── */}
+        <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2 shrink-0 bg-[#0f0f0f]">
+          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#d4943a] to-[#b07820] flex items-center justify-center text-[11px] font-black text-black">
+            {(profile?.nombre_completo || 'U').charAt(0).toUpperCase()}
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="text-[11px] font-bold text-[#f0f0f0] truncate">{profile?.nombre_completo?.split(' ')[0] || 'Usuario'}</div>
+            <div className="text-[8px] text-[#d4943a] font-bold uppercase">{profile?.role === 'admin' ? 'Admin' : profile?.role === 'gerencia' ? 'Gerencia' : 'Mesero'}</div>
+          </div>
+          <button onClick={() => { setShowHistorial(true); fetchHistorial(); }}
+            className="w-[26px] h-[26px] rounded-lg bg-[#1c1c1c] border border-[#2a2a2a] flex items-center justify-center text-[#606060] hover:text-[#d4943a] hover:border-[#d4943a] transition-all"
+            title="Historial de pedidos">
+            <Receipt size={11}/>
+          </button>
+        </div>
         <div className="p-3 px-4 border-b border-[#2a2a2a] flex items-center gap-2.5 shrink-0">
-          <div className="w-[34px] h-[34px] rounded-lg bg-gradient-to-br from-[#d4943a] to-[#b07820] flex items-center justify-center text-[16px] font-extrabold text-black font-['Syne']">N</div>
+          <div className="w-[30px] h-[30px] rounded-lg bg-gradient-to-br from-[#d4943a] to-[#b07820] flex items-center justify-center text-[13px] font-extrabold text-black font-['Syne']">N</div>
           <div className="flex-1">
-            <div className="font-['Syne'] text-[14px] font-bold text-[#f0f0f0]">NEXUM</div>
-            <div className="text-[11px] text-[#a0a0a0]">AI Asistente</div>
+            <div className="font-['Syne'] text-[12px] font-bold text-[#f0f0f0]">NEXUM IA</div>
+            <div className="text-[9px] text-[#a0a0a0]">AI Asistente</div>
           </div>
           {/* Badge notificaciones */}
           <button onClick={()=>setShowNotifPanel(p=>!p)} style={{position:'relative',background:'none',border:'none',cursor:'pointer',padding:4}}>
@@ -3244,6 +3336,43 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
 
           {rightTab === 'IA' && (
             <>
+              {/* ══ BRIEF DEL DÍA ══ */}
+              <div className="bg-[#1c1c1c] border border-[#d4943a]/30 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2">
+                  <span className="text-[11px] font-black text-[#d4943a]">📋 Brief del día</span>
+                  <span className="ml-auto text-[9px] text-[#606060]">{new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'short'})}</span>
+                </div>
+                <div className="p-3 flex flex-col gap-2">
+                  {/* Platos del día */}
+                  <div className="text-[9px] text-[#606060] font-bold uppercase tracking-wider mb-1">Platos del día</div>
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {['🍱 Omakase Chef','🐟 Salmón Robata','🥩 Wagyū Premium','🍜 Ramen Especial'].map(p=>(
+                      <span key={p} className="text-[10px] bg-[#d4943a]/10 text-[#d4943a] border border-[#d4943a]/20 px-2 py-1 rounded-lg">{p}</span>
+                    ))}
+                  </div>
+                  {/* 86s */}
+                  <div className="text-[9px] text-[#e05050] font-bold uppercase tracking-wider mb-1">⚠️ En 86 (sin stock)</div>
+                  {tips86.length === 0 ? (
+                    <div className="text-[10px] text-[#606060]">Todo disponible ✓</div>
+                  ) : (
+                    <div className="flex flex-wrap gap-1">
+                      {tips86.map((t:any)=>(
+                        <span key={t.nombre||t.id} className="text-[10px] bg-[#e05050]/10 text-[#e05050] border border-[#e05050]/20 px-2 py-0.5 rounded-full">⚠ {t.nombre||t.name}</span>
+                      ))}
+                    </div>
+                  )}
+                  {/* Insight del día */}
+                  <div className="mt-2 p-2 bg-[#141414] rounded-lg border border-[#2a2a2a]">
+                    <div className="text-[9px] text-[#9b72ff] font-bold mb-1">✦ Insight Nexum IA</div>
+                    <div className="text-[10px] text-[#a0a0a0] leading-relaxed">
+                      {(ticketDia?.ordenes||0) > 10
+                        ? `Servicio activo — ${ticketDia.ordenes} cobros. Ticket prom: $${Math.round((ticketDia.ventas||0)/(ticketDia.ordenes||1)/1000)}k. Propina acum: $${Math.round((ticketDia.propinaTotal||0)/1000)}k`
+                        : `${new Date().getHours() < 16 ? 'Servicio de mediodía activo.' : 'Servicio de noche activo.'} ${(ticketDia?.pendientes||0)} mesas abiertas ahora.`}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* ══ INTELIGENCIA OPERACIONAL ══ */}
               {(tips86.length>0 || (ticketDia?.pendientes||0)>4) && (
                 <div className="bg-[#1c1c1c] border border-[#e05050]/25 rounded-xl overflow-hidden">
@@ -3476,7 +3605,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 <button onClick={() => abrirPOS(selectedTableId)} className="flex-[2] min-w-[80px] py-2 px-2.5 rounded-lg text-[12px] font-semibold bg-[#d4943a] text-black border border-[#d4943a] hover:bg-[#f0b45a] transition-all active:bg-[#3dba6f] active:border-[#3dba6f]">💳 Cobrar</button>
               </div>
               <div className="flex gap-2 flex-wrap">
-                <button onClick={() => showToast('↔ Transferir próximamente')} className="flex-1 min-w-[80px] py-2 px-2.5 rounded-lg text-[12px] font-semibold border border-[#2a2a2a] text-[#a0a0a0] hover:border-[#a0a0a0] transition-all active:bg-[#3dba6f]/20">↔ Transferir</button>
+
                 <button onClick={() => { showToast(`Mesa ${selectedTable.num} cerrada`); setOrder(prev => prev.filter(o => o.mesa !== selectedTable.num)); }} className="flex-1 min-w-[80px] py-2 px-2.5 rounded-lg text-[12px] font-semibold bg-[#e05050]/15 border border-[#e05050]/30 text-[#e05050] hover:bg-[#e05050]/25 transition-all active:bg-[#3dba6f]/20 active:border-[#3dba6f] active:text-[#3dba6f]">Cerrar Mesa</button>
               </div>
             </div>
@@ -3728,6 +3857,60 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           )}
         </div>
       </div>
+    </div>
+
+      {/* ══ MODAL HISTORIAL DE PEDIDOS ══ */}
+      {showHistorial && (
+        <div className="fixed inset-0 bg-black/70 z-[300] flex items-center justify-center p-4">
+          <div className="bg-[#141414] border border-[#2a2a2a] rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+            <div className="p-4 border-b border-[#2a2a2a] flex items-center justify-between">
+              <div>
+                <div className="font-['Syne'] text-[15px] font-black">📋 Historial de Pedidos</div>
+                <div className="text-[10px] text-[#606060] mt-0.5">{historialPedidos.length} cierres registrados</div>
+              </div>
+              <button onClick={() => setShowHistorial(false)} className="w-8 h-8 rounded-lg bg-[#1c1c1c] border border-[#2a2a2a] flex items-center justify-center text-[#606060] hover:text-white transition-all">✕</button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              {historialPedidos.length === 0 && (
+                <div className="p-12 text-center text-[#606060]">
+                  <div className="text-4xl mb-3">📋</div>
+                  <div className="text-[13px]">Sin pedidos cerrados aún</div>
+                </div>
+              )}
+              {historialPedidos.map((f:any) => (
+                <div key={f.id} className="p-4 border-b border-[#1a1a1a] hover:bg-[#1c1c1c] transition-all">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-[11px] font-black text-[#d4943a] bg-[#d4943a]/10 px-2 py-0.5 rounded-full">Mesa {f.mesa_num}</span>
+                        <span className="text-[10px] text-[#606060]">👤 {f.mesero}</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${f.metodo_pago==='Efectivo'?'bg-[#3dba6f]/10 text-[#3dba6f]':f.metodo_pago==='Datafono'?'bg-[#4a8fd4]/10 text-[#4a8fd4]':'bg-[#9b72ff]/10 text-[#9b72ff]'}`}>{f.metodo_pago}</span>
+                      </div>
+                      {/* Items */}
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {(f.items||[]).slice(0,4).map((it:any,i:number) => (
+                          <span key={i} className="text-[9px] bg-[#1c1c1c] border border-[#2a2a2a] px-2 py-0.5 rounded-full text-[#a0a0a0]">{it.nombre}</span>
+                        ))}
+                        {(f.items||[]).length > 4 && <span className="text-[9px] text-[#606060]">+{f.items.length-4} más</span>}
+                      </div>
+                      <div className="flex gap-4 text-[10px] text-[#606060]">
+                        <span>Subtotal: <span className="text-[#f0f0f0]">${(f.subtotal||0).toLocaleString('es-CO')}</span></span>
+                        {f.descuento > 0 && <span>Desc: <span className="text-[#e05050]">-${(f.descuento||0).toLocaleString('es-CO')}</span></span>}
+                        <span>Propina: <span className="text-[#3dba6f]">${(f.propina||0).toLocaleString('es-CO')}</span></span>
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-['Syne'] text-[16px] font-black text-[#f0f0f0]">${(f.total||0).toLocaleString('es-CO')}</div>
+                      <div className="text-[9px] text-[#606060] mt-0.5">{f.hora} · {f.fecha}</div>
+                      {f.puntos_generados > 0 && <div className="text-[9px] text-[#9b72ff] mt-0.5">✦ +{f.puntos_generados} pts</div>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
