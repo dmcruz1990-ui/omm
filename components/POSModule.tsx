@@ -2062,7 +2062,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               <div style={{ fontSize:11, color:pagoEfectivo+pagoTarjeta===totalCliente?'#3dba6f':'#e05050', marginBottom:8 }}>
                 {pagoEfectivo+pagoTarjeta===totalCliente?'✓ Montos correctos':`Falta: $${formatPrecio(totalCliente-pagoEfectivo-pagoTarjeta)}`}
               </div>
-              <button onClick={()=>{ if(pagoEfectivo+pagoTarjeta===totalCliente){ await guardarFactura('Mixto'); setClientePaso('encuesta'); }; else showToast('⚠️ Los montos no coinciden'); }}
+              <button onClick={()=>{ if(pagoEfectivo+pagoTarjeta===totalCliente){ guardarFactura('Mixto').then(()=>setClientePaso('encuesta')); } else showToast('⚠️ Los montos no coinciden'); }}
                 style={{ width:'100%', padding:'10px', borderRadius:12, border:'none', background:pagoEfectivo+pagoTarjeta===totalCliente?'#3dba6f':'#ccc', color:'#fff', fontSize:13, fontWeight:700, cursor:'pointer' }}>
                 ✓ Confirmar pago mixto
               </button>
