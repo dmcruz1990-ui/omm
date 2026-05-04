@@ -31,6 +31,7 @@ const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
 const SupplyModule = lazy(() => import('./components/SupplyModule.tsx')); // Supply IA real
 const MarketplaceModule = lazy(() => import('./components/MarketplaceModule.tsx'));
 const OhYeahAdminModule = lazy(() => import('./components/OhYeahAdminModule.tsx'));
+const OhYeahRestauranteModule = lazy(() => import('./components/OhYeahRestauranteModule.tsx'));
 const CareModule = lazy(() => import('./components/CareModule.tsx'));
 const FinanceHub = lazy(() => import('./components/FinanceHub.tsx'));
 const CommandModule = lazy(() => import('./components/CommandModule.tsx'));
@@ -240,6 +241,7 @@ const Dashboard: React.FC = () => {
                 { type: ModuleType.RESERVE,        label: 'RESERVE',       sub: 'MAPA & AGENDA',      icon: <CalendarDays size={18} /> },
                  { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> },
                  { type: ModuleType.OH_YEAH_ADMIN,  label: 'OH YEAH ADMIN', sub: 'RESTAURANTES',       icon: <Store size={18} /> },
+                 { type: ModuleType.OH_YEAH_RESTAURANTE, label: 'OH YEAH REG.', sub: 'REGISTRO EXTERNO', icon: <Store size={18} /> },
                ]
              },
              {
@@ -386,6 +388,7 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.CONFIG         && <SettingsModule />}
                 {activeModule === ModuleType.MARKETPLACE    && <MarketplaceModule />}
                 {activeModule === ModuleType.OH_YEAH_ADMIN   && <OhYeahAdminModule />}
+                {activeModule === ModuleType.OH_YEAH_RESTAURANTE && <OhYeahRestauranteModule />}
               </div>
             )}
           </Suspense>
