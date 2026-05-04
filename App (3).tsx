@@ -1,0 +1,426 @@
+import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
+import { 
+  ShoppingCart, CalendarDays, Users, ChefHat, HeartPulse, 
+  Truck, DollarSign, Globe, Zap, Settings, LogOut, Contact, 
+  Layers, Briefcase,
+  LayoutPanelLeft,
+  Smartphone,
+  BellRing,
+  X,
+  Brain,
+  BarChart3,
+  Receipt,
+  Store,
+  Loader2,
+  ShieldCheck,
+  Sparkles,
+} from 'lucide-react';
+import { supabase } from './lib/supabase.ts';
+import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
+import { ModuleType, Table, RitualTask, UserRole } from './types.ts';
+import { useMediaPipe } from './hooks/useMediaPipe.ts';
+import Login from './components/Login.tsx';
+
+const OhYeahPage = lazy(() => import('./components/OhYeahPage.tsx'));
+const MobileManagerApp = lazy(() => import('./components/MobileManagerApp.tsx'));
+const ReserveModule = lazy(() => import('./components/ReserveModule.tsx'));
+const MenuModule = lazy(() => import('./components/MenuModule.tsx'));
+const RelationshipModule = lazy(() => import('./components/RelationshipModule.tsx'));
+const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
+const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
+const SupplyModule = lazy(() => import('./components/SupplyModule.tsx')); // Supply IA real
+const MarketplaceModule = lazy(() => import('./components/MarketplaceModule.tsx'));
+const OhYeahAdminModule = lazy(() => import('./components/OhYeahAdminModule.tsx'));
+const CareModule = lazy(() => import('./components/CareModule.tsx'));
+const FinanceHub = lazy(() => import('./components/FinanceHub.tsx'));
+const CommandModule = lazy(() => import('./components/CommandModule.tsx'));
+const SurveillanceModule = lazy(() => import('./components/SurveillanceModule.tsx'));
+// ── CAMBIO 1: StaffHubModule → TeamIQ ──────────────────────────────────────
+const TeamIQ = lazy(() => import('./components/TeamIQ.tsx'));
+const SettingsModule = lazy(() => import('./components/SettingsModule.tsx'));
+const PayrollModule = lazy(() => import('./components/PayrollModule.tsx'));
+const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'));
+const DIANModule = lazy(() => import('./components/DIANModule.tsx'));
+const ContabilidadModule = lazy(() => import('./components/ContabilidadModule.tsx'));
+const OhYeahAdmin = lazy(() => import('./components/OhYeahAdmin.tsx'));
+
+const ModuleLoader = () => (
+  <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
+    <Loader2 className="text-blue-600 animate-spin mb-4" size={32} />
+    <p className="text-[10px] font-black uppercase tracking-widest italic text-white">Sincronizando Core...</p>
+  </div>
+);
+
+const Dashboard: React.FC = () => {
+  const { profile, signOut } = useAuth();
+  const [activeModule, setActiveModule] = useState<ModuleType>(ModuleType.SERVICE_OS);
+  const [tables, setTables] = useState<Table[]>([]);
+  const [ritualTasks, setRitualTasks] = useState<RitualTask[]>([]);
+  const [dashboardLoading, setDashboardLoading] = useState(true);
+  const [isClientView, setIsClientView] = useState(false);
+  const [isCockpitOpen, setIsCockpitOpen] = useState(false);
+  
+  const [isVisionAIOpen, setIsVisionAIOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false); // retráctil por defecto cerrado
+
+  const isAdmin = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
+
+  useEffect(() => {
+    const checkView = () => {
+      const isOhYeah = window.location.hash.includes('/oh-yeah');
+      if (isOhYeah && !isAdmin) {
+        window.location.hash = '';
+        setIsClientView(false);
+      } else {
+        setIsClientView(isOhYeah);
+      }
+    };
+    checkView();
+    window.addEventListener('hashchange', checkView);
+    return () => window.removeEventListener('hashchange', checkView);
+  }, [isAdmin]);
+
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
+
+  const getVisibleModules = (role: UserRole = 'mesero'): ModuleType[] => {
+    switch (role) {
+      case 'admin':
+      case 'desarrollo':
+        return Object.values(ModuleType);
+      case 'gerencia':
+        return [
+          ModuleType.RESERVE, 
+          ModuleType.RELATIONSHIP, 
+          ModuleType.SERVICE_OS,
+          ModuleType.CARE,
+          ModuleType.FINANCE_HUB,
+          ModuleType.COMMAND,
+          ModuleType.STAFF_HUB,
+          ModuleType.PAYROLL,
+          ModuleType.SUPPLY,
+          ModuleType.MARKETPLACE,
+          ModuleType.FLOW,
+          ModuleType.MOBILE_MGR,
+          ModuleType.OH_YEAH
+        ];
+      case 'mesero':
+        return [
+          ModuleType.SERVICE_OS, 
+          ModuleType.RESERVE, 
+          ModuleType.RELATIONSHIP,
+          ModuleType.MARKETPLACE,
+          ModuleType.STAFF_HUB,
+          ModuleType.OH_YEAH
+        ];
+      case 'cocina':
+        return [
+          ModuleType.FLOW, 
+          ModuleType.SUPPLY,
+          ModuleType.STAFF_HUB
+        ];
+      default:
+        return [ModuleType.SERVICE_OS];
+    }
+  };
+
+  const visibleModulesList = getVisibleModules(profile?.role);
+
+  useEffect(() => {
+    if (visibleModulesList.length > 0 && !visibleModulesList.includes(activeModule)) {
+      setActiveModule(visibleModulesList[0]);
+    }
+  }, [profile?.role, activeModule, visibleModulesList]);
+
+  const fetchData = async () => {
+    try {
+      const { data: tablesData } = await supabase
+        .from('tables')
+        .select(`*`)
+        .order('id', { ascending: true });
+
+      setTables(tablesData || []);
+      
+      const { data: tasksData } = await supabase.from('ritual_tasks').select('*').eq('status', 'active');
+      setRitualTasks(tasksData || []);
+    } catch {
+      console.warn("Sync Error");
+    } finally {
+      setDashboardLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+    const channel = supabase.channel('main-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => fetchData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ritual_tasks' }, () => fetchData())
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
+
+  const handleUpdateTable = async (tableId: number, updates: Partial<Table>) => {
+    await supabase.from('tables').update(updates).eq('id', tableId);
+  };
+
+  if (dashboardLoading) return (
+    <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
+       <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
+       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic text-white">Sincronizando Core Intelligence...</p>
+    </div>
+  );
+
+  if ((isClientView || activeModule === ModuleType.OH_YEAH)) return (
+    <Suspense fallback={<ModuleLoader />}>
+      <OhYeahPage onExit={() => setActiveModule(ModuleType.SERVICE_OS)} />
+    </Suspense>
+  );
+
+  if (activeModule === ModuleType.MOBILE_MGR && isAdmin) {
+    return (
+      <Suspense fallback={<ModuleLoader />}>
+        <MobileManagerApp onExit={() => setActiveModule(ModuleType.SERVICE_OS)} />
+      </Suspense>
+    );
+  }
+
+  return (
+    <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0c] text-white font-sans text-left">
+      <nav className="w-[300px] bg-[#0a0a0c] border-r border-white/5 flex flex-col px-6 py-8 z-50 overflow-y-auto custom-scrollbar">
+        <div className="flex items-center gap-4 mb-12 px-2">
+          <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/30">
+            <Zap className="text-white" size={24} fill="currentColor" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-black tracking-tighter italic leading-none">NEXUM <span className="text-blue-600">V4</span></h1>
+            <p className="text-[9px] text-gray-500 font-bold uppercase tracking-[0.2em] mt-1">OPERATIONAL CORE</p>
+          </div>
+        </div>
+
+        <div className="mb-6 px-4">
+           <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 flex items-center justify-between">
+              <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Rol:</span>
+              <span className="text-[9px] font-black text-blue-500 uppercase italic">{profile?.role}</span>
+           </div>
+        </div>
+
+        {isAdmin && (
+          <div className="mb-8 px-2 space-y-3">
+             <button 
+              onClick={() => setIsCockpitOpen(true)}
+              className="w-full bg-gradient-to-br from-blue-600 to-blue-800 p-5 rounded-[1.8rem] flex items-center gap-4 shadow-xl border border-white/10 hover:scale-[1.02] transition-all"
+             >
+                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white"><LayoutPanelLeft size={20} /></div>
+                <div className="text-left">
+                   <span className="text-[10px] font-black uppercase tracking-widest text-white block">Nexum Copilot</span>
+                   <span className="text-[7px] font-bold uppercase text-blue-200">Business Intelligence</span>
+                </div>
+             </button>
+
+             <button 
+              onClick={() => setActiveModule(ModuleType.MOBILE_MGR)}
+              className={`w-full p-5 rounded-[1.8rem] flex items-center gap-4 border transition-all group ${activeModule === ModuleType.MOBILE_MGR ? 'bg-blue-600 border-blue-400 text-white shadow-xl' : 'bg-white/[0.03] border-white/5 hover:bg-blue-600/10'}`}
+             >
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${activeModule === ModuleType.MOBILE_MGR ? 'bg-white/20 text-white' : 'bg-blue-600/20 text-blue-500 group-hover:bg-blue-600 group-hover:text-white'}`}><Smartphone size={20} /></div>
+                <div className="text-left">
+                   <span className={`text-[10px] font-black uppercase tracking-widest block italic ${activeModule === ModuleType.MOBILE_MGR ? 'text-white' : 'text-white'}`}>MODO ANDROID</span>
+                   <span className={`text-[7px] font-bold uppercase ${activeModule === ModuleType.MOBILE_MGR ? 'text-blue-100' : 'text-gray-500'}`}>Vista Gerente Mobile</span>
+                </div>
+             </button>
+          </div>
+        )}
+
+        <div className="space-y-10 mb-10">
+          {[
+            {
+              id: 'marketing', label: 'PAQUETE MARKETING',
+              icon: <Sparkles size={14} className="text-blue-500" />,
+              modules: [
+                { type: ModuleType.OH_YEAH,       label: 'OH YEAH! B2C',  sub: 'VISTA CLIENTE',      icon: <Smartphone size={18} /> },
+                { type: ModuleType.RESERVE,        label: 'RESERVE',       sub: 'MAPA & AGENDA',      icon: <CalendarDays size={18} /> },
+                 { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> },
+                 { type: ModuleType.OH_YEAH_ADMIN,  label: 'OH YEAH ADMIN', sub: 'RESTAURANTES',       icon: <Store size={18} /> },
+               ]
+             },
+             {
+               id: 'operaciones', label: 'PAQUETE OPERACIONES',
+              modules: [
+                { type: ModuleType.SERVICE_OS,   label: 'SERVICE OS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
+                { type: ModuleType.FLOW,         label: 'FLOW',         sub: 'ESTACIONES',       icon: <ChefHat size={18} /> },
+              ]
+            },
+            {
+              id: 'control', label: 'CONTROL & SUMINISTROS',
+              icon: <ShieldCheck size={14} className="text-green-500" />,
+              modules: [
+                { type: ModuleType.SUPPLY,    label: 'SUPPLY IA', sub: 'Abastecimiento', icon: <Truck size={18} /> },
+                { type: ModuleType.MARKETPLACE, label: 'MARKETPLACE', sub: 'Mi Menú · Tienda', icon: <Store size={18} /> },
+                { type: ModuleType.CARE,      label: 'CARE',      sub: 'SOPORTE CX',        icon: <HeartPulse size={18} /> },
+                // ── CAMBIO 2: Label y sub actualizados ──────────────────────
+                { type: ModuleType.STAFF_HUB, label: 'TEAM IQ™',  sub: 'HUMAN PERFORMANCE', icon: <Brain size={18} /> }
+              ]
+            },
+            {
+              id: 'estrategia', label: 'ESTRATEGIA & ADMIN',
+              icon: <Globe size={14} className="text-purple-500" />,
+              modules: [
+                { type: ModuleType.COMMAND,       label: 'COMMAND',      sub: 'ESTRATEGIA IA',        icon: <Globe size={18} /> },
+                { type: ModuleType.FINANCE_HUB,  label: 'FINANCE HUB',  sub: 'DINERO & KPI',         icon: <DollarSign size={18} /> },
+                { type: ModuleType.PAYROLL,       label: 'NÓMINA DIAN',  sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
+                { type: ModuleType.DIAN,          label: 'FACTURACIÓN',  sub: 'DIAN · UBL 2.1',       icon: <Receipt size={18} /> },
+                { type: ModuleType.CONTABILIDAD,  label: 'CONTABILIDAD', sub: 'P&G · CIERRE · KPI',   icon: <BarChart3 size={18} /> },
+                { type: ModuleType.CONFIG,        label: 'CEREBRO',      sub: 'ADN & IA',             icon: <Settings size={18} /> }
+              ]
+            }
+          ].map((pkg) => {
+            const visiblePkgModules = pkg.modules.filter(m => visibleModulesList.includes(m.type));
+            if (visiblePkgModules.length === 0) return null;
+            return (
+              <div key={pkg.id} className="space-y-4">
+                <div className="flex items-center gap-3 px-4 py-1">
+                  <div className="opacity-60">{pkg.icon}</div>
+                  <span className="text-[9px] font-black text-gray-500 uppercase tracking-[0.3em] italic">{pkg.label}</span>
+                </div>
+                <div className="flex flex-col gap-1">
+                  {visiblePkgModules.map((m) => (
+                    <button key={m.type} onClick={() => setActiveModule(m.type)}
+                      className={`flex items-center gap-4 w-full px-4 py-3.5 rounded-2xl transition-all duration-300 group ${
+                        activeModule === m.type
+                          ? 'bg-white/5 border border-white/10 text-white shadow-xl'
+                          : 'text-gray-500 hover:bg-white/5 hover:text-white border border-transparent'
+                      }`}>
+                      <div className={`${activeModule === m.type ? 'text-blue-500' : 'text-gray-600 group-hover:text-blue-400'}`}>{m.icon}</div>
+                      <div className="text-left">
+                        <p className={`text-[10px] font-black tracking-widest leading-none mb-1 ${activeModule === m.type ? 'text-white' : 'text-gray-400 group-hover:text-white'}`}>{m.label}</p>
+                        <p className={`text-[7px] font-bold uppercase tracking-wider ${activeModule === m.type ? 'text-blue-400' : 'text-gray-600'}`}>{m.sub}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="mt-auto pt-8 border-t border-white/5">
+           <button onClick={signOut} className="flex items-center gap-3 px-6 text-gray-600 hover:text-red-500 transition-all text-[10px] font-black uppercase tracking-widest w-full">
+             <LogOut size={16} /> CERRAR SESIÓN
+           </button>
+        </div>
+      </nav>
+
+      <main className="flex-1 flex flex-col overflow-hidden relative bg-[#0f1115]">
+        <header className="h-10 border-b border-white/5 flex items-center justify-between px-4 z-40 bg-[#0a0a0c] shrink-0">
+          {/* Izquierda: toggle sidebar + nombre */}
+          <div className="flex items-center gap-2">
+            <button onClick={() => setSidebarOpen(p=>!p)}
+              className="w-7 h-7 rounded-lg bg-[#1a1d24] border border-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:border-blue-500/40 transition-all"
+              title={sidebarOpen ? 'Ocultar menú' : 'Mostrar menú'}>
+              <LayoutPanelLeft size={13} />
+            </button>
+            <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white/5 border border-white/5">
+              <div className="w-5 h-5 rounded-full bg-blue-900/40 border border-blue-500/40 flex items-center justify-center text-blue-400 text-[9px] font-black">
+                {(profile?.nombre_completo || profile?.full_name || 'U').charAt(0).toUpperCase()}
+              </div>
+              <span className="text-[10px] font-bold text-white">
+                {profile?.nombre_completo?.split(' ')[0] || profile?.full_name?.split(' ')[0] || 'Usuario'}
+              </span>
+              <span className="text-[8px] font-bold text-blue-400 uppercase tracking-wider px-1.5 py-0.5 bg-blue-500/10 rounded">
+                {profile?.role === 'admin' ? 'Admin' : profile?.role === 'gerencia' ? 'Gerencia' : profile?.role === 'desarrollo' ? 'Dev' : 'Mesero'}
+              </span>
+              <button onClick={signOut} className="ml-1 text-gray-600 hover:text-red-400 transition-colors" title="Cerrar sesión">
+                <LogOut size={11} />
+              </button>
+            </div>
+          </div>
+
+          {/* Derecha: solo campana */}
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="System Online"/>
+            <button className="w-7 h-7 rounded-lg bg-[#1a1d24] border border-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:border-yellow-500/40 transition-all relative">
+              <BellRing size={13} />
+              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500"/>
+            </button>
+          </div>
+        </header>
+
+        <div className="flex-1 overflow-hidden relative z-10">
+          <Suspense fallback={<ModuleLoader />}>
+            {activeModule === ModuleType.SERVICE_OS && (
+              <div className="h-full flex flex-col">
+                <ServiceOSModule tables={tables} onUpdateTable={handleUpdateTable} tasks={ritualTasks} onOpenVisionAI={() => setIsVisionAIOpen(true)} />
+                {isVisionAIOpen && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-8">
+                    <div className="bg-[#0f1115] border border-white/10 rounded-2xl w-full max-w-6xl h-[80vh] flex flex-col overflow-hidden shadow-2xl relative">
+                      <div className="flex justify-between items-center p-4 border-b border-white/10 bg-[#1a1d24]">
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">Vision AI - Monitoreo en Vivo</h2>
+                        <button onClick={() => setIsVisionAIOpen(false)} className="text-gray-400 hover:text-white transition-colors"><X size={24} /></button>
+                      </div>
+                      <div className="flex-1 overflow-y-auto p-6">
+                        <SurveillanceModule videoRef={videoRef} isCameraReady={isCameraReady} resultsRef={lastResultsRef} tables={tables} onManualTrigger={async(id) => handleUpdateTable(id, {status: 'calling'})} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+            {activeModule === ModuleType.FLOW && (
+              <div className="h-full">
+                <FlowModule />
+              </div>
+            )}
+            {activeModule !== ModuleType.SERVICE_OS && activeModule !== ModuleType.FLOW && (
+              <div className="h-full overflow-y-auto custom-scrollbar p-6 text-left">
+                {activeModule === ModuleType.RESERVE       && <ReserveModule />}
+                {activeModule === ModuleType.FINANCE_HUB   && <FinanceHub />}
+                {activeModule === ModuleType.PAYROLL        && <PayrollModule />}
+                {activeModule === ModuleType.COMMAND        && <CommandModule onSimulateEvent={() => {}} />}
+                {activeModule === ModuleType.RELATIONSHIP   && <RelationshipModule />}
+                {activeModule === ModuleType.SUPPLY        && <SupplyModule />}
+                {activeModule === ModuleType.STAFF_HUB      && <TeamIQ />}
+                {activeModule === ModuleType.SUPPLY         && <SupplyModule />}
+                {activeModule === ModuleType.CARE           && <CareModule />}
+                {activeModule === ModuleType.DIAN           && <DIANModule />}
+                {activeModule === ModuleType.CONTABILIDAD   && <ContabilidadModule />}
+                {activeModule === ModuleType.OH_YEAH_ADMIN  && <OhYeahAdmin />}
+                {activeModule === ModuleType.CONFIG         && <SettingsModule />}
+                {activeModule === ModuleType.MARKETPLACE    && <MarketplaceModule />}
+                {activeModule === ModuleType.OH_YEAH_ADMIN   && <OhYeahAdminModule />}
+              </div>
+            )}
+          </Suspense>
+        </div>
+      </main>
+
+      <Suspense fallback={null}>
+        {(profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo') &&
+          <ExecutiveCockpit isOpen={isCockpitOpen} onClose={() => setIsCockpitOpen(false)} />
+        }
+      </Suspense>
+      <video ref={videoRef} className="absolute opacity-0 pointer-events-none" playsInline muted autoPlay />
+    </div>
+  );
+};
+
+const AppContent: React.FC = () => {
+  const { user, loading } = useAuth();
+  if (loading) {
+    return (
+      <div className="h-screen w-full bg-[#0a0a0c] flex flex-col items-center justify-center">
+         <Zap className="text-blue-600 animate-pulse mb-4" size={48} />
+         <p className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 italic text-white">Sincronizando Core Intelligence...</p>
+      </div>
+    );
+  }
+  return user ? <Dashboard /> : <Login />;
+};
+
+const App: React.FC = () => {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
+  );
+};
+
+export default App;
