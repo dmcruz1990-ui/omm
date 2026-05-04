@@ -29,7 +29,9 @@ const RelationshipModule = lazy(() => import('./components/RelationshipModule.ts
 const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
 const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
 const SupplyModule = lazy(() => import('./components/SupplyModule.tsx')); // Supply IA real
-const MarketplaceModule = lazy(() => import('./components/MarketplaceModule.tsx')); // Mi Menú + Marketplace
+const MarketplaceModule = lazy(() => import('./components/MarketplaceModule.tsx'));
+const OhYeahAdminModule = lazy(() => import('./components/OhYeahAdminModule.tsx'));
+const OhYeahAdminModule = lazy(() => import('./components/OhYeahAdminModule.tsx')); // Mi Menú + Marketplace
 const CareModule = lazy(() => import('./components/CareModule.tsx'));
 const FinanceHub = lazy(() => import('./components/FinanceHub.tsx'));
 const CommandModule = lazy(() => import('./components/CommandModule.tsx'));
@@ -236,6 +238,7 @@ const Dashboard: React.FC = () => {
               icon: <Sparkles size={14} className="text-blue-500" />,
               modules: [
                 { type: ModuleType.OH_YEAH,       label: 'OH YEAH! B2C',  sub: 'VISTA CLIENTE',      icon: <Smartphone size={18} /> },
+                { type: ModuleType.OH_YEAH_ADMIN, label: 'OH YEAH ADMIN', sub: 'Gestión plataforma', icon: <span style={fontSize:18}>🦉</span> },
                 { type: ModuleType.OH_YEAH_ADMIN, label: 'OH YEAH! ADMIN',sub: 'RESTAURANTES',        icon: <Store size={18} /> },
                 { type: ModuleType.RESERVE,        label: 'RESERVE',       sub: 'MAPA & AGENDA',      icon: <CalendarDays size={18} /> },
                 { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> }              ]
@@ -384,6 +387,7 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.OH_YEAH_ADMIN  && <OhYeahAdmin />}
                 {activeModule === ModuleType.CONFIG         && <SettingsModule />}
                 {activeModule === ModuleType.MARKETPLACE    && <MarketplaceModule />}
+                {activeModule === ModuleType.OH_YEAH_ADMIN   && <OhYeahAdminModule />}
               </div>
             )}
           </Suspense>
