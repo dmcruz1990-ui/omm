@@ -18,6 +18,7 @@ const inp: React.CSSProperties = {
 const label: React.CSSProperties = { fontSize:11, color:'#50506A', fontWeight:700, marginBottom:6, display:'block', textTransform:'uppercase', letterSpacing:'.06em' };
 
 type Tab = 'general' | 'fotos' | 'horarios' | 'amenidades' | 'experiencias' | 'menu' | 'preview';
+type Vista = 'lista' | 'solicitudes' | 'editor';
 
 const COCINAS_OPTS = ['Italiana','Japonesa','Nikkei','Mediterránea','Colombiana','Francesa','Española','China','Peruana','Mexicana','Bar de pizzas','Cócteles','Sake','Vinos','Mariscos','Carnes','Vegetariana','Vegana','Fusión'];
 const ETIQUETAS = ['Informal','Elegante','Informal y elegante','Smart casual','Fine dining','Casual','Brunch','Romántico','Familiar','Negocios'];
@@ -62,6 +63,12 @@ export default function OhYeahAdminModule() {
   const [selected, setSel]      = useState<any | null>(null);
   const [form, setForm]         = useState<any>(emptyRestaurante());
   const [saving, setSaving]     = useState(false);
+  const [vista, setVista]       = useState<Vista>('solicitudes');
+  const [solicitudes, setSolic] = useState<any[]>([]);
+  const [solicSel, setSolicSel] = useState<any|null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [analizando, setAnal]   = useState(false);
+  const [analisisIA, setAnalIA] = useState<any>(null);
   const [toast, setToast]       = useState('');
   const [showList, setShowList] = useState(true);
   // Horarios por día
@@ -75,12 +82,18 @@ export default function OhYeahAdminModule() {
   const showToast = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
   const setF = (k:string, v:any) => setForm((p:any) => ({...p, [k]:v}));
 
+  const fetchSolicitudes = async () => {
+    const { data } = await supabase.from('ohyeah_solicitudes')
+      .select('*').order('created_at', { ascending: false });
+    if (data) setSolic(data);
+  };
+
   const fetchRest = async () => {
     const { data } = await supabase.from('ohyeah_restaurantes').select('*').order('created_at', { ascending:false });
     if (data) setRest(data);
   };
 
-  useEffect(() => { fetchRest(); }, []);
+  useEffect(() => { fetchRest(); fetchSolicitudes(); }, []);
 
   // Inicializar horarios al cargar restaurante
   useEffect(() => {
@@ -95,6 +108,105 @@ export default function OhYeahAdminModule() {
 
   const generarSlug = (nombre:string) =>
     nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'');
+
+  // ── Subir foto a Supabase Storage ─────────────────────────────────────
+  const subirFoto = async (file: File, contexto: 'solicitud'|'restaurante', id: number): Promise<string|null> => {
+    setUploading(true);
+    try {
+      const ext = file.name.split('.').pop();
+      const path = `${contexto}/${id}/${Date.now()}.${ext}`;
+      const { error } = await supabase.storage.from('ohyeah-fotos').upload(path, file, { upsert: true });
+      if (error) throw error;
+      const { data: { publicUrl } } = supabase.storage.from('ohyeah-fotos').getPublicUrl(path);
+      return publicUrl;
+    } catch(e) {
+      show('Error al subir imagen');
+      return null;
+    } finally { setUploading(false); }
+  };
+
+  const handleFileUpload = async (files: FileList, tipo: 'portada'|'logo'|'galeria') => {
+    if (!solicSel?.id) return;
+    const file = files[0];
+    if (!file) return;
+    const url = await subirFoto(file, 'solicitud', solicSel.id);
+    if (!url) return;
+    if (tipo === 'portada') {
+      await supabase.from('ohyeah_solicitudes').update({ foto_portada: url }).eq('id', solicSel.id);
+      setSolicSel((p:any) => ({...p, foto_portada: url}));
+    } else if (tipo === 'logo') {
+      await supabase.from('ohyeah_solicitudes').update({ foto_logo: url }).eq('id', solicSel.id);
+      setSolicSel((p:any) => ({...p, foto_logo: url}));
+    } else {
+      const fotos = [...(solicSel.fotos_storage||[]), url];
+      await supabase.from('ohyeah_solicitudes').update({ fotos_storage: fotos }).eq('id', solicSel.id);
+      setSolicSel((p:any) => ({...p, fotos_storage: fotos}));
+    }
+    show('✓ Foto subida correctamente');
+  };
+
+  // ── Analizar foto con Claude IA ─────────────────────────────────────────
+  const analizarConIA = async (imageUrl: string) => {
+    setAnal(true);
+    try {
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          messages: [{
+            role: "user",
+            content: [
+              { type: "image", source: { type: "url", url: imageUrl } },
+              { type: "text", text: `Analiza esta foto de restaurante y devuelve SOLO un JSON con:
+{
+  "tipo": "portada|interior|plato|bar|terraza|logo|fachada",
+  "calidad": 1-10,
+  "descripcion": "descripción breve de la imagen",
+  "uso_sugerido": "portada|galeria|logo|menu",
+  "colores_principales": ["#hex1","#hex2","#hex3"],
+  "ambiente": "romántico|casual|elegante|familiar|moderno|rustico",
+  "observaciones": "notas para el equipo Oh Yeah",
+  "apta_plataforma": true|false,
+  "razon_no_apta": "solo si no es apta"
+}
+No incluyas texto adicional, solo el JSON.` }
+            ]
+          }]
+        })
+      });
+      const data = await response.json();
+      const text = data.content?.[0]?.text || '{}';
+      const clean = text.replace(/\`\`\`json|\`\`\`/g,'').trim();
+      const resultado = JSON.parse(clean);
+      setAnalIA(resultado);
+      show('✓ Análisis IA completado');
+      return resultado;
+    } catch(e) {
+      show('Error en análisis IA');
+      return null;
+    } finally { setAnal(false); }
+  };
+
+  // ── Aprobar solicitud → crea restaurante automáticamente ───────────────
+  const aprobarSolicitud = async (sol: any) => {
+    await supabase.from('ohyeah_solicitudes')
+      .update({ estado: 'aprobado', aprobado_por: 'Admin Nexum', aprobado_en: new Date().toISOString() })
+      .eq('id', sol.id);
+    show('✓ Restaurante aprobado y publicado en Oh Yeah');
+    fetchSolicitudes(); fetchRest();
+    setSolicSel(null);
+  };
+
+  const rechazarSolicitud = async (id: number, nota: string) => {
+    await supabase.from('ohyeah_solicitudes')
+      .update({ estado: 'rechazado', notas_admin: nota })
+      .eq('id', id);
+    show('Solicitud rechazada');
+    fetchSolicitudes();
+    setSolicSel(null);
+  };
 
   const guardar = async () => {
     if (!form.nombre) { showToast('⚠️ Nombre requerido'); return; }
@@ -184,10 +296,23 @@ export default function OhYeahAdminModule() {
           </div>
         </div>
         <div style={{flex:1}}/>
+        {/* Vista tabs */}
+        <div style={{display:'flex',gap:4,background:'rgba(255,255,255,0.05)',padding:4,borderRadius:10}}>
+          {[
+            {id:'solicitudes',label:'📥 Solicitudes',badge:(solicitudes.filter((s:any)=>s.estado==='pendiente'||s.estado==='en_revision').length)},
+            {id:'lista',label:'🏪 Restaurantes',badge:0},
+          ].map((v:any)=>(
+            <button key={v.id} onClick={()=>{setVista(v.id as Vista);setShowList(true);setSolicSel(null);}}
+              style={{padding:'7px 16px',borderRadius:8,border:'none',background:vista===v.id?S.yellow:'transparent',color:vista===v.id?'#000':S.t3,fontSize:11,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:6}}>
+              {v.label}
+              {v.badge>0 && <span style={{background:vista===v.id?'#000':S.pink,color:'#fff',borderRadius:50,padding:'1px 7px',fontSize:9,fontWeight:900}}>{v.badge}</span>}
+            </button>
+          ))}
+        </div>
         {!showList && (
-          <button onClick={()=>setShowList(true)}
+          <button onClick={()=>{setShowList(true);setSolicSel(null);}}
             style={{padding:'8px 18px',borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t2,cursor:'pointer',fontSize:12,fontWeight:700}}>
-            ← Mis restaurantes
+            ← Volver
           </button>
         )}
         <button onClick={nuevoRestaurante}
@@ -196,8 +321,236 @@ export default function OhYeahAdminModule() {
         </button>
       </div>
 
+      {/* ══ VISTA SOLICITUDES ══ */}
+      {showList && vista==='solicitudes' && !solicSel && (
+        <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+          <div style={{padding:'14px 28px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
+            <div style={{fontSize:13,color:S.t2}}>
+              <span style={{fontWeight:700,color:S.pink}}>{solicitudes.filter((s:any)=>s.estado==='pendiente').length}</span> pendientes ·
+              <span style={{fontWeight:700,color:S.green,marginLeft:8}}>{solicitudes.filter((s:any)=>s.estado==='aprobado').length}</span> aprobadas ·
+              <span style={{fontWeight:700,color:S.t3,marginLeft:8}}>{solicitudes.filter((s:any)=>s.estado==='rechazado').length}</span> rechazadas
+            </div>
+            <button onClick={fetchSolicitudes} style={{marginLeft:'auto',padding:'6px 14px',borderRadius:8,border:`1px solid ${S.border}`,background:'transparent',color:S.t3,fontSize:11,cursor:'pointer'}}>↻ Actualizar</button>
+          </div>
+          <div style={{flex:1,overflowY:'auto',padding:28}}>
+            {solicitudes.length===0 && (
+              <div style={{textAlign:'center',padding:60,color:S.t3}}>
+                <div style={{fontSize:48,marginBottom:12}}>📥</div>
+                <div style={{fontSize:15,fontWeight:700}}>Sin solicitudes aún</div>
+              </div>
+            )}
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              {solicitudes.map((sol:any)=>{
+                const estadoColor = sol.estado==='aprobado'?S.green:sol.estado==='rechazado'?S.red:sol.estado==='en_revision'?S.blue:S.yellow;
+                const estadoLabel = sol.estado==='aprobado'?'✓ Aprobado':sol.estado==='rechazado'?'✗ Rechazado':sol.estado==='en_revision'?'👁 En revisión':'⏳ Pendiente';
+                return (
+                  <div key={sol.id} style={{background:S.bg2,border:`1px solid ${sol.estado==='pendiente'?`${S.yellow}30`:S.border}`,borderRadius:16,overflow:'hidden',cursor:'pointer',transition:'all .2s'}}
+                    onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.borderColor=S.yellow}
+                    onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.borderColor=sol.estado==='pendiente'?`${S.yellow}30`:S.border}>
+                    <div style={{display:'flex',alignItems:'stretch'}}>
+                      {/* Portada mini */}
+                      <div style={{width:100,background:sol.foto_portada?`url(${sol.foto_portada}) center/cover`:S.bg3,flexShrink:0}}/>
+                      {/* Info */}
+                      <div style={{flex:1,padding:'14px 18px'}}>
+                        <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:12,marginBottom:8}}>
+                          <div>
+                            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900}}>{sol.nombre}</div>
+                            <div style={{fontSize:11,color:S.t3}}>📍 {sol.ciudad} · {sol.precio_rango} · {(sol.cocinas||[]).slice(0,2).join(', ')}</div>
+                          </div>
+                          <div style={{display:'flex',flexDirection:'column',alignItems:'flex-end',gap:6}}>
+                            <span style={{fontSize:10,background:`${estadoColor}20`,color:estadoColor,border:`1px solid ${estadoColor}30`,padding:'3px 10px',borderRadius:50,fontWeight:700,whiteSpace:'nowrap'}}>{estadoLabel}</span>
+                            <div style={{fontSize:10,color:S.t3}}>{new Date(sol.created_at).toLocaleDateString('es-CO')}</div>
+                          </div>
+                        </div>
+                        {sol.descripcion_corta && <div style={{fontSize:11,color:S.t2,marginBottom:10}}>{sol.descripcion_corta}</div>}
+                        <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                          <span style={{fontSize:10,color:S.t3}}>👤 {sol.nombre_contacto} · {sol.email_contacto}</span>
+                          {sol.fotos_storage?.length>0 && <span style={{fontSize:10,color:S.blue}}>📸 {sol.fotos_storage.length} fotos subidas</span>}
+                        </div>
+                      </div>
+                      {/* Acciones */}
+                      <div style={{padding:'14px',display:'flex',flexDirection:'column',gap:8,justifyContent:'center',borderLeft:`1px solid ${S.border}`}}>
+                        <button onClick={(e)=>{e.stopPropagation();setSolicSel(sol);setShowList(false);}}
+                          style={{padding:'8px 14px',borderRadius:8,border:`1px solid ${S.yellow}40`,background:`${S.yellow}10`,color:S.yellow,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                          ✏️ Gestionar
+                        </button>
+                        {sol.estado==='pendiente'&&(
+                          <button onClick={(e)=>{e.stopPropagation();aprobarSolicitud(sol);}}
+                            style={{padding:'8px 14px',borderRadius:8,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                            ✓ Aprobar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ══ DETALLE SOLICITUD ══ */}
+      {!showList && solicSel && (
+        <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+          <div style={{padding:'12px 28px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',gap:12,flexShrink:0,background:S.bg2}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900}}>{solicSel.nombre}</div>
+            <span style={{fontSize:10,color:S.yellow,background:`${S.yellow}15`,padding:'2px 10px',borderRadius:50}}>Solicitud #{solicSel.id}</span>
+            <div style={{marginLeft:'auto',display:'flex',gap:8}}>
+              {solicSel.estado==='pendiente'&&(
+                <>
+                  <button onClick={()=>rechazarSolicitud(solicSel.id,'No cumple requisitos mínimos')}
+                    style={{padding:'7px 16px',borderRadius:8,border:`1px solid ${S.red}40`,background:'transparent',color:S.red,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                    ✗ Rechazar
+                  </button>
+                  <button onClick={()=>aprobarSolicitud(solicSel)}
+                    style={{padding:'7px 20px',borderRadius:8,border:'none',background:S.green,color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                    ✓ Aprobar y publicar
+                  </button>
+                </>
+              )}
+              {solicSel.estado==='aprobado'&&<span style={{fontSize:12,color:S.green,fontWeight:700}}>✓ Publicado en Oh Yeah</span>}
+            </div>
+          </div>
+          <div style={{flex:1,overflowY:'auto',padding:24}}>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:20,maxWidth:900}}>
+
+              {/* Datos del restaurante */}
+              <div>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:12,color:S.yellow}}>📋 Datos del restaurante</div>
+                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:16,display:'flex',flexDirection:'column',gap:8}}>
+                  {[
+                    {l:'Nombre',v:solicSel.nombre},
+                    {l:'Ciudad',v:solicSel.ciudad},
+                    {l:'Dirección',v:solicSel.direccion},
+                    {l:'Cocinas',v:(solicSel.cocinas||[]).join(', ')},
+                    {l:'Etiqueta',v:solicSel.etiqueta},
+                    {l:'Precio',v:solicSel.precio_rango},
+                    {l:'Web',v:solicSel.web},
+                    {l:'Instagram',v:solicSel.instagram},
+                  ].filter(x=>x.v).map(x=>(
+                    <div key={x.l} style={{display:'flex',gap:10}}>
+                      <span style={{fontSize:10,color:S.t3,minWidth:70,fontWeight:700,textTransform:'uppercase'}}>{x.l}</span>
+                      <span style={{fontSize:12,color:S.t1,wordBreak:'break-word'}}>{x.v}</span>
+                    </div>
+                  ))}
+                </div>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,margin:'16px 0 12px',color:S.yellow}}>👤 Contacto</div>
+                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:16,display:'flex',flexDirection:'column',gap:6}}>
+                  {[
+                    {l:'Nombre',v:solicSel.nombre_contacto},
+                    {l:'Cargo',v:solicSel.cargo_contacto},
+                    {l:'Email',v:solicSel.email_contacto},
+                    {l:'Teléfono',v:solicSel.telefono},
+                  ].map(x=>(
+                    <div key={x.l} style={{display:'flex',gap:10}}>
+                      <span style={{fontSize:10,color:S.t3,minWidth:70,fontWeight:700,textTransform:'uppercase'}}>{x.l}</span>
+                      <span style={{fontSize:12,color:S.t1}}>{x.v||'—'}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Gestión de fotos */}
+              <div>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:12,color:S.yellow}}>📸 Fotos</div>
+
+                {/* Portada */}
+                <div style={{marginBottom:14}}>
+                  <div style={{fontSize:11,color:S.t3,fontWeight:700,marginBottom:6}}>PORTADA</div>
+                  <div style={{height:120,borderRadius:10,background:solicSel.foto_portada?`url(${solicSel.foto_portada}) center/cover`:S.bg3,border:`2px dashed ${S.border}`,display:'flex',alignItems:'center',justifyContent:'center',position:'relative',marginBottom:6}}>
+                    {!solicSel.foto_portada && <span style={{fontSize:11,color:S.t3}}>Sin portada</span>}
+                  </div>
+                  <label style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:S.bg3,border:`1px solid ${S.border}`,borderRadius:8,cursor:'pointer',fontSize:12,color:S.t2}}>
+                    {uploading?'⏳ Subiendo...':'📤 Subir portada'}
+                    <input type="file" accept="image/*" style={{display:'none'}} onChange={e=>e.target.files&&handleFileUpload(e.target.files,'portada')}/>
+                  </label>
+                </div>
+
+                {/* Logo */}
+                <div style={{marginBottom:14}}>
+                  <div style={{fontSize:11,color:S.t3,fontWeight:700,marginBottom:6}}>LOGO</div>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+                    {solicSel.foto_logo
+                      ? <img src={solicSel.foto_logo} alt="" style={{width:56,height:56,borderRadius:10,objectFit:'cover'}}/>
+                      : <div style={{width:56,height:56,borderRadius:10,background:S.bg3,border:`2px dashed ${S.border}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:10,color:S.t3}}>Logo</div>
+                    }
+                    <label style={{flex:1,display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:S.bg3,border:`1px solid ${S.border}`,borderRadius:8,cursor:'pointer',fontSize:12,color:S.t2}}>
+                      📤 Subir logo
+                      <input type="file" accept="image/*" style={{display:'none'}} onChange={e=>e.target.files&&handleFileUpload(e.target.files,'logo')}/>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Galería */}
+                <div>
+                  <div style={{fontSize:11,color:S.t3,fontWeight:700,marginBottom:6}}>GALERÍA ({(solicSel.fotos_storage||[]).length} fotos)</div>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginBottom:8}}>
+                    {(solicSel.fotos_storage||[]).map((f:string,i:number)=>(
+                      <div key={i} style={{position:'relative',borderRadius:8,overflow:'hidden',aspectRatio:'1',background:`url(${f}) center/cover`,border:`1px solid ${S.border}`}}>
+                        {/* Botón analizar IA */}
+                        <button onClick={()=>analizarConIA(f)}
+                          style={{position:'absolute',bottom:4,right:4,padding:'3px 8px',borderRadius:6,border:'none',background:'rgba(0,0,0,0.8)',color:S.yellow,fontSize:9,fontWeight:700,cursor:'pointer'}}>
+                          ✦IA
+                        </button>
+                      </div>
+                    ))}
+                    {/* Drop zone */}
+                    <label style={{aspectRatio:'1',borderRadius:8,border:`2px dashed ${S.border}`,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:20,color:S.t3}}>
+                      +
+                      <input type="file" accept="image/*" multiple style={{display:'none'}} onChange={e=>{
+                        if(e.target.files) Array.from(e.target.files).forEach(f=>handleFileUpload(e.target.files!,'galeria'));
+                      }}/>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Resultado análisis IA */}
+                {analizando && (
+                  <div style={{background:`${S.yellow}10`,border:`1px solid ${S.yellow}30`,borderRadius:10,padding:12,textAlign:'center'}}>
+                    <div style={{fontSize:12,color:S.yellow}}>✦ Analizando imagen con Claude IA...</div>
+                  </div>
+                )}
+                {analisisIA && !analizando && (
+                  <div style={{background:`${S.purple}10`,border:`1px solid ${S.purple}30`,borderRadius:10,padding:12}}>
+                    <div style={{fontSize:11,color:S.purple,fontWeight:700,marginBottom:8}}>✦ Análisis IA</div>
+                    <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                      {[
+                        {l:'Tipo',v:analisisIA.tipo},
+                        {l:'Calidad',v:`${analisisIA.calidad}/10`},
+                        {l:'Uso sugerido',v:analisisIA.uso_sugerido},
+                        {l:'Ambiente',v:analisisIA.ambiente},
+                        {l:'Descripción',v:analisisIA.descripcion},
+                        {l:'Apta plataforma',v:analisisIA.apta_plataforma?'✓ Sí':'✗ No'},
+                      ].map(x=>(
+                        <div key={x.l} style={{display:'flex',gap:8}}>
+                          <span style={{fontSize:9,color:S.t3,minWidth:90,fontWeight:700,textTransform:'uppercase'}}>{x.l}</span>
+                          <span style={{fontSize:11,color:analisisIA.apta_plataforma===false&&x.l==='Apta plataforma'?S.red:S.t1}}>{x.v}</span>
+                        </div>
+                      ))}
+                      {analisisIA.observaciones && (
+                        <div style={{fontSize:11,color:S.t2,marginTop:4,padding:'8px',background:'rgba(255,255,255,0.04)',borderRadius:6}}>{analisisIA.observaciones}</div>
+                      )}
+                    </div>
+                    <button onClick={()=>setAnalIA(null)} style={{marginTop:8,background:'none',border:'none',color:S.t3,fontSize:11,cursor:'pointer'}}>Cerrar análisis ×</button>
+                  </div>
+                )}
+
+                {/* Descripción del restaurante */}
+                {solicSel.descripcion && (
+                  <div style={{marginTop:14,background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
+                    <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:6}}>DESCRIPCIÓN</div>
+                    <div style={{fontSize:12,color:S.t2,lineHeight:1.6}}>{solicSel.descripcion}</div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ══ LISTA DE RESTAURANTES ══ */}
-      {showList && (
+      {showList && vista==='lista' && (
         <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
           <div style={{padding:'16px 28px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',gap:12}}>
             <div style={{fontSize:13,color:S.t2}}><span style={{fontWeight:700,color:S.yellow}}>{restaurantes.length}</span> restaurantes registrados en Oh Yeah</div>
