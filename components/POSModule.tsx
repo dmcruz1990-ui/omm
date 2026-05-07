@@ -1421,13 +1421,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           <div className="text-[10px] text-[#606060] font-bold uppercase tracking-wider mb-2">Método de pago</div>
           <div className="grid grid-cols-2 gap-1.5 mb-2">
             {[
-              { icon: '💳', label: 'Datafono',          color: '#4a8fd4', sub: '📟 El mesero trae el terminal' },
-              { icon: '💵', label: 'Efectivo',           color: '#3dba6f', sub: '' },
-              { icon: '🏦', label: 'Transferencia',      color: '#d4943a', sub: '' },
-              { icon: '📱', label: 'QR Occidente',       color: '#3dba6f', sub: '⭐ Recomendado' },
-              { icon: '🍎', label: 'Apple Pay',          color: '#f0f0f0', sub: '' },
-              { icon: '💰', label: 'Anticipo Evento',    color: '#9b72ff', sub: 'Para eventos y reservas' },
-              { icon: '👤', label: 'Cuenta Empleado',    color: '#f0b45a', sub: 'Descuento por nómina' },
+              { icon: '💳', label: 'Datafono',       color: '#4a8fd4', sub: '📟 El mesero trae el terminal' },
+              { icon: '💵', label: 'Efectivo',        color: '#3dba6f', sub: '' },
+              { icon: '💰', label: 'Anticipo Evento', color: '#9b72ff', sub: 'Para eventos y reservas' },
+              { icon: '👤', label: 'Cuenta Empleado', color: '#f0b45a', sub: 'Descuento por nómina' },
             ].map(mp => (
               <div key={mp.label} className="border border-[#2a2a2a] rounded-xl p-2.5 hover:border-[#606060] transition-all">
                 <div className="flex items-center gap-2 mb-0.5">
@@ -1462,10 +1459,36 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             </div>
           </div>
 
-          <button onClick={() => abrirDivision(tableId, totalConPropina, m.pax)}
-            className="w-full py-2 rounded-xl border border-[#2a2a2a] text-[#a0a0a0] text-[12px] font-semibold hover:border-[#d4943a] hover:text-[#d4943a] transition-all flex items-center justify-center gap-2 mb-3">
-            👥 Dividir entre {m.pax} personas — ${formatPrecio(Math.round(totalConPropina / m.pax))} c/u
-          </button>
+          {/* Dividir cuenta — selector 2-10 personas */}
+          <div className="rounded-xl border border-[#2a2a2a] overflow-hidden mb-3">
+            <div className="px-3 py-2 bg-[#1c1c1c] flex items-center justify-between">
+              <span className="text-[11px] text-[#a0a0a0] font-bold">👥 Dividir cuenta</span>
+              <span className="text-[11px] text-[#d4943a] font-black">
+                {dividirPax > 1 ? `$${formatPrecio(Math.round(totalConPropina / dividirPax))} c/u` : ''}
+              </span>
+            </div>
+            <div className="grid grid-cols-5 gap-px bg-[#2a2a2a]">
+              {[2,3,4,5,6,7,8,9,10].map(n => (
+                <button key={n} onClick={() => setDividirPax(n)}
+                  className={`py-2.5 text-[13px] font-black transition-all ${dividirPax === n ? 'bg-[#d4943a] text-black' : 'bg-[#141414] text-[#606060] hover:bg-[#1c1c1c] hover:text-[#f0f0f0]'}`}>
+                  {n}
+                </button>
+              ))}
+              <button onClick={() => setDividirPax(1)}
+                className={`py-2.5 text-[10px] font-bold transition-all ${dividirPax === 1 ? 'bg-[#1c1c1c] text-[#606060]' : 'bg-[#141414] text-[#606060] hover:bg-[#1c1c1c]'}`}>
+                ✕
+              </button>
+            </div>
+            {dividirPax > 1 && (
+              <div className="px-3 py-2 bg-[#0f0f0f] text-center">
+                <span className="text-[10px] text-[#606060]">Total </span>
+                <span className="text-[11px] font-black text-[#f0f0f0]">${formatPrecio(totalConPropina)}</span>
+                <span className="text-[10px] text-[#606060]"> ÷ {dividirPax} = </span>
+                <span className="text-[13px] font-black text-[#d4943a]">${formatPrecio(Math.round(totalConPropina / dividirPax))}</span>
+                <span className="text-[10px] text-[#606060]"> por persona</span>
+              </div>
+            )}
+          </div>
 
           <button onClick={() => abrirModoCliente(tableId)}
             className="w-full py-3 rounded-xl bg-[#d4943a] text-black font-bold text-[14px] hover:bg-[#f0b45a] active:bg-[#3dba6f] transition-all flex items-center justify-center gap-2">
@@ -1966,41 +1989,51 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             Confirmar
           </button>
 
-          <button onClick={() => setClientePaso('cuenta')}
-            style={{ background: 'none', border: 'none', fontSize: 13, color: S.text3, cursor: 'pointer', textDecoration: 'underline', textAlign: 'center' }}>
-            Personalizar propina
-          </button>
+          {/* Propina personalizada — input directo */}
+          <div style={{ marginTop: 4 }}>
+            {showPropCustom ? (
+              <div style={{ background: '#f5f0e8', borderRadius: 14, padding: '14px 16px', border: '1px solid #e0d8cc' }}>
+                <div style={{ fontSize: 12, color: S.text3, marginBottom: 8, fontWeight: 700 }}>Propina personalizada</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 14, color: S.text2 }}>$</span>
+                  <input
+                    type="number"
+                    placeholder="0"
+                    value={customPropina || ''}
+                    onChange={e => {
+                      const v = parseInt(e.target.value) || 0;
+                      setCustomPropina(v);
+                      setClientePropina(0);
+                      setPropinaCliente(v);
+                    }}
+                    style={{ flex: 1, border: '1px solid #ddd', borderRadius: 8, padding: '10px 12px', fontSize: 16, fontWeight: 700, outline: 'none', color: S.text }}
+                    autoFocus
+                  />
+                </div>
+                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                  <button onClick={() => setShowPropCustom(false)}
+                    style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid #ddd', background: 'transparent', color: S.text3, fontSize: 13, cursor: 'pointer' }}>
+                    Cancelar
+                  </button>
+                  <button onClick={() => { setShowPropCustom(false); setClientePaso('pago'); }}
+                    style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: S.black, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                    Confirmar ${(customPropina||0).toLocaleString('es-CO')}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button onClick={() => setShowPropCustom(true)}
+                style={{ width: '100%', padding: '12px', borderRadius: 12, border: '1px solid #e0d8cc', background: 'transparent', color: S.text3, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                ✏️ Personalizar monto de propina
+              </button>
+            )}
+          </div>
         </div>
       )}
 
       {/* ═══ PASO 3: MÉTODO DE PAGO ═══ */}
       {clientePaso === 'pago' && (
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 32px', display: 'flex', flexDirection: 'column', gap: 12 }}>
-
-          {/* Apple Pay */}
-          <button onClick={() => setClientePaso('encuesta')}
-            style={{ width: '100%', padding: '18px 20px', borderRadius: 16, border: `2px solid ${S.black}`, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 24, height: 24, borderRadius: '50%', background: S.black, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <span style={{ color: '#fff', fontSize: 12, fontWeight: 900 }}>✓</span>
-              </div>
-              <span style={{ fontSize: 17, fontWeight: 600, color: S.black }}>Apple Pay</span>
-            </div>
-            <div style={{ background: S.black, color: '#fff', fontSize: 13, fontWeight: 700, padding: '4px 10px', borderRadius: 6 }}>Pay</div>
-          </button>
-
-          {/* Tarjeta */}
-          <button onClick={() => setClientePaso('tarjeta')}
-            style={{ width: '100%', padding: '18px 20px', borderRadius: 16, border: `1px solid ${S.border}`, background: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <div style={{ width: 24, height: 24, borderRadius: '50%', border: `1.5px solid ${S.border}` }}></div>
-              <span style={{ fontSize: 17, fontWeight: 600, color: S.text }}>Tarjeta de crédito</span>
-            </div>
-            <div style={{ display: 'flex', gap: 4, fontSize: 10, color: S.text3 }}>
-              <span style={{ border: `1px solid ${S.border}`, borderRadius: 3, padding: '2px 5px', fontWeight: 700 }}>VISA</span>
-              <span style={{ border: `1px solid ${S.border}`, borderRadius: 3, padding: '2px 5px', fontWeight: 700 }}>MC</span>
-            </div>
-          </button>
 
           {/* Datafono con mesero */}
           <button onClick={() => setClientePaso('encuesta')}
@@ -2068,13 +2101,33 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               </button>
             </div>
           )}
-          {/* Dividir */}
-          <button onClick={() => { abrirDivision(clienteTableId, totalCliente, mesaCliente.pax); setClienteMode(false); }}
-            style={{ width: '100%', padding: '18px 20px', borderRadius: 16, border: `1px solid ${S.border}`, background: '#fff', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-            <div style={{ width: 24, height: 24, borderRadius: '50%', border: `1.5px solid ${S.border}` }}></div>
-            <span style={{ fontSize: 17, fontWeight: 600, color: S.text }}>Dividir la cuenta</span>
-            <span style={{ marginLeft: 'auto', fontSize: 13, color: S.text3 }}>{mesaCliente.pax} personas</span>
-          </button>
+          {/* Dividir la cuenta — selector 2-10 */}
+          <div style={{ background: '#f5f0e8', borderRadius: 16, border: `1px solid #e0d8cc`, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 16px', borderBottom: '1px solid #e0d8cc', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 24, height: 24, borderRadius: '50%', border: `1.5px solid ${S.border}` }}/>
+                <span style={{ fontSize: 16, fontWeight: 600, color: S.text }}>👥 Dividir cuenta</span>
+              </div>
+              {divClientePax > 1 && <span style={{ fontSize: 13, fontWeight: 900, color: '#d4943a' }}>${(totalCliente / divClientePax).toLocaleString('es-CO', {maximumFractionDigits:0})} c/u</span>}
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 1, background: '#e0d8cc' }}>
+              {[2,3,4,5,6,7,8,9,10].map((n:number)=>(
+                <button key={n} onClick={()=>setDivClientePax(n)}
+                  style={{ padding: '12px 0', fontSize: 14, fontWeight: 900, border: 'none', cursor: 'pointer', background: divClientePax===n ? '#1a1a1a' : '#f5f0e8', color: divClientePax===n ? '#FFE600' : '#888', transition: 'all .15s' }}>
+                  {n}
+                </button>
+              ))}
+              <button onClick={()=>setDivClientePax(1)}
+                style={{ padding: '12px 0', fontSize: 12, fontWeight: 700, border: 'none', cursor: 'pointer', background: '#f5f0e8', color: '#bbb' }}>
+                ✕
+              </button>
+            </div>
+            {divClientePax > 1 && (
+              <div style={{ padding: '10px 16px', textAlign: 'center', fontSize: 13, color: S.text3 }}>
+                ${totalCliente.toLocaleString('es-CO',{maximumFractionDigits:0})} ÷ {divClientePax} = <span style={{ fontWeight: 900, color: '#d4943a', fontSize: 16 }}>${(totalCliente/divClientePax).toLocaleString('es-CO',{maximumFractionDigits:0})}</span> por persona
+              </div>
+            )}
+          </div>
 
           {/* Resumen */}
           <div style={{ borderTop: `1px solid ${S.border}`, paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 6 }}>
