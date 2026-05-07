@@ -2699,7 +2699,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           isFullscreen
             ? 'bg-[#d4943a] border-[#d4943a] text-black'
             : 'bg-[#1c1c1c] border-[#d4943a]/60 text-[#d4943a] hover:bg-[#d4943a] hover:text-black'
-        }`} title={isFullscreen?'Salir pantalla completa':'Pantalla completa'}>
+        }`}>
         {isFullscreen
           ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
           : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
@@ -2729,7 +2729,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           sidebarCollapsed
             ? 'bg-[#3dba6f] border-[#3dba6f] text-black'
             : 'bg-[#1c1c1c] border-[#3dba6f]/60 text-[#3dba6f] hover:bg-[#3dba6f] hover:text-black'
-        }`} style={{ right:'44px' }} title={sidebarCollapsed?'Mostrar nav':'Ocultar nav'}>
+        }`} style={{ right:'44px' }}>
         {sidebarCollapsed
           ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
           : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
