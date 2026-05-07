@@ -1511,6 +1511,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [clienteRatings, setClienteRatings] = useState({ comida: 0, servicio: 0, ambiente: 0 });
   // X-CARE estados
   const [xcareStep, setXcareStep] = useState<'rating'|'tags'|'platos'|'microtags'|'redes'|'done'>('rating');
+  const [showPropCustom, setShowPropCustom] = useState(false);
+  const [customPropina, setCustomPropina] = useState(0);
+  const [divClientePax, setDivClientePax] = useState(1);
+  const [dividirPax, setDividirPax] = useState(1);
   // Edición de cuenta con PIN Maître
   const [editCuenta, setEditCuenta] = useState(false);
   const [pinMaitre, setPinMaitre] = useState('');
