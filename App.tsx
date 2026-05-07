@@ -43,7 +43,7 @@ const PayrollModule = lazy(() => import('./components/PayrollModule.tsx'));
 const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'));
 const DIANModule = lazy(() => import('./components/DIANModule.tsx'));
 const ContabilidadModule = lazy(() => import('./components/ContabilidadModule.tsx'));
-const OhYeahAdmin = lazy(() => import('./components/OhYeahAdmin.tsx'));
+// OhYeahAdmin legacy removido — usar OhYeahAdminModule
 
 const ModuleLoader = () => (
   <div className="flex flex-col items-center justify-center h-[60vh] opacity-50">
@@ -384,11 +384,10 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.CARE           && <CareModule />}
                 {activeModule === ModuleType.DIAN           && <DIANModule />}
                 {activeModule === ModuleType.CONTABILIDAD   && <ContabilidadModule />}
-                {activeModule === ModuleType.OH_YEAH_ADMIN  && <OhYeahAdmin />}
+                {activeModule === ModuleType.OH_YEAH_ADMIN  && <OhYeahAdminModule />}
+                {activeModule === ModuleType.OH_YEAH_RESTAURANTE && <OhYeahRestauranteModule />}
                 {activeModule === ModuleType.CONFIG         && <SettingsModule />}
                 {activeModule === ModuleType.MARKETPLACE    && <MarketplaceModule />}
-                {activeModule === ModuleType.OH_YEAH_ADMIN   && <OhYeahAdminModule />}
-                {activeModule === ModuleType.OH_YEAH_RESTAURANTE && <OhYeahRestauranteModule />}
               </div>
             )}
           </Suspense>
