@@ -1713,9 +1713,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const netoCliente = Math.max(0, subtotalCliente - descuentoCliente - corteCliente);
   const ivaCliente = Math.round(netoCliente * 0.08);
   const baseCliente = netoCliente + ivaCliente;
-  const propinaCliente = Math.round(baseCliente * (clientePropina / 100));
+  const propinaCliente = customPropina > 0 && clientePropina === 0
+    ? customPropina
+    : Math.round(baseCliente * (clientePropina / 100));
   const totalCliente = baseCliente + propinaCliente;
-  const nombreMesero = (clienteData as any)[mesaCliente?.id]?.nombre?.split(' ')[1] || 'tu mesero';
+  const nombreMesero = mesaCliente?.id && (clienteData as any)[mesaCliente.id]?.nombre?.split(' ')[1] || profile?.nombre_completo?.split(' ')[0] || 'tu mesero';
 
   // Colores Sunday: fondo beige cálido
   const S = {
@@ -2003,8 +2005,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     onChange={e => {
                       const v = parseInt(e.target.value) || 0;
                       setCustomPropina(v);
-                      setClientePropina(0);
-                      setPropinaCliente(v);
+                      // No llamar setPropinaCliente — propinaCliente es calculada
+                      // Guardamos en customPropina y lo aplicamos al confirmar
                     }}
                     style={{ flex: 1, border: '1px solid #ddd', borderRadius: 8, padding: '10px 12px', fontSize: 16, fontWeight: 700, outline: 'none', color: S.text }}
                     autoFocus
@@ -2015,7 +2017,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid #ddd', background: 'transparent', color: S.text3, fontSize: 13, cursor: 'pointer' }}>
                     Cancelar
                   </button>
-                  <button onClick={() => { setShowPropCustom(false); setClientePaso('pago'); }}
+                  <button onClick={() => { setShowPropCustom(false); setClientePropina(0); setClientePaso('pago'); }}
                     style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: S.black, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
                     Confirmar ${(customPropina||0).toLocaleString('es-CO')}
                   </button>
