@@ -619,6 +619,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [posObsDesc, setPosObsDesc] = useState('');
   const [notasMesero, setNotasMesero] = useState<Record<number, string[]>>({});
   const [ritualState, setRitualState] = useState<Record<number, string[]>>(mesaRitualState);
+
+  // ── Progreso del ritual por mesa ─────────────────────────────────────
+  const getRitualProgress = (mesaId: number): number => {
+    const done = (ritualState[mesaId] || []).length;
+    return Math.round((done / ritualStepsAll.length) * 100);
+  };
   const [addedCards, setAddedCards] = useState<Set<string>>(new Set());
   const [pantallaConfirmacion, setPantallaConfirmacion] = useState<{
     activa: boolean; monto: number; metodo: string; facMsg: string; tableId: number;
@@ -636,14 +642,33 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     }
   };
 
-  const displayTables = [
-    { id: 1, num: 12, cliente: 'López', pax: 3, time: '00:45', ticket: 65, meta: 120, status: 'activa', vip: false, bday: false, alert: false },
-    { id: 2, num: 8, cliente: 'Sra. García', pax: 2, time: '01:10', ticket: 140, meta: 100, status: 'activa', vip: true, bday: false, alert: false },
-    { id: 3, num: 5, cliente: 'Cumpleaños', pax: 6, time: '00:50', ticket: 40, meta: 80, status: 'activa', vip: false, bday: true, alert: false },
-    { id: 4, num: 4, cliente: 'Martínez', pax: 4, time: '00:55', ticket: 95, meta: 150, status: 'activa', vip: false, bday: false, alert: true },
-  ];
+  // ── Mesas dinámicas — enriquecidas con platos locales en tiempo real ──
+  const displayTables = (mesas && mesas.length > 0 ? mesas : [
+    { id: 1, num: 12, cliente: 'López',     pax: 3, time: '00:45', ticket: 65,  meta: 120, status: 'activa', vip: false, bday: false, alert: false },
+    { id: 2, num: 8,  cliente: 'Sra. García',pax: 2, time: '01:10', ticket: 140, meta: 100, status: 'activa', vip: true,  bday: false, alert: false },
+    { id: 3, num: 5,  cliente: 'Cumpleaños', pax: 6, time: '00:50', ticket: 40,  meta: 80,  status: 'activa', vip: false, bday: true,  alert: false },
+    { id: 4, num: 4,  cliente: 'Martínez',   pax: 4, time: '00:55', ticket: 95,  meta: 150, status: 'activa', vip: false, bday: false, alert: true  },
+  ]).map((m: any) => {
+    // Sumar en vivo los platos pendientes de esta mesa
+    const mesaNum = m.num ?? m.numero ?? m.id;
+    const platosLocales = [...pendingOrder, ...order].filter(o => o.mesa === mesaNum);
+    const ticketLocal = platosLocales.reduce((s: number, o: any) => s + parsePrecio(o.precio), 0);
+    const ticketBase = typeof m.ticket === 'number' ? m.ticket : (m.ticket_acumulado || 0);
+    return {
+      ...m,
+      num: mesaNum,
+      ticket: ticketBase + ticketLocal,
+      cliente: m.cliente || m.cliente_nombre || m.nombre_cliente || 'Mesa',
+      pax: m.pax || m.personas || 2,
+      status: m.status || m.estado || 'activa',
+      meta: m.meta || m.ticket_meta || 120,
+      vip: m.vip || false,
+      bday: m.bday || m.es_cumpleanos || false,
+      alert: m.alert || (ticketLocal > 0 && platosLocales.some((p:any) => !p.marchado)),
+    };
+  });
 
-  const selectedTable = displayTables.find(t => t.id === selectedTableId) || displayTables[0];
+  const selectedTable = displayTables.find((t: any) => t.id === selectedTableId) ?? displayTables[0];
   const c = clienteData[selectedTable.id] || clienteData[1];
   const recs = iaRecsByCat[currentCat] || iaRecsByCat['Compartir'];
 
@@ -793,13 +818,15 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
   // Auto-marca el paso del ritual según la categoría del producto agregado
   const autoCheckRitual = (categoria: string | undefined) => {
-    if (!categoria) return;
+    if (!categoria || !selectedTable) return;
     const step = CAT_TO_RITUAL[categoria];
     if (!step) return;
+    const mesaId = selectedTable.id ?? selectedTableId;
     setRitualState(prev => {
-      const current = prev[selectedTable.id] || [];
+      const current = prev[mesaId] || [];
       if (current.includes(step)) return prev;
-      return { ...prev, [selectedTable.id]: [...current, step] };
+      showToast(`✦ Ritual: ${step} — Mesa ${selectedTable.num}`);
+      return { ...prev, [mesaId]: [...current, step] };
     });
   };
 
@@ -2518,8 +2545,13 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
   );
 
 
-  const mesaOrderItems = order.filter(o => o.mesa === selectedTable.num);
-  const mesaSubtotal = selectedTable.ticket + mesaOrderItems.reduce((s, o) => s + parsePrecio(o.precio), 0);
+  // Todos los platos de la mesa: pendientes + ya marchados
+  const mesaOrderItems = [...pendingOrder, ...order].filter((o:any) => o.mesa === selectedTable.num);
+  // Ticket base de Supabase + platos locales aún no cerrados
+  const ticketBase = (mesas && mesas.length > 0)
+    ? (mesas.find((m:any) => (m.num ?? m.numero ?? m.id) === selectedTable.num)?.ticket_acumulado || 0)
+    : selectedTable.ticket;
+  const mesaSubtotal = ticketBase + mesaOrderItems.reduce((s:number, o:any) => s + parsePrecio(o.precio), 0);
 
   return (
     <div ref={wrapperRef} className="flex bg-[#0a0a0a] text-[#f0f0f0]" style={{ 
@@ -3213,14 +3245,25 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               {/* FILA RITUAL — solo mesa activa */}
               <div className="border-b border-[#1a1a1a] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                 <div className="flex items-center px-3 py-2 gap-1.5">
-                  {/* Label mesa activa */}
-                  <div className="flex items-center gap-1 shrink-0 mr-1">
+                  {/* Label mesa activa + progreso ritual */}
+                  <div className="flex items-center gap-1 shrink-0 mr-2">
                     <span className="text-[10px] font-black px-2 py-0.5 rounded bg-[#d4943a] text-black">M{selectedTable.num}</span>
-                    <span className="text-[9px] text-[#606060] font-medium">{selectedTable.cliente}</span>
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[9px] text-[#606060] font-medium">{selectedTable.cliente}</span>
+                      <div className="flex items-center gap-1">
+                        <div className="w-16 h-1.5 bg-[#1e1e1e] rounded-full overflow-hidden">
+                          <div className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${getRitualProgress(selectedTable.id)}%`, background: getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4' }}/>
+                        </div>
+                        <span className="text-[9px] font-black" style={{ color: getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4' }}>
+                          {getRitualProgress(selectedTable.id)}%
+                        </span>
+                      </div>
+                    </div>
                   </div>
                   {/* Steps solo de la mesa activa */}
                   {ritualStepsAll.map((step) => {
-                    const state = ritualState[selectedTable.id] || [];
+                    const state = ritualState[selectedTable.id ?? selectedTableId] || [];
                     const done = state.includes(step);
                     const stepEmojis: Record<string,string> = { 'Agua':'💧','Coctel':'🍹','Compartir':'🥟','Robata/Wok':'🔥','Postre':'🍮','Recomendar':'⭐','Pousse-café':'🥃','Café/Té':'☕','Vino':'🍷','Licor':'🥂' };
                     const stepColors: Record<string,[string,string]> = {
@@ -3615,12 +3658,12 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 <div className="px-3 py-3 flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-[#9b72ff]/20 flex items-center justify-center text-[20px]">⭐</div>
                   <div>
-                    <div className="text-[18px] font-black text-[#9b72ff]" style={{fontFamily:"'Syne',sans-serif"}}>{calcularPuntos(selectedTable.ticket)} pts</div>
+                    <div className="text-[18px] font-black text-[#9b72ff]" style={{fontFamily:"'Syne',sans-serif"}}>{calcularPuntos(mesaSubtotal)} pts</div>
                     <div className="text-[10px] text-[#606060]">Mesa {selectedTable.num} · 1 pto por $10k</div>
                   </div>
                   <div className="ml-auto text-right">
                     <div className="text-[10px] text-[#606060]">Próximo nivel</div>
-                    <div className="text-[11px] font-bold text-[#f0b45a]">{Math.max(0,50-calcularPuntos(selectedTable.ticket))} pts</div>
+                    <div className="text-[11px] font-bold text-[#f0b45a]">{Math.max(0,50-calcularPuntos(mesaSubtotal))} pts</div>
                   </div>
                 </div>
               </div>
@@ -3628,8 +3671,8 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               <div className="flex items-center gap-2 text-[13px]">
                 <div className="w-1.5 h-1.5 rounded-full bg-[#d4943a] shrink-0"></div>
                 <span className="text-[#a0a0a0]">Ticket:</span>
-                <span className="font-semibold text-[#f0f0f0]">${selectedTable.ticket}</span>
-                <span className="text-[#606060] text-[11px]">/ ${selectedTable.meta} ({Math.round(selectedTable.ticket / selectedTable.meta * 100)}%)</span>
+                <span className="font-semibold text-[#f0f0f0]">${formatPrecio(mesaSubtotal)}</span>
+                <span className="text-[#606060] text-[11px]">/ ${selectedTable.meta} ({Math.min(100,Math.round(mesaSubtotal / (selectedTable.meta||120) * 100))}%)</span>
               </div>
 
               <div className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl overflow-hidden">
@@ -3645,7 +3688,12 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                         <span className="text-[14px]">{o.emoji}</span>
                         <span className="flex-1 text-[12px]">{o.nombre}</span>
                         <span className="text-[12px] text-[#d4943a] font-bold">{o.precio}</span>
-                        <button onClick={() => removeOrder(order.indexOf(o))} className="text-[#606060] hover:text-[#e05050] text-[12px]">✕</button>
+                        <button onClick={() => {
+                          const idxOrder = order.indexOf(o);
+                          const idxPending = pendingOrder.indexOf(o);
+                          if (idxOrder >= 0) removeOrder(idxOrder);
+                          else if (idxPending >= 0) setPendingOrder(p => p.filter((_,j) => j !== idxPending));
+                        }} className="text-[#606060] hover:text-[#e05050] text-[12px]">✕</button>
                       </div>
                     ))}
                 </div>
