@@ -704,18 +704,61 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [flowAlertas, setFlowAlertas] = useState<any[]>([]);
   const [historialPedidos, setHistorialPedidos] = useState<any[]>([]);
   const [showHistorial, setShowHistorial] = useState(false);
-  // Audio para alertas
+  // 🛎️ Timbre real — 2.5 segundos, resonante como campana de hotel
   const playAlert = useCallback(() => {
     try {
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain); gain.connect(ctx.destination);
-      osc.frequency.setValueAtTime(880, ctx.currentTime);
-      osc.frequency.setValueAtTime(660, ctx.currentTime + 0.1);
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
-      osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.4);
+      
+      // Capa 1: tono fundamental 523Hz (Do5) — el "ding" principal
+      const bell1 = () => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(510, ctx.currentTime + 2.5);
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.55, ctx.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.5);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 2.5);
+      };
+      // Capa 2: armónico 1046Hz (Do6) — brillo del timbre
+      const bell2 = () => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1046, ctx.currentTime);
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.005);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 1.5);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 1.5);
+      };
+      // Capa 3: sub-tono 261Hz — cuerpo/resonancia
+      const bell3 = () => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(261, ctx.currentTime);
+        gain.gain.setValueAtTime(0, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0.2, ctx.currentTime + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.0);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 2.0);
+      };
+      // Capa 4: segundo golpe a 0.6s (eco del timbre)
+      const bell4 = () => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(523, ctx.currentTime + 0.6);
+        gain.gain.setValueAtTime(0, ctx.currentTime + 0.6);
+        gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.61);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 2.2);
+        osc.start(ctx.currentTime + 0.6); osc.stop(ctx.currentTime + 2.5);
+      };
+      bell1(); bell2(); bell3(); bell4();
     } catch(e) {}
   }, []);
 
@@ -2889,29 +2932,13 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                   </div>
                 </div>
 
-                {/* Botones de acción de mesa */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => { setRightTab('IA'); }}
-                    className="py-3 rounded-xl border border-[#2a2a2a] text-[13px] font-semibold text-[#a0a0a0] hover:border-[#d4943a] hover:text-[#d4943a] active:bg-[#3dba6f]/20 active:border-[#3dba6f] active:text-[#3dba6f] transition-all">
-                    🧠 Ver Brief
-                  </button>
-                  <button onClick={() => {
-                    if (isGerencia || pinUnlocked) {
-                      abrirModoCliente(m.id);
-                    } else {
-                      requirePin(() => abrirModoCliente(m.id));
-                    }
-                  }}
-                    className="py-3 rounded-xl text-[13px] font-bold transition-all bg-[#d4943a] text-black hover:bg-[#f0b45a] active:bg-[#3dba6f] active:text-white">
-                    {isGerencia || pinUnlocked ? '💳 Cobrar' : '🔐 Cobrar'}
-                  </button>
-                </div>
+{/* Botón Brief → chat IA */}
 
                 {/* Mini lista de otras mesas */}
                 <div className="mt-2">
                   <div className="text-[10px] text-[#606060] font-bold uppercase tracking-wider mb-1.5">Otras mesas</div>
                   <div className="flex flex-col gap-1">
-                    {displayTables.filter(t => t.id !== selectedTableId).map(t => {
+                    {displayTables.filter(t => t.id !== selectedTableId).slice(0,3).map(t => {
                       const tp = Math.min(100, Math.round((t.ticket / t.meta) * 100));
                       const tc = tp >= 80 ? 'bg-[#3dba6f]' : tp >= 50 ? 'bg-[#d4943a]' : 'bg-[#e05050]';
                       return (
@@ -3438,6 +3465,14 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           {rightTab === 'IA' && (
             <>
               {/* ══ BRIEF DEL DÍA ══ */}
+              {/* Botón enviar brief al chat */}
+              <button onClick={()=>{
+                setRightTab('CHAT');
+                const briefMsg = `📋 BRIEF DEL DÍA\n\nMesas abiertas: ${ticketDia?.pendientes||0} | Ventas: $${Math.round((ticketDia?.ventas||0)/1000)}k | Ticket prom: $${Math.round((ticketDia?.ticketProm||0)/1000)}k\n${tips86.length>0?`\n⚠️ En 86: ${tips86.map((t:any)=>t.nombre||t.name).join(', ')}`:'\n✓ Sin productos en 86'}\n\nPlatos destacados: Ton Katsu Don · Ceviche Nikkei · Maki Spicy Tuna`;
+                setChatHistory((prev:any)=>[...prev,{role:'assistant',content:briefMsg}]);
+              }} className="w-full py-2 rounded-lg border border-[#d4943a]/40 bg-[#d4943a]/08 text-[#d4943a] text-[11px] font-bold hover:bg-[#d4943a]/15 transition-all flex items-center justify-center gap-2 mb-1">
+                📋 Enviar brief del día al chat
+              </button>
               <div className="bg-[#1c1c1c] border border-[#d4943a]/30 rounded-xl overflow-hidden">
                 <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2">
                   <span className="text-[11px] font-black text-[#d4943a]">📋 Brief del día</span>
@@ -3479,7 +3514,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 <div className="bg-[#1c1c1c] border border-[#e05050]/25 rounded-xl overflow-hidden">
                   <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-[#e05050] animate-pulse inline-block"/>
-                    <span className="text-[10px] font-bold text-[#e05050] uppercase tracking-wider">Centro de Notificaciones</span>
+                    <span className="text-[10px] font-bold text-[#e05050] uppercase tracking-wider">⚡️ Inteligencia del día</span>
                   </div>
                   <div className="flex flex-col">
                     {(ticketDia?.pendientes||0)>4 && (
@@ -3706,13 +3741,24 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 </div>
               </div>
 
-              <div className="flex gap-2 flex-wrap mt-auto">
-                <button onClick={() => abrirPOS(selectedTableId)} className="flex-1 min-w-[80px] py-2 px-2.5 rounded-lg text-[12px] font-semibold border border-[#2a2a2a] text-[#a0a0a0] hover:border-[#a0a0a0] transition-all active:bg-[#3dba6f]/20 active:border-[#3dba6f]">🧾 Detalle</button>
-                <button onClick={() => abrirPOS(selectedTableId)} className="flex-[2] min-w-[80px] py-2 px-2.5 rounded-lg text-[12px] font-semibold bg-[#d4943a] text-black border border-[#d4943a] hover:bg-[#f0b45a] transition-all active:bg-[#3dba6f] active:border-[#3dba6f]">💳 Cobrar</button>
+              <div className="flex flex-col gap-1.5 mt-auto">
+                {/* Cobrar Gerencia — acceso completo con ajustes */}
+                <button onClick={() => {
+                    if (isGerencia || pinUnlocked) { abrirModoCliente(selectedTableId); }
+                    else { requirePin(() => abrirModoCliente(selectedTableId)); }
+                  }}
+                  className="w-full py-2.5 rounded-xl text-[12px] font-black transition-all bg-[#d4943a] text-black hover:bg-[#f0b45a] active:bg-[#3dba6f] flex items-center justify-center gap-2">
+                  {isGerencia || pinUnlocked ? '👔 Cobrar Gerencia' : '🔐 Cobrar Gerencia'}
+                </button>
+                {/* Cobrar Xpress — rápido sin ajustes */}
+                <button onClick={() => abrirModoCliente(selectedTableId)}
+                  className="w-full py-2.5 rounded-xl text-[12px] font-black transition-all bg-[#3dba6f] text-black hover:bg-[#4dca7f] active:bg-[#d4943a] flex items-center justify-center gap-2">
+                  ⚡ Cobrar Xpress
+                </button>
               </div>
               <div className="flex gap-2 flex-wrap">
-
-                <button onClick={() => { showToast(`Mesa ${selectedTable.num} cerrada`); setOrder(prev => prev.filter(o => o.mesa !== selectedTable.num)); }} className="flex-1 min-w-[80px] py-2 px-2.5 rounded-lg text-[12px] font-semibold bg-[#e05050]/15 border border-[#e05050]/30 text-[#e05050] hover:bg-[#e05050]/25 transition-all active:bg-[#3dba6f]/20 active:border-[#3dba6f] active:text-[#3dba6f]">Cerrar Mesa</button>
+                <button onClick={() => setMostrarTraspaso(true)} className="flex-1 py-2 px-2 rounded-lg text-[11px] font-semibold border border-[#4a8fd4]/40 text-[#4a8fd4] hover:bg-[#4a8fd4]/10 transition-all">↔ Traspaso</button>
+                <button onClick={() => { showToast(`Mesa ${selectedTable.num} cerrada`); setOrder(prev => prev.filter(o => o.mesa !== selectedTable.num)); }} className="flex-1 py-2 px-2 rounded-lg text-[11px] font-semibold bg-[#e05050]/15 border border-[#e05050]/30 text-[#e05050] hover:bg-[#e05050]/25 transition-all">Cerrar Mesa</button>
               </div>
             </div>
           )}
@@ -3921,6 +3967,24 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
 
           {rightTab === 'Chat' && (
             <div className="flex flex-col h-full">
+              {/* 86s al inicio del chat */}
+              {tips86.length > 0 && (
+                <div className="bg-[#e05050]/10 border border-[#e05050]/30 rounded-xl overflow-hidden mb-2">
+                  <div className="px-3 py-1.5 flex items-center gap-2 border-b border-[#e05050]/20">
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#e05050] animate-pulse inline-block"/>
+                    <span className="text-[10px] font-black text-[#e05050] uppercase tracking-wider">⚠️ En 86 — Informar al equipo</span>
+                  </div>
+                  <div className="flex flex-col px-3 py-1.5 gap-1">
+                    {tips86.slice(0,5).map((t:any,i:number)=>(
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-[13px]">{t.emoji||'🔴'}</span>
+                        <span className="flex-1 text-[10px] text-[#f0f0f0] font-semibold">{t.nombre||t.name}</span>
+                        <span className="text-[9px] font-black text-[#e05050]">{(t.stock_actual||t.qty||0)<=0?'86':'Bajo'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="flex gap-1.5 mb-3 flex-wrap">
                 {(['Mesero','Cocina','Host','Maître'] as const).map(rol => {
                   const colors: Record<string,string> = { Mesero:'#4a8fd4', Cocina:'#e05050', Host:'#3dba6f', Maître:'#9b72ff' };
