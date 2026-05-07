@@ -643,13 +643,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   };
 
   // ── Mesas dinámicas — enriquecidas con platos locales en tiempo real ──
-  const displayTables = (mesas && mesas.length > 0 ? mesas : [
+  const displayTables = (tables && tables.length > 0 ? tables : [
     { id: 1, num: 12, cliente: 'López',     pax: 3, time: '00:45', ticket: 65,  meta: 120, status: 'activa', vip: false, bday: false, alert: false },
     { id: 2, num: 8,  cliente: 'Sra. García',pax: 2, time: '01:10', ticket: 140, meta: 100, status: 'activa', vip: true,  bday: false, alert: false },
     { id: 3, num: 5,  cliente: 'Cumpleaños', pax: 6, time: '00:50', ticket: 40,  meta: 80,  status: 'activa', vip: false, bday: true,  alert: false },
     { id: 4, num: 4,  cliente: 'Martínez',   pax: 4, time: '00:55', ticket: 95,  meta: 150, status: 'activa', vip: false, bday: false, alert: true  },
   ]).map((m: any) => {
-    // Sumar en vivo los platos pendientes de esta mesa
     const mesaNum = m.num ?? m.numero ?? m.id;
     const platosLocales = [...pendingOrder, ...order].filter(o => o.mesa === mesaNum);
     const ticketLocal = platosLocales.reduce((s: number, o: any) => s + parsePrecio(o.precio), 0);
@@ -2548,8 +2547,8 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
   // Todos los platos de la mesa: pendientes + ya marchados
   const mesaOrderItems = [...pendingOrder, ...order].filter((o:any) => o.mesa === selectedTable.num);
   // Ticket base de Supabase + platos locales aún no cerrados
-  const ticketBase = (mesas && mesas.length > 0)
-    ? (mesas.find((m:any) => (m.num ?? m.numero ?? m.id) === selectedTable.num)?.ticket_acumulado || 0)
+  const ticketBase = (tables && tables.length > 0)
+    ? (tables.find((m:any) => (m.num ?? m.numero ?? m.id) === selectedTable.num)?.ticket_acumulado || 0)
     : selectedTable.ticket;
   const mesaSubtotal = ticketBase + mesaOrderItems.reduce((s:number, o:any) => s + parsePrecio(o.precio), 0);
 
