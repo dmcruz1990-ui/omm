@@ -117,37 +117,25 @@ export default function FlowModule() {
     const now_ts = new Date().toISOString();
     const updates:any = { status, updated_at: now_ts };
 
+    // Inicio de producción
     if (status === 'preparing') {
-      // Registrar inicio de producción
       updates.tiempo_inicio = now_ts;
     }
 
+    // Plato listo — guardar tiempo_listo
+    // El trigger de Supabase calcula duracion_seg automáticamente
     if (status === 'served') {
       updates.tiempo_listo = now_ts;
+      // Si no tenía tiempo_inicio (pending→served directo), calculamos aquí también
       const item = items.find(i => i.id === id);
-
-      if (item) {
-        // Caso 1: tiene tiempo_inicio → duracion = tiempo_inicio → ahora
-        if (item.tiempo_inicio) {
-          const dur = Math.floor(
-            (new Date(now_ts).getTime() - new Date(item.tiempo_inicio).getTime()) / 1000
-          );
-          updates.duracion_seg = dur > 0 ? dur : null;
-
-        // Caso 2: sin tiempo_inicio (fue directo pending→served) → duracion desde created_at
-        } else {
-          const dur = Math.floor(
-            (new Date(now_ts).getTime() - new Date(item.created_at).getTime()) / 1000
-          );
-          updates.duracion_seg = dur > 0 ? dur : null;
-          updates.tiempo_inicio = item.created_at; // marcar inicio como cuando se pidió
-        }
+      if (item && !item.tiempo_inicio) {
+        updates.tiempo_inicio = item.created_at; // el trigger lo usará para calcular duración
       }
     }
 
     await supabase.from('order_items').update(updates).eq('id', id);
 
-    // Notificar al mesero cuando el plato está listo
+    // Notificar al mesero
     if (status === 'served') {
       const item = items.find(i => i.id === id);
       if (item) {
@@ -159,7 +147,6 @@ export default function FlowModule() {
           cocinero:  item.cocinero || null,
           estacion:  item.estacion || getStation(item),
           leida:     false,
-          duracion_seg: updates.duracion_seg || null,
         });
       }
     }
@@ -498,7 +485,7 @@ export default function FlowModule() {
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
               <thead>
                 <tr style={{background:'#0f0f1a',position:'sticky',top:0,zIndex:5}}>
-                  {['Plato','Mesa','Estación','Mesero','Cocinero','Estado','Pedido','Producción','Tiempo real'].map(h=>(
+                  {['Plato','Mesa','Estación','Mesero','Estado','🕐 Pedido','▶ Inicio','✅ Listo','⏱ Producción'].map(h=>(
                     <th key={h} style={{padding:'8px 12px',textAlign:'left',fontSize:10,color:'#50506A',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',borderBottom:'1px solid rgba(255,255,255,0.07)',whiteSpace:'nowrap'}}>
                       {h}
                     </th>
@@ -510,14 +497,13 @@ export default function FlowModule() {
                   const est = ESTACIONES[getStation(item)];
                   const objetivo = est?.objetivo || 480;
 
-                  // ── Tiempos en vivo usando estado `now` (se actualiza cada 1s) ──
+                  // Tiempos en vivo
                   const tiempoPedidoSeg = Math.floor((now - new Date(item.created_at).getTime()) / 1000);
                   const tiempoProdSeg   = item.tiempo_inicio
                     ? Math.floor((now - new Date(item.tiempo_inicio).getTime()) / 1000)
                     : 0;
                   const tiempoFinalSeg  = (item as any).duracion_seg || 0;
 
-                  // Producción: si ya terminó → tiempo real guardado; si está en curso → cronómetro vivo
                   const produccionSeg = tiempoFinalSeg > 0 ? tiempoFinalSeg
                                       : item.status === 'preparing' && tiempoProdSeg > 0 ? tiempoProdSeg
                                       : item.status === 'pending' ? tiempoPedidoSeg
@@ -531,9 +517,14 @@ export default function FlowModule() {
 
                   const esVivo = tiempoFinalSeg === 0 && item.status !== 'served';
 
+                  const fmtHora = (iso:string|null|undefined) => {
+                    if (!iso) return '—';
+                    return new Date(iso).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false});
+                  };
+
                   return (
                     <tr key={item.id} style={{background:idx%2===0?'#08080f':'#0f0f1a',borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-                      <td style={{padding:'9px 12px',fontWeight:600,color:'#f0f0f0'}}>{getNombre(item)}</td>
+                      <td style={{padding:'9px 12px',fontWeight:600,color:'#f0f0f0',maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{getNombre(item)}</td>
                       <td style={{padding:'9px 12px'}}>
                         {item.table_id ? <span style={{background:`${est?.color||'#448AFF'}20`,color:est?.color||'#448AFF',padding:'2px 8px',borderRadius:20,fontSize:10,fontWeight:700}}>M{item.table_id}</span> : '—'}
                       </td>
@@ -541,40 +532,56 @@ export default function FlowModule() {
                         <span style={{fontSize:11,color:est?.color||'#a0a0a0'}}>{est?.emoji||'🍽️'} {getStation(item).replace('_',' ')}</span>
                       </td>
                       <td style={{padding:'9px 12px',color:'#a0a0a0',fontSize:11}}>{item.mesero||'—'}</td>
-                      <td style={{padding:'9px 12px',color:'#a0a0a0',fontSize:11}}>{item.cocinero||'—'}</td>
                       <td style={{padding:'9px 12px'}}>
                         <span style={{fontSize:10,background:item.status==='served'?'rgba(0,230,118,0.15)':item.status==='preparing'?`${est?.color||'#448AFF'}20`:'rgba(255,255,255,0.05)',color:item.status==='served'?'#00E676':item.status==='preparing'?(est?.color||'#448AFF'):'#6b7280',padding:'2px 8px',borderRadius:20,fontWeight:700}}>
-                          {item.status==='served'?'✅ Listo':item.status==='preparing'?'🍳 Prep.':'⏳ Pendiente'}
+                          {item.status==='served'?'✅':item.status==='preparing'?'🍳':'⏳'}
                         </span>
                       </td>
-                      <td style={{padding:'9px 12px',color:'#606060',fontSize:11}}>
-                        {new Date(item.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',hour12:true})}
-                      </td>
 
-                      {/* PRODUCCIÓN — cronómetro vivo o tiempo final */}
+                      {/* 🕐 HORA PEDIDO */}
                       <td style={{padding:'9px 12px'}}>
-                        <span style={{
-                          fontSize:12, fontWeight:700, color:colorProd,
-                          background:`${colorProd}12`,
-                          padding:'2px 10px', borderRadius:20,
-                          display:'inline-flex', alignItems:'center', gap:4,
-                        }}>
-                          {esVivo && <span style={{width:5,height:5,borderRadius:'50%',background:colorProd,display:'inline-block',animation:'pulse 1s infinite'}}/>}
-                          {produccionSeg > 0 ? fmtTime(produccionSeg) : '—'}
-                        </span>
+                        <div style={{fontSize:11,color:'#a0a0a0',fontFamily:'monospace'}}>{fmtHora(item.created_at)}</div>
                       </td>
 
-                      {/* TIEMPO REAL — solo si ya terminó, con objetivo */}
+                      {/* ▶ HORA INICIO PRODUCCIÓN */}
+                      <td style={{padding:'9px 12px'}}>
+                        {item.tiempo_inicio ? (
+                          <div style={{fontSize:11,color:est?.color||'#22d3ee',fontFamily:'monospace'}}>{fmtHora(item.tiempo_inicio)}</div>
+                        ) : (
+                          <span style={{fontSize:11,color:'#404040'}}>—</span>
+                        )}
+                      </td>
+
+                      {/* ✅ HORA LISTO */}
+                      <td style={{padding:'9px 12px'}}>
+                        {(item as any).tiempo_listo ? (
+                          <div style={{fontSize:11,color:'#00E676',fontFamily:'monospace'}}>{fmtHora((item as any).tiempo_listo)}</div>
+                        ) : esVivo ? (
+                          <span style={{fontSize:11,color:'#FFB547',display:'inline-flex',alignItems:'center',gap:3}}>
+                            <span style={{width:5,height:5,borderRadius:'50%',background:'#FFB547',display:'inline-block'}}/>
+                            {fmtTime(produccionSeg)}
+                          </span>
+                        ) : (
+                          <span style={{fontSize:11,color:'#404040'}}>—</span>
+                        )}
+                      </td>
+
+                      {/* ⏱ PRODUCCIÓN TOTAL */}
                       <td style={{padding:'9px 12px'}}>
                         {tiempoFinalSeg > 0 ? (
-                          <div style={{display:'flex',alignItems:'center',gap:6}}>
-                            <span style={{fontSize:12,fontWeight:700,color:colorProd}}>{fmtTime(tiempoFinalSeg)}</span>
-                            <span style={{fontSize:9,color:'#50506A'}}>/ {fmtTime(objetivo)}</span>
+                          <div style={{display:'flex',alignItems:'center',gap:5}}>
+                            <span style={{fontSize:12,fontWeight:900,color:colorProd,background:`${colorProd}15`,padding:'2px 10px',borderRadius:20}}>
+                              {fmtTime(tiempoFinalSeg)}
+                            </span>
+                            <span style={{fontSize:9,color:'#50506A'}}>/{fmtTime(objetivo)}</span>
                           </div>
-                        ) : item.status === 'preparing' ? (
-                          <span style={{fontSize:11,color:'#FFB547',fontWeight:600}}>⏳ en curso</span>
+                        ) : esVivo ? (
+                          <span style={{fontSize:12,fontWeight:700,color:colorProd,background:`${colorProd}12`,padding:'2px 10px',borderRadius:20,display:'inline-flex',alignItems:'center',gap:4}}>
+                            <span style={{width:5,height:5,borderRadius:'50%',background:colorProd,animation:'pulse 1s infinite',display:'inline-block'}}/>
+                            {fmtTime(produccionSeg)}
+                          </span>
                         ) : (
-                          <span style={{fontSize:11,color:'#50506A'}}>—</span>
+                          <span style={{fontSize:11,color:'#404040'}}>—</span>
                         )}
                       </td>
                     </tr>
