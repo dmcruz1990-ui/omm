@@ -845,6 +845,38 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     } catch(e) { console.error('guardarFactura error:', e); }
   };
 
+  // ── 34. Guardar feedback interno del servicio ─────────────────────────
+  const guardarFeedback = async () => {
+    if (!feedbackMesa.trim() || !mesaCliente) return;
+    try {
+      await supabase.from('feedback_servicio').insert({
+        restaurante_id: 6,
+        mesa_num: mesaCliente.num,
+        mesero: profile?.nombre_completo || 'Mesero',
+        tipo: feedbackTipo,
+        comentario: feedbackMesa,
+        fecha: new Date().toISOString().split('T')[0],
+      });
+      // Agregar al historial del cliente si existe
+      if (mesaCliente?.clienteId) {
+        const { data: cust } = await supabase.from('customers').select('historial_feedback').eq('id', mesaCliente.clienteId).single();
+        if (cust) {
+          const hist = cust.historial_feedback || [];
+          await supabase.from('customers').update({
+            historial_feedback: [...hist, {
+              fecha: new Date().toISOString().split('T')[0],
+              tipo: feedbackTipo,
+              comentario: feedbackMesa,
+              mesa: mesaCliente.num,
+              mesero: profile?.nombre_completo || 'Mesero',
+            }]
+          }).eq('id', mesaCliente.clienteId);
+        }
+      }
+      setFeedbackMesa('');
+    } catch(e) { console.error('feedback error:', e); }
+  };
+
   const fetchTicketDia = async () => {
     try {
       const { data: cobros } = await supabase.from('cobros_trazabilidad').select('total,propina').eq('restaurante_id',6);
@@ -1580,6 +1612,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [clienteRatings, setClienteRatings] = useState({ comida: 0, servicio: 0, ambiente: 0 });
   // X-CARE estados
   const [xcareStep, setXcareStep] = useState<'rating'|'tags'|'platos'|'microtags'|'redes'|'done'>('rating');
+  const [feedbackMesa, setFeedbackMesa] = useState('');
+  const [feedbackTipo, setFeedbackTipo] = useState<'nota'|'alerta'|'felicitacion'>('nota');
   const [showPropCustom, setShowPropCustom] = useState(false);
   const [customPropina, setCustomPropina] = useState(0);
   const [divClientePax, setDivClientePax] = useState(1);
@@ -2540,6 +2574,30 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                   <a href="https://tripadvisor.com" target="_blank" style={{display:'block',padding:'14px',borderRadius:14,background:'linear-gradient(135deg,#00AA6C,#007A4D)',color:'#fff',fontSize:14,fontWeight:800,textDecoration:'none',fontFamily:"'Syne',sans-serif"}}>🦉 Opinar en TripAdvisor</a>
                 </div>
                 <button onClick={()=>{ setClientePaso('premio'); }} style={{background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:13,textDecoration:'underline'}}>Omitir por ahora →</button>
+              </div>
+            )}
+
+            {/* ── FEEDBACK INTERNO DEL MESERO ── */}
+            {xcareStep==='done' && (
+              <div style={{background:'rgba(255,255,255,0.03)',borderRadius:16,padding:'16px',marginTop:12,border:'1px solid rgba(255,255,255,0.08)'}}>
+                <div style={{fontSize:12,fontWeight:700,color:'#a0a0a0',marginBottom:8}}>📝 Nota interna del mesero (no visible al cliente)</div>
+                <div style={{display:'flex',gap:6,marginBottom:8}}>
+                  {[{id:'nota',l:'📝 Nota'},{id:'alerta',l:'⚠️ Alerta'},{id:'felicitacion',l:'🌟 Éxito'}].map(t=>(
+                    <button key={t.id} onClick={()=>setFeedbackTipo(t.id as any)}
+                      style={{flex:1,padding:'6px',borderRadius:8,border:`1px solid ${feedbackTipo===t.id?S.black:'rgba(0,0,0,0.1)'}`,background:feedbackTipo===t.id?S.black:'transparent',color:feedbackTipo===t.id?'#fff':S.text3,fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                      {t.l}
+                    </button>
+                  ))}
+                </div>
+                <textarea value={feedbackMesa} onChange={e=>setFeedbackMesa(e.target.value)}
+                  placeholder="Ej: Mesa difícil, solicitaron postre especial, cliente VIP primera visita..."
+                  style={{width:'100%',padding:'10px',borderRadius:8,border:'1px solid rgba(0,0,0,0.15)',background:'rgba(0,0,0,0.04)',fontSize:12,outline:'none',resize:'vertical',minHeight:60}}/>
+                {feedbackMesa && (
+                  <button onClick={guardarFeedback}
+                    style={{marginTop:8,padding:'8px 20px',borderRadius:8,border:'none',background:S.black,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                    ✓ Guardar nota
+                  </button>
+                )}
               </div>
             )}
 
