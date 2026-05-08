@@ -175,14 +175,40 @@ export default function FlowModule() {
           </div>
         ))}
 
-        <div style={{marginLeft:'auto',display:'flex',gap:6}}>
+        <div style={{marginLeft:'auto',display:'flex',gap:4,flexWrap:'wrap'}}>
           {/* Filtro estación */}
           {Object.entries(ESTACIONES).map(([slug,est])=>(
             <button key={slug} onClick={()=>setFiltroEstacion(filtroEstacion===slug?null:slug)}
-              style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${filtroEstacion===slug?est.color:'rgba(255,255,255,0.1)'}`,background:filtroEstacion===slug?`${est.color}20`:'transparent',color:filtroEstacion===slug?est.color:'#606060',fontSize:11,cursor:'pointer',transition:'all .15s'}}>
-              {est.emoji}
+              title={slug.replace('_',' ')}
+              style={{
+                padding: filtroEstacion===slug ? '5px 12px' : '5px 10px',
+                borderRadius:8,
+                border:`1px solid ${filtroEstacion===slug?est.color:'rgba(255,255,255,0.1)'}`,
+                background:filtroEstacion===slug?`${est.color}25`:'transparent',
+                color:filtroEstacion===slug?est.color:'#606060',
+                fontSize:filtroEstacion===slug?11:16,
+                fontWeight:700,
+                cursor:'pointer',
+                transition:'all .15s',
+                display:'flex',
+                alignItems:'center',
+                gap:5,
+                boxShadow: filtroEstacion===slug ? `0 0 10px ${est.color}40` : 'none',
+              }}>
+              <span style={{fontSize:16}}>{est.emoji}</span>
+              {filtroEstacion===slug && (
+                <span style={{fontSize:10,textTransform:'uppercase',letterSpacing:'.05em',whiteSpace:'nowrap'}}>
+                  {slug.replace('_',' ')} ✕
+                </span>
+              )}
             </button>
           ))}
+          {filtroEstacion && (
+            <button onClick={()=>setFiltroEstacion(null)}
+              style={{padding:'5px 10px',borderRadius:8,border:'1px solid rgba(255,255,255,0.15)',background:'rgba(255,255,255,0.05)',color:'#a0a0a0',fontSize:10,fontWeight:700,cursor:'pointer'}}>
+              Ver todas
+            </button>
+          )}
         </div>
       </div>
 
@@ -221,10 +247,11 @@ export default function FlowModule() {
           )}
 
           {/* Grid por estación */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
+          <div style={{display:'grid',gridTemplateColumns: filtroEstacion ? '1fr' : 'repeat(auto-fill,minmax(280px,1fr))',gap:12}}>
             {Object.entries(ESTACIONES).map(([slug,est])=>{
-              const estItems = (filtroEstacion?items.filter(i=>getStation(i)===slug):byEstacion[slug]) || [];
-              if (estItems.length===0 && filtroEstacion && filtroEstacion!==slug) return null;
+              // Si hay filtro activo, solo mostrar la estación seleccionada
+              if (filtroEstacion && filtroEstacion !== slug) return null;
+              const estItems = items.filter(i => getStation(i) === slug);
               return (
                 <div key={slug} style={{background:'#0f0f1a',border:`1px solid rgba(255,255,255,0.07)`,borderRadius:14,overflow:'hidden'}}>
                   {/* Header estación */}
