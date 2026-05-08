@@ -1335,25 +1335,63 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     <div className={`text-[11px] font-bold mb-3 text-center ${msg.startsWith('✓') ? 'text-[#3dba6f]' : 'text-[#e05050]'}`}>{msg}</div>
                   )}
 
-                  <button onClick={() => {
+                  <button onClick={async () => {
+                    // Validar primero en Supabase (tabla bonos_regalo)
+                    const { data: bonoDb } = await supabase
+                      .from('bonos_regalo')
+                      .select('*')
+                      .eq('codigo', codigoBono)
+                      .eq('activo', true)
+                      .single();
+
+                    if (bonoDb) {
+                      // Verificar usos
+                      if (bonoDb.usos_actuales >= bonoDb.usos_maximos) {
+                        render('✗ Este código ya fue utilizado'); return;
+                      }
+                      // Verificar vencimiento
+                      if (bonoDb.vence_en && new Date(bonoDb.vence_en) < new Date()) {
+                        render('✗ Código vencido'); return;
+                      }
+                      // Aplicar según tipo
+                      if (bonoDb.tipo === 'descuento_fijo') {
+                        const restante = Math.max(0, totalBase - bonoDb.valor);
+                        await supabase.from('bonos_regalo').update({ usos_actuales: bonoDb.usos_actuales+1, canjeado_en: new Date().toISOString(), canjeado_por: profile?.nombre_completo||'Staff' }).eq('id', bonoDb.id);
+                        closeModal();
+                        showToast(`✓ ${bonoDb.descripcion} — ${restante===0?'cubre todo':formatPrecio(restante)+' restante'}`);
+                        if (restante === 0) { setTimeout(() => abrirEncuesta(tid), 400); }
+                        else { setTimeout(() => abrirPOS(tid), 300); }
+                      } else if (bonoDb.tipo === 'descuento_pct') {
+                        setPosDescuento(bonoDb.pct_descuento);
+                        await supabase.from('bonos_regalo').update({ usos_actuales: bonoDb.usos_actuales+1, canjeado_en: new Date().toISOString() }).eq('id', bonoDb.id);
+                        closeModal();
+                        showToast(`✓ ${bonoDb.descripcion} — ${bonoDb.pct_descuento}% descuento aplicado`);
+                        setTimeout(() => abrirPOS(tid), 300);
+                      } else {
+                        // cafe_gratis, copa_vino, postre_gratis
+                        await supabase.from('bonos_regalo').update({ usos_actuales: bonoDb.usos_actuales+1, canjeado_en: new Date().toISOString() }).eq('id', bonoDb.id);
+                        closeModal();
+                        showToast(`✓ ${bonoDb.descripcion} — Notificado a cocina`);
+                        setTimeout(() => abrirPOS(tid), 300);
+                      }
+                      return;
+                    }
+
+                    // Fallback: validación local hardcoded
                     if (tipoBono === 'tarjeta') {
                       const valor = TARJETAS_VALIDAS[codigoBono];
                       if (!valor) { render('✗ Código no válido'); return; }
                       const restante = Math.max(0, totalBase - valor);
-                      if (restante === 0) {
-                        closeModal();
-                        showToast(`✓ Tarjeta ${codigoBono} — cubre todo — $${formatPrecio(totalBase)}`);
-                        setTimeout(() => abrirEncuesta(tid), 400);
-                      } else {
-                        render(`✓ Tarjeta ${codigoBono} — quedan $${formatPrecio(restante)} por cobrar`);
-                        setTimeout(() => { closeModal(); abrirPOS(tid); }, 1800);
-                      }
+                      closeModal();
+                      showToast(`✓ Tarjeta ${codigoBono} — ${restante===0?'cubre todo':formatPrecio(restante)+' restante'}`);
+                      if (restante === 0) setTimeout(() => abrirEncuesta(tid), 400);
+                      else setTimeout(() => abrirPOS(tid), 300);
                     } else {
                       const pct = BONOS_VALIDOS[codigoBono];
                       if (!pct) { render('✗ Código de bono no válido'); return; }
                       setPosDescuento(pct);
                       closeModal();
-                      showToast(`✓ Bono ${codigoBono} aplicado — ${pct}% descuento`);
+                      showToast(`✓ Bono ${codigoBono} — ${pct}% descuento`);
                       setTimeout(() => abrirPOS(tid), 300);
                     }
                   }}
@@ -1979,7 +2017,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 <div style={{ width: 28, height: 28, borderRadius: '50%', background: S.bg2, border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, marginRight: 12 }}>{item.emoji||'🍽️'}</div>
                 <span style={{ flex: 1, fontSize: 15, color: S.text }}>{item.nombre}</span>
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ fontSize:10, padding:'2px 8px', borderRadius:20, fontWeight:700, background:'rgba(61,186,111,0.12)', color:'#3dba6f', border:'1px solid rgba(61,186,111,0.25)' }}>✓ Listo</span>
+                  <span style={{ fontSize:9, padding:'2px 8px', borderRadius:20, fontWeight:700, background:item.estado==='serving'?'rgba(0,230,118,0.15)':item.estado==='preparing'?'rgba(255,181,71,0.15)':'rgba(255,255,255,0.06)', color:item.estado==='serving'?'#00E676':item.estado==='preparing'?'#FFB547':'#606060' }}>
+                    {item.estado==='serving'?'✅ Entregado':item.estado==='preparing'?'🍳 Preparando':'⏳ Pendiente'}
+                  </span>
+                  <span style={{ display:'none', fontSize:10, padding:'2px 8px', borderRadius:20, fontWeight:700, background:'rgba(61,186,111,0.12)', color:'#3dba6f', border:'1px solid rgba(61,186,111,0.25)' }}>✓ Listo</span>
                   <span style={{ fontSize: 15, color: S.text }}>{item.precio}</span>
                 </div>
               </div>
@@ -1987,7 +2028,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             {/* IVA */}
             <div style={{ display: 'flex', alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${S.border}` }}>
               <div style={{ width: 28, height: 28, borderRadius: '50%', background: S.bg2, border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: S.text3, flexShrink: 0, marginRight: 12 }}>%</div>
-              <span style={{ flex: 1, fontSize: 16, color: S.text2 }}>Impoconsumo (8%)</span>
+              <span style={{ flex: 1, fontSize: 16, color: S.text2 }}>Impoconsumo</span>
+                <span style={{ fontSize:9, background:'rgba(255,181,71,0.15)', color:'#FFB547', padding:'2px 6px', borderRadius:20, fontWeight:700, marginRight:6 }}>8%</span>
               <span style={{ fontSize: 16, color: S.text2 }}>${formatPrecio(ivaCliente)}</span>
             </div>
           </div>
