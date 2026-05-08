@@ -2089,20 +2089,22 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.2, color: S.black, marginBottom: 4 }}>
               ¿Deseas dejar propina<br/>a <span style={{ fontWeight: 900 }}>{nombreMesero}</span>?
             </div>
-            <div style={{ fontSize:12, color:S.text3, marginBottom:8 }}>10% propina voluntaria · Colombia</div>
+            <div style={{ fontSize:12, color:S.text3, marginBottom:8, lineHeight:1.5 }}>
+              Propina <strong style={{color:S.text2}}>100% voluntaria</strong> · El 100% va al equipo de servicio
+            </div>
             {/* Badge legal Colombia */}
-            <div style={{ display:'inline-flex', alignItems:'center', gap:5, background:'rgba(61,186,111,0.08)', border:'1px solid rgba(61,186,111,0.25)', borderRadius:20, padding:'4px 14px', fontSize:11, color:'#3dba6f', marginBottom:4 }}>
-              ✓ 10% sugerido por ley · Ley 1258 Colombia
+            <div style={{ display:'inline-flex', alignItems:'center', gap:5, background:'rgba(61,186,111,0.08)', border:'1px solid rgba(61,186,111,0.25)', borderRadius:20, padding:'4px 14px', fontSize:10, color:'#3dba6f', marginBottom:4 }}>
+              ✓ Ley 1393 de 2010 · Art. 22 — Voluntaria en Colombia
             </div>
           </div>
 
           {/* Botones de propina */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
             {[
-              { pct: 0,  emoji: '—',  label:'Sin propina' },
-              { pct: 10, emoji: '😊', label:'Legal', badge:'✓ Ley' },
-              { pct: 20, emoji: '🔥', label:'Generoso', popular: true },
-              { pct: 30, emoji: '❤️', label:'Increíble' },
+              { pct: 0,  emoji: '😐', label:'Sin propina',  desc:'' },
+              { pct: 10, emoji: '🙂', label:'10% Legal',    desc:'Sugerido', badge:'✓ Ley 1393' },
+              { pct: 20, emoji: '🔥', label:'20% Popular',  desc:'Generoso',  popular: true },
+              { pct: 30, emoji: '🤩', label:'30% Wow',      desc:'Increíble' },
             ].map(({ pct, emoji, label, popular, badge }) => (
               <div key={pct} style={{ position: 'relative' }}>
                 {popular && <div style={{ position: 'absolute', top:-10, left:'50%', transform:'translateX(-50%)', background:S.black, color:'#fff', fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap', zIndex:1 }}>POPULAR</div>}
@@ -3579,74 +3581,148 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                   <span className="ml-auto text-[9px] text-[#606060]">{new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'short'})}</span>
                 </div>
                 <div className="p-3 flex flex-col gap-2">
-                  {/* Platos del día */}
-                  <div className="text-[9px] text-[#606060] font-bold uppercase tracking-wider mb-1">Platos del día</div>
-                  <div className="flex flex-wrap gap-1 mb-2">
-                    {['🍱 Omakase Chef','🐟 Salmón Robata','🥩 Wagyū Premium','🍜 Ramen Especial'].map(p=>(
-                      <span key={p} className="text-[10px] bg-[#d4943a]/10 text-[#d4943a] border border-[#d4943a]/20 px-2 py-1 rounded-lg">{p}</span>
+
+                  {/* Platos del día con indicador de rentabilidad */}
+                  <div className="text-[9px] text-[#606060] font-bold uppercase tracking-wider">Platos especiales hoy</div>
+                  <div className="flex flex-col gap-1">
+                    {[
+                      {p:'🍱 Omakase Chef',    rent:true,  disponible:true },
+                      {p:'🥩 Wagyū Premium',   rent:true,  disponible:true },
+                      {p:'🍜 Ramen Especial',  rent:false, disponible:true },
+                      {p:'🐟 Salmón Robata',   rent:true,  disponible:true },
+                    ].map(({p,rent,disponible})=>(
+                      <div key={p} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#141414] border border-[#2a2a2a]">
+                        <span className="text-[11px] flex-1 text-[#f0f0f0]">{p}</span>
+                        {rent && <span className="text-[8px] bg-[#3dba6f]/15 text-[#3dba6f] border border-[#3dba6f]/25 px-1.5 py-0.5 rounded-full font-bold">● Alta rentabilidad</span>}
+                        <span className={`text-[8px] px-1.5 py-0.5 rounded-full font-bold ${disponible?'bg-[#2a2a2a] text-[#606060]':'bg-[#e05050]/15 text-[#e05050]'}`}>
+                          {disponible?'Disponible':'86'}
+                        </span>
+                      </div>
                     ))}
                   </div>
-                  {/* 86s */}
-                  <div className="text-[9px] text-[#e05050] font-bold uppercase tracking-wider mb-1">⚠️ En 86 (sin stock)</div>
-                  {tips86.length === 0 ? (
-                    <div className="text-[10px] text-[#606060]">Todo disponible ✓</div>
-                  ) : (
-                    <div className="flex flex-wrap gap-1">
-                      {tips86.map((t:any)=>(
-                        <span key={t.nombre||t.id} className="text-[10px] bg-[#e05050]/10 text-[#e05050] border border-[#e05050]/20 px-2 py-0.5 rounded-full">⚠ {t.nombre||t.name}</span>
-                      ))}
+
+                  {/* 86s prominentes */}
+                  {tips86.length > 0 && (
+                    <>
+                      <div className="text-[9px] text-[#e05050] font-bold uppercase tracking-wider mt-1">⚠️ No ofrecer — Sin stock</div>
+                      <div className="flex flex-col gap-1">
+                        {tips86.map((t:any,i:number)=>(
+                          <div key={i} className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-[#e05050]/08 border border-[#e05050]/25">
+                            <span className="text-[14px]">{t.emoji||'🔴'}</span>
+                            <span className="text-[11px] text-[#e05050] font-bold flex-1">{t.name||t.nombre}</span>
+                            <span className="text-[8px] text-[#e05050] bg-[#e05050]/15 px-1.5 py-0.5 rounded-full font-black">86</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {tips86.length === 0 && (
+                    <div className="flex items-center gap-2 text-[10px] text-[#3dba6f] px-1">
+                      <span>✓</span> Todo el menú disponible
                     </div>
                   )}
-                  {/* Insight del día */}
-                  <div className="mt-2 p-2 bg-[#141414] rounded-lg border border-[#2a2a2a]">
-                    <div className="text-[9px] text-[#9b72ff] font-bold mb-1">✦ Insight Nexum IA</div>
+
+                  {/* KPIs del día compactos */}
+                  <div className="grid grid-cols-3 gap-1 mt-1">
+                    {[
+                      {l:'Mesas',   v:ticketDia?.pendientes||0,  c:'#4a8fd4'},
+                      {l:'Cobros',  v:ticketDia?.ordenes||0,      c:'#3dba6f'},
+                      {l:'Ventas',  v:`$${Math.round((ticketDia?.ventas||0)/1000)}k`, c:'#f0b45a'},
+                    ].map(k=>(
+                      <div key={k.l} className="bg-[#141414] rounded-lg p-1.5 text-center border border-[#2a2a2a]">
+                        <div className="text-[14px] font-black" style={{color:k.c,fontFamily:"'Syne',sans-serif"}}>{k.v}</div>
+                        <div className="text-[8px] text-[#606060]">{k.l}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Insight IA */}
+                  <div className="p-2 bg-[#141414] rounded-lg border border-[#9b72ff]/20">
+                    <div className="text-[9px] text-[#9b72ff] font-bold mb-1 flex items-center gap-1"><span>✦</span> Insight Nexum IA</div>
                     <div className="text-[10px] text-[#a0a0a0] leading-relaxed">
-                      {(ticketDia?.ordenes||0) > 10
-                        ? `Servicio activo — ${ticketDia.ordenes} cobros. Ticket prom: $${Math.round((ticketDia.ventas||0)/(ticketDia.ordenes||1)/1000)}k. Propina acum: $${Math.round((ticketDia.propinaTotal||0)/1000)}k`
-                        : `${new Date().getHours() < 16 ? 'Servicio de mediodía activo.' : 'Servicio de noche activo.'} ${(ticketDia?.pendientes||0)} mesas abiertas ahora.`}
+                      {(ticketDia?.pendientes||0) > 8
+                        ? `⚠️ Alta ocupación — ${ticketDia?.pendientes} mesas. Coordinar prioridades con Flow.`
+                        : (ticketDia?.ordenes||0) > 5
+                        ? `Servicio activo. Ticket prom: $${Math.round((ticketDia?.ventas||0)/(ticketDia?.ordenes||1)/1000)}k. Propina: $${Math.round((ticketDia?.propinaTotal||0)/1000)}k acumulada.`
+                        : `${new Date().getHours()<16?'Mediodía':'Noche'} activo. ${ticketDia?.pendientes||0} mesa${(ticketDia?.pendientes||0)!==1?'s':''} abiertas.`}
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* ══ INTELIGENCIA OPERACIONAL ══ */}
-              {(tips86.length>0 || (ticketDia?.pendientes||0)>4) && (
-                <div className="bg-[#1c1c1c] border border-[#e05050]/25 rounded-xl overflow-hidden">
-                  <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-[#e05050] animate-pulse inline-block"/>
-                    <span className="text-[10px] font-bold text-[#e05050] uppercase tracking-wider">⚡️ Inteligencia del día</span>
-                  </div>
-                  <div className="flex flex-col">
-                    {(ticketDia?.pendientes||0)>4 && (
-                      <div className="flex items-start gap-2.5 px-3 py-2 border-b border-[#1a1a1a]">
-                        <span className="text-[16px] mt-0.5">⚠️</span>
-                        <div>
-                          <div className="text-[11px] font-bold text-[#f0b45a]">Alta ocupación</div>
-                          <div className="text-[10px] text-[#606060]">{ticketDia?.pendientes||0} mesas abiertas — revisar tiempos</div>
-                        </div>
-                      </div>
-                    )}
-                    {tips86.slice(0,3).map((t,i)=>(
-                      <div key={i} className="flex items-start gap-2.5 px-3 py-2 border-b border-[#1a1a1a] last:border-0">
-                        <span className="text-[16px] mt-0.5">{t.emoji}</span>
-                        <div>
-                          <div className="text-[11px] font-bold text-[#e05050]">{t.name}</div>
-                          <div className="text-[10px] text-[#606060]">{t.motivo} — sugiere alternativa al cliente</div>
-                        </div>
-                      </div>
-                    ))}
-                    {(ticketDia?.porCobrar||0)>200000 && (
-                      <div className="flex items-start gap-2.5 px-3 py-2">
-                        <span className="text-[16px] mt-0.5">💰</span>
-                        <div>
-                          <div className="text-[11px] font-bold text-[#3dba6f]">Cuentas por cobrar</div>
-                          <div className="text-[10px] text-[#606060]">${Math.round((ticketDia?.porCobrar||0)/1000)}k pendientes · Notificar caja</div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
+              <div className="bg-[#1c1c1c] border border-[#e05050]/25 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-[#e05050] animate-pulse inline-block"/>
+                  <span className="text-[10px] font-bold text-[#e05050] uppercase tracking-wider">⚡ Command Flow — Cocina</span>
+                  <span className="ml-auto text-[9px] text-[#606060]">Semáforo en vivo</span>
                 </div>
-              )}
+
+                {/* Semáforo de estaciones KDS */}
+                <div className="p-2 grid grid-cols-3 gap-1.5">
+                  {[
+                    {slug:'cocina_caliente', emoji:'🔥', label:'Caliente', color:'#FF5252'},
+                    {slug:'cocina_fria',     emoji:'🧊', label:'Fría',    color:'#22d3ee'},
+                    {slug:'bar',             emoji:'🍸', label:'Bar',     color:'#448AFF'},
+                    {slug:'robata',          emoji:'🥩', label:'Robata',  color:'#FF9800'},
+                    {slug:'postres',         emoji:'🍮', label:'Postres', color:'#B388FF'},
+                    {slug:'cava',            emoji:'🍷', label:'Cava',    color:'#FFB547'},
+                  ].map(est=>{
+                    // Contar pedidos pendientes y en fuego de esta estación
+                    const pendientes = flowAlertas.filter((a:any)=>a.estacion===est.slug&&!a.leida).length;
+                    const semaforo = pendientes === 0 ? 'libre' : pendientes <= 2 ? 'activo' : 'fuego';
+                    const sColor = semaforo==='libre'?'#3dba6f':semaforo==='activo'?'#f0b45a':'#e05050';
+                    return (
+                      <div key={est.slug} className="flex flex-col items-center gap-0.5 p-1.5 rounded-lg bg-[#141414] border border-[#2a2a2a]">
+                        <span className="text-[16px]">{est.emoji}</span>
+                        <span className="text-[8px] text-[#606060]">{est.label}</span>
+                        <div className="flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{background:sColor, boxShadow:semaforo==='fuego'?`0 0 6px ${sColor}`:''}}/>
+                          <span className="text-[9px] font-bold" style={{color:sColor}}>
+                            {semaforo==='libre'?'Libre':semaforo==='fuego'?`🔥 ${pendientes}`:`${pendientes}`}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Alertas activas */}
+                <div className="flex flex-col border-t border-[#2a2a2a]">
+                  {(ticketDia?.pendientes||0)>4 && (
+                    <div className="flex items-center gap-2.5 px-3 py-2 border-b border-[#1a1a1a]">
+                      <span className="text-[14px]">⚠️</span>
+                      <div className="flex-1">
+                        <div className="text-[10px] font-bold text-[#f0b45a]">Alta ocupación — {ticketDia?.pendientes} mesas</div>
+                        <div className="text-[9px] text-[#606060]">Anticipar tiempos · Coordinar cocina</div>
+                      </div>
+                    </div>
+                  )}
+                  {flowAlertas.filter((a:any)=>!a.leida).length > 0 && (
+                    <div className="flex items-center gap-2.5 px-3 py-2 border-b border-[#1a1a1a]">
+                      <span className="text-[14px]">🍽️</span>
+                      <div className="flex-1">
+                        <div className="text-[10px] font-bold text-[#3dba6f]">{flowAlertas.filter((a:any)=>!a.leida).length} platos listos para entregar</div>
+                        <div className="text-[9px] text-[#606060]">Revisar campana de notificaciones</div>
+                      </div>
+                    </div>
+                  )}
+                  {(ticketDia?.porCobrar||0)>200000 && (
+                    <div className="flex items-center gap-2.5 px-3 py-2">
+                      <span className="text-[14px]">💰</span>
+                      <div className="flex-1">
+                        <div className="text-[10px] font-bold text-[#3dba6f]">Cuentas por cobrar</div>
+                        <div className="text-[9px] text-[#606060]">${Math.round((ticketDia?.porCobrar||0)/1000)}k pendientes</div>
+                      </div>
+                    </div>
+                  )}
+                  {(ticketDia?.pendientes||0)<=4 && flowAlertas.filter((a:any)=>!a.leida).length===0 && (
+                    <div className="px-3 py-2 text-[10px] text-[#3dba6f] flex items-center gap-2">
+                      <span>✓</span> Servicio estable — sin alertas
+                    </div>
+                  )}
+                </div>
+              </div>
 
               {/* ══ PERFIL CLIENTE — PRIMERO Y PROMINENTE ══ */}
               <div className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl overflow-hidden">
@@ -3707,12 +3783,22 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                   </div>
                 </div>
 
-                {/* Tags de preferencias */}
-                <div className="px-3 pb-3 flex flex-wrap gap-1">
-                  {c.tags.map((t: string) => (
-                    <span key={t} className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${t.includes('🚨') || t.includes('⚠️') ? 'bg-[#e05050]/15 text-[#e05050] border border-[#e05050]/30' : 'bg-[#2a2a2a] text-[#a0a0a0]'}`}>
-                      {t}
-                    </span>
+                {/* Alergias destacadas — crítico */}
+                {c.tags.some((t:string) => t.includes('⚠️') || t.includes('🚨') || t.includes('Sin ') || t.includes('Alérgico')) && (
+                  <div className="mx-3 mb-2 bg-[#e05050]/10 border border-[#e05050]/30 rounded-lg p-2">
+                    <div className="text-[8px] text-[#e05050] font-black uppercase tracking-wider mb-1.5">⚠️ Restricciones alimentarias</div>
+                    <div className="flex flex-wrap gap-1">
+                      {c.tags.filter((t:string)=>t.includes('⚠️')||t.includes('🚨')||t.includes('Sin ')||t.includes('Alérgico')).map((t:string)=>(
+                        <span key={t} className="text-[10px] bg-[#e05050]/15 text-[#e05050] border border-[#e05050]/30 px-2 py-0.5 rounded-full font-bold">{t}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Preferencias y tags positivos */}
+                <div className="px-3 pb-2 flex flex-wrap gap-1">
+                  {c.tags.filter((t:string)=>!t.includes('⚠️')&&!t.includes('🚨')&&!t.includes('Sin ')&&!t.includes('Alérgico')).map((t: string) => (
+                    <span key={t} className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#2a2a2a] text-[#a0a0a0]">{t}</span>
                   ))}
                 </div>
               </div>
@@ -3738,23 +3824,33 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 </div>
               </div>
 
-              {/* Separador */}
+              {/* Separador Sugerencias */}
               <div className="flex items-center gap-2">
                 <div className="flex-1 h-px bg-[#2a2a2a]"></div>
-                <span className="text-[9px] text-[#606060] font-bold uppercase tracking-wider flex items-center gap-1"><Sparkles size={9}/> Sugerencias IA</span>
+                <span className="text-[9px] text-[#d4943a] font-bold uppercase tracking-wider flex items-center gap-1"><Sparkles size={9}/> Hospitality Intelligence</span>
                 <div className="flex-1 h-px bg-[#2a2a2a]"></div>
               </div>
 
-              {/* Sugerencias IA */}
+              {/* Sugerencias IA — cross-selling visual */}
               <div className="flex flex-col gap-1.5">
                 {c.recs.map((r: any, i: number) => {
                   const anotado = (notasMesero[selectedTable.id] || []).includes(r.txt);
+                  const esBebida = r.txt.toLowerCase().includes('vino') || r.txt.toLowerCase().includes('coctel') || r.txt.toLowerCase().includes('sake') || r.txt.toLowerCase().includes('malbec');
+                  const esPostre = r.txt.toLowerCase().includes('postre') || r.txt.toLowerCase().includes('volcán') || r.txt.toLowerCase().includes('chocolate');
+                  const tagColor = esBebida ? '#4a8fd4' : esPostre ? '#9b72ff' : '#d4943a';
+                  const tagLabel = esBebida ? '🍷 Bebida' : esPostre ? '🍮 Postre' : '🍽️ Plato';
                   return (
                     <div key={i} onClick={() => useRec(r.txt)}
-                      className={`flex items-start gap-2.5 p-2 px-2.5 rounded-lg border text-[12px] cursor-pointer transition-all active:bg-[#3dba6f]/20 ${anotado ? 'bg-[#3dba6f]/5 border-[#3dba6f]/25' : 'bg-[#1c1c1c] border-[#2a2a2a] hover:border-[#d4943a]/30 hover:bg-[#d4943a]/5'}`}>
+                      className={`flex items-start gap-2.5 p-2 px-2.5 rounded-lg border cursor-pointer transition-all active:bg-[#3dba6f]/20 ${anotado ? 'bg-[#3dba6f]/5 border-[#3dba6f]/25' : 'bg-[#1c1c1c] border-[#2a2a2a] hover:border-[#d4943a]/30 hover:bg-[#d4943a]/5'}`}>
                       <span className="text-[15px] shrink-0 mt-px">{r.icon}</span>
-                      <span className={`leading-[1.4] flex-1 text-[11px] ${anotado ? 'line-through text-[#606060]' : 'text-[#a0a0a0]'}`}>{r.txt}</span>
-                      {anotado && <span className="text-[10px] text-[#3dba6f] shrink-0">✓</span>}
+                      <div className="flex-1 min-w-0">
+                        <div className={`text-[11px] leading-[1.4] ${anotado ? 'line-through text-[#606060]' : 'text-[#f0f0f0]'}`}>{r.txt}</div>
+                        <span style={{color:tagColor}} className="text-[9px] font-bold mt-0.5 inline-block">{tagLabel}</span>
+                      </div>
+                      {anotado
+                        ? <span className="text-[10px] text-[#3dba6f] shrink-0 mt-px">✓</span>
+                        : <span className="text-[9px] text-[#606060] shrink-0 mt-1">Toca</span>
+                      }
                     </div>
                   );
                 })}
