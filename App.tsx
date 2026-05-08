@@ -30,6 +30,7 @@ const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
 const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
 const SupplyModule = lazy(() => import('./components/SupplyModule.tsx')); // Supply IA real
 const MarketplaceModule = lazy(() => import('./components/MarketplaceModule.tsx'));
+const MetricasModule = lazy(() => import('./components/MetricasModule.tsx'));
 const FoodIntelligenceModule = lazy(() => import('./components/FoodIntelligenceModule.tsx'));
 const OhYeahAdminModule = lazy(() => import('./components/OhYeahAdminModule.tsx'));
 const OhYeahRestauranteModule = lazy(() => import('./components/OhYeahRestauranteModule.tsx'));
@@ -251,7 +252,8 @@ const Dashboard: React.FC = () => {
                id: 'operaciones', label: 'PAQUETE OPERACIONES',
               modules: [
                 { type: ModuleType.SERVICE_OS,   label: 'SERVICE OS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
-                { type: ModuleType.FLOW,         label: 'FLOW',         sub: 'ESTACIONES',       icon: <ChefHat size={18} /> },
+                { type: ModuleType.METRICAS, label: 'MÉTRICAS', sub: 'Tiempos · Quejas', icon: <BarChart3 size={18} /> },
+                 { type: ModuleType.FLOW,         label: 'FLOW',         sub: 'ESTACIONES',       icon: <ChefHat size={18} /> },
               ]
             },
             {
@@ -393,6 +395,7 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.CONFIG         && <SettingsModule />}
                 {activeModule === ModuleType.MARKETPLACE    && <MarketplaceModule />}
                 {activeModule === ModuleType.FOOD_INTELLIGENCE && <FoodIntelligenceModule />}
+                {activeModule === ModuleType.METRICAS && <MetricasModule />}
               </div>
             )}
           </Suspense>
