@@ -30,6 +30,7 @@ const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
 const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
 const SupplyModule = lazy(() => import('./components/SupplyModule.tsx')); // Supply IA real
 const MarketplaceModule = lazy(() => import('./components/MarketplaceModule.tsx'));
+const FoodIntelligenceModule = lazy(() => import('./components/FoodIntelligenceModule.tsx'));
 const OhYeahAdminModule = lazy(() => import('./components/OhYeahAdminModule.tsx'));
 const OhYeahRestauranteModule = lazy(() => import('./components/OhYeahRestauranteModule.tsx'));
 const CareModule = lazy(() => import('./components/CareModule.tsx'));
@@ -101,6 +102,7 @@ const Dashboard: React.FC = () => {
           ModuleType.PAYROLL,
           ModuleType.SUPPLY,
           ModuleType.MARKETPLACE,
+          ModuleType.FOOD_INTELLIGENCE,
           ModuleType.FLOW,
           ModuleType.MOBILE_MGR,
           ModuleType.OH_YEAH
@@ -111,6 +113,7 @@ const Dashboard: React.FC = () => {
           ModuleType.RESERVE, 
           ModuleType.RELATIONSHIP,
           ModuleType.MARKETPLACE,
+          ModuleType.FOOD_INTELLIGENCE,
           ModuleType.STAFF_HUB,
           ModuleType.OH_YEAH
         ];
@@ -256,7 +259,9 @@ const Dashboard: React.FC = () => {
               icon: <ShieldCheck size={14} className="text-green-500" />,
               modules: [
                 { type: ModuleType.SUPPLY,    label: 'SUPPLY IA', sub: 'Abastecimiento', icon: <Truck size={18} /> },
-                { type: ModuleType.MARKETPLACE, label: 'MARKETPLACE', sub: 'Mi Menú · Tienda', icon: <Store size={18} /> },
+                 { type: ModuleType.FOOD_INTELLIGENCE, label: 'FOOD INTEL™', sub: 'IA Gastronómica', icon: <Zap size={18} /> },
+                { type: ModuleType.MARKETPLACE,
+          ModuleType.FOOD_INTELLIGENCE, label: 'MARKETPLACE', sub: 'Mi Menú · Tienda', icon: <Store size={18} /> },
                 { type: ModuleType.CARE,      label: 'CARE',      sub: 'SOPORTE CX',        icon: <HeartPulse size={18} /> },
                 // ── CAMBIO 2: Label y sub actualizados ──────────────────────
                 { type: ModuleType.STAFF_HUB, label: 'TEAM IQ™',  sub: 'HUMAN PERFORMANCE', icon: <Brain size={18} /> }
@@ -388,6 +393,7 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.OH_YEAH_RESTAURANTE && <OhYeahRestauranteModule />}
                 {activeModule === ModuleType.CONFIG         && <SettingsModule />}
                 {activeModule === ModuleType.MARKETPLACE    && <MarketplaceModule />}
+                {activeModule === ModuleType.FOOD_INTELLIGENCE && <FoodIntelligenceModule />}
               </div>
             )}
           </Suspense>
