@@ -1,757 +1,350 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase.ts';
+import { useAuth } from '../contexts/AuthContext';
 
-// ── Design tokens ──────────────────────────────────────────────────────────
-const C = {
-  bg:     '#080810',
-  bg2:    '#0f0f1a',
-  bg3:    '#161624',
-  bg4:    '#1e1e2e',
-  glass:  'rgba(255,255,255,0.03)',
-  border: 'rgba(255,255,255,0.07)',
-  border2:'rgba(255,255,255,0.12)',
-  pink:   '#FF2D78',
-  pinkD:  '#cc2260',
-  pinkG:  'rgba(255,45,120,0.12)',
-  gold:   '#FFB547',
-  green:  '#00E676',
-  blue:   '#448AFF',
-  purple: '#B388FF',
-  red:    '#FF5252',
-  t1:     '#FFFFFF',
-  t2:     '#A0A0B8',
-  t3:     '#50506A',
+const S = {
+  bg:'#08080f', bg2:'#0f0f1a', bg3:'#161624',
+  border:'rgba(255,255,255,0.07)', border2:'rgba(255,255,255,0.12)',
+  t1:'#fff', t2:'#A0A0B8', t3:'#50506A',
+  gold:'#FFB547', green:'#00E676', red:'#FF5252',
+  blue:'#448AFF', purple:'#B388FF', pink:'#FF2D78', cyan:'#22d3ee',
 };
 
-const HORAS = ['12:00','12:30','13:00','13:30','14:00','14:30','15:00','19:00','19:30','20:00','20:30','21:00','21:30','22:00','22:30','23:00'];
-const OCASIONES = ['Cumpleaños','Aniversario','Negocio','Primera Cita','Celebración','Graduación','Despedida','Otro'];
-const ORIGENES  = ['web','whatsapp','instagram','oh_yeah','telefono','walk-in'];
-const MOTIVOS_BLOQUEO = ['Mantenimiento','Evento privado','Daño en mobiliario','Limpieza','VIP exclusivo','Otro'];
+const fmt = (d:string) => new Date(d+'T00:00:00').toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'});
 
-const hoy = () => new Date().toISOString().split('T')[0];
-const fmtHora = (h:string) => h?.slice(0,5) ?? '';
-const tiempoTranscurrido = (horaStr:string) => {
-  if (!horaStr) return '';
-  const [h,m] = horaStr.split(':').map(Number);
-  const ahora = new Date();
-  const entrada = new Date();
-  entrada.setHours(h, m, 0);
-  const diff = Math.floor((ahora.getTime() - entrada.getTime()) / 60000);
-  if (diff < 0) return '';
-  if (diff < 60) return `${diff}min`;
-  return `${Math.floor(diff/60)}h ${diff%60}min`;
-};
-const fmtFecha = (f:string) => {
-  if (!f) return '';
-  const d = new Date(f + 'T00:00:00');
-  return d.toLocaleDateString('es-CO', { weekday:'short', day:'numeric', month:'short' });
-};
-const diasSemana = () => {
-  const dias = [];
-  for (let i = -1; i <= 5; i++) {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    dias.push({
-      iso: d.toISOString().split('T')[0],
-      dia: ['D','L','M','M','J','V','S'][d.getDay()],
-      num: d.getDate(),
-      esHoy: i === 0,
-    });
-  }
-  return dias;
+interface Reserva {
+  id:number; cliente_nombre:string; cliente_email?:string; cliente_telefono?:string;
+  fecha:string; hora:string; pax:number; ocasion?:string; notas?:string;
+  estado:string; mesa_num?:number; restaurante_nombre?:string; origen?:string;
+}
+
+interface Mesa {
+  id:number; num:number; capacidad:number; zona:string; posicion_x:number;
+  posicion_y:number; shape:string; status?:string; activa:boolean;
+}
+
+const ESTADOS = {
+  pendiente:  {c:S.gold,   l:'⏳ Pendiente'},
+  confirmada: {c:S.green,  l:'✓ Confirmada'},
+  sentada:    {c:S.blue,   l:'🪑 Sentada'},
+  completada: {c:S.purple, l:'✅ Completada'},
+  cancelada:  {c:S.red,    l:'✗ Cancelada'},
+  no_show:    {c:S.t3,     l:'👻 No show'},
 };
 
-interface Mesa { id:number; numero:number; capacidad:number; zona:string; estado:string; bloqueada?:boolean; bloqueo_motivo?:string; }
-interface Reserva { id:number; mesa_id:number; nombre_cliente:string; telefono?:string; email?:string; pax:number; fecha:string; hora:string; duracion_min?:number; ocasion?:string; nota?:string; estado:string; origen?:string; customer_id?:number; mesa_numero?:number; mesa_zona?:string; vip_status?:boolean; total_visits?:number; total_spent?:number; alergias?:string[]; preferencias?:string[]; }
-interface Customer { id:number; name:string; apellido?:string; phone?:string; email?:string; vip_status?:boolean; total_visits?:number; total_spent?:number; alergias?:string[]; preferencias?:string[]; }
-
-const ZONA_COLOR: Record<string,string> = { Principal:C.blue, Barra:C.purple, Terraza:C.green, VIP:C.gold };
-const ESTADO_CFG: Record<string,{c:string;label:string}> = {
-  libre:     { c:C.green,  label:'Libre'     },
-  ocupada:   { c:C.red,    label:'Ocupada'   },
-  reservada: { c:C.gold,   label:'Reservada' },
-  bloqueada: { c:C.t3,     label:'Bloqueada' },
-};
-const RES_CFG: Record<string,{c:string;icon:string;label:string}> = {
-  pendiente:  { c:C.gold,   icon:'⏳', label:'Pendiente'  },
-  confirmada: { c:C.blue,   icon:'✓',  label:'Confirmada' },
-  'llegó':    { c:C.green,  icon:'●',  label:'Llegó'      },
-  cancelada:  { c:C.red,    icon:'✕',  label:'Cancelada'  },
-  no_show:    { c:C.t3,     icon:'—',  label:'No Show'    },
-};
-
-// ── Estilos base ───────────────────────────────────────────────────────────
-const inp: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.05)',
-  border: `1px solid ${C.border2}`,
-  borderRadius: 10,
-  padding: '10px 14px',
-  color: C.t1,
-  fontSize: 13,
-  outline: 'none',
-  width: '100%',
-  fontFamily: "'DM Sans', sans-serif",
-};
+const OCASIONES = ['Cumpleaños','Aniversario','Negocio','Primera cita','Graduación','Despedida','Celebración','Sin ocasión especial'];
 
 export default function ReserveModule() {
-  const [mesas, setMesas]       = useState<Mesa[]>([]);
+  const { profile } = useAuth();
+  const [tab, setTab]           = useState<'mapa'|'lista'|'nueva'>('lista');
   const [reservas, setReservas] = useState<Reserva[]>([]);
-  const [clientes, setClientes] = useState<Customer[]>([]);
-  const [fecha, setFecha]       = useState(hoy());
-  const [busqueda, setBusqueda] = useState('');
-  const [vistaTab, setVistaTab] = useState<'mapa'|'lista'|'timeline'>('mapa');
-  const [zonaFiltro, setZonaFiltro] = useState('Todas');
-  const [panelMesa, setPanelMesa]   = useState<Mesa|null>(null);
-  // Drag & Drop reservas
-  const [dragReserva, setDragReserva] = useState<Reserva|null>(null);
-  const [dragOver, setDragOver]       = useState<number|null>(null);
-  const [panelReserva, setPanelReserva] = useState<Reserva|null>(null);
-  const [modalNueva, setModalNueva] = useState(false);
-  const [modalBloqueo, setModalBloqueo] = useState<Mesa|null>(null);
-  const [bloqueoMotivo, setBloqueoMotivo] = useState('');
-  const [bloqueoHasta, setBloqueoHasta]   = useState('');
+  const [mesas, setMesas]       = useState<Mesa[]>([]);
+  const [loading, setLoading]   = useState(true);
   const [toast, setToast]       = useState('');
-  const [form, setForm]         = useState({ nombre:'', telefono:'', email:'', pax:2, fecha:hoy(), hora:'20:00', duracion:90, mesa_id:0, ocasion:'', nota:'', origen:'whatsapp' });
-  const [buscandoCliente, setBuscandoCliente] = useState(false);
-  const [clienteSugerido, setClienteSugerido] = useState<Customer|null>(null);
+  const [fechaFiltro, setFechaFiltro] = useState(new Date().toISOString().split('T')[0]);
+  const [selected, setSelected] = useState<Reserva|null>(null);
+  const [saving, setSaving]     = useState(false);
+  const [form, setForm]         = useState({
+    cliente_nombre:'', cliente_email:'', cliente_telefono:'',
+    fecha:new Date().toISOString().split('T')[0], hora:'20:00',
+    pax:2, ocasion:'Sin ocasión especial', notas:'', mesa_num:0,
+  });
 
-  const showToast = useCallback((m:string) => { setToast(m); setTimeout(()=>setToast(''), 3000); }, []);
+  const show = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
   const setF = (k:string,v:any) => setForm(p=>({...p,[k]:v}));
 
-  // ── Fetch ────────────────────────────────────────────────────────────────
-  const fetchData = async () => {
-    const [{ data:m },{ data:r },{ data:c }] = await Promise.all([
-      supabase.from('mesas').select('*').eq('restaurante_id',6).order('numero'),
-      supabase.from('vista_reservas').select('*').order('hora'),
-      supabase.from('customers').select('id,name,apellido,phone,email,vip_status,total_visits,total_spent,alergias,preferencias').order('name'),
+  const fetchData = useCallback(async () => {
+    setLoading(true);
+    const [rv, ms, ohyeah] = await Promise.all([
+      supabase.from('reservations').select('*').eq('restaurante_id',6).gte('fecha',fechaFiltro).order('fecha').order('hora'),
+      supabase.from('tables').select('*').eq('restaurante_id',6).order('num'),
+      supabase.from('ohyeah_reservas').select('*').gte('fecha',fechaFiltro).eq('estado','confirmada').order('fecha').order('hora'),
     ]);
-    if (m) setMesas(m);
-    if (r) setReservas(r as Reserva[]);
-    if (c) setClientes(c);
-  };
+    const todas = [
+      ...(rv.data||[]).map((r:any)=>({...r,origen:'nexum'})),
+      ...(ohyeah.data||[]).map((r:any)=>({...r,origen:'ohyeah',id:r.id+100000})),
+    ].sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.hora.localeCompare(b.hora));
+    setReservas(todas);
+    if (ms.data) setMesas(ms.data as Mesa[]);
+    setLoading(false);
+  }, [fechaFiltro]);
 
+  useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Suscripción Realtime a Oh Yeah reservas
   useEffect(() => {
-    fetchData();
-    const ch = supabase.channel('reserve-v4')
-      .on('postgres_changes',{event:'*',schema:'public',table:'reservas'},fetchData)
-      .on('postgres_changes',{event:'*',schema:'public',table:'mesas'},fetchData)
-      .subscribe();
+    const ch = supabase.channel('reserve-live')
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'ohyeah_reservas'},(p) => {
+        show(`🦉 Nueva reserva Oh Yeah: ${(p.new as any).cliente_nombre}`);
+        fetchData();
+      }).subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, []);
+  }, [fetchData]);
 
-  // ── Buscar cliente por teléfono ──────────────────────────────────────────
-  useEffect(() => {
-    if (form.telefono.length >= 7) {
-      const c = clientes.find(c => c.phone?.includes(form.telefono) || form.telefono.includes(c.phone?.slice(-7)||'xxxxx'));
-      setClienteSugerido(c||null);
-      if (c && !form.nombre) setF('nombre', `${c.name}${c.apellido?' '+c.apellido:''}`);
-    } else setClienteSugerido(null);
-  }, [form.telefono]);
+  const guardar = async () => {
+    if (!form.cliente_nombre) { show('⚠️ Nombre requerido'); return; }
+    if (!form.fecha||!form.hora) { show('⚠️ Fecha y hora requeridas'); return; }
+    setSaving(true);
+    const payload = { ...form, restaurante_id:6, estado:'confirmada', mesa_num:form.mesa_num||null };
+    if (selected?.id) {
+      await supabase.from('reservations').update(payload).eq('id',selected.id);
+      show('✓ Reserva actualizada');
+    } else {
+      await supabase.from('reservations').insert(payload);
+      show('✓ Reserva creada');
+    }
+    setSaving(false); setTab('lista'); fetchData();
+  };
 
-  // ── Datos filtrados ──────────────────────────────────────────────────────
-  const resHoy = reservas.filter(r => r.fecha === fecha);
-  const resFiltradas = (() => {
-    if (!busqueda.trim()) return resHoy;
-    const q = busqueda.toLowerCase();
-    return reservas.filter(r =>
-      r.nombre_cliente?.toLowerCase().includes(q) ||
-      r.telefono?.includes(q) ||
-      r.email?.toLowerCase().includes(q)
-    );
-  })();
-
-  const mesasFiltradas = zonaFiltro === 'Todas' ? mesas : mesas.filter(m=>m.zona===zonaFiltro);
-  const zonas = ['Todas', ...Array.from(new Set(mesas.map(m=>m.zona)))];
-
-  const kpis = [
-    { l:'Reservas', v:resHoy.length,                                                  c:C.pink   },
-    { l:'Confirmadas', v:resHoy.filter(r=>r.estado==='confirmada').length,            c:C.blue   },
-    { l:'Pax esperados', v:resHoy.filter(r=>['confirmada','pendiente'].includes(r.estado)).reduce((a,r)=>a+r.pax,0), c:C.gold },
-    { l:'Mesas libres', v:mesas.filter(m=>m.estado==='libre'&&!m.bloqueada).length,  c:C.green  },
-    { l:'Ocupación', v:`${Math.round(mesas.filter(m=>m.estado!=='libre').length/Math.max(mesas.length,1)*100)}%`, c:C.purple },
-  ];
-
-  // ── Acciones ─────────────────────────────────────────────────────────────
-  const crearReserva = async () => {
-    if (!form.nombre || !form.mesa_id || !form.fecha || !form.hora) { showToast('⚠️ Completa nombre, mesa, fecha y hora'); return; }
-    const { error } = await supabase.from('reservas').insert({
-      restaurante_id:6, mesa_id:form.mesa_id, nombre_cliente:form.nombre,
-      telefono:form.telefono||null, email:form.email||null, pax:form.pax,
-      fecha:form.fecha, hora:form.hora, duracion_min:form.duracion,
-      ocasion:form.ocasion||null, nota:form.nota||null, estado:'confirmada', origen:form.origen,
-    });
-    if (error) { showToast(`✗ ${error.message}`); return; }
-    await supabase.from('mesas').update({estado:'reservada'}).eq('id',form.mesa_id);
-    showToast(`✓ Reserva confirmada — ${form.nombre}`);
-    setModalNueva(false);
-    setForm({nombre:'',telefono:'',email:'',pax:2,fecha:hoy(),hora:'20:00',duracion:90,mesa_id:0,ocasion:'',nota:'',origen:'whatsapp'});
+  const cambiarEstado = async (id:number, estado:string, esOhYeah:boolean=false) => {
+    const tabla = esOhYeah ? 'ohyeah_reservas' : 'reservations';
+    const idReal = esOhYeah ? id-100000 : id;
+    await supabase.from(tabla).update({estado}).eq('id',idReal);
+    show(`✓ Estado actualizado: ${(ESTADOS as any)[estado]?.l||estado}`);
     fetchData();
   };
 
-  // Reasignar reserva a mesa por drag & drop
-  const reasignarMesa = async (reservaId:number, nuevaMesaId:number) => {
-    const mesaNueva = mesas.find(m=>m.id===nuevaMesaId);
-    if (!mesaNueva) return;
-    await supabase.from('reservas').update({ mesa_id:nuevaMesaId }).eq('id', reservaId);
-    showToast(`↔ Reserva movida a Mesa ${mesaNueva.numero}`);
-    setDragReserva(null); setDragOver(null);
+  const asignarMesa = async (reservaId:number, mesaNum:number) => {
+    await supabase.from('reservations').update({mesa_num:mesaNum, estado:'sentada'}).eq('id',reservaId);
+    show(`✓ Mesa ${mesaNum} asignada`);
     fetchData();
   };
 
-  const cambiarEstado = async (id:number, estado:string, mesa_id:number) => {
-    await supabase.from('reservas').update({estado}).eq('id',id);
-    if (estado==='llegó') await supabase.from('mesas').update({estado:'ocupada'}).eq('id',mesa_id);
-    if (['cancelada','no_show'].includes(estado)) await supabase.from('mesas').update({estado:'libre'}).eq('id',mesa_id);
-    showToast(`✓ ${RES_CFG[estado]?.label}`);
-    setPanelReserva(null);
-    fetchData();
-  };
+  const hoy = new Date().toISOString().split('T')[0];
+  const reservasHoy = reservas.filter(r=>r.fecha===hoy);
+  const paxEsperados = reservasHoy.reduce((s,r)=>s+(r.pax||0),0);
+  const ocupacion = mesas.length ? Math.round(reservasHoy.filter(r=>r.estado==='sentada').length/mesas.length*100) : 0;
 
-  const bloquearMesa = async () => {
-    if (!modalBloqueo) return;
-    await supabase.from('mesas').update({ estado:'bloqueada', bloqueada:true, bloqueo_motivo:bloqueoMotivo||null, bloqueo_hasta:bloqueoHasta||null }).eq('id',modalBloqueo.id);
-    showToast(`🔒 Mesa ${modalBloqueo.numero} bloqueada`);
-    setModalBloqueo(null); setBloqueoMotivo(''); setBloqueoHasta('');
-    fetchData();
-  };
-
-  const desbloquearMesa = async (m:Mesa) => {
-    await supabase.from('mesas').update({estado:'libre',bloqueada:false,bloqueo_motivo:null}).eq('id',m.id);
-    showToast(`🔓 Mesa ${m.numero} desbloqueada`);
-    fetchData();
-  };
-
-  // ── RENDER ────────────────────────────────────────────────────────────────
   return (
-    <div style={{height:'100%',display:'flex',flexDirection:'column',background:C.bg,color:C.t1,fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
+    <div style={{height:'100%',display:'flex',flexDirection:'column',background:S.bg,color:S.t1,fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
+      {toast && <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:'#1e1e2e',border:`1px solid ${S.pink}`,color:'#fff',padding:'10px 28px',borderRadius:50,fontSize:13,fontWeight:700,zIndex:9999}}>{toast}</div>}
 
-      {/* Toast */}
-      {toast && (
-        <div style={{position:'fixed',bottom:28,left:'50%',transform:'translateX(-50%)',background:C.bg4,border:`1px solid ${C.pink}`,color:C.t1,padding:'10px 24px',borderRadius:50,fontSize:13,zIndex:9999,backdropFilter:'blur(20px)',whiteSpace:'nowrap',boxShadow:`0 0 30px ${C.pinkG}`}}>
-          {toast}
-        </div>
-      )}
-
-      {/* Modal bloqueo */}
-      {modalBloqueo && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:800,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(8px)'}}>
-          <div style={{background:C.bg3,border:`1px solid ${C.border2}`,borderRadius:20,padding:28,width:400,boxShadow:`0 0 60px rgba(255,82,82,0.2)`}}>
-            <div style={{fontSize:18,fontWeight:900,fontFamily:"'Syne',sans-serif",marginBottom:4}}>🔒 Bloquear M{modalBloqueo.numero}</div>
-            <div style={{fontSize:12,color:C.t3,marginBottom:20}}>La mesa no estará disponible</div>
-            <div style={{fontSize:10,color:C.t3,marginBottom:6,fontWeight:700,textTransform:'uppercase' as const}}>Motivo</div>
-            <select style={{...inp,marginBottom:12}} value={bloqueoMotivo} onChange={e=>setBloqueoMotivo(e.target.value)}>
-              <option value="">Sin especificar</option>
-              {MOTIVOS_BLOQUEO.map(m=><option key={m}>{m}</option>)}
-            </select>
-            <div style={{fontSize:10,color:C.t3,marginBottom:6,fontWeight:700,textTransform:'uppercase' as const}}>Bloqueada hasta</div>
-            <input type="datetime-local" style={{...inp,marginBottom:20}} value={bloqueoHasta} onChange={e=>setBloqueoHasta(e.target.value)} />
-            <div style={{display:'flex',gap:10}}>
-              <button onClick={()=>setModalBloqueo(null)} style={{flex:1,padding:11,borderRadius:10,border:`1px solid ${C.border2}`,background:'transparent',color:C.t3,cursor:'pointer',fontSize:13,fontWeight:700}}>Cancelar</button>
-              <button onClick={bloquearMesa} style={{flex:2,padding:11,borderRadius:10,border:'none',background:C.red,color:'#fff',cursor:'pointer',fontSize:13,fontWeight:700}}>Confirmar bloqueo</button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal nueva reserva */}
-      {modalNueva && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.9)',zIndex:700,display:'flex',alignItems:'center',justifyContent:'center',backdropFilter:'blur(12px)',padding:20}}>
-          <div style={{background:C.bg3,border:`1px solid ${C.border2}`,borderRadius:24,padding:28,width:'100%',maxWidth:560,maxHeight:'90vh',overflowY:'auto',boxShadow:`0 0 80px ${C.pinkG}`}}>
-            {/* Header modal */}
-            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:24}}>
-              <div>
-                <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900}}>Nueva reserva</div>
-                <div style={{fontSize:12,color:C.t3,marginTop:2}}>{fmtFecha(form.fecha)}</div>
-              </div>
-              <button onClick={()=>setModalNueva(false)} style={{background:C.bg4,border:`1px solid ${C.border}`,color:C.t2,width:36,height:36,borderRadius:10,cursor:'pointer',fontSize:18,display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
-            </div>
-
-            {/* Cliente */}
-            <div style={{marginBottom:14}}>
-              <div style={{fontSize:10,color:C.pink,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.1em',marginBottom:10}}>Cliente</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
-                <div>
-                  <div style={{fontSize:10,color:C.t3,marginBottom:4}}>Teléfono / WhatsApp</div>
-                  <input style={inp} placeholder="+57 310..." value={form.telefono} onChange={e=>setF('telefono',e.target.value)} />
-                  {clienteSugerido && (
-                    <div style={{marginTop:6,background:`${C.green}10`,border:`1px solid ${C.green}30`,borderRadius:8,padding:'6px 10px',fontSize:11,color:C.green,cursor:'pointer'}}
-                      onClick={()=>{ setF('nombre',`${clienteSugerido.name}${clienteSugerido.apellido?' '+clienteSugerido.apellido:''}`); setF('email',clienteSugerido.email||''); }}>
-                      ✓ {clienteSugerido.name} — {clienteSugerido.total_visits} visitas
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <div style={{fontSize:10,color:C.t3,marginBottom:4}}>Nombre completo *</div>
-                  <input style={inp} placeholder="Nombre..." value={form.nombre} onChange={e=>setF('nombre',e.target.value)} />
-                </div>
-              </div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-                <div>
-                  <div style={{fontSize:10,color:C.t3,marginBottom:4}}>Email</div>
-                  <input style={inp} placeholder="email@..." value={form.email} onChange={e=>setF('email',e.target.value)} />
-                </div>
-                <div>
-                  <div style={{fontSize:10,color:C.t3,marginBottom:4}}>Personas</div>
-                  <select style={inp} value={form.pax} onChange={e=>setF('pax',parseInt(e.target.value))}>
-                    {[1,2,3,4,5,6,7,8,10,12,15,20].map(n=><option key={n}>{n}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Fecha hora */}
-            <div style={{marginBottom:14}}>
-              <div style={{fontSize:10,color:C.pink,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.1em',marginBottom:10}}>Fecha y hora</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
-                <div>
-                  <div style={{fontSize:10,color:C.t3,marginBottom:4}}>Fecha *</div>
-                  <input type="date" style={inp} value={form.fecha} onChange={e=>setF('fecha',e.target.value)} />
-                </div>
-                <div>
-                  <div style={{fontSize:10,color:C.t3,marginBottom:4}}>Hora *</div>
-                  <select style={inp} value={form.hora} onChange={e=>setF('hora',e.target.value)}>
-                    {HORAS.map(h=><option key={h}>{h}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <div style={{fontSize:10,color:C.t3,marginBottom:4}}>Duración</div>
-                  <select style={inp} value={form.duracion} onChange={e=>setF('duracion',parseInt(e.target.value))}>
-                    {[60,90,120,150,180].map(d=><option key={d} value={d}>{d}m</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Mesa */}
-            <div style={{marginBottom:14}}>
-              <div style={{fontSize:10,color:C.pink,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.1em',marginBottom:10}}>Mesa *</div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(64px,1fr))',gap:8}}>
-                {mesas.filter(m=>!m.bloqueada&&m.estado==='libre').map(m=>(
-                  <div key={m.id} onClick={()=>setF('mesa_id',m.id)}
-                    style={{background:form.mesa_id===m.id?`${C.pink}20`:C.bg4,border:`2px solid ${form.mesa_id===m.id?C.pink:C.border}`,borderRadius:12,padding:'10px 6px',textAlign:'center' as const,cursor:'pointer',transition:'all .15s'}}>
-                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:form.mesa_id===m.id?C.pink:C.t1}}>{m.numero}</div>
-                    <div style={{fontSize:9,color:C.t3}}>{m.capacidad}p</div>
-                    <div style={{fontSize:9,color:ZONA_COLOR[m.zona]||C.t3}}>{m.zona.slice(0,4)}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Detalles */}
-            <div style={{marginBottom:20}}>
-              <div style={{fontSize:10,color:C.pink,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.1em',marginBottom:10}}>Detalles</div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
-                <div>
-                  <div style={{fontSize:10,color:C.t3,marginBottom:4}}>Ocasión</div>
-                  <select style={inp} value={form.ocasion} onChange={e=>setF('ocasion',e.target.value)}>
-                    <option value="">Sin ocasión</option>
-                    {OCASIONES.map(o=><option key={o}>{o}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <div style={{fontSize:10,color:C.t3,marginBottom:4}}>Origen</div>
-                  <select style={inp} value={form.origen} onChange={e=>setF('origen',e.target.value)}>
-                    {ORIGENES.map(o=><option key={o}>{o}</option>)}
-                  </select>
-                </div>
-              </div>
-              <textarea style={{...inp,minHeight:64,resize:'vertical' as const}} placeholder="Nota para el equipo..." value={form.nota} onChange={e=>setF('nota',e.target.value)} />
-            </div>
-
-            <button onClick={crearReserva} style={{width:'100%',padding:14,borderRadius:14,border:'none',background:`linear-gradient(135deg,${C.pink},${C.pinkD})`,color:'#fff',fontSize:15,fontWeight:900,cursor:'pointer',fontFamily:"'Syne',sans-serif",boxShadow:`0 4px 30px ${C.pinkG}`}}>
-              ✓ Confirmar reserva
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Panel slide — detalle reserva */}
-      {panelReserva && (
-        <div style={{position:'fixed',inset:0,zIndex:600,display:'flex'}}>
-          <div style={{flex:1,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)'}} onClick={()=>setPanelReserva(null)}/>
-          <div style={{width:380,background:C.bg3,borderLeft:`1px solid ${C.border2}`,display:'flex',flexDirection:'column',animation:'slideIn .2s ease'}}>
-            <style>{`@keyframes slideIn{from{transform:translateX(100%)}to{transform:translateX(0)}}`}</style>
-            <div style={{padding:'20px 24px',borderBottom:`1px solid ${C.border}`}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12}}>
-                <div>
-                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900}}>{panelReserva.nombre_cliente}</div>
-                  <div style={{fontSize:12,color:C.t3,marginTop:2,display:'flex',gap:8}}>
-                    {panelReserva.vip_status && <span style={{color:C.gold}}>⭐ VIP</span>}
-                    {panelReserva.total_visits ? <span>{panelReserva.total_visits} visitas</span> : null}
-                    {panelReserva.total_spent ? <span style={{color:C.gold}}>${Math.round(Number(panelReserva.total_spent)).toLocaleString('es-CO')}</span> : null}
-                  </div>
-                </div>
-                <button onClick={()=>setPanelReserva(null)} style={{background:C.bg4,border:`1px solid ${C.border}`,color:C.t2,width:36,height:36,borderRadius:10,cursor:'pointer',fontSize:18}}>✕</button>
-              </div>
-              {/* Estado badge */}
-              {(() => {
-                const cfg = RES_CFG[panelReserva.estado] || RES_CFG.pendiente;
-                return <span style={{background:`${cfg.c}15`,color:cfg.c,border:`1px solid ${cfg.c}30`,padding:'4px 14px',borderRadius:50,fontSize:11,fontWeight:700}}>{cfg.icon} {cfg.label}</span>;
-              })()}
-            </div>
-
-            <div style={{flex:1,overflowY:'auto',padding:'20px 24px'}}>
-              {/* Alergias CRM */}
-              {panelReserva.alergias?.length && (
-                <div style={{background:`${C.red}10`,border:`1px solid ${C.red}30`,borderRadius:12,padding:'10px 14px',marginBottom:14}}>
-                  <div style={{fontSize:10,color:C.red,fontWeight:700,marginBottom:4}}>⚠️ ALERGIAS</div>
-                  <div style={{fontSize:12,color:C.t2}}>{panelReserva.alergias.join(', ')}</div>
-                </div>
-              )}
-              {panelReserva.preferencias?.length && (
-                <div style={{background:`${C.green}08`,border:`1px solid ${C.green}20`,borderRadius:12,padding:'10px 14px',marginBottom:14}}>
-                  <div style={{fontSize:10,color:C.green,fontWeight:700,marginBottom:4}}>✓ PREFERENCIAS</div>
-                  <div style={{fontSize:12,color:C.t2}}>{panelReserva.preferencias.join(', ')}</div>
-                </div>
-              )}
-
-              {/* Info grid */}
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:16}}>
-                {[
-                  {l:'Mesa',    v:`#${panelReserva.mesa_numero} — ${panelReserva.mesa_zona}`},
-                  {l:'Personas', v:`${panelReserva.pax} pax`},
-                  {l:'Fecha',   v:fmtFecha(panelReserva.fecha)},
-                  {l:'Hora',    v:fmtHora(panelReserva.hora)},
-                  {l:'Duración',v:`${panelReserva.duracion_min||90} min`},
-                  {l:'Origen',  v:panelReserva.origen||'—'},
-                ].map(x=>(
-                  <div key={x.l} style={{background:C.bg4,borderRadius:10,padding:'10px 12px'}}>
-                    <div style={{fontSize:9,color:C.t3,marginBottom:3,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>{x.l}</div>
-                    <div style={{fontSize:13,fontWeight:600}}>{x.v}</div>
-                  </div>
-                ))}
-              </div>
-
-              {panelReserva.ocasion && (
-                <div style={{background:`${C.purple}12`,border:`1px solid ${C.purple}25`,borderRadius:10,padding:'8px 14px',marginBottom:10,fontSize:12,color:C.purple}}>🎉 {panelReserva.ocasion}</div>
-              )}
-              {panelReserva.nota && (
-                <div style={{background:C.bg4,borderRadius:10,padding:'8px 14px',marginBottom:14,fontSize:12,color:C.t2}}>📝 {panelReserva.nota}</div>
-              )}
-
-              {/* Contacto */}
-              <div style={{display:'flex',gap:8,marginBottom:16}}>
-                {panelReserva.telefono && (
-                  <a href={`https://wa.me/${panelReserva.telefono.replace(/\D/g,'')}`} target="_blank"
-                    style={{flex:1,padding:10,borderRadius:10,background:'#25D36615',border:'1px solid #25D36640',color:'#25D366',fontSize:11,fontWeight:700,textAlign:'center' as const,textDecoration:'none',display:'block'}}>
-                    💬 WhatsApp
-                  </a>
-                )}
-                {panelReserva.telefono && (
-                  <a href={`tel:${panelReserva.telefono}`}
-                    style={{flex:1,padding:10,borderRadius:10,background:`${C.blue}15`,border:`1px solid ${C.blue}40`,color:C.blue,fontSize:11,fontWeight:700,textAlign:'center' as const,textDecoration:'none',display:'block'}}>
-                    📞 Llamar
-                  </a>
-                )}
-              </div>
-
-              {/* Cambiar estado */}
-              <div style={{fontSize:10,color:C.t3,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:8}}>Cambiar estado</div>
-              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                {(['confirmada','llegó','cancelada','no_show'] as const).map(e=>{
-                  const cfg = RES_CFG[e];
-                  const active = panelReserva.estado === e;
-                  return (
-                    <button key={e} onClick={()=>cambiarEstado(panelReserva.id,e,panelReserva.mesa_id)}
-                      style={{padding:'7px 16px',borderRadius:50,border:`1px solid ${active?cfg.c:C.border}`,background:active?`${cfg.c}20`:'transparent',color:active?cfg.c:C.t3,fontSize:11,fontWeight:700,cursor:'pointer',transition:'all .15s'}}>
-                      {cfg.icon} {cfg.label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ── HEADER ── */}
-      <div style={{padding:'14px 24px',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,borderBottom:`1px solid ${C.border}`,background:C.bg2}}>
-        <div style={{display:'flex',alignItems:'center',gap:14}}>
-          <div style={{width:38,height:38,borderRadius:12,background:`linear-gradient(135deg,${C.pink},#ff6b9d)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,boxShadow:`0 0 20px ${C.pinkG}`}}>📅</div>
+      {/* Header */}
+      <div style={{padding:'14px 24px',borderBottom:`1px solid ${S.border}`,background:S.bg2,display:'flex',alignItems:'center',gap:14,flexShrink:0,flexWrap:'wrap'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{width:44,height:44,borderRadius:13,background:`linear-gradient(135deg,${S.purple},${S.blue})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>📅</div>
           <div>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,letterSpacing:'-0.02em'}}>RESERVE</div>
-            <div style={{fontSize:10,color:C.t3,letterSpacing:'.1em',textTransform:'uppercase' as const}}>OMM · Seratta</div>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900}}>RESERVE</div>
+            <div style={{fontSize:10,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase'}}>Mapa · Reservas · Oh Yeah</div>
           </div>
         </div>
-
-        {/* Navegación semanal */}
-        <div style={{display:'flex',alignItems:'center',gap:2,background:C.bg3,border:`1px solid ${C.border}`,borderRadius:14,padding:'4px 6px'}}>
-          <button onClick={()=>{const d=new Date(fecha+'T12:00:00');d.setDate(d.getDate()-1);setFecha(d.toISOString().split('T')[0]);}}
-            style={{background:'none',border:'none',color:C.t3,cursor:'pointer',fontSize:16,padding:'4px 8px',borderRadius:8}}>‹</button>
-          {diasSemana().map(d=>(
-            <button key={d.iso} onClick={()=>setFecha(d.iso)}
-              style={{display:'flex',flexDirection:'column',alignItems:'center',padding:'6px 10px',borderRadius:10,border:`1px solid ${fecha===d.iso?C.pink:'transparent'}`,background:fecha===d.iso?`${C.pink}20`:'transparent',cursor:'pointer',transition:'all .15s',minWidth:40}}>
-              <span style={{fontSize:9,color:d.esHoy?C.pink:C.t3,fontWeight:700,textTransform:'uppercase' as const}}>{d.dia}</span>
-              <span style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,color:fecha===d.iso?C.pink:C.t1}}>{d.num}</span>
-            </button>
-          ))}
-          <button onClick={()=>{const d=new Date(fecha+'T12:00:00');d.setDate(d.getDate()+1);setFecha(d.toISOString().split('T')[0]);}}
-            style={{background:'none',border:'none',color:C.t3,cursor:'pointer',fontSize:16,padding:'4px 8px',borderRadius:8}}>›</button>
-        </div>
-
-        <div style={{display:'flex',gap:8,alignItems:'center'}}>
-          {/* Buscador */}
-          <div style={{position:'relative'}}>
-            <input placeholder="🔍 Buscar reserva..." value={busqueda} onChange={e=>setBusqueda(e.target.value)}
-              style={{...inp,width:220,padding:'8px 14px',fontSize:12,background:C.bg3}} />
-            {busqueda && <button onClick={()=>setBusqueda('')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:C.t3,cursor:'pointer'}}>✕</button>}
+        {/* KPIs */}
+        {[
+          {l:'Hoy',      v:`${reservasHoy.length} reservas`, c:S.blue},
+          {l:'Pax esperados',v:`${paxEsperados} personas`, c:S.purple},
+          {l:'Ocupación', v:`${ocupacion}%`, c:ocupacion>80?S.red:ocupacion>50?S.gold:S.green},
+          {l:'Oh Yeah',   v:`${reservas.filter(r=>r.origen==='ohyeah').length}`, c:S.gold},
+        ].map(k=>(
+          <div key={k.l} style={{textAlign:'center',padding:'4px 14px',background:'rgba(255,255,255,0.04)',borderRadius:10}}>
+            <div style={{fontSize:9,color:S.t3,textTransform:'uppercase'}}>{k.l}</div>
+            <div style={{fontSize:14,fontWeight:700,color:k.c}}>{k.v}</div>
           </div>
-          <button onClick={()=>setModalNueva(true)}
-            style={{padding:'9px 20px',borderRadius:12,border:'none',background:`linear-gradient(135deg,${C.pink},${C.pinkD})`,color:'#fff',fontSize:12,fontWeight:800,cursor:'pointer',whiteSpace:'nowrap',boxShadow:`0 4px 20px ${C.pinkG}`,fontFamily:"'Syne',sans-serif"}}>
-            + Nueva
+        ))}
+        <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
+          <input type="date" value={fechaFiltro} onChange={e=>setFechaFiltro(e.target.value)}
+            style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:8,padding:'7px 12px',color:'#fff',fontSize:12,outline:'none'}}/>
+          <button onClick={()=>{setSelected(null);setForm({cliente_nombre:'',cliente_email:'',cliente_telefono:'',fecha:hoy,hora:'20:00',pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0});setTab('nueva');}}
+            style={{padding:'8px 20px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.purple},${S.blue})`,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+            + Nueva reserva
           </button>
         </div>
       </div>
 
-      {/* ── KPIs ── */}
-      <div style={{display:'flex',gap:0,padding:'0',flexShrink:0,borderBottom:`1px solid ${C.border}`,background:C.bg2}}>
-        {kpis.map((k,i)=>(
-          <div key={k.l} style={{flex:1,padding:'12px 20px',borderRight:i<kpis.length-1?`1px solid ${C.border}`:'none'}}>
-            <div style={{fontSize:9,color:C.t3,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.1em',marginBottom:4}}>{k.l}</div>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:k.c}}>{k.v}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── TABS ── */}
-      <div style={{display:'flex',gap:0,borderBottom:`1px solid ${C.border}`,flexShrink:0,background:C.bg2,padding:'0 24px'}}>
-        {([
-          {id:'mapa',     l:'Mapa de mesas'},
-          {id:'lista',    l:`Reservas (${busqueda?resFiltradas.length:resHoy.length})`},
-          {id:'timeline', l:'Timeline'},
-        ] as const).map(t=>(
-          <button key={t.id} onClick={()=>setVistaTab(t.id)}
-            style={{padding:'12px 20px',background:'none',border:'none',borderBottom:`2px solid ${vistaTab===t.id?C.pink:'transparent'}`,color:vistaTab===t.id?C.pink:C.t3,fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s',letterSpacing:'.04em'}}>
+      {/* Tabs */}
+      <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg2,padding:'0 24px',flexShrink:0}}>
+        {[{id:'lista',l:'📋 Lista'},{id:'mapa',l:'🗺️ Mapa de mesas'},{id:'nueva',l:'✦ Nueva / Editar'}].map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id as any)}
+            style={{padding:'11px 16px',background:'none',border:'none',borderBottom:`2px solid ${tab===t.id?S.purple:'transparent'}`,color:tab===t.id?S.purple:S.t3,fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
             {t.l}
           </button>
         ))}
-        {/* Zona filtro */}
-        <div style={{marginLeft:'auto',display:'flex',gap:6,alignItems:'center',paddingBottom:4}}>
-          {zonas.map(z=>(
-            <button key={z} onClick={()=>setZonaFiltro(z)}
-              style={{padding:'4px 14px',borderRadius:50,border:`1px solid ${zonaFiltro===z?(ZONA_COLOR[z]||C.pink):C.border}`,background:zonaFiltro===z?`${ZONA_COLOR[z]||C.pink}15`:'transparent',color:zonaFiltro===z?(ZONA_COLOR[z]||C.pink):C.t3,fontSize:10,fontWeight:700,cursor:'pointer',transition:'all .15s'}}>
-              {z}
-            </button>
-          ))}
-        </div>
       </div>
 
-      {/* ── CONTENIDO ── */}
-      <div style={{flex:1,overflow:'hidden',position:'relative'}}>
+      {/* ── LISTA ── */}
+      {tab==='lista' && (
+        <div style={{flex:1,overflowY:'auto'}}>
+          {loading && <div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando reservas...</div>}
+          {!loading && reservas.length===0 && (
+            <div style={{textAlign:'center',padding:60,color:S.t3}}>
+              <div style={{fontSize:48,marginBottom:12}}>📅</div>
+              <div>Sin reservas para esta fecha</div>
+            </div>
+          )}
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
+            <thead>
+              <tr style={{background:S.bg2,position:'sticky',top:0,zIndex:5}}>
+                {['Cliente','Fecha · Hora','Pax','Ocasión','Mesa','Estado','Origen','Acciones'].map(h=>(
+                  <th key={h} style={{padding:'9px 14px',textAlign:'left',fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',borderBottom:`1px solid ${S.border}`,whiteSpace:'nowrap'}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {reservas.map((r,i)=>{
+                const est = (ESTADOS as any)[r.estado]||{c:S.t3,l:r.estado};
+                const esOhYeah = r.origen==='ohyeah';
+                return (
+                  <tr key={r.id} style={{background:i%2===0?S.bg:S.bg2,borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                    <td style={{padding:'10px 14px'}}>
+                      <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:6}}>
+                        {r.cliente_nombre}
+                        {esOhYeah && <span style={{fontSize:9,background:`${S.gold}20`,color:S.gold,padding:'1px 6px',borderRadius:10}}>🦉 Oh Yeah</span>}
+                      </div>
+                      <div style={{fontSize:10,color:S.t3}}>{r.cliente_email||''} {r.cliente_telefono?`· ${r.cliente_telefono}`:''}</div>
+                    </td>
+                    <td style={{padding:'10px 14px'}}>
+                      <div style={{fontWeight:600}}>{fmt(r.fecha)}</div>
+                      <div style={{fontSize:11,color:S.gold,fontWeight:700}}>{r.hora}</div>
+                    </td>
+                    <td style={{padding:'10px 14px',textAlign:'center'}}>
+                      <span style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:S.blue}}>{r.pax}</span>
+                    </td>
+                    <td style={{padding:'10px 14px'}}>
+                      {r.ocasion&&r.ocasion!=='Sin ocasión especial' ? (
+                        <span style={{fontSize:11,background:`${S.purple}15`,color:S.purple,padding:'2px 8px',borderRadius:20}}>{r.ocasion}</span>
+                      ) : <span style={{color:S.t3,fontSize:11}}>—</span>}
+                    </td>
+                    <td style={{padding:'10px 14px'}}>
+                      {r.mesa_num ? (
+                        <span style={{fontSize:12,fontWeight:700,background:`${S.blue}15`,color:S.blue,padding:'3px 10px',borderRadius:20}}>M{r.mesa_num}</span>
+                      ) : r.estado==='confirmada' ? (
+                        <select onChange={e=>asignarMesa(r.id,Number(e.target.value))} defaultValue=""
+                          style={{background:S.bg3,border:`1px solid ${S.border}`,borderRadius:6,padding:'4px 8px',color:S.t2,fontSize:11,cursor:'pointer'}}>
+                          <option value="" disabled>Asignar...</option>
+                          {mesas.filter(m=>m.activa).map(m=><option key={m.id} value={m.num}>Mesa {m.num} ({m.capacidad}p)</option>)}
+                        </select>
+                      ) : <span style={{color:S.t3,fontSize:11}}>—</span>}
+                    </td>
+                    <td style={{padding:'10px 14px'}}>
+                      <span style={{fontSize:10,background:`${est.c}15`,color:est.c,border:`1px solid ${est.c}30`,padding:'3px 10px',borderRadius:50,fontWeight:700,whiteSpace:'nowrap'}}>{est.l}</span>
+                    </td>
+                    <td style={{padding:'10px 14px'}}>
+                      <span style={{fontSize:10,color:S.t3}}>{r.origen==='ohyeah'?'🦉 Oh Yeah':'Nexum'}</span>
+                    </td>
+                    <td style={{padding:'10px 14px'}}>
+                      <div style={{display:'flex',gap:6',flexWrap:'wrap'}}>
+                        {r.estado==='pendiente'&&<button onClick={()=>cambiarEstado(r.id,'confirmada',esOhYeah)} style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,fontSize:10,fontWeight:700,cursor:'pointer'}}>✓ Confirmar</button>}
+                        {r.estado==='confirmada'&&<button onClick={()=>cambiarEstado(r.id,'sentada',esOhYeah)} style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,fontSize:10,fontWeight:700,cursor:'pointer'}}>🪑 Sentar</button>}
+                        {r.estado==='sentada'&&<button onClick={()=>cambiarEstado(r.id,'completada',esOhYeah)} style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${S.purple}40`,background:`${S.purple}10`,color:S.purple,fontSize:10,fontWeight:700,cursor:'pointer'}}>✅ Cerrar</button>}
+                        {!['cancelada','completada'].includes(r.estado)&&<button onClick={()=>cambiarEstado(r.id,'cancelada',esOhYeah)} style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${S.red}40`,background:'transparent',color:S.red,fontSize:10,cursor:'pointer'}}>✗</button>}
+                        {!esOhYeah&&<button onClick={()=>{setSelected(r);setForm({...r,mesa_num:r.mesa_num||0});setTab('nueva');}} style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${S.border}`,background:'transparent',color:S.t2,fontSize:10,cursor:'pointer'}}>✏️</button>}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
 
-        {/* MAPA */}
-        {vistaTab==='mapa' && (
-          <div style={{height:'100%',overflowY:'auto',padding:20}}>
-            {/* ── Reservas del día arrastrables ── */}
-            {resHoy.filter(r=>['confirmada','pendiente'].includes(r.estado)).length>0 && (
-              <div style={{marginBottom:20}}>
-                <div style={{fontSize:10,color:C.t3,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.1em',marginBottom:10}}>
-                  🖱️ Arrastra una reserva sobre una mesa para asignarla
+      {/* ── MAPA ── */}
+      {tab==='mapa' && (
+        <div style={{flex:1,overflowY:'auto',padding:24}}>
+          <div style={{marginBottom:16,display:'flex',gap:12,alignItems:'center'}}>
+            <div style={{fontSize:13,color:S.t2}}>Mapa de mesas — <span style={{color:S.gold,fontWeight:700}}>{fmt(fechaFiltro)}</span></div>
+            <div style={{display:'flex',gap:8}}>
+              {[{c:S.green,l:'Libre'},{c:S.blue,l:'Reservada'},{c:S.red,l:'Ocupada'},{c:S.gold,l:'Sentada'}].map(s=>(
+                <span key={s.l} style={{fontSize:10,display:'flex',alignItems:'center',gap:4}}><span style={{width:8,height:8,borderRadius:'50%',background:s.c,display:'inline-block'}}/>{s.l}</span>
+              ))}
+            </div>
+          </div>
+
+          {mesas.length===0 && (
+            <div style={{textAlign:'center',padding:60,color:S.t3}}>
+              <div style={{fontSize:40,marginBottom:12}}>🪑</div>
+              <div>Las mesas se configuran en el módulo de ajustes</div>
+            </div>
+          )}
+
+          {/* Grid de mesas */}
+          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:12}}>
+            {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map(num => {
+              const reservaHoy = reservasHoy.find(r=>r.mesa_num===num);
+              const colorMesa = reservaHoy?.estado==='sentada'?S.gold:reservaHoy?.estado==='confirmada'?S.blue:S.green;
+              return (
+                <div key={num} style={{background:S.bg2,border:`2px solid ${colorMesa}40`,borderRadius:14,padding:'16px 12px',textAlign:'center',cursor:'pointer',transition:'all .2s'}}
+                  onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.borderColor=colorMesa}
+                  onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.borderColor=`${colorMesa}40`}>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:colorMesa}}>M{num}</div>
+                  {reservaHoy ? (
+                    <>
+                      <div style={{fontSize:11,color:S.t2,marginTop:4,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{reservaHoy.cliente_nombre}</div>
+                      <div style={{fontSize:10,color:colorMesa,fontWeight:700}}>{reservaHoy.hora} · {reservaHoy.pax}p</div>
+                      <div style={{fontSize:9,color:colorMesa,marginTop:2}}>{(ESTADOS as any)[reservaHoy.estado]?.l}</div>
+                    </>
+                  ) : (
+                    <div style={{fontSize:10,color:S.t3,marginTop:4}}>Libre</div>
+                  )}
                 </div>
-                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                  {resHoy.filter(r=>['confirmada','pendiente'].includes(r.estado)).map(r=>(
-                    <div key={r.id}
-                      draggable
-                      onDragStart={()=>setDragReserva(r)}
-                      onDragEnd={()=>{ setDragReserva(null); setDragOver(null); }}
-                      style={{background:dragReserva?.id===r.id?`${C.pink}20`:C.bg3,border:`1px solid ${dragReserva?.id===r.id?C.pink:C.border2}`,borderRadius:10,padding:'7px 12px',cursor:'grab',display:'flex',alignItems:'center',gap:8,transition:'all .15s',userSelect:'none' as const}}>
-                      <div style={{textAlign:'center',minWidth:36}}>
-                        <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,color:C.goldL}}>{r.hora?.slice(0,5)}</div>
-                      </div>
-                      <div>
-                        <div style={{fontSize:12,fontWeight:700,color:C.t1}}>{r.nombre_cliente.split(' ')[0]}</div>
-                        <div style={{fontSize:10,color:C.t3}}>{r.pax}p · M{r.mesa_numero}</div>
-                      </div>
-                      {r.vip_status && <span style={{fontSize:10,color:C.gold}}>⭐</span>}
-                    </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ── NUEVA / EDITAR ── */}
+      {tab==='nueva' && (
+        <div style={{flex:1,overflowY:'auto',padding:24}}>
+          <div style={{maxWidth:680,margin:'0 auto'}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,marginBottom:20}}>{selected?'Editar reserva':'Nueva reserva'}</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+              <div style={{gridColumn:'1/-1'}}>
+                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>NOMBRE DEL CLIENTE *</div>
+                <input style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.cliente_nombre} onChange={e=>setF('cliente_nombre',e.target.value)} placeholder="Nombre completo"/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>EMAIL</div>
+                <input style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.cliente_email} onChange={e=>setF('cliente_email',e.target.value)} placeholder="correo@email.com"/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>TELÉFONO</div>
+                <input style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.cliente_telefono} onChange={e=>setF('cliente_telefono',e.target.value)} placeholder="+57 300 000 0000"/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>FECHA *</div>
+                <input type="date" style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.fecha} onChange={e=>setF('fecha',e.target.value)}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>HORA *</div>
+                <input type="time" style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.hora} onChange={e=>setF('hora',e.target.value)}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>PERSONAS</div>
+                <div style={{display:'flex',gap:8'}}>
+                  {[1,2,3,4,5,6,7,8,10,12].map(n=>(
+                    <button key={n} onClick={()=>setF('pax',n)} style={{flex:1,padding:'10px 4px',borderRadius:8,border:`1px solid ${form.pax===n?S.blue:S.border2}`,background:form.pax===n?`${S.blue}15`:'transparent',color:form.pax===n?S.blue:S.t3,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                      {n}
+                    </button>
                   ))}
                 </div>
               </div>
-            )}
-
-            {Array.from(new Set(mesasFiltradas.map(m=>m.zona))).map(zona=>{
-              const mesasZona = mesasFiltradas.filter(m=>m.zona===zona);
-              const zc = ZONA_COLOR[zona] || C.t2;
-              return (
-                <div key={zona} style={{marginBottom:28}}>
-                  {/* Zona header */}
-                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
-                    <div style={{width:6,height:6,borderRadius:'50%',background:zc}}/>
-                    <span style={{fontSize:11,fontWeight:700,color:zc,textTransform:'uppercase' as const,letterSpacing:'.12em'}}>{zona}</span>
-                    <div style={{flex:1,height:1,background:`linear-gradient(90deg,${zc}30,transparent)`}}/>
-                    <span style={{fontSize:10,color:C.t3}}>{mesasZona.length} mesas</span>
-                  </div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(150px,1fr))',gap:12}}>
-                    {mesasZona.map(mesa=>{
-                      const efectivo = mesa.bloqueada ? 'bloqueada' : mesa.estado;
-                      const cfg = ESTADO_CFG[efectivo as keyof typeof ESTADO_CFG] || ESTADO_CFG.libre;
-                      const resaMesa = resHoy.find(r=>r.mesa_id===mesa.id&&['confirmada','pendiente'].includes(r.estado));
-                      const ocuMesa  = resHoy.find(r=>r.mesa_id===mesa.id&&r.estado==='llegó');
-                      return (
-                        <div key={mesa.id}
-                          onClick={()=>{ if (resaMesa) setPanelReserva(resaMesa); else if(ocuMesa) setPanelReserva(ocuMesa); else setPanelMesa(mesa); }}
-                          onDragOver={e=>{ e.preventDefault(); setDragOver(mesa.id); }}
-                          onDragLeave={()=>setDragOver(null)}
-                          onDrop={()=>{ if(dragReserva) reasignarMesa(dragReserva.id, mesa.id); }}
-                          style={{background:dragOver===mesa.id?`${C.pink}15`:C.bg3,border:`1.5px solid ${dragOver===mesa.id?C.pink:cfg.c}30`,borderRadius:18,padding:16,cursor:dragReserva?'copy':'pointer',transition:'all .2s',position:'relative',overflow:'hidden',boxShadow:dragOver===mesa.id?`0 0 20px ${C.pink}30`:'none'}}
-                          onMouseEnter={e=>{ if(!dragReserva){(e.currentTarget as HTMLDivElement).style.borderColor=cfg.c; (e.currentTarget as HTMLDivElement).style.boxShadow=`0 0 20px ${cfg.c}15`; }}}
-                          onMouseLeave={e=>{ if(!dragReserva){(e.currentTarget as HTMLDivElement).style.borderColor=`${cfg.c}30`; (e.currentTarget as HTMLDivElement).style.boxShadow='none'; }}}>
-                          {dragOver===mesa.id && (
-                            <div style={{position:'absolute',inset:0,background:`${C.pink}10`,display:'flex',alignItems:'center',justifyContent:'center',borderRadius:18,zIndex:5}}>
-                              <span style={{fontSize:20}}>📌</span>
-                            </div>
-                          )}
-
-                          {/* Glow dot estado */}
-                          <div style={{position:'absolute',top:12,right:12,width:8,height:8,borderRadius:'50%',background:cfg.c,boxShadow:`0 0 8px ${cfg.c}`}}/>
-
-                          <div style={{fontFamily:"'Syne',sans-serif",fontSize:28,fontWeight:900,color:C.t1,marginBottom:2}}>{mesa.numero}</div>
-                          <div style={{fontSize:10,color:cfg.c,fontWeight:700,marginBottom:6}}>{cfg.label.toUpperCase()}</div>
-                          <div style={{fontSize:10,color:C.t3,marginBottom:resaMesa?8:0,display:'flex',alignItems:'center',gap:6}}>
-                            <span>👥 {mesa.capacidad} · {zona}</span>
-                            {mesa.estado==='ocupada' && ocuMesa && tiempoTranscurrido(ocuMesa.hora) && (
-                              <span style={{fontSize:9,color:C.red,background:`${C.red}12`,padding:'1px 6px',borderRadius:10,fontWeight:700}}>
-                                ⏱ {tiempoTranscurrido(ocuMesa.hora)}
-                              </span>
-                            )}
-                          </div>
-
-                          {resaMesa && (
-                            <div style={{background:`${C.pink}10`,border:`1px solid ${C.pink}20`,borderRadius:8,padding:'6px 8px',marginTop:6}}>
-                              <div style={{fontSize:11,fontWeight:700,color:C.pink,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{resaMesa.nombre_cliente.split(' ')[0]}</div>
-                              <div style={{fontSize:10,color:C.t3}}>{fmtHora(resaMesa.hora)} · {resaMesa.pax}p</div>
-                            </div>
-                          )}
-
-                          {mesa.bloqueada && (
-                            <div style={{fontSize:10,color:C.t3,marginTop:4}}>🔒 {mesa.bloqueo_motivo||'Bloqueada'}</div>
-                          )}
-
-                          {/* Acciones hover */}
-                          <div style={{display:'flex',gap:6,marginTop:10}}>
-                            {mesa.estado==='libre'&&!mesa.bloqueada && (
-                              <button onClick={e=>{e.stopPropagation();setF('mesa_id',mesa.id);setModalNueva(true);}}
-                                style={{flex:1,padding:'5px',borderRadius:8,border:`1px solid ${C.pink}40`,background:`${C.pink}10`,color:C.pink,fontSize:9,fontWeight:700,cursor:'pointer'}}>
-                                + Reservar
-                              </button>
-                            )}
-                            {!mesa.bloqueada
-                              ? <button onClick={e=>{e.stopPropagation();setModalBloqueo(mesa);}}
-                                  style={{padding:'5px 8px',borderRadius:8,border:`1px solid ${C.red}30`,background:`${C.red}08`,color:C.red,fontSize:10,cursor:'pointer'}}>🔒</button>
-                              : <button onClick={e=>{e.stopPropagation();desbloquearMesa(mesa);}}
-                                  style={{padding:'5px 8px',borderRadius:8,border:`1px solid ${C.green}30`,background:`${C.green}08`,color:C.green,fontSize:10,cursor:'pointer'}}>🔓</button>
-                            }
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* LISTA */}
-        {vistaTab==='lista' && (
-          <div style={{height:'100%',overflowY:'auto',padding:20}}>
-            {busqueda && <div style={{fontSize:11,color:C.t3,marginBottom:12}}>{resFiltradas.length} resultado{resFiltradas.length!==1?'s':''} para "{busqueda}"</div>}
-            {resFiltradas.length===0 && (
-              <div style={{textAlign:'center',padding:60,color:C.t3}}>
-                <div style={{fontSize:40,marginBottom:12}}>📅</div>
-                <div style={{fontSize:15,fontWeight:700}}>{busqueda?'Sin resultados':'Sin reservas para este día'}</div>
+              <div>
+                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>MESA ASIGNADA</div>
+                <select style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.mesa_num} onChange={e=>setF('mesa_num',Number(e.target.value))}>
+                  <option value={0}>Sin asignar aún</option>
+                  {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map(n=><option key={n} value={n}>Mesa {n}</option>)}
+                </select>
               </div>
-            )}
-            <div style={{display:'flex',flexDirection:'column',gap:8}}>
-              {resFiltradas.map(r=>{
-                const cfg = RES_CFG[r.estado] || RES_CFG.pendiente;
-                return (
-                  <div key={r.id} onClick={()=>setPanelReserva(r)}
-                    draggable
-                    onDragStart={e=>{ e.dataTransfer.setData('reserva_id',String(r.id)); (e.currentTarget as HTMLDivElement).style.opacity='.5'; }}
-                    onDragEnd={e=>{ (e.currentTarget as HTMLDivElement).style.opacity='1'; }}
-                    style={{background:C.bg3,border:`1px solid ${r.estado==='llegó'?C.green+'30':C.border}`,borderRadius:16,padding:'14px 18px',cursor:'grab',display:'flex',alignItems:'center',gap:14,transition:'all .15s'}}
-                    onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.borderColor=`${C.pink}40`}
-                    onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.borderColor=r.estado==='llegó'?`${C.green}30`:C.border}>
-
-                    {/* Hora */}
-                    <div style={{textAlign:'center',minWidth:52,flexShrink:0}}>
-                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:C.gold}}>{fmtHora(r.hora)}</div>
-                      <div style={{fontSize:9,color:C.t3}}>{r.duracion_min||90}m</div>
-                    </div>
-
-                    {/* Mesa badge */}
-                    <div style={{width:40,height:40,borderRadius:10,background:C.bg4,border:`1px solid ${C.border2}`,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                      <div style={{fontSize:9,color:C.t3}}>M</div>
-                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900}}>{r.mesa_numero}</div>
-                    </div>
-
-                    {/* Info */}
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3}}>
-                        <span style={{fontSize:14,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.nombre_cliente}</span>
-                        {r.vip_status && <span style={{fontSize:10,color:C.gold,flexShrink:0}}>⭐</span>}
-                        {r.ocasion && <span style={{fontSize:10,background:`${C.purple}15`,color:C.purple,padding:'1px 8px',borderRadius:50,flexShrink:0}}>{r.ocasion}</span>}
-                        {r.alergias?.length && <span style={{fontSize:10,background:`${C.red}15`,color:C.red,padding:'1px 8px',borderRadius:50,flexShrink:0}}>⚠️</span>}
-                      </div>
-                      <div style={{fontSize:11,color:C.t3}}>
-                        {r.pax}p · {r.mesa_zona} · {r.origen||'—'}
-                        {r.total_visits ? ` · ${r.total_visits} visitas` : ''}
-                      </div>
-                    </div>
-
-                    {/* Estado */}
-                    <span style={{background:`${cfg.c}15`,color:cfg.c,border:`1px solid ${cfg.c}30`,padding:'5px 14px',borderRadius:50,fontSize:11,fontWeight:700,flexShrink:0}}>
-                      {cfg.icon} {cfg.label}
-                    </span>
-                  </div>
-                );
-              })}
+              <div>
+                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>OCASIÓN</div>
+                <select style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.ocasion} onChange={e=>setF('ocasion',e.target.value)}>
+                  {OCASIONES.map(o=><option key={o}>{o}</option>)}
+                </select>
+              </div>
+              <div style={{gridColumn:'1/-1'}}>
+                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>NOTAS INTERNAS</div>
+                <textarea style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%',height:70,resize:'vertical'}} value={form.notas} onChange={e=>setF('notas',e.target.value)} placeholder="Alergias, preferencias, solicitudes especiales..."/>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:10,marginTop:16}}>
+              <button onClick={()=>setTab('lista')} style={{flex:1,padding:12,borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t2,cursor:'pointer',fontSize:13}}>Cancelar</button>
+              <button onClick={guardar} disabled={saving} style={{flex:2,padding:12,borderRadius:10,border:'none',background:saving?S.bg3:`linear-gradient(135deg,${S.purple},${S.blue})`,color:'#fff',cursor:'pointer',fontSize:13,fontWeight:700}}>
+                {saving?'Guardando...':(selected?'✓ Actualizar':'✓ Crear reserva')}
+              </button>
             </div>
           </div>
-        )}
-
-        {/* TIMELINE */}
-        {vistaTab==='timeline' && (
-          <div style={{height:'100%',overflowY:'auto',padding:'20px 24px'}}>
-            <div style={{fontSize:12,color:C.t3,marginBottom:20}}>{fmtFecha(fecha)}</div>
-            {HORAS.map(hora=>{
-              const rs = resHoy.filter(r=>fmtHora(r.hora)===hora);
-              const isServicio = parseInt(hora) >= 19;
-              return (
-                <div key={hora} style={{display:'flex',gap:14,marginBottom:6,alignItems:'stretch'}}>
-                  {/* Hora label */}
-                  <div style={{minWidth:52,display:'flex',flexDirection:'column',alignItems:'flex-end',paddingTop:12}}>
-                    <span style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:700,color:isServicio?C.pink:C.t3}}>{hora}</span>
-                  </div>
-                  {/* Línea vertical */}
-                  <div style={{display:'flex',flexDirection:'column',alignItems:'center',width:2}}>
-                    <div style={{width:2,flex:1,background:`linear-gradient(180deg,${isServicio?C.pink:C.t3}40,transparent)`,minHeight:48,borderRadius:2}}/>
-                  </div>
-                  {/* Reservas */}
-                  <div style={{flex:1,display:'flex',gap:8,flexWrap:'wrap',paddingTop:4,paddingBottom:10}}>
-                    {rs.length > 0 ? rs.map(r=>{
-                      const cfg = RES_CFG[r.estado]||RES_CFG.pendiente;
-                      return (
-                        <div key={r.id} onClick={()=>setPanelReserva(r)}
-                          style={{background:`${cfg.c}10`,border:`1px solid ${cfg.c}30`,borderRadius:12,padding:'10px 16px',cursor:'pointer',minWidth:180,transition:'all .15s'}}
-                          onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.borderColor=cfg.c}
-                          onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.borderColor=`${cfg.c}30`}>
-                          <div style={{fontSize:13,fontWeight:700}}>{r.nombre_cliente.split(' ')[0]}</div>
-                          <div style={{fontSize:10,color:C.t3}}>Mesa {r.mesa_numero} · {r.pax}p · {cfg.label}</div>
-                          {r.ocasion && <div style={{fontSize:10,color:C.purple,marginTop:3}}>🎉 {r.ocasion}</div>}
-                        </div>
-                      );
-                    }) : (
-                      <div style={{padding:'10px 16px',border:`1px dashed ${C.border}`,borderRadius:12,fontSize:11,color:C.t3}}>Disponible</div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
