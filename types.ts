@@ -26,7 +26,8 @@ export enum ModuleType {
   MOBILE_MGR = 'MOBILE_MGR',
   OH_YEAH = 'OH_YEAH',
   OH_YEAH_RESTAURANTE = 'OH_YEAH_RESTAURANTE',
-  MARKETPLACE = 'MARKETPLACE'
+  MARKETPLACE = 'MARKETPLACE',
+  FOOD_INTELLIGENCE = 'FOOD_INTELLIGENCE'
 }
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo';
