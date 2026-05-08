@@ -63,7 +63,7 @@ export default function FlowModule() {
 
     if (!ordenes?.length) { setPedidosDia([]); return; }
     const { data:ois } = await supabase.from('order_items')
-      .select('id,order_id,status,quantity,notes,nombre_plato,created_at,updated_at,tiempo_inicio,mesero,estacion,cocinero,precio_unitario:price_at_time')
+      .select('id,order_id,status,quantity,notes,nombre_plato,created_at,updated_at,tiempo_inicio,tiempo_listo,duracion_seg,mesero,estacion,cocinero,precio_unitario:price_at_time')
       .in('order_id', ordenes.map(o=>o.id))
       .neq('status','cancelled')
       .order('created_at',{ascending:false});
@@ -86,7 +86,7 @@ export default function FlowModule() {
 
     if (!ordenes?.length) { setItems([]); setLoading(false); return; }
     const { data:ois } = await supabase.from('order_items')
-      .select('id,order_id,status,quantity,notes,nombre_plato,created_at,updated_at,tiempo_inicio,mesero,estacion,cocinero,precio_unitario:price_at_time')
+      .select('id,order_id,status,quantity,notes,nombre_plato,created_at,updated_at,tiempo_inicio,tiempo_listo,duracion_seg,mesero,estacion,cocinero,precio_unitario:price_at_time')
       .in('order_id', ordenes.map(o=>o.id))
       .neq('status','cancelled')
       .neq('status','served')
@@ -115,25 +115,51 @@ export default function FlowModule() {
 
   const updateStatus = async (id:string, status:string) => {
     const now_ts = new Date().toISOString();
-    const updates:any = { status, updated_at:now_ts };
-    if (status==='preparing') updates.tiempo_inicio = now_ts;
-    if (status==='served') {
+    const updates:any = { status, updated_at: now_ts };
+
+    if (status === 'preparing') {
+      // Registrar inicio de producción
+      updates.tiempo_inicio = now_ts;
+    }
+
+    if (status === 'served') {
       updates.tiempo_listo = now_ts;
-      const item = items.find(i=>i.id===id);
-      if (item?.tiempo_inicio) {
-        const dur = Math.floor((new Date(now_ts).getTime()-new Date(item.tiempo_inicio).getTime())/1000);
-        updates.duracion_seg = dur>0?dur:null;
+      const item = items.find(i => i.id === id);
+
+      if (item) {
+        // Caso 1: tiene tiempo_inicio → duracion = tiempo_inicio → ahora
+        if (item.tiempo_inicio) {
+          const dur = Math.floor(
+            (new Date(now_ts).getTime() - new Date(item.tiempo_inicio).getTime()) / 1000
+          );
+          updates.duracion_seg = dur > 0 ? dur : null;
+
+        // Caso 2: sin tiempo_inicio (fue directo pending→served) → duracion desde created_at
+        } else {
+          const dur = Math.floor(
+            (new Date(now_ts).getTime() - new Date(item.created_at).getTime()) / 1000
+          );
+          updates.duracion_seg = dur > 0 ? dur : null;
+          updates.tiempo_inicio = item.created_at; // marcar inicio como cuando se pidió
+        }
       }
     }
-    await supabase.from('order_items').update(updates).eq('id',id);
 
-    if (status==='served') {
-      const item = items.find(i=>i.id===id);
+    await supabase.from('order_items').update(updates).eq('id', id);
+
+    // Notificar al mesero cuando el plato está listo
+    if (status === 'served') {
+      const item = items.find(i => i.id === id);
       if (item) {
         await supabase.from('flow_alertas').insert({
-          restaurante_id:6, mesa_num:item.table_id,
-          plato:getNombre(item), mesero:item.mesero||null,
-          cocinero:item.cocinero||null, estacion:item.estacion||getStation(item), leida:false,
+          restaurante_id: 6,
+          mesa_num:  item.table_id,
+          plato:     getNombre(item),
+          mesero:    item.mesero || null,
+          cocinero:  item.cocinero || null,
+          estacion:  item.estacion || getStation(item),
+          leida:     false,
+          duracion_seg: updates.duracion_seg || null,
         });
       }
     }
