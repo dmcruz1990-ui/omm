@@ -24,7 +24,19 @@ interface FlowItem {
 const getNombre = (item:FlowItem) => item.nombre_plato ?? item.menu_name ?? item.notes ?? 'Plato';
 const getStation = (item:FlowItem): string => item.estacion || item.category || 'cocina_caliente';
 const tseconds = (iso:string) => Math.floor((Date.now()-new Date(iso).getTime())/1000);
-const fmtTime = (s:number) => s<60?`${s}s`:`${Math.floor(s/60)}m ${s%60}s`;
+// Formato tiempo — siempre en minutos, sin segundos sueltos (JP Boss request)
+const fmtTime = (s:number) => {
+  if (!s || s <= 0) return '—';
+  const min = Math.floor(s / 60);
+  const seg = Math.round(s % 60);
+  if (min === 0) return `<1min`;           // menos de 1 min → no mostrar segundos
+  if (seg < 30) return `${min}min`;        // redondear hacia abajo
+  return `${min + 1}min`;                  // redondear hacia arriba si ≥30s
+};
+const fmtMin = (min:number) => {
+  if (!min || min <= 0) return '—';
+  return `${Math.round(min)}min`;
+};
 
 export default function FlowModule() {
   const [items, setItems] = useState<FlowItem[]>([]);
@@ -33,6 +45,7 @@ export default function FlowModule() {
   const [now, setNow] = useState(Date.now());
   const [activeTab, setActiveTab] = useState<'live'|'dia'>('live');
   const [filtroEstacion, setFiltroEstacion] = useState<string|null>(null);
+  const [tiemposMetrica, setTiemposMetrica] = useState<any[]>([]);
   const [filtroStatus, setFiltroStatus] = useState<string>('all');
   const channelRef = useRef<any>(null);
 
@@ -61,6 +74,10 @@ export default function FlowModule() {
       return { ...oi, table_id:orden?.table_id??null, menu_name:oi.nombre_plato??oi.notes, category:oi.estacion??null };
     });
     setPedidosDia(enriched as FlowItem[]);
+
+    // Cargar métricas de tiempo del día
+    const { data: metricas } = await supabase.from('vista_tiempos_dia').select('*');
+    if (metricas) setTiemposMetrica(metricas);
   }, []);
 
   const fetchLive = useCallback(async () => {
@@ -267,54 +284,69 @@ export default function FlowModule() {
 
                   {/* Cards de pedidos */}
                   {estItems.map(item=>{
-                    const isPending  = item.status==='pending';
-                    const isPreparing= item.status==='preparing';
+                    const isPending   = item.status==='pending';
+                    const isPreparing = item.status==='preparing';
                     const tiempoPedido = tseconds(item.created_at);
-                    const tiempoProd  = item.tiempo_inicio ? tseconds(item.tiempo_inicio) : 0;
-                    const objetivoSeg = est.objetivo;
-                    const pct = item.tiempo_inicio ? Math.min(100,Math.round(tiempoProd/objetivoSeg*100)) : 0;
-                    const esEnFuego = (isPending && tiempoPedido>objetivoSeg*1.5) || (isPreparing && tiempoProd>objetivoSeg);
-                    const barColor  = pct>=100?'#FF5252':pct>=70?'#FFB547':est.color;
+                    const tiempoProd   = item.tiempo_inicio ? tseconds(item.tiempo_inicio) : 0;
+                    const objetivoSeg  = est.objetivo;
+                    const pct          = item.tiempo_inicio ? Math.min(100,Math.round(tiempoProd/objetivoSeg*100)) : 0;
+
+                    // ── Semáforo verde/amarillo/rojo ──
+                    const esEnFuego  = (isPending && tiempoPedido>objetivoSeg*1.5)
+                                    || (isPreparing && tiempoProd>objetivoSeg);
+                    const esAmarillo = !esEnFuego && (
+                                       (isPending   && tiempoPedido>objetivoSeg*0.8)
+                                    || (isPreparing && tiempoProd>objetivoSeg*0.7));
+                    const sColor = esEnFuego ? '#FF5252' : esAmarillo ? '#FFB547' : isPreparing ? '#00E676' : est.color;
+                    const barColor = pct>=100?'#FF5252':pct>=70?'#FFB547':est.color;
+                    const tiempoVisible = isPreparing ? tiempoProd : tiempoPedido;
+                    const tiempoLabel   = isPreparing ? 'producción' : 'en espera';
 
                     return (
-                      <div key={item.id} style={{margin:8,background:esEnFuego?'rgba(255,82,82,0.07)':'rgba(255,255,255,0.03)',border:`1px solid ${esEnFuego?'rgba(255,82,82,0.4)':isPreparing?`${est.color}40`:'rgba(255,255,255,0.07)'}`,borderRadius:10,padding:'10px 12px'}}>
+                      <div key={item.id} style={{
+                        margin:8,
+                        background: esEnFuego?'rgba(255,82,82,0.08)':esAmarillo?'rgba(255,181,71,0.06)':'rgba(255,255,255,0.03)',
+                        border:`1px solid ${esEnFuego?'rgba(255,82,82,0.45)':esAmarillo?'rgba(255,181,71,0.35)':isPreparing?`${est.color}40`:'rgba(255,255,255,0.07)'}`,
+                        borderLeft:`3px solid ${sColor}`,
+                        borderRadius:10,padding:'10px 12px',
+                      }}>
                         <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8,marginBottom:6}}>
-                          <div style={{flex:1}}>
-                            <div style={{fontSize:13,fontWeight:700,color:'#f0f0f0',display:'flex',alignItems:'center',gap:6}}>
-                              {esEnFuego && <span style={{fontSize:14}}>🔥</span>}
-                              {getNombre(item)}
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:13,fontWeight:700,color:'#f0f0f0',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                              {esEnFuego && <span>🔥</span>}
+                              {esAmarillo && !esEnFuego && <span>⚠️</span>}
+                              <span style={{flex:1}}>{getNombre(item)}</span>
                               {item.quantity>1 && <span style={{fontSize:10,background:'rgba(255,255,255,0.1)',padding:'1px 6px',borderRadius:10}}>×{item.quantity}</span>}
                             </div>
-                            {/* Mesa + mesero */}
                             <div style={{display:'flex',gap:6,marginTop:3,flexWrap:'wrap'}}>
                               {item.table_id && <span style={{fontSize:10,background:`${est.color}20`,color:est.color,padding:'1px 7px',borderRadius:20,fontWeight:700}}>M{item.table_id}</span>}
-                              {item.mesero && <span style={{fontSize:9,color:'#6b7280'}}>👤 {item.mesero.split(' ')[0]}</span>}
+                              {item.mesero   && <span style={{fontSize:9,color:'#6b7280'}}>👤 {item.mesero.split(' ')[0]}</span>}
                               {item.cocinero && <span style={{fontSize:9,color:est.color}}>👨‍🍳 {item.cocinero.split(' ').slice(-1)[0]}</span>}
                             </div>
                           </div>
-                          {/* Status badge */}
-                          <span style={{fontSize:9,fontWeight:700,padding:'3px 8px',borderRadius:20,background:isPending?'rgba(255,255,255,0.05)':isPreparing?`${est.color}20`:'rgba(0,230,118,0.15)',color:isPending?'#6b7280':isPreparing?est.color:'#00E676',whiteSpace:'nowrap'}}>
-                            {isPending?'⏳ Pendiente':isPreparing?'🍳 Preparando':'✅ Listo'}
-                          </span>
-                        </div>
 
-                        {/* Tiempos */}
-                        <div style={{display:'flex',gap:8,marginBottom:8,flexWrap:'wrap'}}>
-                          <span style={{fontSize:10,color:'#6b7280',display:'flex',alignItems:'center',gap:3}}>
-                            🕐 {fmtTime(tiempoPedido)}
-                          </span>
-                          {item.tiempo_inicio && (
-                            <span style={{fontSize:10,color:barColor,fontWeight:700,display:'flex',alignItems:'center',gap:3}}>
-                              🍳 {fmtTime(tiempoProd)} / {fmtTime(objetivoSeg)}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Barra de progreso */}
-                        {item.tiempo_inicio && (
-                          <div style={{height:3,background:'rgba(255,255,255,0.06)',borderRadius:2,overflow:'hidden',marginBottom:8}}>
-                            <div style={{height:'100%',width:`${pct}%`,background:barColor,borderRadius:2,transition:'width 1s linear'}}/>
+                          {/* CRONÓMETRO PROMINENTE */}
+                          <div style={{flexShrink:0,textAlign:'center',background:`${sColor}15`,border:`1px solid ${sColor}40`,borderRadius:10,padding:'5px 10px',minWidth:58}}>
+                            <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:sColor,lineHeight:1}}>
+                              {fmtTime(tiempoVisible)}
+                            </div>
+                            <div style={{fontSize:8,color:'#6b7280',marginTop:1,textTransform:'uppercase',letterSpacing:'.05em'}}>
+                              {tiempoLabel}
+                            </div>
                           </div>
+                        </div>
+
+                        {/* Barra progreso vs objetivo */}
+                        {item.tiempo_inicio && (
+                          <>
+                            <div style={{display:'flex',justifyContent:'space-between',fontSize:8,color:'#50506A',marginBottom:2}}>
+                              <span>Objetivo {fmtTime(objetivoSeg)}</span>
+                              <span style={{color:barColor,fontWeight:700}}>{pct}%</span>
+                            </div>
+                            <div style={{height:4,background:'rgba(255,255,255,0.06)',borderRadius:2,overflow:'hidden',marginBottom:8}}>
+                              <div style={{height:'100%',width:`${pct}%`,background:`linear-gradient(90deg,${est.color},${barColor})`,borderRadius:2,transition:'width 1s linear'}}/>
+                            </div>
+                          </>
                         )}
 
                         {/* Botones */}
@@ -328,7 +360,7 @@ export default function FlowModule() {
                           {isPreparing && (
                             <button onClick={()=>updateStatus(item.id,'served')}
                               style={{flex:1,padding:'7px',borderRadius:8,border:'1px solid rgba(0,230,118,0.5)',background:'rgba(0,230,118,0.15)',color:'#00E676',fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                              ✅ ¡Listo!
+                              ✅ ¡Listo! — {fmtTime(tiempoProd)}
                             </button>
                           )}
                         </div>
@@ -346,6 +378,86 @@ export default function FlowModule() {
       {activeTab==='dia' && (
         <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
           {/* Filtro status */}
+          {/* ── MÉTRICAS DE TIEMPO DEL DÍA ── */}
+          <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',flexShrink:0,background:'#0a0a14'}}>
+            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:10}}>
+              <span style={{fontSize:11,fontWeight:700,color:'#22d3ee',textTransform:'uppercase',letterSpacing:'.08em'}}>⏱ Tiempos de producción — hoy</span>
+              <span style={{fontSize:9,color:'#50506A',marginLeft:'auto'}}>
+                {tiemposMetrica.length > 0 ? `${tiemposMetrica.reduce((s:number,m:any)=>s+(m.pedidos_dia||0),0)} platos medidos` : 'Se llenan al marcar ✅ Listo'}
+              </span>
+            </div>
+
+            <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
+              {(tiemposMetrica.length > 0 ? tiemposMetrica : [
+                {categoria:'Cocina',   estacion:'cocina_caliente', pedidos_dia:0, promedio_min:null, minimo_min:null, maximo_min:null, platos_ultima_hora:0},
+                {categoria:'Entradas', estacion:'cocina_fria',     pedidos_dia:0, promedio_min:null, minimo_min:null, maximo_min:null, platos_ultima_hora:0},
+                {categoria:'Bebidas',  estacion:'bar',             pedidos_dia:0, promedio_min:null, minimo_min:null, maximo_min:null, platos_ultima_hora:0},
+                {categoria:'Postres',  estacion:'postres',         pedidos_dia:0, promedio_min:null, minimo_min:null, maximo_min:null, platos_ultima_hora:0},
+              ]).map((m:any)=>{
+                const sinDatos   = !m.promedio_min || m.pedidos_dia === 0;
+                const prom       = m.promedio_min ? Math.round(m.promedio_min) : null;
+                const colorProm  = sinDatos ? '#404040' : prom! <= 5 ? '#00E676' : prom! <= 10 ? '#FFB547' : '#FF5252';
+                const EST_EMOJIS: Record<string,string> = {cocina_caliente:'🔥',cocina_fria:'🧊',robata:'🥩',bar:'🍸',cava:'🍷',postres:'🍮'};
+                const CAT_EMOJIS: Record<string,string> = {Cocina:'🔥',Entradas:'🥗',Bebidas:'🍸',Postres:'🍮'};
+                const emoji = EST_EMOJIS[m.estacion] || CAT_EMOJIS[m.categoria] || '🍽️';
+                return (
+                  <div key={m.estacion||m.categoria} style={{
+                    background:'rgba(255,255,255,0.03)',
+                    border:`1px solid ${colorProm}25`,
+                    borderRadius:12, padding:'10px 11px',
+                  }}>
+                    {/* Header */}
+                    <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:7}}>
+                      <span style={{fontSize:14}}>{emoji}</span>
+                      <span style={{fontSize:9,color:'#a0a0a0',fontWeight:700,textTransform:'uppercase',letterSpacing:'.04em',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                        {m.categoria}
+                      </span>
+                    </div>
+
+                    {/* PROMEDIO — número grande */}
+                    <div style={{marginBottom:7}}>
+                      <div style={{fontSize:8,color:'#50506A',marginBottom:1,textTransform:'uppercase',letterSpacing:'.06em'}}>Promedio</div>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:colorProm,lineHeight:1}}>
+                        {sinDatos ? '—' : `${prom}`}
+                        {!sinDatos && <span style={{fontSize:11,fontWeight:400,color:'#50506A',marginLeft:2}}>min</span>}
+                      </div>
+                    </div>
+
+                    {/* MIN / MAX */}
+                    <div style={{display:'flex',gap:6,marginBottom:7}}>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:7,color:'#50506A',textTransform:'uppercase',letterSpacing:'.05em'}}>Mín</div>
+                        <div style={{fontSize:12,fontWeight:700,color:'#00E676'}}>
+                          {sinDatos ? '—' : `${Math.round(m.minimo_min||0)}min`}
+                        </div>
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:7,color:'#50506A',textTransform:'uppercase',letterSpacing:'.05em'}}>Máx</div>
+                        <div style={{fontSize:12,fontWeight:700,color:'#FF5252'}}>
+                          {sinDatos ? '—' : `${Math.round(m.maximo_min||0)}min`}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* PLATOS DÍA / PLATOS HORA */}
+                    <div style={{borderTop:'1px solid rgba(255,255,255,0.05)',paddingTop:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                      <div>
+                        <div style={{fontSize:7,color:'#50506A',textTransform:'uppercase',letterSpacing:'.04em'}}>Día</div>
+                        <div style={{fontSize:13,fontWeight:900,color:'#a0a0a0',fontFamily:"'Syne',sans-serif"}}>{m.pedidos_dia||0}</div>
+                      </div>
+                      <div style={{textAlign:'right'}}>
+                        <div style={{fontSize:7,color:'#50506A',textTransform:'uppercase',letterSpacing:'.04em'}}>Últ. hora</div>
+                        <div style={{fontSize:13,fontWeight:900,color:'#22d3ee',fontFamily:"'Syne',sans-serif"}}>
+                          {m.platos_ultima_hora||0}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           <div style={{padding:'10px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:6,flexShrink:0}}>
             {[{v:'all',l:'Todos'},{v:'pending',l:'⏳ Pendiente'},{v:'preparing',l:'🍳 Prep.'},{v:'served',l:'✅ Listos'}].map(f=>(
               <button key={f.v} onClick={()=>setFiltroStatus(f.v)}
@@ -385,7 +497,7 @@ export default function FlowModule() {
                           {item.status==='served'?'✅ Listo':item.status==='preparing'?'🍳 Prep.':'⏳ Pendiente'}
                         </span>
                       </td>
-                      <td style={{padding:'9px 12px',color:'#606060',fontSize:11}}>{new Date(item.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</td>
+                      <td style={{padding:'9px 12px',color:'#606060',fontSize:11}}>{new Date(item.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',hour12:true})}</td>
                       <td style={{padding:'9px 12px',color:est?.color||'#a0a0a0',fontSize:11,fontWeight:600}}>{tiempoProd}</td>
                       <td style={{padding:'9px 12px',color:'#606060',fontSize:11}}>{(item as any).duracion_seg?fmtTime((item as any).duracion_seg):'En curso'}</td>
                     </tr>
