@@ -19,7 +19,7 @@ const C = {
   panaderia:'#f0b45a', limpieza:'#9b72ff', empaques:'#60a5fa',
 };
 
-type Tab = 'dashboard' | 'proveedores' | 'materias' | 'subpreps' | 'recetas' | 'compras' | 'alertas' | 'recepcion' | 'conteos';
+type Tab = 'dashboard' | 'proveedores' | 'materias' | 'subpreps' | 'recetas' | 'compras' | 'alertas' | 'recepcion' | 'conteos' | 'costos';
 
 const inp: React.CSSProperties = {
   background:'rgba(255,255,255,0.05)', border:`1px solid ${S.border2}`,
@@ -761,6 +761,184 @@ export default function SupplyModule() {
           </div>
         )}
 
+      {/* ══ 38. RENTABILIDAD POR PLATO ══ */}
+      {tab === 'costos' && <CostosRentabilidad />}
+
+      </div>
+    </div>
+  );
+}
+
+// ══ COMPONENTE RENTABILIDAD POR PLATO (38) ══════════════════════════════════
+function CostosRentabilidad() {
+  const S = {
+    bg:'#08080f',bg2:'#0f0f1a',bg3:'#161624',bg4:'#1e1e2e',
+    border:'rgba(255,255,255,0.07)',border2:'rgba(255,255,255,0.12)',
+    t1:'#fff',t2:'#A0A0B8',t3:'#50506A',
+    gold:'#FFB547',green:'#00E676',red:'#FF5252',
+    blue:'#448AFF',purple:'#B388FF',pink:'#FF2D78',
+  };
+  const fmt = (n:number) => `$${Math.round(n).toLocaleString('es-CO')}`;
+  const inp: React.CSSProperties = {background:'rgba(255,255,255,0.05)',border:`1px solid rgba(255,255,255,0.12)`,borderRadius:10,padding:'9px 13px',color:'#fff',fontSize:13,outline:'none',width:'100%'};
+
+  const [recetas, setRecetas] = React.useState<any[]>([]);
+  const [ingredientes, setIngredientes] = React.useState<any[]>([]);
+  const [showForm, setShowForm] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [form, setForm] = React.useState({ nombre_plato:'', precio_venta:'', ingredientes:[] as any[] });
+  const [newIng, setNewIng] = React.useState({ nombre:'', cantidad:'', unidad:'gr' });
+
+  React.useEffect(()=>{
+    const supabase = (window as any).__supabase || null;
+    if (!supabase) return;
+    supabase.from('recetas_costo').select('*').eq('restaurante_id',6).order('margen_pct',{ascending:false}).then(({data}:any)=>{ if(data) setRecetas(data); });
+    supabase.from('ingredientes_costo').select('*').eq('restaurante_id',6).eq('activo',true).order('nombre').then(({data}:any)=>{ if(data) setIngredientes(data); });
+  },[]);
+
+  const calcCosto = (ings:any[]) => ings.reduce((s:number,i:any)=>s+(i.cantidad||0)*(i.costo_unitario||0),0);
+  const calcMargen = (precio:number, costo:number) => precio>0?Math.round(((precio-costo)/precio)*100):0;
+
+  const agregarIng = () => {
+    if(!newIng.nombre||!newIng.cantidad) return;
+    const base = ingredientes.find(i=>i.nombre===newIng.nombre);
+    const costoUnit = base?.costo_unitario||0;
+    setForm(p=>({...p,ingredientes:[...p.ingredientes,{...newIng,costo_unitario:costoUnit,subtotal:(Number(newIng.cantidad)*costoUnit)}]}));
+    setNewIng({nombre:'',cantidad:'',unidad:'gr'});
+  };
+
+  const guardar = async () => {
+    const supabase = (window as any).__supabase;
+    if(!supabase||!form.nombre_plato) return;
+    setSaving(true);
+    const costo = calcCosto(form.ingredientes);
+    const precio = Number(form.precio_venta)||0;
+    const margen = calcMargen(precio,costo);
+    await supabase.from('recetas_costo').insert({restaurante_id:6,...form,precio_venta:precio,costo_total:costo,margen_pct:margen,ingredientes:form.ingredientes});
+    setForm({nombre_plato:'',precio_venta:'',ingredientes:[]});
+    setShowForm(false); setSaving(false);
+    const {data} = await supabase.from('recetas_costo').select('*').eq('restaurante_id',6).order('margen_pct',{ascending:false});
+    if(data) setRecetas(data);
+  };
+
+  const costoForm = calcCosto(form.ingredientes);
+  const margenForm = calcMargen(Number(form.precio_venta)||0, costoForm);
+
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:24}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
+        <div>
+          <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900}}>💰 Rentabilidad por Plato</div>
+          <div style={{fontSize:11,color:S.t3}}>Costo de ingredientes → margen de ganancia real</div>
+        </div>
+        <button onClick={()=>setShowForm(p=>!p)} style={{padding:'8px 20px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.gold},#d4943a)`,color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+          {showForm?'✕ Cancelar':'+ Nueva receta'}
+        </button>
+      </div>
+
+      {/* KPIs */}
+      {recetas.length>0 && (
+        <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:12,marginBottom:20}}>
+          {[
+            {l:'Platos analizados',v:recetas.length,c:S.blue},
+            {l:'Margen promedio',v:`${Math.round(recetas.reduce((s,r)=>s+r.margen_pct,0)/recetas.length)}%`,c:S.green},
+            {l:'Mejor margen',v:`${Math.max(...recetas.map(r=>r.margen_pct))}%`,c:S.gold},
+            {l:'En riesgo (<30%)',v:recetas.filter(r=>r.margen_pct<30).length,c:S.red},
+          ].map(k=>(
+            <div key={k.l} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:'12px 16px'}}>
+              <div style={{fontSize:9,color:S.t3,textTransform:'uppercase',letterSpacing:'.06em',marginBottom:4}}>{k.l}</div>
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:k.c}}>{k.v}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Formulario nueva receta */}
+      {showForm && (
+        <div style={{background:S.bg2,border:`1px solid ${S.border2}`,borderRadius:16,padding:20,marginBottom:20}}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
+            <div>
+              <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4}}>NOMBRE DEL PLATO</div>
+              <input style={inp} value={form.nombre_plato} onChange={e=>setForm(p=>({...p,nombre_plato:e.target.value}))} placeholder="Ton Katsu Don"/>
+            </div>
+            <div>
+              <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4}}>PRECIO DE VENTA</div>
+              <input style={inp} type="number" value={form.precio_venta} onChange={e=>setForm(p=>({...p,precio_venta:e.target.value}))} placeholder="48000"/>
+            </div>
+          </div>
+
+          {/* Ingredientes */}
+          <div style={{fontSize:11,color:S.t2,fontWeight:700,marginBottom:8}}>Ingredientes</div>
+          <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr auto',gap:8,marginBottom:8}}>
+            <select style={inp} value={newIng.nombre} onChange={e=>setNewIng(p=>({...p,nombre:e.target.value}))}>
+              <option value="">Seleccionar ingrediente...</option>
+              {ingredientes.map(i=><option key={i.id} value={i.nombre}>{i.nombre} ({fmt(i.costo_unitario)}/{i.unidad})</option>)}
+            </select>
+            <input style={inp} type="number" value={newIng.cantidad} onChange={e=>setNewIng(p=>({...p,cantidad:e.target.value}))} placeholder="Cantidad"/>
+            <input style={inp} value={newIng.unidad} onChange={e=>setNewIng(p=>({...p,unidad:e.target.value}))} placeholder="gr/ml/und"/>
+            <button onClick={agregarIng} style={{padding:'9px 16px',borderRadius:10,border:'none',background:S.blue,color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>+</button>
+          </div>
+          {form.ingredientes.map((i,idx)=>(
+            <div key={idx} style={{display:'flex',justifyContent:'space-between',padding:'6px 10px',background:S.bg3,borderRadius:8,marginBottom:4,fontSize:12}}>
+              <span style={{color:S.t2}}>{i.nombre} × {i.cantidad}{i.unidad}</span>
+              <div style={{display:'flex',gap:12,alignItems:'center'}}>
+                <span style={{color:S.gold,fontWeight:700}}>{fmt(i.subtotal||0)}</span>
+                <button onClick={()=>setForm(p=>({...p,ingredientes:p.ingredientes.filter((_,j)=>j!==idx)}))} style={{background:'none',border:'none',color:S.red,cursor:'pointer',fontSize:14}}>✕</button>
+              </div>
+            </div>
+          ))}
+
+          {/* Preview margen */}
+          {form.ingredientes.length>0 && (
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginTop:12,padding:'12px 16px',background:S.bg3,borderRadius:12}}>
+              <div><div style={{fontSize:9,color:S.t3,marginBottom:3}}>COSTO TOTAL</div><div style={{fontSize:16,fontWeight:700,color:S.red}}>{fmt(costoForm)}</div></div>
+              <div><div style={{fontSize:9,color:S.t3,marginBottom:3}}>PRECIO VENTA</div><div style={{fontSize:16,fontWeight:700,color:S.gold}}>{fmt(Number(form.precio_venta)||0)}</div></div>
+              <div><div style={{fontSize:9,color:S.t3,marginBottom:3}}>MARGEN</div><div style={{fontSize:20,fontWeight:900,color:margenForm>50?S.green:margenForm>30?S.gold:S.red}}>{margenForm}%</div></div>
+            </div>
+          )}
+
+          <button onClick={guardar} disabled={saving} style={{marginTop:14,width:'100%',padding:12,borderRadius:10,border:'none',background:saving?S.bg3:`linear-gradient(135deg,${S.green},#009944)`,color:'#000',fontSize:13,fontWeight:700,cursor:'pointer'}}>
+            {saving?'Guardando...':'✓ Guardar análisis de rentabilidad'}
+          </button>
+        </div>
+      )}
+
+      {/* Lista recetas */}
+      {recetas.length===0 && !showForm && (
+        <div style={{textAlign:'center',padding:60,color:S.t3}}><div style={{fontSize:48,marginBottom:12}}>💰</div><div>Agrega platos para analizar su rentabilidad</div></div>
+      )}
+      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {recetas.map(r=>{
+          const margenColor = r.margen_pct>50?S.green:r.margen_pct>30?S.gold:S.red;
+          const pct = Math.min(100,r.margen_pct);
+          return (
+            <div key={r.id} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:'14px 18px'}}>
+              <div style={{display:'flex',alignItems:'center',gap:16}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:700}}>{r.nombre_plato}</div>
+                  <div style={{display:'flex',gap:16,marginTop:4,fontSize:12,color:S.t3}}>
+                    <span>Venta: <span style={{color:S.gold,fontWeight:700}}>{fmt(r.precio_venta)}</span></span>
+                    <span>Costo: <span style={{color:S.red,fontWeight:700}}>{fmt(r.costo_total)}</span></span>
+                    <span>Ganancia: <span style={{color:S.green,fontWeight:700}}>{fmt(r.precio_venta-r.costo_total)}</span></span>
+                  </div>
+                </div>
+                <div style={{textAlign:'right'}}>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:26,fontWeight:900,color:margenColor}}>{r.margen_pct}%</div>
+                  <div style={{fontSize:9,color:margenColor,fontWeight:700}}>{r.margen_pct>50?'Excelente':r.margen_pct>30?'Aceptable':'En riesgo'}</div>
+                </div>
+              </div>
+              <div style={{marginTop:8,height:6,background:S.bg4,borderRadius:3,overflow:'hidden'}}>
+                <div style={{height:'100%',width:`${pct}%`,background:margenColor,borderRadius:3,transition:'width .5s'}}/>
+              </div>
+              {r.ingredientes?.length>0 && (
+                <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:8}}>
+                  {r.ingredientes.map((i:any,idx:number)=>(
+                    <span key={idx} style={{fontSize:10,background:S.bg3,color:S.t2,padding:'2px 8px',borderRadius:20}}>{i.nombre} ({i.cantidad}{i.unidad})</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
