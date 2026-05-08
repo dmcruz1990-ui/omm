@@ -221,7 +221,7 @@ export default function ReserveModule() {
                       <span style={{fontSize:10,color:S.t3}}>{r.origen==='ohyeah'?'🦉 Oh Yeah':'Nexum'}</span>
                     </td>
                     <td style={{padding:'10px 14px'}}>
-                      <div style={{display:'flex',gap:6',flexWrap:'wrap'}}>
+                      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
                         {r.estado==='pendiente'&&<button onClick={()=>cambiarEstado(r.id,'confirmada',esOhYeah)} style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,fontSize:10,fontWeight:700,cursor:'pointer'}}>✓ Confirmar</button>}
                         {r.estado==='confirmada'&&<button onClick={()=>cambiarEstado(r.id,'sentada',esOhYeah)} style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,fontSize:10,fontWeight:700,cursor:'pointer'}}>🪑 Sentar</button>}
                         {r.estado==='sentada'&&<button onClick={()=>cambiarEstado(r.id,'completada',esOhYeah)} style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${S.purple}40`,background:`${S.purple}10`,color:S.purple,fontSize:10,fontWeight:700,cursor:'pointer'}}>✅ Cerrar</button>}
