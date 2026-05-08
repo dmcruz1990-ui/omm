@@ -310,7 +310,7 @@ export default function ReserveModule() {
               </div>
               <div>
                 <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>PERSONAS</div>
-                <div style={{display:'flex',gap:8'}}>
+                <div style={{display:'flex',gap:8}}>
                   {[1,2,3,4,5,6,7,8,10,12].map(n=>(
                     <button key={n} onClick={()=>setF('pax',n)} style={{flex:1,padding:'10px 4px',borderRadius:8,border:`1px solid ${form.pax===n?S.blue:S.border2}`,background:form.pax===n?`${S.blue}15`:'transparent',color:form.pax===n?S.blue:S.t3,fontSize:12,fontWeight:700,cursor:'pointer'}}>
                       {n}
