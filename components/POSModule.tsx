@@ -793,12 +793,32 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         setFlowAlertas([]);
       }
     };
+
+    // Reservas Oh Yeah del día → badge en el POS
+    const fetchReservasOhYeah = async () => {
+      const hoy = new Date().toISOString().split('T')[0];
+      const { data } = await supabase
+        .from('ohyeah_reservas')
+        .select('id,cliente_nombre,hora,pax,estado,restaurante_nombre')
+        .eq('fecha', hoy)
+        .in('estado', ['pendiente','confirmada'])
+        .order('hora');
+      if (data) setReservasHoy(data);
+    };
+
     fetchAlertas();
+    fetchReservasOhYeah();
+
     const ch = supabase.channel('flow-alertas-pos')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'flow_alertas' }, (payload) => {
         setFlowAlertas(p => [payload.new, ...p]);
         playAlert();
         showToast(`🍽️ ${(payload.new as any).plato} — Mesa ${(payload.new as any).mesa_num} listo para entrega`);
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ohyeah_reservas' }, (payload) => {
+        const r = payload.new as any;
+        showToast(`🦉 Nueva reserva Oh Yeah: ${r.cliente_nombre} — ${r.hora}`);
+        fetchReservasOhYeah();
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -3522,6 +3542,14 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
             <span style={{fontSize:18}}>🔔</span>
             {notifsBadge>0&&<span style={{position:'absolute',top:0,right:0,background:'#e05050',color:'#fff',fontSize:9,fontWeight:900,borderRadius:'50%',width:14,height:14,display:'flex',alignItems:'center',justifyContent:'center'}}>{notifsBadge}</span>}
           </button>
+          {/* Badge reservas Oh Yeah */}
+          {reservasHoy.length > 0 && (
+            <button onClick={()=>showToast(`🦉 ${reservasHoy.length} reserva${reservasHoy.length>1?'s':''} hoy: ${reservasHoy.slice(0,2).map((r:any)=>r.cliente_nombre).join(', ')}`)}
+              style={{display:'flex',alignItems:'center',gap:3,padding:'3px 7px',borderRadius:20,border:'1px solid #FFE60040',background:'#FFE60010',cursor:'pointer'}}>
+              <span style={{fontSize:10}}>🦉</span>
+              <span style={{fontSize:9,fontWeight:900,color:'#FFE600'}}>{reservasHoy.length}</span>
+            </button>
+          )}
           {/* Cuentas por cobrar */}
           <button onClick={()=>setRightTab('Intel')} style={{background:'rgba(212,148,58,0.15)',border:'1px solid rgba(212,148,58,0.3)',borderRadius:8,padding:'4px 8px',cursor:'pointer'}}>
             <div style={{fontSize:9,color:'#d4943a',fontWeight:700}}>💰 Por cobrar</div>
