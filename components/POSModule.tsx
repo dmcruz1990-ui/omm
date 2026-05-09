@@ -4442,55 +4442,77 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 <button onClick={()=>setShowMapaMesas(false)} style={{width:28,height:28,borderRadius:8,border:'1px solid #2a2a2a',background:'#1c1c1c',color:'#a0a0a0',cursor:'pointer',fontSize:14}}>✕</button>
               </div>
             </div>
-            <div style={{flex:1,overflowY:'auto',padding:20}}>
-              {(['Terraza','Salón','Privado','Barra'] as const).map((zona:string) => {
-                const mzs = mesasEstado.filter((m:any)=>(m.zona||m.zone||'Salón')===zona);
-                if (!mzs.length) return null;
-                return (
-                  <div key={zona} style={{marginBottom:20}}>
-                    <div style={{fontSize:10,color:'#606060',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:10}}>
-                      {zona==='Terraza'?'🌿':zona==='Privado'?'🔒':zona==='Barra'?'🍸':'🪑'} {zona}
+            {/* ── CANVAS VISUAL DEL PLANO — igual que Reserve ── */}
+            <div style={{flex:1,overflow:'auto',padding:16}}>
+              <div style={{position:'relative',width:'100%',paddingBottom:'70%',background:'#0a0a12',borderRadius:16,border:'1px solid rgba(255,255,255,0.06)',overflow:'hidden'}}>
+                <div style={{position:'absolute',inset:0}}>
+
+                  {/* Zonas de fondo */}
+                  {Object.entries(ZONA_AREAS_OMM).map(([zona,area])=>(
+                    <div key={zona} style={{position:'absolute',left:`${area.x}%`,top:`${area.y}%`,width:`${area.w}%`,height:`${area.h}%`,background:ZONA_COLS_OMM[zona]?.bg||'transparent',border:`1px solid ${ZONA_COLS_OMM[zona]?.border||'transparent'}`,borderRadius:12}}>
+                      <div style={{position:'absolute',top:5,left:8,fontSize:8,color:'rgba(255,255,255,0.2)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em'}}>
+                        {zona==='Terraza'?'🌿':zona==='Privado'?'🔒':zona==='Barra'?'🍸':'🪑'} {zona}
+                      </div>
                     </div>
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10}}>
-                      {mzs.map((mesa:any)=>{
-                        const libre     = !mesa.estado || mesa.estado==='libre';
-                        const ocupada   = mesa.estado==='ocupada';
-                        const bloqueada = mesa.estado==='bloqueada';
-                        const reservada = mesa.estado==='reservada';
-                        const cBorde = libre?'#3dba6f':ocupada?'#d4943a':reservada?'#448AFF':'#404040';
-                        const tiempoAbierto = mesa.abierta_en ? (()=>{
-                          const mins = Math.floor((Date.now()-new Date(mesa.abierta_en).getTime())/60000);
-                          return mins<60?`${mins}min`:`${Math.floor(mins/60)}h${mins%60}m`;
-                        })() : null;
-                        return (
-                          <div key={mesa.id} onClick={()=>{
-                              if (bloqueada) { setMesaDesbloquear(mesa); }
-                              else if (libre||reservada) { setFormAbrirMesa({mesa,pax:mesa.capacidad||mesa.seats||2,cliente:''}); }
-                              else if (ocupada) {
-                                const enD = displayTables.find((t:any)=>String(t.num)===String(mesa.name));
-                                if (enD) { setSelectedTableId(enD.id); setShowMapaMesas(false); }
-                              }
-                            }}
-                            style={{border:`2px solid ${cBorde}`,background:`${cBorde}10`,borderRadius:14,padding:'12px 14px',cursor:'pointer',transition:'all .15s',position:'relative'}}>
-                            <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:cBorde}}>M{mesa.name}</div>
-                            <div style={{fontSize:9,color:'#606060',marginBottom:5}}>{mesa.capacidad||mesa.seats||'?'}p</div>
-                            {libre     && <div style={{fontSize:10,color:'#3dba6f',fontWeight:700}}>✓ Libre</div>}
-                            {reservada && <div style={{fontSize:10,color:'#448AFF',fontWeight:700}}>📅 Reservada</div>}
-                            {bloqueada && <div style={{fontSize:10,color:'#606060',fontWeight:700}}>🔒 Bloqueada</div>}
-                            {ocupada   && (<>
-                              <div style={{fontSize:10,fontWeight:700,color:'#f0f0f0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{mesa.cliente_nombre||'Abierta'}</div>
-                              <div style={{fontSize:9,color:'#d4943a',marginTop:1}}>{mesa.mesero_nombre?.split(' ')[0]||'—'} · {mesa.pax_actual||'?'}p</div>
-                              {tiempoAbierto&&<div style={{fontSize:9,color:'#606060'}}>⏱ {tiempoAbierto}</div>}
-                              <div style={{position:'absolute',top:8,right:8,width:7,height:7,borderRadius:'50%',background:'#d4943a'}}/>
-                            </>)}
-                          </div>
-                        );
-                      })}
+                  ))}
+
+                  {/* COCINA */}
+                  <div style={{position:'absolute',left:'73%',top:'54%',width:'25%',height:'43%',background:'linear-gradient(135deg,rgba(255,82,82,0.08),rgba(255,82,82,0.03))',border:'1.5px solid rgba(255,82,82,0.3)',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3}}>
+                    <div style={{fontSize:'clamp(12px,2vw,22px)'}}>🔥</div>
+                    <div style={{fontSize:'clamp(6px,0.9vw,10px)',color:'rgba(255,82,82,0.8)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.1em'}}>Cocina</div>
+                    <div style={{position:'absolute',top:'-5%',left:'10%',width:'80%',height:'7%',background:'rgba(255,82,82,0.25)',borderRadius:'3px 3px 0 0',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                      <div style={{fontSize:'clamp(4px,0.6vw,7px)',color:'rgba(255,82,82,0.7)',fontWeight:700}}>DESPACHO</div>
                     </div>
                   </div>
-                );
-              })}
-              {mesasEstado.length===0&&<div style={{textAlign:'center',padding:40,color:'#606060'}}><div style={{fontSize:40,marginBottom:10}}>🗺️</div><div>Cargando mesas...</div></div>}
+
+                  {/* BARRA */}
+                  <div style={{position:'absolute',left:'2%',top:'76%',width:'68%',height:'12%',background:'linear-gradient(90deg,rgba(68,139,255,0.08),rgba(68,139,255,0.04))',border:'1.5px solid rgba(68,139,255,0.3)',borderRadius:10,display:'flex',alignItems:'center',padding:'0 2%',gap:'1.2%',overflow:'hidden'}}>
+                    {[0,1,2,3,4,5,6,7,8].map(i=><div key={i} style={{width:'clamp(4px,1.1vw,13px)',height:'clamp(4px,1.1vw,13px)',borderRadius:'50%',background:'rgba(68,139,255,0.2)',border:'1px solid rgba(68,139,255,0.4)',flexShrink:0}}/>)}
+                    <div style={{flex:1}}/><div style={{fontSize:'clamp(7px,1.1vw,13px)'}}>🍸</div>
+                    <div style={{fontSize:'clamp(6px,0.85vw,10px)',color:'rgba(68,139,255,0.8)',fontWeight:900,textTransform:'uppercase',marginRight:4}}>Barra</div>
+                  </div>
+
+                  {/* CAVA */}
+                  <div style={{position:'absolute',left:'36%',top:'76%',width:'33%',height:'10%',background:'rgba(255,181,71,0.06)',border:'1.5px solid rgba(255,181,71,0.25)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
+                    <div style={{fontSize:'clamp(7px,1.1vw,13px)'}}>🍷</div>
+                    <div style={{fontSize:'clamp(6px,0.75vw,9px)',color:'rgba(255,181,71,0.7)',fontWeight:700,textTransform:'uppercase'}}>Cava</div>
+                  </div>
+
+                  {/* ENTRADA */}
+                  <div style={{position:'absolute',bottom:'1%',left:'40%',display:'flex',alignItems:'center',gap:3}}>
+                    <div style={{width:'clamp(16px,2.5vw,32px)',height:1,background:'rgba(255,255,255,0.12)'}}/>
+                    <div style={{fontSize:'clamp(5px,0.65vw,8px)',color:'rgba(255,255,255,0.15)',fontWeight:700}}>↑ ENTRADA</div>
+                    <div style={{width:'clamp(16px,2.5vw,32px)',height:1,background:'rgba(255,255,255,0.12)'}}/>
+                  </div>
+
+                  {/* Mesas */}
+                  {Object.entries(PLANTA_OMM).map(([key,mesa])=>{
+                    const est = mesasEstado.find((m:any)=>String(m.name)===String(mesa.num));
+                    const libre = !est || est.estado==='libre';
+                    const ocupada = est?.estado==='ocupada';
+                    const bloqueada = est?.estado==='bloqueada';
+                    const col = libre?'#3dba6f':ocupada?'#d4943a':bloqueada?'#404040':'#448AFF';
+                    const enDisplay = displayTables.find((t:any)=>String(t.num)===String(mesa.num));
+                    return (
+                      <div key={key}
+                        onClick={()=>{
+                          if (bloqueada) { setMesaDesbloquear(est); }
+                          else if (libre) { setFormAbrirMesa({mesa:{...mesa,name:String(mesa.num)},pax:mesa.cap,cliente:''}); }
+                          else if (ocupada && enDisplay) { setSelectedTableId(enDisplay.id); setShowMapaMesas(false); }
+                        }}
+                        style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w}%`,height:`${mesa.h}%`,borderRadius:mesa.shape==='round'?'50%':8,background:`${col}18`,border:`2px solid ${col}70`,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',transition:'all .15s',zIndex:1}}
+                        onMouseEnter={e=>{(e.currentTarget as HTMLDivElement).style.background=`${col}30`;(e.currentTarget as HTMLDivElement).style.borderColor=col;}}
+                        onMouseLeave={e=>{(e.currentTarget as HTMLDivElement).style.background=`${col}18`;(e.currentTarget as HTMLDivElement).style.borderColor=`${col}70`;}}>
+                        <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color:col,lineHeight:1}}>M{mesa.num}</div>
+                        {mesa.shape!=='round'&&<div style={{fontSize:'clamp(5px,0.7vw,8px)',color:`${col}90`}}>{mesa.cap}p</div>}
+                        {ocupada&&<div style={{position:'absolute',top:2,right:2,width:5,height:5,borderRadius:'50%',background:'#d4943a'}}/>}
+                      </div>
+                    );
+                  })}
+
+                  <div style={{position:'absolute',bottom:'1%',right:'2%',fontSize:'clamp(5px,0.65vw,8px)',color:'rgba(255,255,255,0.1)',fontWeight:700}}>OMM · Bogotá</div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
