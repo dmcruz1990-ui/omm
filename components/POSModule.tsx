@@ -4422,7 +4422,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           </div>
         </div>
       )}
-    </div>
 
       {/* ═══ MAPA DE MESAS ═══ */}
       {showMapaMesas && (
@@ -4561,6 +4560,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         </div>
       )}
 
+    </div>
   );
 };
 
