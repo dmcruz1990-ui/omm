@@ -485,9 +485,43 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onAsignarMesa, onCambiarEst
                 );
               })}
 
-              {/* Entradas / pasillos */}
-              <div style={{position:'absolute',bottom:'2%',right:'2%',fontSize:9,color:'rgba(255,255,255,0.15)',fontWeight:700}}>OMM · Bogotá</div>
-              <div style={{position:'absolute',bottom:'2%',left:'42%',fontSize:9,color:'rgba(255,255,255,0.12)'}}>↑ Entrada principal</div>
+              {/* ══ ELEMENTOS FIJOS — Cocina, Barra y Cava ══ */}
+
+              {/* COCINA — parte inferior derecha */}
+              <div style={{position:'absolute',left:'73%',top:'54%',width:'25%',height:'43%',background:'linear-gradient(135deg,rgba(255,82,82,0.08),rgba(255,82,82,0.03))',border:'1.5px solid rgba(255,82,82,0.3)',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:4}}>
+                <div style={{fontSize:'clamp(14px,2vw,24px)'}}>🔥</div>
+                <div style={{fontSize:'clamp(7px,1vw,11px)',color:'rgba(255,82,82,0.8)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.1em',textAlign:'center'}}>Cocina</div>
+                {/* Ventanilla de despacho */}
+                <div style={{position:'absolute',top:'-5%',left:'10%',width:'80%',height:'7%',background:'rgba(255,82,82,0.25)',borderRadius:'4px 4px 0 0',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <div style={{fontSize:'clamp(5px,0.65vw,8px)',color:'rgba(255,82,82,0.7)',fontWeight:700,letterSpacing:'.05em'}}>DESPACHO</div>
+                </div>
+              </div>
+
+              {/* BARRA — banda inferior izquierda */}
+              <div style={{position:'absolute',left:'2%',top:'76%',width:'68%',height:'12%',background:'linear-gradient(90deg,rgba(68,139,255,0.08),rgba(68,139,255,0.04))',border:'1.5px solid rgba(68,139,255,0.3)',borderRadius:10,display:'flex',alignItems:'center',padding:'0 2%',gap:'1.5%',overflow:'hidden'}}>
+                {[0,1,2,3,4,5,6,7,8].map(i=>(
+                  <div key={i} style={{width:'clamp(5px,1.2vw,14px)',height:'clamp(5px,1.2vw,14px)',borderRadius:'50%',background:'rgba(68,139,255,0.2)',border:'1px solid rgba(68,139,255,0.4)',flexShrink:0}}/>
+                ))}
+                <div style={{flex:1}}/>
+                <div style={{fontSize:'clamp(8px,1.2vw,14px)'}}>🍸</div>
+                <div style={{fontSize:'clamp(7px,0.9vw,11px)',color:'rgba(68,139,255,0.8)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.08em',marginRight:4}}>Barra</div>
+              </div>
+
+              {/* CAVA — pequeño recuadro junto a la barra */}
+              <div style={{position:'absolute',left:'36%',top:'76%',width:'33%',height:'10%',background:'linear-gradient(135deg,rgba(255,181,71,0.07),rgba(255,181,71,0.02))',border:'1.5px solid rgba(255,181,71,0.25)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}>
+                <div style={{fontSize:'clamp(8px,1.2vw,14px)'}}>🍷</div>
+                <div style={{fontSize:'clamp(6px,0.8vw,10px)',color:'rgba(255,181,71,0.7)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em'}}>Cava</div>
+              </div>
+
+              {/* ENTRADA PRINCIPAL */}
+              <div style={{position:'absolute',bottom:'1%',left:'40%',display:'flex',alignItems:'center',gap:4}}>
+                <div style={{width:'clamp(18px,3vw,36px)',height:2,background:'rgba(255,255,255,0.12)',borderRadius:1}}/>
+                <div style={{fontSize:'clamp(6px,0.75vw,9px)',color:'rgba(255,255,255,0.18)',fontWeight:700}}>↑ ENTRADA</div>
+                <div style={{width:'clamp(18px,3vw,36px)',height:2,background:'rgba(255,255,255,0.12)',borderRadius:1}}/>
+              </div>
+
+              {/* Marca */}
+              <div style={{position:'absolute',bottom:'1%',right:'2%',fontSize:'clamp(6px,0.75vw,9px)',color:'rgba(255,255,255,0.12)',fontWeight:700}}>OMM · Bogotá</div>
             </div>
           </div>
         </div>
