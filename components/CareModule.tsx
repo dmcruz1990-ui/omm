@@ -1,4 +1,5 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
+import { supabase } from '../lib/supabase.ts';
 import {
   Shield, Star, TrendingUp, TrendingDown, AlertTriangle,
   Zap, BarChart2, MessageSquare, RefreshCw,
@@ -161,11 +162,88 @@ function PanelRespuesta({enc,onClose,onSend}:{enc:Encuesta;onClose:()=>void;onSe
 
 export default function CareModule() {
   const [tab,setTab] = useState<Tab>('live');
-  const [alertas,setAlertas] = useState<Alerta[]>(ALERTAS);
+  const [alertas,setAlertas]   = useState<Alerta[]>(ALERTAS);
   const [encuestas,setEncuestas] = useState<Encuesta[]>(ENCUESTAS);
+  const [loading, setLoading]   = useState(false);
+
+  // Cargar encuestas reales desde Supabase
+  useEffect(() => {
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        // Encuestas X-Care
+        const { data: enc } = await supabase
+          .from('xcare_encuestas')
+          .select('*')
+          .eq('restaurante_id', 6)
+          .order('created_at', { ascending: false })
+          .limit(50);
+
+        if (enc && enc.length > 0) {
+          const mapped: Encuesta[] = enc.map((e: any) => ({
+            id: e.id,
+            cliente: e.cliente_nombre || e.nombre_cliente || 'Cliente',
+            mesa: e.mesa_num ? `Mesa ${e.mesa_num}` : '—',
+            estrellas: e.rating_general || e.estrellas_servicio || 0,
+            tags: e.tags || [],
+            comentario: e.comentario || '',
+            fecha: new Date(e.created_at).toLocaleDateString('es-CO'),
+            respondida: !!e.comentario,
+            platos: e.platos || [],
+          }));
+          setEncuestas(mapped);
+        }
+
+        // Feedback de servicio como alertas
+        const { data: fb } = await supabase
+          .from('feedback_servicio')
+          .select('*')
+          .eq('restaurante_id', 6)
+          .eq('tipo', 'alerta')
+          .order('created_at', { ascending: false })
+          .limit(20);
+
+        if (fb && fb.length > 0) {
+          const mapped: Alerta[] = fb.map((f: any, i: number) => ({
+            id: f.id,
+            mesa: f.mesa_num ? `Mesa ${f.mesa_num}` : '—',
+            tipo: 'Feedback servicio',
+            icono: '⚠️',
+            severidad: 'media' as Severidad,
+            tiempo: new Date(f.created_at).toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' }),
+            minutos: 0,
+            descripcion: f.comentario,
+            ltv: '—',
+            resuelta: false,
+          }));
+          setAlertas(prev => [...mapped, ...prev.slice(0, 10)]);
+        }
+      } catch(e) { console.error('Care fetch error:', e); }
+      setLoading(false);
+    };
+    fetchData();
+  }, []);
+
+  // Guardar encuesta de satisfacción
+  const guardarEncuesta = useCallback(async (data: {
+    mesa_num: number; cliente_nombre: string; rating: number;
+    comentario: string; tags: string[];
+  }) => {
+    await supabase.from('xcare_encuestas').insert({
+      restaurante_id: 6,
+      mesa_num: data.mesa_num,
+      cliente_nombre: data.cliente_nombre,
+      rating_general: data.rating,
+      comentario: data.comentario,
+      tags: data.tags,
+      created_at: new Date().toISOString(),
+    });
+  }, []);
   const [alertaSel,setAlertaSel] = useState<Alerta|null>(null);
   const [encSel,setEncSel] = useState<Encuesta|null>(null);
   const [filterStars,setFilterStars] = useState<number|null>(null);
+  const [dashFilterStars,setDashFilterStars] = useState<number|null>(null);
+  const [dashFecha,setDashFecha] = useState<'hoy'|'semana'|'mes'|'personalizado'>('hoy');
 
   const resolverAlerta = useCallback((id:number)=>{ setAlertas(prev=>prev.map(a=>a.id===id?{...a,resuelta:true}:a)); },[]);
   const enviarRespuesta = useCallback(()=>{ if(!encSel)return; setEncuestas(prev=>prev.map(e=>e.id===encSel.id?{...e,respondida:true}:e)); setEncSel(null); },[encSel]);
@@ -360,6 +438,33 @@ export default function CareModule() {
         {/* ── DASHBOARD ─────────────────────────────────────────────────── */}
         {tab==='dashboard'&&(
           <>
+            {/* Filtros — estrellas y fechas */}
+            <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap',alignItems:'center'}}>
+              <div style={{display:'flex',gap:4,background:'#0d0d0d',border:'1px solid #1e1e1e',borderRadius:24,padding:4}}>
+                {(['hoy','semana','mes'] as const).map(f=>(
+                  <button key={f} onClick={()=>setDashFecha(f)}
+                    style={{padding:'5px 14px',borderRadius:20,border:'none',cursor:'pointer',fontSize:11,fontWeight:700,background:dashFecha===f?'#1e1e1e':'transparent',color:dashFecha===f?'#f0f0f0':'#404040',transition:'all .15s'}}>
+                    {f==='hoy'?'Hoy':f==='semana'?'Esta semana':'Este mes'}
+                  </button>
+                ))}
+              </div>
+              <div style={{display:'flex',gap:4}}>
+                {[null,5,4,3,2,1].map(s=>(
+                  <button key={s??'t'} onClick={()=>setDashFilterStars(dashFilterStars===s?null:s)}
+                    style={{padding:'5px 10px',borderRadius:20,border:'none',cursor:'pointer',fontSize:11,fontWeight:700,background:dashFilterStars===s?(s?starC(s):'#FF4444'):'#141414',color:dashFilterStars===s?(s&&s<=3?'#fff':'#000'):'#606060',transition:'all .15s'}}>
+                    {s?'⭐'.repeat(s):'Todas'}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {/* Badge filtro activo */}
+            {(dashFilterStars||dashFecha!=='hoy')&&(
+              <div style={{display:'flex',gap:6,marginBottom:10,flexWrap:'wrap'}}>
+                {dashFecha!=='hoy'&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700,background:'rgba(74,143,212,.12)',color:'#4A8FD4',border:'1px solid rgba(74,143,212,.25)'}}>📅 {dashFecha==='semana'?'Esta semana':'Este mes'}</span>}
+                {dashFilterStars&&<span style={{padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700,background:`${starC(dashFilterStars)}12`,color:starC(dashFilterStars),border:`1px solid ${starC(dashFilterStars)}25`}}>{'⭐'.repeat(dashFilterStars)} solamente</span>}
+                <button onClick={()=>{setDashFilterStars(null);setDashFecha('hoy');}} style={{padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:700,background:'#141414',color:'#606060',border:'none',cursor:'pointer'}}>✕ Limpiar</button>
+              </div>
+            )}
             <div style={{background:'linear-gradient(135deg,#0d0d0d,#111)',border:'1px solid #1e1e1e',borderRadius:16,padding:20,marginBottom:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:16}}>
                 <div>
