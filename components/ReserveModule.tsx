@@ -237,50 +237,8 @@ export default function ReserveModule() {
         </div>
       )}
 
-      {/* ── MAPA ── */}
-      {tab==='mapa' && (
-        <div style={{flex:1,overflowY:'auto',padding:24}}>
-          <div style={{marginBottom:16,display:'flex',gap:12,alignItems:'center'}}>
-            <div style={{fontSize:13,color:S.t2}}>Mapa de mesas — <span style={{color:S.gold,fontWeight:700}}>{fmt(fechaFiltro)}</span></div>
-            <div style={{display:'flex',gap:8}}>
-              {[{c:S.green,l:'Libre'},{c:S.blue,l:'Reservada'},{c:S.red,l:'Ocupada'},{c:S.gold,l:'Sentada'}].map(s=>(
-                <span key={s.l} style={{fontSize:10,display:'flex',alignItems:'center',gap:4}}><span style={{width:8,height:8,borderRadius:'50%',background:s.c,display:'inline-block'}}/>{s.l}</span>
-              ))}
-            </div>
-          </div>
-
-          {mesas.length===0 && (
-            <div style={{textAlign:'center',padding:60,color:S.t3}}>
-              <div style={{fontSize:40,marginBottom:12}}>🪑</div>
-              <div>Las mesas se configuran en el módulo de ajustes</div>
-            </div>
-          )}
-
-          {/* Grid de mesas */}
-          <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:12}}>
-            {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map(num => {
-              const reservaHoy = reservasHoy.find(r=>r.mesa_num===num);
-              const colorMesa = reservaHoy?.estado==='sentada'?S.gold:reservaHoy?.estado==='confirmada'?S.blue:S.green;
-              return (
-                <div key={num} style={{background:S.bg2,border:`2px solid ${colorMesa}40`,borderRadius:14,padding:'16px 12px',textAlign:'center',cursor:'pointer',transition:'all .2s'}}
-                  onMouseEnter={e=>(e.currentTarget as HTMLDivElement).style.borderColor=colorMesa}
-                  onMouseLeave={e=>(e.currentTarget as HTMLDivElement).style.borderColor=`${colorMesa}40`}>
-                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:colorMesa}}>M{num}</div>
-                  {reservaHoy ? (
-                    <>
-                      <div style={{fontSize:11,color:S.t2,marginTop:4,fontWeight:600,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{reservaHoy.cliente_nombre}</div>
-                      <div style={{fontSize:10,color:colorMesa,fontWeight:700}}>{reservaHoy.hora} · {reservaHoy.pax}p</div>
-                      <div style={{fontSize:9,color:colorMesa,marginTop:2}}>{(ESTADOS as any)[reservaHoy.estado]?.l}</div>
-                    </>
-                  ) : (
-                    <div style={{fontSize:10,color:S.t3,marginTop:4}}>Libre</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
+      {/* ── MAPA INTERACTIVO ── */}
+      {tab==='mapa' && <MapaInteractivo reservasHoy={reservasHoy} fechaFiltro={fechaFiltro} onAsignarMesa={asignarMesa} onCambiarEstado={cambiarEstado} S={S} ESTADOS={ESTADOS} />}
 
       {/* ── NUEVA / EDITAR ── */}
       {tab==='nueva' && (
@@ -345,6 +303,304 @@ export default function ReserveModule() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// MAPA INTERACTIVO DE MESAS — Planta real con zonas
+// ══════════════════════════════════════════════════════════════════════
+
+// Layout de planta — posición relativa en % del canvas
+const PLANTA: Record<string, {
+  num:number; zona:string; shape:'round'|'rect'; cap:number; x:number; y:number; w:number; h:number;
+}> = {
+  // ── TERRAZA (parte superior izquierda) ──────────────────────────────
+  T1: { num:1,  zona:'Terraza', shape:'round', cap:2, x:5,  y:4,  w:8, h:8 },
+  T2: { num:2,  zona:'Terraza', shape:'round', cap:2, x:15, y:4,  w:8, h:8 },
+  T3: { num:3,  zona:'Terraza', shape:'rect',  cap:4, x:5,  y:15, w:12,h:8 },
+  T4: { num:4,  zona:'Terraza', shape:'rect',  cap:6, x:20, y:15, w:14,h:8 },
+  // ── SALÓN PRINCIPAL (centro) ─────────────────────────────────────────
+  S5: { num:5,  zona:'Salón',   shape:'round', cap:4, x:40, y:5,  w:10,h:10 },
+  S6: { num:6,  zona:'Salón',   shape:'round', cap:4, x:53, y:5,  w:10,h:10 },
+  S7: { num:7,  zona:'Salón',   shape:'round', cap:4, x:66, y:5,  w:10,h:10 },
+  S8: { num:8,  zona:'Salón',   shape:'rect',  cap:6, x:40, y:20, w:13,h:9 },
+  S9: { num:9,  zona:'Salón',   shape:'rect',  cap:6, x:56, y:20, w:13,h:9 },
+  S10:{ num:10, zona:'Salón',   shape:'round', cap:2, x:72, y:20, w:8, h:8 },
+  S11:{ num:11, zona:'Salón',   shape:'rect',  cap:8, x:40, y:33, w:18,h:9 },
+  S12:{ num:12, zona:'Salón',   shape:'round', cap:4, x:62, y:33, w:10,h:10},
+  // ── PRIVADO (esquina derecha) ─────────────────────────────────────────
+  P13:{ num:13, zona:'Privado', shape:'rect',  cap:8, x:76, y:33, w:17,h:9 },
+  P14:{ num:14, zona:'Privado', shape:'rect',  cap:6, x:76, y:46, w:17,h:9 },
+  // ── BARRA (parte inferior) ────────────────────────────────────────────
+  B15:{ num:15, zona:'Barra',   shape:'rect',  cap:2, x:5,  y:56, w:25,h:6 },
+  B16:{ num:16, zona:'Barra',   shape:'rect',  cap:2, x:5,  y:64, w:25,h:6 },
+};
+
+const ZONA_COLORES: Record<string,{bg:string;border:string;label:string}> = {
+  Terraza: { bg:'rgba(34,211,238,0.04)', border:'rgba(34,211,238,0.15)', label:'🌿 Terraza' },
+  Salón:   { bg:'rgba(255,255,255,0.02)', border:'rgba(255,255,255,0.07)', label:'🪑 Salón' },
+  Privado: { bg:'rgba(179,136,255,0.04)', border:'rgba(179,136,255,0.15)', label:'🔒 Privado' },
+  Barra:   { bg:'rgba(68,139,255,0.04)',  border:'rgba(68,139,255,0.15)',  label:'🍸 Barra'  },
+};
+
+const ZONA_AREAS: Record<string,{x:number;y:number;w:number;h:number}> = {
+  Terraza: { x:2,  y:1,  w:36, h:28 },
+  Salón:   { x:38, y:1,  w:40, h:46 },
+  Privado: { x:74, y:30, w:22, h:29 },
+  Barra:   { x:2,  y:52, w:34, h:22 },
+};
+
+function MapaInteractivo({ reservasHoy, fechaFiltro, onAsignarMesa, onCambiarEstado, S, ESTADOS }: any) {
+  const [mesaSel, setMesaSel] = React.useState<any>(null);
+  const [hoverId, setHoverId] = React.useState<string|null>(null);
+  const [vistaZona, setVistaZona] = React.useState<string|null>(null);
+
+  const fmt = (d:string) => new Date(d+'T00:00:00').toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'});
+
+  const getMesaColor = (num:number) => {
+    const r = reservasHoy.find((rv:any)=>rv.mesa_num===num);
+    if (!r) return { color:'#3dba6f', label:'Libre', reserva:null };
+    const c = r.estado==='sentada'?'#FFB547':r.estado==='confirmada'?'#448AFF':r.estado==='completada'?'#606060':r.estado==='cancelada'?'#FF5252':'#FFB547';
+    return { color:c, label:(ESTADOS as any)[r.estado]?.l||r.estado, reserva:r };
+  };
+
+  const mesasFiltradas = vistaZona
+    ? Object.entries(PLANTA).filter(([,m])=>m.zona===vistaZona)
+    : Object.entries(PLANTA);
+
+  const stats = {
+    total:   Object.keys(PLANTA).length,
+    libres:  Object.values(PLANTA).filter(m=>!reservasHoy.find((r:any)=>r.mesa_num===m.num)).length,
+    ocupadas:reservasHoy.filter((r:any)=>r.estado==='sentada').length,
+    reservadas:reservasHoy.filter((r:any)=>r.estado==='confirmada').length,
+  };
+
+  return (
+    <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:S.bg}}>
+
+      {/* Toolbar */}
+      <div style={{padding:'10px 20px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',gap:12,flexShrink:0,flexWrap:'wrap',background:S.bg2}}>
+        <div style={{fontSize:12,color:S.t2}}>
+          Planta · <span style={{color:S.gold,fontWeight:700}}>{fmt(fechaFiltro)}</span>
+        </div>
+
+        {/* Stats rápidos */}
+        <div style={{display:'flex',gap:8,marginLeft:8}}>
+          {[
+            {v:stats.libres,    l:'Libres',   c:'#3dba6f'},
+            {v:stats.ocupadas,  l:'Sentadas', c:'#FFB547'},
+            {v:stats.reservadas,l:'Reservadas',c:'#448AFF'},
+          ].map(s=>(
+            <span key={s.l} style={{fontSize:11,color:s.c,fontWeight:700,background:`${s.c}15`,padding:'2px 10px',borderRadius:20}}>
+              {s.v} {s.l}
+            </span>
+          ))}
+        </div>
+
+        <div style={{marginLeft:'auto',display:'flex',gap:6}}>
+          {/* Filtro por zona */}
+          {['Todas',...Object.keys(ZONA_COLORES)].map(z=>(
+            <button key={z} onClick={()=>setVistaZona(z==='Todas'?null:z)}
+              style={{padding:'4px 12px',borderRadius:20,border:`1px solid ${vistaZona===(z==='Todas'?null:z)?'#d4943a':'rgba(255,255,255,0.1)'}`,background:vistaZona===(z==='Todas'?null:z)?'rgba(212,148,58,0.15)':'transparent',color:vistaZona===(z==='Todas'?null:z)?'#d4943a':'#606060',fontSize:10,fontWeight:700,cursor:'pointer',transition:'all .15s'}}>
+              {z==='Todas'?'🗺️ Todas':ZONA_COLORES[z]?.label||z}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{flex:1,overflow:'hidden',display:'flex',gap:0}}>
+
+        {/* ── CANVAS DEL PLANO ── */}
+        <div style={{flex:1,overflow:'auto',padding:16,position:'relative'}}>
+          <div style={{
+            position:'relative',
+            width:'100%',
+            paddingBottom:'75%', // ratio 4:3
+            background:'#0a0a12',
+            borderRadius:16,
+            border:`1px solid rgba(255,255,255,0.06)`,
+            overflow:'hidden',
+          }}>
+            <div style={{position:'absolute',inset:0}}>
+
+              {/* Zonas de fondo */}
+              {(vistaZona ? [[vistaZona, ZONA_AREAS[vistaZona]]] : Object.entries(ZONA_AREAS)).map(([zona, area]:any)=>(
+                <div key={zona} style={{
+                  position:'absolute',
+                  left:`${area.x}%`, top:`${area.y}%`,
+                  width:`${area.w}%`, height:`${area.h}%`,
+                  background:ZONA_COLORES[zona]?.bg||'transparent',
+                  border:`1px solid ${ZONA_COLORES[zona]?.border||'transparent'}`,
+                  borderRadius:12,
+                }}>
+                  <div style={{position:'absolute',top:6,left:10,fontSize:9,color:'rgba(255,255,255,0.25)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',userSelect:'none'}}>
+                    {ZONA_COLORES[zona]?.label||zona}
+                  </div>
+                </div>
+              ))}
+
+              {/* Mesas */}
+              {mesasFiltradas.map(([key, mesa])=>{
+                const { color, label, reserva } = getMesaColor(mesa.num);
+                const isHovered = hoverId===key;
+                const isSelected = mesaSel?.key===key;
+                const libre = !reserva;
+
+                return (
+                  <div key={key}
+                    style={{
+                      position:'absolute',
+                      left:`${mesa.x}%`, top:`${mesa.y}%`,
+                      width:`${mesa.w}%`, height:`${mesa.h}%`,
+                      borderRadius: mesa.shape==='round'?'50%':10,
+                      background:`${color}${isSelected?'35':isHovered?'25':'15'}`,
+                      border:`2px solid ${color}${isSelected?'':isHovered?'aa':'60'}`,
+                      cursor:'pointer',
+                      transition:'all .18s',
+                      display:'flex',
+                      flexDirection:'column',
+                      alignItems:'center',
+                      justifyContent:'center',
+                      boxShadow: isSelected?`0 0 16px ${color}60`:isHovered?`0 0 8px ${color}40`:'none',
+                      zIndex: isSelected||isHovered?2:1,
+                    }}
+                    onMouseEnter={()=>setHoverId(key)}
+                    onMouseLeave={()=>setHoverId(null)}
+                    onClick={()=>setMesaSel(mesaSel?.key===key?null:{key,...mesa,color,label,reserva})}
+                  >
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(8px,1.2vw,14px)',fontWeight:900,color,lineHeight:1}}>
+                      M{mesa.num}
+                    </div>
+                    {mesa.shape!=='round' && (
+                      <div style={{fontSize:'clamp(6px,0.8vw,9px)',color:`${color}aa`,marginTop:2}}>
+                        {mesa.cap}p
+                      </div>
+                    )}
+                    {/* Punto pulsante si ocupada */}
+                    {reserva?.estado==='sentada' && (
+                      <div style={{position:'absolute',top:3,right:3,width:6,height:6,borderRadius:'50%',background:'#FFB547',animation:'pulse 1.5s infinite'}}/>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* Entradas / pasillos */}
+              <div style={{position:'absolute',bottom:'2%',right:'2%',fontSize:9,color:'rgba(255,255,255,0.15)',fontWeight:700}}>OMM · Bogotá</div>
+              <div style={{position:'absolute',bottom:'2%',left:'42%',fontSize:9,color:'rgba(255,255,255,0.12)'}}>↑ Entrada principal</div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── PANEL LATERAL — detalle de la mesa seleccionada ── */}
+        <div style={{width:260,borderLeft:`1px solid ${S.border}`,display:'flex',flexDirection:'column',flexShrink:0,background:S.bg2}}>
+
+          {!mesaSel ? (
+            <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:20,color:S.t3,textAlign:'center'}}>
+              <div style={{fontSize:36,marginBottom:12}}>🗺️</div>
+              <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>Selecciona una mesa</div>
+              <div style={{fontSize:11,lineHeight:1.6}}>Toca cualquier mesa en el plano para ver su estado y gestionar la reserva</div>
+            </div>
+          ) : (
+            <div style={{flex:1,overflowY:'auto',padding:16}}>
+              {/* Header mesa */}
+              <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+                <div style={{width:48,height:48,borderRadius:mesaSel.shape==='round'?'50%':12,background:`${mesaSel.color}20`,border:`2px solid ${mesaSel.color}`,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  <span style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:mesaSel.color}}>M{mesaSel.num}</span>
+                </div>
+                <div>
+                  <div style={{fontSize:14,fontWeight:700}}>{mesaSel.zona}</div>
+                  <div style={{fontSize:10,color:mesaSel.color,fontWeight:700}}>{mesaSel.label}</div>
+                  <div style={{fontSize:10,color:S.t3}}>Capacidad: {mesaSel.cap} personas</div>
+                </div>
+              </div>
+
+              {/* Sin reserva */}
+              {!mesaSel.reserva ? (
+                <div>
+                  <div style={{padding:'12px 14px',background:`${S.bg3}`,border:`1px solid ${S.border}`,borderRadius:10,marginBottom:12}}>
+                    <div style={{fontSize:11,color:'#3dba6f',fontWeight:700,marginBottom:4}}>✓ Mesa libre</div>
+                    <div style={{fontSize:10,color:S.t3}}>Sin reserva para {fmt(fechaFiltro)}</div>
+                  </div>
+                  <button onClick={()=>setMesaSel(null)}
+                    style={{width:'100%',padding:'10px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.purple},${S.blue})`,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                    + Crear reserva aquí
+                  </button>
+                </div>
+              ) : (
+                <div>
+                  {/* Info reserva */}
+                  <div style={{background:S.bg3,border:`1px solid ${mesaSel.color}25`,borderRadius:10,padding:'12px 14px',marginBottom:12}}>
+                    <div style={{fontSize:14,fontWeight:700,marginBottom:3}}>{mesaSel.reserva.cliente_nombre}</div>
+                    <div style={{display:'flex',gap:10,flexWrap:'wrap',marginBottom:6}}>
+                      <span style={{fontSize:11,color:S.gold,fontWeight:700}}>🕐 {mesaSel.reserva.hora}</span>
+                      <span style={{fontSize:11,color:S.blue}}>👥 {mesaSel.reserva.pax}p</span>
+                    </div>
+                    {mesaSel.reserva.ocasion && mesaSel.reserva.ocasion!=='Sin ocasión especial' && (
+                      <span style={{fontSize:10,background:`${S.purple}15`,color:S.purple,padding:'2px 8px',borderRadius:20}}>{mesaSel.reserva.ocasion}</span>
+                    )}
+                    {mesaSel.reserva.notas && (
+                      <div style={{fontSize:10,color:S.t2,marginTop:6,fontStyle:'italic'}}>{mesaSel.reserva.notas}</div>
+                    )}
+                  </div>
+
+                  {/* Acciones */}
+                  <div style={{display:'flex',flexDirection:'column',gap:7}}>
+                    {mesaSel.reserva.estado==='pendiente'&&(
+                      <button onClick={()=>onCambiarEstado(mesaSel.reserva.id,'confirmada',mesaSel.reserva.origen==='ohyeah')}
+                        style={{width:'100%',padding:'9px',borderRadius:9,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                        ✓ Confirmar
+                      </button>
+                    )}
+                    {mesaSel.reserva.estado==='confirmada'&&(
+                      <button onClick={()=>{onCambiarEstado(mesaSel.reserva.id,'sentada',mesaSel.reserva.origen==='ohyeah');setMesaSel(null);}}
+                        style={{width:'100%',padding:'9px',borderRadius:9,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                        🪑 Sentar ahora
+                      </button>
+                    )}
+                    {mesaSel.reserva.estado==='sentada'&&(
+                      <button onClick={()=>{onCambiarEstado(mesaSel.reserva.id,'completada',false);setMesaSel(null);}}
+                        style={{width:'100%',padding:'9px',borderRadius:9,border:`1px solid ${S.purple}40`,background:`${S.purple}10`,color:S.purple,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                        ✅ Cerrar mesa
+                      </button>
+                    )}
+                    {!['cancelada','completada'].includes(mesaSel.reserva.estado)&&(
+                      <button onClick={()=>{onCambiarEstado(mesaSel.reserva.id,'cancelada',false);setMesaSel(null);}}
+                        style={{width:'100%',padding:'8px',borderRadius:9,border:`1px solid ${S.red}30`,background:'transparent',color:S.red,fontSize:11,cursor:'pointer'}}>
+                        ✗ Cancelar reserva
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Origen Oh Yeah */}
+              {mesaSel.reserva?.origen==='ohyeah' && (
+                <div style={{marginTop:12,padding:'8px 12px',background:`${S.gold}08`,border:`1px solid ${S.gold}20`,borderRadius:8,display:'flex',alignItems:'center',gap:6}}>
+                  <span style={{fontSize:16}}>🦉</span>
+                  <span style={{fontSize:10,color:S.gold}}>Reserva desde Oh Yeah</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Leyenda en el pie */}
+          <div style={{padding:'10px 14px',borderTop:`1px solid ${S.border}`,display:'flex',flexWrap:'wrap',gap:8,flexShrink:0}}>
+            {[
+              {c:'#3dba6f',l:'Libre'},
+              {c:'#448AFF',l:'Confirmada'},
+              {c:'#FFB547',l:'Sentada'},
+              {c:'#B388FF',l:'Completada'},
+              {c:'#FF5252',l:'Cancelada'},
+            ].map(s=>(
+              <div key={s.l} style={{display:'flex',alignItems:'center',gap:4,fontSize:9,color:'#606060'}}>
+                <span style={{width:6,height:6,borderRadius:'50%',background:s.c,display:'inline-block'}}/>
+                {s.l}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
