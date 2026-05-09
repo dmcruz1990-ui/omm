@@ -794,6 +794,21 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       }
     };
 
+    // Estado real de las mesas en tiempo real
+    const fetchMesasEstado = async () => {
+      const { data } = await supabase.from('tables')
+        .select('id,name,seats,zona,estado,mesero_nombre,abierta_en,pax_actual,cliente_nombre,order_id_activo,capacidad')
+        .order('name');
+      if (data) setMesasEstado(data);
+    };
+    fetchMesasEstado();
+
+    // Suscribir cambios de mesas en tiempo real
+    const chMesas = supabase.channel('mesas-estado')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
+        fetchMesasEstado();
+      }).subscribe();
+
     // Reservas Oh Yeah del día → badge en el POS
     const fetchReservasOhYeah = async () => {
       const hoy = new Date().toISOString().split('T')[0];
@@ -872,6 +887,34 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           .eq('order_id', ordenes[0].id).neq('status','cancelled');
       }
     } catch(e) { console.error('guardarFactura error:', e); }
+  };
+
+  // ── ABRIR MESA — llama la función de Supabase ──────────────────────
+  const abrirMesaDB = async (mesa: any, pax: number, clienteNombre?: string) => {
+    const meseroActivo = profile?.nombre_completo || 'Mesero';
+    const { data, error } = await supabase.rpc('abrir_mesa', {
+      p_mesa_name: mesa.name,
+      p_mesero_nombre: meseroActivo,
+      p_pax: pax,
+      p_cliente_nombre: clienteNombre || null,
+    });
+    if (error || !data?.ok) {
+      showToast(`⚠️ ${data?.error || 'Error al abrir mesa'}`);
+      return false;
+    }
+    // Seleccionar la mesa en el POS
+    const mesaEnDisplay = displayTables.find((t:any) => String(t.num) === String(mesa.name));
+    if (mesaEnDisplay) setSelectedTableId(mesaEnDisplay.id);
+    setShowMapaMesas(false);
+    setFormAbrirMesa(null);
+    showToast(`✓ Mesa ${mesa.name} abierta`);
+    return true;
+  };
+
+  // ── CERRAR MESA ──────────────────────────────────────────────────────
+  const cerrarMesaDB = async (mesaName: string) => {
+    await supabase.rpc('cerrar_mesa', { p_mesa_name: mesaName });
+    showToast(`✓ Mesa ${mesaName} cerrada`);
   };
 
   // ── 34. Guardar feedback interno del servicio ─────────────────────────
@@ -1685,6 +1728,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [customPropina, setCustomPropina] = useState(0);
   const [divClientePax, setDivClientePax] = useState(1);
   const [reservasHoy, setReservasHoy] = useState<any[]>([]);
+  // ── Mapa de mesas ──────────────────────────────────────────────────────
+  const [showMapaMesas, setShowMapaMesas] = useState(false);
+  const [mesasEstado, setMesasEstado] = useState<any[]>([]);
+  const [formAbrirMesa, setFormAbrirMesa] = useState<{mesa:any,pax:number,cliente:string}|null>(null);
+  const [pinDesbloqueo, setPinDesbloqueo] = useState('');
+  const [mesaDesbloquear, setMesaDesbloquear] = useState<any>(null);
   const [dividirPax, setDividirPax] = useState(1);
   // Edición de cuenta con PIN Maître
   const [editCuenta, setEditCuenta] = useState(false);
@@ -2949,7 +2998,11 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
       {/* LEFT PANEL */}
       <div className="bg-[#141414] border-r border-[#2a2a2a] flex flex-col shrink-0" style={{ width: 200 }}>
         <div className="p-2 px-3 pb-2 flex items-center gap-2 border-b border-[#2a2a2a] shrink-0 relative">
-          {/* Solo Cerebro + Campana de alertas Flow en izquierda */}
+          {/* Botón mapa de mesas */}
+          <button onClick={() => setShowMapaMesas(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#d4943a]/10 border border-[#d4943a]/30 text-[#d4943a] text-[10px] font-bold hover:bg-[#d4943a]/20 transition-all">
+            🗺️ <span>Mesas</span>
+          </button>
           <span className="text-[11px] font-bold text-[#a0a0a0]">🪑 Mesas</span>
           <div className="flex gap-1.5 ml-auto shrink-0">
             {/* Cerebro */}
@@ -4370,6 +4423,144 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         </div>
       )}
     </div>
+
+      {/* ═══ MAPA DE MESAS ═══ */}
+      {showMapaMesas && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#141414',border:'1px solid #2a2a2a',borderRadius:20,width:'100%',maxWidth:820,maxHeight:'90vh',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <div style={{padding:'16px 20px',borderBottom:'1px solid #2a2a2a',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
+              <div>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900}}>🗺️ Mapa de Mesas</div>
+                <div style={{fontSize:10,color:'#606060',marginTop:2}}>{mesasEstado.filter((m:any)=>m.estado==='ocupada').length} ocupadas · {mesasEstado.filter((m:any)=>m.estado!=='ocupada').length} libres</div>
+              </div>
+              <div style={{display:'flex',gap:14,alignItems:'center'}}>
+                {[{c:'#3dba6f',l:'Libre'},{c:'#d4943a',l:'Ocupada'},{c:'#448AFF',l:'Reservada'},{c:'#606060',l:'Bloqueada'}].map(l=>(
+                  <div key={l.l} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:'#a0a0a0'}}>
+                    <span style={{width:7,height:7,borderRadius:'50%',background:l.c,display:'inline-block'}}/>
+                    {l.l}
+                  </div>
+                ))}
+                <button onClick={()=>setShowMapaMesas(false)} style={{width:28,height:28,borderRadius:8,border:'1px solid #2a2a2a',background:'#1c1c1c',color:'#a0a0a0',cursor:'pointer',fontSize:14}}>✕</button>
+              </div>
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:20}}>
+              {(['Terraza','Salón','Privado','Barra'] as const).map((zona:string) => {
+                const mzs = mesasEstado.filter((m:any)=>(m.zona||m.zone||'Salón')===zona);
+                if (!mzs.length) return null;
+                return (
+                  <div key={zona} style={{marginBottom:20}}>
+                    <div style={{fontSize:10,color:'#606060',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:10}}>
+                      {zona==='Terraza'?'🌿':zona==='Privado'?'🔒':zona==='Barra'?'🍸':'🪑'} {zona}
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:10}}>
+                      {mzs.map((mesa:any)=>{
+                        const libre     = !mesa.estado || mesa.estado==='libre';
+                        const ocupada   = mesa.estado==='ocupada';
+                        const bloqueada = mesa.estado==='bloqueada';
+                        const reservada = mesa.estado==='reservada';
+                        const cBorde = libre?'#3dba6f':ocupada?'#d4943a':reservada?'#448AFF':'#404040';
+                        const tiempoAbierto = mesa.abierta_en ? (()=>{
+                          const mins = Math.floor((Date.now()-new Date(mesa.abierta_en).getTime())/60000);
+                          return mins<60?`${mins}min`:`${Math.floor(mins/60)}h${mins%60}m`;
+                        })() : null;
+                        return (
+                          <div key={mesa.id} onClick={()=>{
+                              if (bloqueada) { setMesaDesbloquear(mesa); }
+                              else if (libre||reservada) { setFormAbrirMesa({mesa,pax:mesa.capacidad||mesa.seats||2,cliente:''}); }
+                              else if (ocupada) {
+                                const enD = displayTables.find((t:any)=>String(t.num)===String(mesa.name));
+                                if (enD) { setSelectedTableId(enD.id); setShowMapaMesas(false); }
+                              }
+                            }}
+                            style={{border:`2px solid ${cBorde}`,background:`${cBorde}10`,borderRadius:14,padding:'12px 14px',cursor:'pointer',transition:'all .15s',position:'relative'}}>
+                            <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:cBorde}}>M{mesa.name}</div>
+                            <div style={{fontSize:9,color:'#606060',marginBottom:5}}>{mesa.capacidad||mesa.seats||'?'}p</div>
+                            {libre     && <div style={{fontSize:10,color:'#3dba6f',fontWeight:700}}>✓ Libre</div>}
+                            {reservada && <div style={{fontSize:10,color:'#448AFF',fontWeight:700}}>📅 Reservada</div>}
+                            {bloqueada && <div style={{fontSize:10,color:'#606060',fontWeight:700}}>🔒 Bloqueada</div>}
+                            {ocupada   && (<>
+                              <div style={{fontSize:10,fontWeight:700,color:'#f0f0f0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{mesa.cliente_nombre||'Abierta'}</div>
+                              <div style={{fontSize:9,color:'#d4943a',marginTop:1}}>{mesa.mesero_nombre?.split(' ')[0]||'—'} · {mesa.pax_actual||'?'}p</div>
+                              {tiempoAbierto&&<div style={{fontSize:9,color:'#606060'}}>⏱ {tiempoAbierto}</div>}
+                              <div style={{position:'absolute',top:8,right:8,width:7,height:7,borderRadius:'50%',background:'#d4943a'}}/>
+                            </>)}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+              {mesasEstado.length===0&&<div style={{textAlign:'center',padding:40,color:'#606060'}}><div style={{fontSize:40,marginBottom:10}}>🗺️</div><div>Cargando mesas...</div></div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL ABRIR MESA ═══ */}
+      {formAbrirMesa && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#1c1c1c',border:'1px solid #2a2a2a',borderRadius:20,width:'100%',maxWidth:360,padding:24}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,marginBottom:3}}>Abrir Mesa {formAbrirMesa.mesa.name}</div>
+            <div style={{fontSize:11,color:'#606060',marginBottom:20}}>{formAbrirMesa.mesa.zona||formAbrirMesa.mesa.zone||'Salón'} · máx {formAbrirMesa.mesa.capacidad||formAbrirMesa.mesa.seats}p</div>
+            <div style={{fontSize:10,color:'#606060',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Número de personas</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:6,marginBottom:14}}>
+              {[1,2,3,4,5,6,7,8,10,12].map(n=>(
+                <button key={n} onClick={()=>setFormAbrirMesa((p:any)=>p?{...p,pax:n}:null)}
+                  style={{padding:'9px 4px',borderRadius:8,border:`1px solid ${formAbrirMesa.pax===n?'#d4943a':'#2a2a2a'}`,background:formAbrirMesa.pax===n?'rgba(212,148,58,0.15)':'#141414',color:formAbrirMesa.pax===n?'#d4943a':'#606060',fontSize:13,fontWeight:700,cursor:'pointer'}}>
+                  {n}
+                </button>
+              ))}
+            </div>
+            <div style={{fontSize:10,color:'#606060',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Nombre del cliente (opcional)</div>
+            <input value={formAbrirMesa.cliente}
+              onChange={e=>setFormAbrirMesa((p:any)=>p?{...p,cliente:e.target.value}:null)}
+              placeholder="Ej: Familia García, Sr. López..."
+              style={{width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid #2a2a2a',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',marginBottom:16}}/>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>setFormAbrirMesa(null)} style={{flex:1,padding:'11px',borderRadius:10,border:'1px solid #2a2a2a',background:'transparent',color:'#606060',cursor:'pointer',fontSize:13}}>Cancelar</button>
+              <button onClick={()=>abrirMesaDB(formAbrirMesa.mesa,formAbrirMesa.pax,formAbrirMesa.cliente||undefined)}
+                style={{flex:2,padding:'11px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#d4943a,#b07820)',color:'#000',fontWeight:700,cursor:'pointer',fontSize:13}}>
+                ✓ Abrir Mesa {formAbrirMesa.mesa.name}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ═══ MODAL DESBLOQUEO PIN GERENTE ═══ */}
+      {mesaDesbloquear && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#1c1c1c',border:'1px solid #e05050',borderRadius:20,width:'100%',maxWidth:320,padding:24}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:'#e05050',marginBottom:4}}>🔒 Mesa {mesaDesbloquear.name}</div>
+            <div style={{fontSize:11,color:'#606060',marginBottom:20}}>Ingresa el PIN de gerencia para desbloquear.</div>
+            <div style={{textAlign:'center',letterSpacing:10,fontSize:24,color:'#d4943a',marginBottom:16}}>
+              {'●'.repeat(pinDesbloqueo.length)}{'○'.repeat(4-pinDesbloqueo.length)}
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:14}}>
+              {[1,2,3,4,5,6,7,8,9,'⌫',0,'✓'].map((k:any,i:number)=>(
+                <button key={i} onClick={()=>{
+                    if (k==='⌫') { setPinDesbloqueo((p:string)=>p.slice(0,-1)); return; }
+                    if (k==='✓') {
+                      if (pinDesbloqueo==='1234') {
+                        supabase.from('tables').update({estado:'libre',mesero_nombre:null,abierta_en:null,pax_actual:0}).eq('id',mesaDesbloquear.id);
+                        setFormAbrirMesa({mesa:mesaDesbloquear,pax:2,cliente:''});
+                        setMesaDesbloquear(null); setPinDesbloqueo('');
+                      } else { showToast('⚠️ PIN incorrecto'); setPinDesbloqueo(''); }
+                      return;
+                    }
+                    if (pinDesbloqueo.length<4) setPinDesbloqueo((p:string)=>p+k);
+                  }}
+                  style={{padding:'13px',borderRadius:10,border:'1px solid #2a2a2a',background:k==='✓'?'#3dba6f':k==='⌫'?'#1c1c1c':'#141414',color:k==='✓'?'#000':'#f0f0f0',fontSize:16,fontWeight:700,cursor:'pointer'}}>
+                  {k}
+                </button>
+              ))}
+            </div>
+            <button onClick={()=>{setMesaDesbloquear(null);setPinDesbloqueo('');}} style={{width:'100%',padding:'10px',borderRadius:10,border:'1px solid #2a2a2a',background:'transparent',color:'#606060',cursor:'pointer',fontSize:13}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+
   );
 };
 
