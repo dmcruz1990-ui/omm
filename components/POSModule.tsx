@@ -562,6 +562,15 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [modal, setModal] = useState<POSModal>({ open: false, title: '', content: null });
   const [chatMessage, setChatMessage] = useState('');
   const [chatRol, setChatRol] = useState<'Mesero'|'Cocina'|'Host'|'Maître'>('Mesero');
+  // Rol de chat pre-determinado por perfil — se ajusta cuando carga el profile
+  React.useEffect(() => {
+    if (!profile?.role) return;
+    const r = profile.role;
+    if (r === 'cocina' || r === 'cocinero') setChatRol('Cocina');
+    else if (r === 'host' || r === 'hostess') setChatRol('Host');
+    else if (r === 'maitre' || r === 'gerencia') setChatRol('Maître');
+    else setChatRol('Mesero');
+  }, [profile?.role]);
 
   // ── Flow Store — sincronización con Book Flow ────────────
   const agregarPlatoFlow = (_data: any) => {}; // stub hasta que flowStore esté en el repo
@@ -1655,6 +1664,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [showPropCustom, setShowPropCustom] = useState(false);
   const [customPropina, setCustomPropina] = useState(0);
   const [divClientePax, setDivClientePax] = useState(1);
+  const [reservasHoy, setReservasHoy] = useState<any[]>([]);
   const [dividirPax, setDividirPax] = useState(1);
   // Edición de cuenta con PIN Maître
   const [editCuenta, setEditCuenta] = useState(false);
@@ -2946,9 +2956,14 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 </div>
                 <div className="flex gap-2 items-center">
                   <button onClick={async()=>{
+                    await supabase.from('flow_alertas').update({leida:true}).eq('leida',false).eq('restaurante_id',6);
                     await supabase.from('nexum_notificaciones').update({leida:true}).eq('leida',false).eq('restaurante_id',6);
-                    setNotifsBadge(0); setNotifs((p:any[])=>p.map((n:any)=>({...n,leida:true})));
-                  }} className="text-[9px] text-[#d4943a] hover:underline cursor-pointer">✓ Todo leído</button>
+                    setFlowAlertas([]);
+                    setNotifsBadge(0);
+                    setNotifs((p:any[])=>p.map((n:any)=>({...n,leida:true})));
+                    setShowNotifications(false);
+                    showToast('✓ Todo leído');
+                  }} className="text-[9px] text-[#3dba6f] hover:underline cursor-pointer font-bold">✓ Todo leído</button>
                   <span onClick={() => setShowNotifications(false)} className="text-[10px] text-[#606060] cursor-pointer hover:text-white">✕</span>
                 </div>
               </div>
@@ -2975,7 +2990,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                       {new Date(a.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})} · {a.estacion||'—'}
                     </div>
                   </div>
-                  <button onClick={async(e)=>{ e.stopPropagation(); await supabase.from('flow_alertas').update({leida:true}).eq('id',a.id); setFlowAlertas(p=>p.filter((x:any)=>x.id!==a.id)); }}
+                  <button onClick={async(e)=>{ e.stopPropagation(); await supabase.from('flow_alertas').update({leida:true}).eq('id',a.id); setFlowAlertas((prev:any[])=>prev.filter((x:any)=>x.id!==a.id)); setFlowAlertas(p=>p.filter((x:any)=>x.id!==a.id)); }}
                     className="text-[10px] text-[#606060] hover:text-[#3dba6f] px-1 self-start mt-1">✓</button>
                 </div>
               ))}
@@ -3376,6 +3391,12 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               {/* FILA RITUAL — solo mesa activa */}
               <div className="border-b border-[#1a1a1a] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                 <div className="flex items-center px-3 py-2 gap-1.5">
+                  {/* Botón colapsar barra — al inicio del ritual */}
+                  <button onClick={() => setBarraColapsada((p:boolean) => !p)}
+                    className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md border text-[9px] font-bold transition-all mr-1"
+                    style={{borderColor: barraColapsada?'#d4943a':'#2a2a2a', background: barraColapsada?'#d4943a15':'#141414', color: barraColapsada?'#d4943a':'#606060'}}>
+                    {barraColapsada ? '▲' : '▼'}
+                  </button>
                   {/* Label mesa activa + progreso ritual */}
                   <div className="flex items-center gap-1 shrink-0 mr-2" style={{maxWidth:90}}>
                     <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-[#d4943a] text-black shrink-0">M{selectedTable.num}</span>
@@ -3514,7 +3535,8 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               <span style={{fontSize:12,fontWeight:700,color:'#f0f0f0'}}>🔔 Notificaciones</span>
               <button onClick={async()=>{
                 await supabase.from('nexum_notificaciones').update({leida:true}).eq('leida',false).eq('restaurante_id',6);
-                setNotifsBadge(0); setNotifs(p=>p.map(n=>({...n,leida:true})));
+                await supabase.from('flow_alertas').update({leida:true}).eq('leida',false).eq('restaurante_id',6);
+                setNotifsBadge(0); setNotifs(p=>p.map(n=>({...n,leida:true}))); setFlowAlertas([]);
               }} style={{fontSize:10,color:'#606060',background:'none',border:'none',cursor:'pointer'}}>Marcar leídas</button>
             </div>
             {notifs.length===0&&<div style={{padding:20,textAlign:'center',color:'#606060',fontSize:12}}>Sin notificaciones</div>}
@@ -3605,14 +3627,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               })()}
 
               {/* ══ BRIEF DEL DÍA ══ */}
-              {/* Botón enviar brief al chat */}
-              <button onClick={()=>{
-                setRightTab('CHAT');
-                const briefMsg = `📋 BRIEF DEL DÍA\n\nMesas abiertas: ${ticketDia?.pendientes||0} | Ventas: $${Math.round((ticketDia?.ventas||0)/1000)}k | Ticket prom: $${Math.round((ticketDia?.ticketProm||0)/1000)}k\n${tips86.length>0?`\n⚠️ En 86: ${tips86.map((t:any)=>t.nombre||t.name).join(', ')}`:'\n✓ Sin productos en 86'}\n\nPlatos destacados: Ton Katsu Don · Ceviche Nikkei · Maki Spicy Tuna`;
-                setChatHistory((prev:any)=>[...prev,{role:'assistant',content:briefMsg}]);
-              }} className="w-full py-2 rounded-lg border border-[#d4943a]/40 bg-[#d4943a]/08 text-[#d4943a] text-[11px] font-bold hover:bg-[#d4943a]/15 transition-all flex items-center justify-center gap-2 mb-1">
-                📋 Enviar brief del día al chat
-              </button>
               <div className="bg-[#1c1c1c] border border-[#d4943a]/30 rounded-xl overflow-hidden">
                 <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2">
                   <span className="text-[11px] font-black text-[#d4943a]">📋 Brief del día</span>
@@ -4249,10 +4263,23 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               </div>
               <div className="mt-auto flex gap-2">
                 <input type="text" value={chatMessage} onChange={e => setChatMessage(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && chatMessage.trim()) { setChatHistory(prev => [...prev, { sender: chatRol, msg: chatMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]); setChatMessage(''); } }}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter' && chatMessage.trim()) {
+                      const msg = chatMessage.trim();
+                      setChatHistory(prev => [...prev, { sender: chatRol, msg, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+                      setChatMessage(''); playAlert();
+                      supabase.from('nexum_notificaciones').insert({ restaurante_id:6, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, urgente:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k)), leida:false }).then(()=>{});
+                    }
+                  }}
                   placeholder={`Mensaje como ${chatRol}...`}
                   className="flex-1 bg-[#1c1c1c] border border-[#2a2a2a] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none focus:border-[#4a8fd4]" />
-                <button onClick={() => { if (chatMessage.trim()) { setChatHistory(prev => [...prev, { sender: chatRol, msg: chatMessage, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]); setChatMessage(''); } }}
+                <button onClick={() => {
+                  if (chatMessage.trim()) {
+                    const msg = chatMessage.trim();
+                    setChatHistory(prev => [...prev, { sender: chatRol, msg, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
+                    setChatMessage(''); playAlert();
+                    supabase.from('nexum_notificaciones').insert({ restaurante_id:6, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, urgente:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k)), leida:false }).then(()=>{});
+                  }}}
                   className="w-9 h-9 rounded-lg bg-[#4a8fd4] text-white flex items-center justify-center hover:bg-[#3d7fc4] transition-all active:scale-95">
                   <MessageSquare size={14} />
                 </button>
