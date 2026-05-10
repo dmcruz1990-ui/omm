@@ -44,6 +44,10 @@ export default function ReserveModule() {
   const [fechaFiltro, setFechaFiltro] = useState(new Date().toISOString().split('T')[0]);
   const [selected, setSelected] = useState<Reserva|null>(null);
   const [saving, setSaving]     = useState(false);
+  // Editor de planta
+  const [plantaDB, setPlantaDB] = useState<any[]>([]);
+  const [editMesa, setEditMesa] = useState<any|null>(null);
+  const [modoEditor, setModoEditor] = useState(false);
   const [form, setForm]         = useState({
     cliente_nombre:'', cliente_email:'', cliente_telefono:'',
     fecha:new Date().toISOString().split('T')[0], hora:'20:00',
@@ -55,6 +59,10 @@ export default function ReserveModule() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
+    // Cargar layout de planta personalizado
+    const { data: planta } = await supabase.from('planta_mesas').select('*').eq('restaurante_id',6).eq('activa',true).order('num');
+    if (planta && planta.length > 0) setPlantaDB(planta);
+
     const [rv, ms, ohyeah] = await Promise.all([
       supabase.from('reservations').select('*').eq('restaurante_id',6).gte('fecha',fechaFiltro).order('fecha').order('hora'),
       supabase.from('tables').select('*').eq('restaurante_id',6).order('num'),
@@ -152,7 +160,7 @@ export default function ReserveModule() {
 
       {/* Tabs */}
       <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg2,padding:'0 24px',flexShrink:0}}>
-        {[{id:'lista',l:'📋 Lista'},{id:'mapa',l:'🗺️ Mapa de mesas'},{id:'nueva',l:'✦ Nueva / Editar'}].map(t=>(
+        {[{id:'lista',l:'📋 Lista'},{id:'mapa',l:'🗺️ Mapa de mesas'},{id:'nueva',l:'✦ Nueva / Editar'},{id:'editor',l:'⚙️ Editor de planta'}].map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id as any)}
             style={{padding:'11px 16px',background:'none',border:'none',borderBottom:`2px solid ${tab===t.id?S.purple:'transparent'}`,color:tab===t.id?S.purple:S.t3,fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
             {t.l}
@@ -238,7 +246,7 @@ export default function ReserveModule() {
       )}
 
       {/* ── MAPA INTERACTIVO ── */}
-      {tab==='mapa' && <MapaInteractivo reservasHoy={reservasHoy} fechaFiltro={fechaFiltro} onAsignarMesa={asignarMesa} onCambiarEstado={cambiarEstado} S={S} ESTADOS={ESTADOS} />}
+      {tab==='mapa' && <MapaInteractivo reservasHoy={reservasHoy} fechaFiltro={fechaFiltro} onAsignarMesa={asignarMesa} onCambiarEstado={cambiarEstado} S={S} ESTADOS={ESTADOS} plantaDB={plantaDB} />}
 
       {/* ── NUEVA / EDITAR ── */}
       {tab==='nueva' && (
@@ -303,6 +311,204 @@ export default function ReserveModule() {
           </div>
         </div>
       )}
+
+      {/* ── EDITOR DE PLANTA ── */}
+      {tab==='editor' && (
+        <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+
+          {/* Toolbar editor */}
+          <div style={{padding:'10px 20px',borderBottom:`1px solid ${S.border}`,background:S.bg2,display:'flex',gap:10,alignItems:'center',flexShrink:0,flexWrap:'wrap'}}>
+            <div style={{fontSize:12,color:S.t2,fontWeight:700}}>⚙️ Editor de planta · OMM</div>
+            <div style={{fontSize:11,color:S.t3}}>Arrastra las mesas · Toca para editar · Los cambios se guardan en tiempo real</div>
+            <div style={{marginLeft:'auto',display:'flex',gap:8}}>
+              <button onClick={async()=>{
+                // Agregar nueva mesa
+                const newNum = Math.max(...(plantaDB.map(m=>m.num)||[0]))+1;
+                const newMesa = {
+                  restaurante_id:6, mesa_key:`X${newNum}`, num:newNum,
+                  zona:'Salón', shape:'round', capacidad:4,
+                  x:45, y:45, w:10, h:10, activa:true,
+                };
+                const {data} = await supabase.from('planta_mesas').insert(newMesa).select().single();
+                if (data) setPlantaDB(p=>[...p,data]);
+                show(`✓ Mesa ${newNum} agregada`);
+              }} style={{padding:'7px 16px',borderRadius:9,border:'none',background:`linear-gradient(135deg,${S.green},#009944)`,color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                + Agregar mesa
+              </button>
+            </div>
+          </div>
+
+          <div style={{flex:1,overflow:'hidden',display:'flex',gap:0}}>
+
+            {/* Canvas editor */}
+            <div style={{flex:1,overflow:'auto',padding:16,position:'relative'}}>
+              <div style={{position:'relative',width:'100%',paddingBottom:'70%',background:'#0a0a12',borderRadius:16,border:`1px solid rgba(255,255,255,0.08)`,overflow:'hidden',userSelect:'none'}}>
+                <div style={{position:'absolute',inset:0}}>
+
+                  {/* Zonas */}
+                  {Object.entries(ZONA_AREAS).map(([zona,area]:any)=>(
+                    <div key={zona} style={{position:'absolute',left:`${area.x}%`,top:`${area.y}%`,width:`${area.w}%`,height:`${area.h}%`,background:ZONA_COLORES[zona]?.bg||'transparent',border:`1px dashed ${ZONA_COLORES[zona]?.border||'transparent'}`,borderRadius:12}}>
+                      <div style={{position:'absolute',top:5,left:8,fontSize:8,color:'rgba(255,255,255,0.2)',fontWeight:700,textTransform:'uppercase'}}>{ZONA_COLORES[zona]?.label||zona}</div>
+                    </div>
+                  ))}
+
+                  {/* Cocina fija */}
+                  <div style={{position:'absolute',left:'73%',top:'54%',width:'25%',height:'43%',background:'rgba(255,82,82,0.07)',border:'1px dashed rgba(255,82,82,0.2)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:4}}>
+                    <div style={{fontSize:'clamp(14px,2vw,22px)'}}>🔥</div>
+                    <div style={{fontSize:'clamp(6px,0.9vw,10px)',color:'rgba(255,82,82,0.5)',fontWeight:700,textTransform:'uppercase'}}>Cocina</div>
+                  </div>
+                  <div style={{position:'absolute',left:'2%',top:'76%',width:'68%',height:'12%',background:'rgba(68,139,255,0.06)',border:'1px dashed rgba(68,139,255,0.2)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+                    <div style={{fontSize:'clamp(8px,1.2vw,14px)'}}>🍸</div>
+                    <div style={{fontSize:'clamp(6px,0.85vw,10px)',color:'rgba(68,139,255,0.5)',fontWeight:700,textTransform:'uppercase'}}>Barra</div>
+                  </div>
+
+                  {/* Mesas editables */}
+                  {plantaDB.filter(m=>m.activa).map((mesa:any)=>{
+                    const isEditing = editMesa?.id === mesa.id;
+                    return (
+                      <div key={mesa.id}
+                        style={{
+                          position:'absolute',
+                          left:`${mesa.x}%`, top:`${mesa.y}%`,
+                          width:`${mesa.w}%`, height:`${mesa.h}%`,
+                          borderRadius: mesa.shape==='round'?'50%':10,
+                          background: isEditing?'rgba(212,148,58,0.25)':'rgba(255,255,255,0.07)',
+                          border: `2px solid ${isEditing?'#d4943a':'rgba(255,255,255,0.25)'}`,
+                          cursor:'pointer',
+                          display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                          transition:'border-color .15s',
+                          boxShadow: isEditing?'0 0 12px rgba(212,148,58,0.4)':'none',
+                          zIndex: isEditing?3:1,
+                        }}
+                        onClick={()=>setEditMesa(isEditing?null:{...mesa})}
+                      >
+                        <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color:isEditing?'#d4943a':'rgba(255,255,255,0.8)',lineHeight:1}}>M{mesa.num}</div>
+                        {mesa.shape!=='round'&&<div style={{fontSize:'clamp(5px,0.7vw,9px)',color:'rgba(255,255,255,0.4)'}}>{mesa.capacidad}p</div>}
+                        {isEditing&&<div style={{position:'absolute',top:-2,right:-2,width:8,height:8,borderRadius:'50%',background:'#d4943a'}}/>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{marginTop:10,fontSize:10,color:S.t3,textAlign:'center'}}>
+                Toca una mesa para editar sus propiedades en el panel derecho
+              </div>
+            </div>
+
+            {/* Panel edición derecha */}
+            <div style={{width:280,borderLeft:`1px solid ${S.border}`,background:S.bg2,display:'flex',flexDirection:'column',flexShrink:0}}>
+              {!editMesa ? (
+                <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,color:S.t3,textAlign:'center'}}>
+                  <div style={{fontSize:40,marginBottom:12}}>✏️</div>
+                  <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>Selecciona una mesa</div>
+                  <div style={{fontSize:11,lineHeight:1.6}}>Toca cualquier mesa en el canvas para editar sus propiedades o eliminarla</div>
+                </div>
+              ) : (
+                <div style={{flex:1,overflowY:'auto',padding:16}}>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:14}}>Mesa {editMesa.num}</div>
+
+                  {/* Campos de edición */}
+                  {[
+                    {l:'Número de mesa',k:'num',type:'number',min:1,max:99},
+                    {l:'Número visible',k:'num',type:'number'},
+                  ].slice(0,1).map(f=>(
+                    <div key={f.k} style={{marginBottom:12}}>
+                      <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>{f.l}</div>
+                      <input type={f.type} value={editMesa[f.k]} onChange={e=>setEditMesa((p:any)=>({...p,[f.k]:Number(e.target.value)}))}
+                        style={{width:'100%',padding:'8px 12px',borderRadius:8,border:`1px solid ${S.border2}`,background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none'}}/>
+                    </div>
+                  ))}
+
+                  {/* Zona */}
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Zona</div>
+                    <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                      {['Terraza','Salón','Privado','Barra'].map(z=>(
+                        <button key={z} onClick={()=>setEditMesa((p:any)=>({...p,zona:z}))}
+                          style={{padding:'5px 10px',borderRadius:8,border:`1px solid ${editMesa.zona===z?S.gold:S.border}`,background:editMesa.zona===z?`${S.gold}15`:'transparent',color:editMesa.zona===z?S.gold:S.t3,fontSize:11,cursor:'pointer'}}>
+                          {z}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Forma */}
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Forma</div>
+                    <div style={{display:'flex',gap:6}}>
+                      {[{v:'round',l:'⭕ Redonda'},{v:'rect',l:'▭ Rectangular'}].map(f=>(
+                        <button key={f.v} onClick={()=>setEditMesa((p:any)=>({...p,shape:f.v}))}
+                          style={{flex:1,padding:'7px',borderRadius:8,border:`1px solid ${editMesa.shape===f.v?S.blue:S.border}`,background:editMesa.shape===f.v?`${S.blue}15`:'transparent',color:editMesa.shape===f.v?S.blue:S.t3,fontSize:11,cursor:'pointer'}}>
+                          {f.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Capacidad */}
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Capacidad (personas)</div>
+                    <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                      {[1,2,3,4,5,6,7,8,10,12].map(n=>(
+                        <button key={n} onClick={()=>setEditMesa((p:any)=>({...p,capacidad:n}))}
+                          style={{padding:'6px 8px',borderRadius:7,border:`1px solid ${editMesa.capacidad===n?S.green:S.border}`,background:editMesa.capacidad===n?`${S.green}15`:'transparent',color:editMesa.capacidad===n?S.green:S.t3,fontSize:12,fontWeight:700,cursor:'pointer',minWidth:32}}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Posición */}
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Posición en el plano (%)</div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                      {[{l:'X (horizontal)',k:'x'},{l:'Y (vertical)',k:'y'},{l:'Ancho',k:'w'},{l:'Alto',k:'h'}].map(f=>(
+                        <div key={f.k}>
+                          <div style={{fontSize:9,color:S.t3,marginBottom:3}}>{f.l}</div>
+                          <input type="number" min={1} max={95} value={editMesa[f.k]} onChange={e=>setEditMesa((p:any)=>({...p,[f.k]:Number(e.target.value)}))}
+                            style={{width:'100%',padding:'6px 10px',borderRadius:7,border:`1px solid ${S.border}`,background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:12,outline:'none'}}/>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Botones acción */}
+                  <div style={{display:'flex',flexDirection:'column',gap:7}}>
+                    <button onClick={async()=>{
+                      await supabase.from('planta_mesas').update({
+                        num:editMesa.num, zona:editMesa.zona, shape:editMesa.shape,
+                        capacidad:editMesa.capacidad, x:editMesa.x, y:editMesa.y,
+                        w:editMesa.w, h:editMesa.h, updated_at:new Date().toISOString()
+                      }).eq('id',editMesa.id);
+                      setPlantaDB(p=>p.map((m:any)=>m.id===editMesa.id?{...m,...editMesa}:m));
+                      setEditMesa(null);
+                      show('✓ Mesa actualizada');
+                    }}
+                      style={{width:'100%',padding:'10px',borderRadius:9,border:'none',background:`linear-gradient(135deg,${S.gold},#d4943a)`,color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                      ✓ Guardar cambios
+                    </button>
+                    <button onClick={async()=>{
+                      if (!window.confirm(`¿Eliminar Mesa ${editMesa.num}?`)) return;
+                      await supabase.from('planta_mesas').update({activa:false}).eq('id',editMesa.id);
+                      setPlantaDB(p=>p.filter((m:any)=>m.id!==editMesa.id));
+                      setEditMesa(null);
+                      show(`Mesa ${editMesa.num} eliminada`);
+                    }}
+                      style={{width:'100%',padding:'9px',borderRadius:9,border:`1px solid ${S.red}40`,background:'transparent',color:S.red,fontSize:12,cursor:'pointer'}}>
+                      🗑 Eliminar mesa
+                    </button>
+                    <button onClick={()=>setEditMesa(null)}
+                      style={{width:'100%',padding:'8px',borderRadius:9,border:`1px solid ${S.border}`,background:'transparent',color:S.t3,fontSize:12,cursor:'pointer'}}>
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -351,7 +557,7 @@ const ZONA_AREAS: Record<string,{x:number;y:number;w:number;h:number}> = {
   Barra:   { x:2,  y:52, w:34, h:22 },
 };
 
-function MapaInteractivo({ reservasHoy, fechaFiltro, onAsignarMesa, onCambiarEstado, S, ESTADOS }: any) {
+function MapaInteractivo({ reservasHoy, fechaFiltro, onAsignarMesa, onCambiarEstado, S, ESTADOS, plantaDB }: any) {
   const [mesaSel, setMesaSel] = React.useState<any>(null);
   const [hoverId, setHoverId] = React.useState<string|null>(null);
   const [vistaZona, setVistaZona] = React.useState<string|null>(null);
@@ -365,14 +571,21 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onAsignarMesa, onCambiarEst
     return { color:c, label:(ESTADOS as any)[r.estado]?.l||r.estado, reserva:r };
   };
 
+  // Usar layout de Supabase si está disponible, sino el layout hardcoded
+  const plantaActiva = (plantaDB && plantaDB.length > 0)
+    ? plantaDB.reduce((acc:any, m:any) => { acc[m.mesa_key] = m; return acc; }, {})
+    : PLANTA;
+
   const mesasFiltradas = vistaZona
-    ? Object.entries(PLANTA).filter(([,m])=>m.zona===vistaZona)
-    : Object.entries(PLANTA);
+    ? Object.entries(plantaActiva).filter(([,m]:any)=>(m.zona)===vistaZona)
+    : Object.entries(plantaActiva);
+
+  const statsTotal = Object.values(plantaActiva).length;
 
   const stats = {
-    total:   Object.keys(PLANTA).length,
-    libres:  Object.values(PLANTA).filter(m=>!reservasHoy.find((r:any)=>r.mesa_num===m.num)).length,
-    ocupadas:reservasHoy.filter((r:any)=>r.estado==='sentada').length,
+    total:     statsTotal,
+    libres:    Object.values(plantaActiva).filter((m:any)=>!reservasHoy.find((r:any)=>r.mesa_num===m.num)).length,
+    ocupadas:  reservasHoy.filter((r:any)=>r.estado==='sentada').length,
     reservadas:reservasHoy.filter((r:any)=>r.estado==='confirmada').length,
   };
 
@@ -635,6 +848,204 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onAsignarMesa, onCambiarEst
           </div>
         </div>
       </div>
+
+      {/* ── EDITOR DE PLANTA ── */}
+      {tab==='editor' && (
+        <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+
+          {/* Toolbar editor */}
+          <div style={{padding:'10px 20px',borderBottom:`1px solid ${S.border}`,background:S.bg2,display:'flex',gap:10,alignItems:'center',flexShrink:0,flexWrap:'wrap'}}>
+            <div style={{fontSize:12,color:S.t2,fontWeight:700}}>⚙️ Editor de planta · OMM</div>
+            <div style={{fontSize:11,color:S.t3}}>Arrastra las mesas · Toca para editar · Los cambios se guardan en tiempo real</div>
+            <div style={{marginLeft:'auto',display:'flex',gap:8}}>
+              <button onClick={async()=>{
+                // Agregar nueva mesa
+                const newNum = Math.max(...(plantaDB.map(m=>m.num)||[0]))+1;
+                const newMesa = {
+                  restaurante_id:6, mesa_key:`X${newNum}`, num:newNum,
+                  zona:'Salón', shape:'round', capacidad:4,
+                  x:45, y:45, w:10, h:10, activa:true,
+                };
+                const {data} = await supabase.from('planta_mesas').insert(newMesa).select().single();
+                if (data) setPlantaDB(p=>[...p,data]);
+                show(`✓ Mesa ${newNum} agregada`);
+              }} style={{padding:'7px 16px',borderRadius:9,border:'none',background:`linear-gradient(135deg,${S.green},#009944)`,color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                + Agregar mesa
+              </button>
+            </div>
+          </div>
+
+          <div style={{flex:1,overflow:'hidden',display:'flex',gap:0}}>
+
+            {/* Canvas editor */}
+            <div style={{flex:1,overflow:'auto',padding:16,position:'relative'}}>
+              <div style={{position:'relative',width:'100%',paddingBottom:'70%',background:'#0a0a12',borderRadius:16,border:`1px solid rgba(255,255,255,0.08)`,overflow:'hidden',userSelect:'none'}}>
+                <div style={{position:'absolute',inset:0}}>
+
+                  {/* Zonas */}
+                  {Object.entries(ZONA_AREAS).map(([zona,area]:any)=>(
+                    <div key={zona} style={{position:'absolute',left:`${area.x}%`,top:`${area.y}%`,width:`${area.w}%`,height:`${area.h}%`,background:ZONA_COLORES[zona]?.bg||'transparent',border:`1px dashed ${ZONA_COLORES[zona]?.border||'transparent'}`,borderRadius:12}}>
+                      <div style={{position:'absolute',top:5,left:8,fontSize:8,color:'rgba(255,255,255,0.2)',fontWeight:700,textTransform:'uppercase'}}>{ZONA_COLORES[zona]?.label||zona}</div>
+                    </div>
+                  ))}
+
+                  {/* Cocina fija */}
+                  <div style={{position:'absolute',left:'73%',top:'54%',width:'25%',height:'43%',background:'rgba(255,82,82,0.07)',border:'1px dashed rgba(255,82,82,0.2)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:4}}>
+                    <div style={{fontSize:'clamp(14px,2vw,22px)'}}>🔥</div>
+                    <div style={{fontSize:'clamp(6px,0.9vw,10px)',color:'rgba(255,82,82,0.5)',fontWeight:700,textTransform:'uppercase'}}>Cocina</div>
+                  </div>
+                  <div style={{position:'absolute',left:'2%',top:'76%',width:'68%',height:'12%',background:'rgba(68,139,255,0.06)',border:'1px dashed rgba(68,139,255,0.2)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+                    <div style={{fontSize:'clamp(8px,1.2vw,14px)'}}>🍸</div>
+                    <div style={{fontSize:'clamp(6px,0.85vw,10px)',color:'rgba(68,139,255,0.5)',fontWeight:700,textTransform:'uppercase'}}>Barra</div>
+                  </div>
+
+                  {/* Mesas editables */}
+                  {plantaDB.filter(m=>m.activa).map((mesa:any)=>{
+                    const isEditing = editMesa?.id === mesa.id;
+                    return (
+                      <div key={mesa.id}
+                        style={{
+                          position:'absolute',
+                          left:`${mesa.x}%`, top:`${mesa.y}%`,
+                          width:`${mesa.w}%`, height:`${mesa.h}%`,
+                          borderRadius: mesa.shape==='round'?'50%':10,
+                          background: isEditing?'rgba(212,148,58,0.25)':'rgba(255,255,255,0.07)',
+                          border: `2px solid ${isEditing?'#d4943a':'rgba(255,255,255,0.25)'}`,
+                          cursor:'pointer',
+                          display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                          transition:'border-color .15s',
+                          boxShadow: isEditing?'0 0 12px rgba(212,148,58,0.4)':'none',
+                          zIndex: isEditing?3:1,
+                        }}
+                        onClick={()=>setEditMesa(isEditing?null:{...mesa})}
+                      >
+                        <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color:isEditing?'#d4943a':'rgba(255,255,255,0.8)',lineHeight:1}}>M{mesa.num}</div>
+                        {mesa.shape!=='round'&&<div style={{fontSize:'clamp(5px,0.7vw,9px)',color:'rgba(255,255,255,0.4)'}}>{mesa.capacidad}p</div>}
+                        {isEditing&&<div style={{position:'absolute',top:-2,right:-2,width:8,height:8,borderRadius:'50%',background:'#d4943a'}}/>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{marginTop:10,fontSize:10,color:S.t3,textAlign:'center'}}>
+                Toca una mesa para editar sus propiedades en el panel derecho
+              </div>
+            </div>
+
+            {/* Panel edición derecha */}
+            <div style={{width:280,borderLeft:`1px solid ${S.border}`,background:S.bg2,display:'flex',flexDirection:'column',flexShrink:0}}>
+              {!editMesa ? (
+                <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,color:S.t3,textAlign:'center'}}>
+                  <div style={{fontSize:40,marginBottom:12}}>✏️</div>
+                  <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>Selecciona una mesa</div>
+                  <div style={{fontSize:11,lineHeight:1.6}}>Toca cualquier mesa en el canvas para editar sus propiedades o eliminarla</div>
+                </div>
+              ) : (
+                <div style={{flex:1,overflowY:'auto',padding:16}}>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:14}}>Mesa {editMesa.num}</div>
+
+                  {/* Campos de edición */}
+                  {[
+                    {l:'Número de mesa',k:'num',type:'number',min:1,max:99},
+                    {l:'Número visible',k:'num',type:'number'},
+                  ].slice(0,1).map(f=>(
+                    <div key={f.k} style={{marginBottom:12}}>
+                      <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>{f.l}</div>
+                      <input type={f.type} value={editMesa[f.k]} onChange={e=>setEditMesa((p:any)=>({...p,[f.k]:Number(e.target.value)}))}
+                        style={{width:'100%',padding:'8px 12px',borderRadius:8,border:`1px solid ${S.border2}`,background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none'}}/>
+                    </div>
+                  ))}
+
+                  {/* Zona */}
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Zona</div>
+                    <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                      {['Terraza','Salón','Privado','Barra'].map(z=>(
+                        <button key={z} onClick={()=>setEditMesa((p:any)=>({...p,zona:z}))}
+                          style={{padding:'5px 10px',borderRadius:8,border:`1px solid ${editMesa.zona===z?S.gold:S.border}`,background:editMesa.zona===z?`${S.gold}15`:'transparent',color:editMesa.zona===z?S.gold:S.t3,fontSize:11,cursor:'pointer'}}>
+                          {z}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Forma */}
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Forma</div>
+                    <div style={{display:'flex',gap:6}}>
+                      {[{v:'round',l:'⭕ Redonda'},{v:'rect',l:'▭ Rectangular'}].map(f=>(
+                        <button key={f.v} onClick={()=>setEditMesa((p:any)=>({...p,shape:f.v}))}
+                          style={{flex:1,padding:'7px',borderRadius:8,border:`1px solid ${editMesa.shape===f.v?S.blue:S.border}`,background:editMesa.shape===f.v?`${S.blue}15`:'transparent',color:editMesa.shape===f.v?S.blue:S.t3,fontSize:11,cursor:'pointer'}}>
+                          {f.l}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Capacidad */}
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Capacidad (personas)</div>
+                    <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                      {[1,2,3,4,5,6,7,8,10,12].map(n=>(
+                        <button key={n} onClick={()=>setEditMesa((p:any)=>({...p,capacidad:n}))}
+                          style={{padding:'6px 8px',borderRadius:7,border:`1px solid ${editMesa.capacidad===n?S.green:S.border}`,background:editMesa.capacidad===n?`${S.green}15`:'transparent',color:editMesa.capacidad===n?S.green:S.t3,fontSize:12,fontWeight:700,cursor:'pointer',minWidth:32}}>
+                          {n}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Posición */}
+                  <div style={{marginBottom:14}}>
+                    <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Posición en el plano (%)</div>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                      {[{l:'X (horizontal)',k:'x'},{l:'Y (vertical)',k:'y'},{l:'Ancho',k:'w'},{l:'Alto',k:'h'}].map(f=>(
+                        <div key={f.k}>
+                          <div style={{fontSize:9,color:S.t3,marginBottom:3}}>{f.l}</div>
+                          <input type="number" min={1} max={95} value={editMesa[f.k]} onChange={e=>setEditMesa((p:any)=>({...p,[f.k]:Number(e.target.value)}))}
+                            style={{width:'100%',padding:'6px 10px',borderRadius:7,border:`1px solid ${S.border}`,background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:12,outline:'none'}}/>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Botones acción */}
+                  <div style={{display:'flex',flexDirection:'column',gap:7}}>
+                    <button onClick={async()=>{
+                      await supabase.from('planta_mesas').update({
+                        num:editMesa.num, zona:editMesa.zona, shape:editMesa.shape,
+                        capacidad:editMesa.capacidad, x:editMesa.x, y:editMesa.y,
+                        w:editMesa.w, h:editMesa.h, updated_at:new Date().toISOString()
+                      }).eq('id',editMesa.id);
+                      setPlantaDB(p=>p.map((m:any)=>m.id===editMesa.id?{...m,...editMesa}:m));
+                      setEditMesa(null);
+                      show('✓ Mesa actualizada');
+                    }}
+                      style={{width:'100%',padding:'10px',borderRadius:9,border:'none',background:`linear-gradient(135deg,${S.gold},#d4943a)`,color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                      ✓ Guardar cambios
+                    </button>
+                    <button onClick={async()=>{
+                      if (!window.confirm(`¿Eliminar Mesa ${editMesa.num}?`)) return;
+                      await supabase.from('planta_mesas').update({activa:false}).eq('id',editMesa.id);
+                      setPlantaDB(p=>p.filter((m:any)=>m.id!==editMesa.id));
+                      setEditMesa(null);
+                      show(`Mesa ${editMesa.num} eliminada`);
+                    }}
+                      style={{width:'100%',padding:'9px',borderRadius:9,border:`1px solid ${S.red}40`,background:'transparent',color:S.red,fontSize:12,cursor:'pointer'}}>
+                      🗑 Eliminar mesa
+                    </button>
+                    <button onClick={()=>setEditMesa(null)}
+                      style={{width:'100%',padding:'8px',borderRadius:9,border:`1px solid ${S.border}`,background:'transparent',color:S.t3,fontSize:12,cursor:'pointer'}}>
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
