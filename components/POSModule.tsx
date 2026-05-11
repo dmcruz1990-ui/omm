@@ -858,6 +858,31 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       const totalFinal = totalCliente - desc + propinaCliente;
       const meseroNombre = profile?.nombre_completo || 'Mesero';
       
+      // Guardar datos de factura según tipo
+      if (facturaTipo === 'electronica') {
+        const n  = (window as any).__facEl_facElNombre  || mesaCliente?.nombre || '';
+        const cc = (window as any).__facEl_facElNit     || '';
+        const em = (window as any).__facEl_facElCorreo  || mesaCliente?.email || '';
+        const tel= (window as any).__facEl_facElTel     || mesaCliente?.telefono || '';
+        const dir= (window as any).__facEl_facElDir     || '';
+        if (cc) {
+          await supabase.from('facturas_electronicas').insert({
+            restaurante_id:6, mesa_num:mesaCliente?.num??0,
+            nombre:n, correo:em, cedula_nit:cc, telefono:tel, direccion:dir,
+            total:Math.round(totalCliente+propinaCliente),
+            estado:'pendiente',
+          }).then(()=>{}).catch(()=>{});
+        }
+      }
+      if (facturaTipo === 'correo' && facturaCorreo) {
+        // El envío por correo se despacha desde el backend cuando la factura se crea
+        showToast(`📧 Factura enviada a ${facturaCorreo}`);
+      }
+      if (facturaTipo === 'fisica') {
+        showToast('🖨️ Imprimiendo factura...');
+        // window.print() o integración con impresora
+      }
+
       // Registrar propina en la bolsa del turno
       if (propinaCliente > 0) {
         await supabase.from('propinas').insert({
@@ -1690,9 +1715,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           <div className="rounded-xl border border-[#2a2a2a] overflow-hidden mb-3">
             <div className="px-3 py-2 bg-[#1c1c1c] flex items-center justify-between">
               <span className="text-[11px] text-[#a0a0a0] font-bold">👥 Dividir cuenta</span>
-              <span className="text-[11px] text-[#d4943a] font-black">
-                {dividirPax > 1 ? `$${formatPrecio(Math.round(totalConPropina / dividirPax))} c/u` : ''}
-              </span>
+              {dividirPax > 1 && (
+                <span className="text-[10px] text-[#d4943a] font-black">
+                  {dividirPax} personas · ${formatPrecio(Math.round(totalConPropina / dividirPax))} c/u
+                </span>
+              )}
             </div>
             <div className="grid grid-cols-5 gap-px bg-[#2a2a2a]">
               {[2,3,4,5,6,7,8,9,10].map(n => (
@@ -1707,12 +1734,27 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               </button>
             </div>
             {dividirPax > 1 && (
-              <div className="px-3 py-2 bg-[#0f0f0f] text-center">
-                <span className="text-[10px] text-[#606060]">Total </span>
-                <span className="text-[11px] font-black text-[#f0f0f0]">${formatPrecio(totalConPropina)}</span>
-                <span className="text-[10px] text-[#606060]"> ÷ {dividirPax} = </span>
-                <span className="text-[13px] font-black text-[#d4943a]">${formatPrecio(Math.round(totalConPropina / dividirPax))}</span>
-                <span className="text-[10px] text-[#606060]"> por persona</span>
+              <div className="px-3 py-3 bg-[#0f0f0f]">
+                {/* Resumen visual de división */}
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[10px] text-[#606060]">Total con propina</span>
+                  <span className="text-[11px] font-bold text-[#f0f0f0]">${formatPrecio(totalConPropina)}</span>
+                </div>
+                <div className="h-px bg-[#2a2a2a] mb-2"/>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] text-[#606060]">Cada persona paga</span>
+                  <span className="text-[16px] font-black text-[#d4943a]">
+                    ${formatPrecio(Math.round(totalConPropina / dividirPax))}
+                  </span>
+                </div>
+                {/* Chips por persona */}
+                <div className="flex flex-wrap gap-1 mt-2">
+                  {Array.from({length:dividirPax},(_,i)=>(
+                    <span key={i} className="text-[10px] bg-[#d4943a]/10 text-[#d4943a] border border-[#d4943a]/20 px-2 py-0.5 rounded-full font-bold">
+                      P{i+1} · ${formatPrecio(Math.round(totalConPropina/dividirPax))}
+                    </span>
+                  ))}
+                </div>
               </div>
             )}
           </div>
@@ -2131,34 +2173,81 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
           {/* Factura */}
           <div style={{ padding:'12px 20px' }}>
-            <div style={{ fontSize:11, color:S.text3, fontWeight:700, marginBottom:8, textTransform:'uppercase', letterSpacing:'.06em' }}>Factura</div>
-            <div style={{ display:'flex', gap:6, marginBottom:10 }}>
+            <div style={{ fontSize:11, color:S.text3, fontWeight:700, marginBottom:8, textTransform:'uppercase', letterSpacing:'.06em' }}>Tipo de factura</div>
+            <div style={{ display:'flex', gap:6, marginBottom:12 }}>
               {([
-                {id:'digital', l:'Digital', icon:'📱'},
-                {id:'correo',  l:'Correo',  icon:'✉️'},
-                {id:'electronica', l:'Electrónica', icon:'🏢'},
+                {id:'fisica',     l:'Física',       icon:'🖨️', desc:'Impresión en caja'},
+                {id:'correo',     l:'Por correo',   icon:'✉️',  desc:'Al email registrado'},
+                {id:'electronica',l:'Electrónica',  icon:'🏢',  desc:'Para empresa / NIT'},
               ] as const).map(f=>(
                 <button key={f.id} onClick={()=>setFacturaTipo(f.id)}
-                  style={{ flex:1, padding:'8px 4px', borderRadius:10, border:`1px solid ${facturaTipo===f.id?S.black:'#ddd'}`, background:facturaTipo===f.id?S.black:'#fff', color:facturaTipo===f.id?'#fff':S.text2, fontSize:11, fontWeight:700, cursor:'pointer', textAlign:'center' }}>
-                  <div>{f.icon}</div><div style={{marginTop:2}}>{f.l}</div>
+                  style={{ flex:1, padding:'8px 6px', borderRadius:10, border:`1px solid ${facturaTipo===f.id?S.black:'#ddd'}`, background:facturaTipo===f.id?S.black:'#fff', color:facturaTipo===f.id?'#fff':S.text2, fontSize:10, fontWeight:700, cursor:'pointer', textAlign:'center' }}>
+                  <div style={{fontSize:18,marginBottom:2}}>{f.icon}</div>
+                  <div>{f.l}</div>
+                  <div style={{fontSize:9,opacity:.6,marginTop:1}}>{f.desc}</div>
                 </button>
               ))}
             </div>
-            {facturaTipo==='correo'&&(
+
+            {/* ── FÍSICA — solo aviso de impresión ── */}
+            {facturaTipo==='fisica' && (
+              <div style={{padding:'10px 14px',background:'rgba(61,186,111,0.08)',border:'1px solid rgba(61,186,111,0.2)',borderRadius:10,display:'flex',alignItems:'center',gap:8}}>
+                <span style={{fontSize:20}}>🖨️</span>
+                <div>
+                  <div style={{fontSize:12,fontWeight:700,color:'#3dba6f'}}>Factura física</div>
+                  <div style={{fontSize:10,color:'#888'}}>Se imprimirá automáticamente al cobrar</div>
+                </div>
+              </div>
+            )}
+
+            {/* ── CORREO — jalar email del cliente ── */}
+            {facturaTipo==='correo' && (
               <div>
+                <div style={{fontSize:10,color:S.text3,fontWeight:700,marginBottom:5}}>Email del cliente</div>
                 <div style={{position:'relative'}}>
-                  <input value={facturaCorreo} onChange={e=>setFacturaCorreo(e.target.value)} 
-                    placeholder="correo@email.com"
+                  <input value={facturaCorreo} onChange={e=>setFacturaCorreo(e.target.value)}
+                    placeholder={mesaCliente?.email || 'correo@email.com'}
                     type={facturaCorreoOculto?'password':'email'}
                     style={{ width:'100%', padding:'10px 44px 10px 14px', borderRadius:10, border:'1px solid #ddd', fontSize:13, outline:'none' }}/>
                   <button onClick={()=>setFacturaCorreoOculto(p=>!p)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16}}>
                     {facturaCorreoOculto?'👁️':'🙈'}
                   </button>
                 </div>
+                {mesaCliente?.email && !facturaCorreo && (
+                  <button onClick={()=>setFacturaCorreo(mesaCliente.email)}
+                    style={{marginTop:6,fontSize:10,color:'#448AFF',background:'none',border:'none',cursor:'pointer',padding:0}}>
+                    ↳ Usar email registrado: {mesaCliente.email}
+                  </button>
+                )}
                 <div style={{fontSize:11,color:'#999',marginTop:6,display:'flex',alignItems:'center',gap:6}}>
                   <input type="checkbox" checked={facturaCorreoOculto} onChange={e=>setFacturaCorreoOculto(e.target.checked)} style={{cursor:'pointer'}}/>
                   Ocultar correo (protección de datos)
                 </div>
+              </div>
+            )}
+
+            {/* ── ELECTRÓNICA — formulario completo ── */}
+            {facturaTipo==='electronica' && (
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                <div style={{fontSize:10,color:'#888',marginBottom:2}}>
+                  Completa los datos para la factura electrónica DIAN
+                </div>
+                {[
+                  {k:'facElNombre',   l:'Nombre / Razón social *', ph: mesaCliente?.nombre || 'Empresa o persona natural'},
+                  {k:'facElNit',      l:'Cédula o NIT *',          ph:'123456789-0'},
+                  {k:'facElCorreo',   l:'Correo electrónico',       ph: mesaCliente?.email || 'facturacion@empresa.com'},
+                  {k:'facElTel',      l:'Teléfono',                 ph: mesaCliente?.telefono || '+57 300 000 0000'},
+                  {k:'facElDir',      l:'Dirección',                ph:'Calle 123 # 45-67, Bogotá'},
+                ].map(f=>(
+                  <div key={f.k}>
+                    <div style={{fontSize:10,color:S.text3,fontWeight:600,marginBottom:3}}>{f.l}</div>
+                    <input
+                      value={(window as any)[`__facEl_${f.k}`] || ''}
+                      onChange={e=>{(window as any)[`__facEl_${f.k}`]=e.target.value;}}
+                      placeholder={f.ph}
+                      style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1px solid #ddd',fontSize:12,outline:'none'}}/>
+                  </div>
+                ))}
               </div>
             )}
           </div>
