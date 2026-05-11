@@ -28,7 +28,8 @@ export enum ModuleType {
   OH_YEAH_RESTAURANTE = 'OH_YEAH_RESTAURANTE',
   MARKETPLACE = 'MARKETPLACE',
   FOOD_INTELLIGENCE = 'FOOD_INTELLIGENCE',
-  METRICAS = 'METRICAS'
+  METRICAS = 'METRICAS',
+  PROPINAS = 'PROPINAS'
 }
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo';
