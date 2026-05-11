@@ -30,6 +30,7 @@ const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
 const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
 const SupplyModule = lazy(() => import('./components/SupplyModule.tsx')); // Supply IA real
 const MarketplaceModule = lazy(() => import('./components/MarketplaceModule.tsx'));
+const PropinasModule = lazy(() => import('./components/PropinasModule.tsx'));
 const MetricasModule = lazy(() => import('./components/MetricasModule.tsx'));
 const FoodIntelligenceModule = lazy(() => import('./components/FoodIntelligenceModule.tsx'));
 const OhYeahAdminModule = lazy(() => import('./components/OhYeahAdminModule.tsx'));
@@ -252,7 +253,8 @@ const Dashboard: React.FC = () => {
                id: 'operaciones', label: 'PAQUETE OPERACIONES',
               modules: [
                 { type: ModuleType.SERVICE_OS,   label: 'SERVICE OS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
-                { type: ModuleType.METRICAS, label: 'MÉTRICAS', sub: 'Tiempos · Quejas', icon: <BarChart3 size={18} /> },
+                { type: ModuleType.METRICAS,
+          ModuleType.PROPINAS, label: 'MÉTRICAS', sub: 'Tiempos · Quejas', icon: <BarChart3 size={18} /> },
                  { type: ModuleType.FLOW,         label: 'FLOW',         sub: 'ESTACIONES',       icon: <ChefHat size={18} /> },
               ]
             },
@@ -273,7 +275,8 @@ const Dashboard: React.FC = () => {
               icon: <Globe size={14} className="text-purple-500" />,
               modules: [
                 { type: ModuleType.COMMAND,       label: 'COMMAND',      sub: 'ESTRATEGIA IA',        icon: <Globe size={18} /> },
-                { type: ModuleType.FINANCE_HUB,  label: 'FINANCE HUB',  sub: 'DINERO & KPI',         icon: <DollarSign size={18} /> },
+                { type: ModuleType.PROPINAS, label: 'PROPINAS', sub: 'Bolsa del turno', icon: <DollarSign size={18} /> },
+                 { type: ModuleType.FINANCE_HUB,  label: 'FINANCE HUB',  sub: 'DINERO & KPI',         icon: <DollarSign size={18} /> },
                 { type: ModuleType.PAYROLL,       label: 'NÓMINA DIAN',  sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
                 { type: ModuleType.DIAN,          label: 'FACTURACIÓN',  sub: 'DIAN · UBL 2.1',       icon: <Receipt size={18} /> },
                 { type: ModuleType.CONTABILIDAD,  label: 'CONTABILIDAD', sub: 'P&G · CIERRE · KPI',   icon: <BarChart3 size={18} /> },
@@ -396,6 +399,7 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.MARKETPLACE    && <MarketplaceModule />}
                 {activeModule === ModuleType.FOOD_INTELLIGENCE && <FoodIntelligenceModule />}
                 {activeModule === ModuleType.METRICAS && <MetricasModule />}
+                {activeModule === ModuleType.PROPINAS && <PropinasModule />}
               </div>
             )}
           </Suspense>
