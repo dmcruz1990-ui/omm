@@ -858,6 +858,22 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       const totalFinal = totalCliente - desc + propinaCliente;
       const meseroNombre = profile?.nombre_completo || 'Mesero';
       
+      // Registrar propina en la bolsa del turno
+      if (propinaCliente > 0) {
+        await supabase.from('propinas').insert({
+          restaurante_id: 6,
+          mesa_num: mesaCliente?.num ?? 0,
+          mesero_nombre: meseroNombre,
+          monto_cuenta: Math.round(totalCliente),
+          pct_propina: Math.round(propinaCliente / totalCliente * 100),
+          monto_propina: Math.round(propinaCliente),
+          metodo_pago: metodoPago || 'efectivo',
+          turno: new Date().getHours() < 16 ? 'mediodia' : 'noche',
+          fecha: new Date().toISOString().split('T')[0],
+          hora: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),
+        }).then(()=>{}).catch(()=>{});
+      }
+
       // Guardar en facturacion
       await supabase.from('facturacion').insert({
         restaurante_id: 6,
