@@ -16,7 +16,7 @@ const inp: React.CSSProperties = {
   borderRadius:10, padding:'9px 13px', color:'#fff', fontSize:13, outline:'none', width:'100%',
 };
 
-type Tab = 'bolsa' | 'mis_propinas' | 'config' | 'historial';
+type Tab = 'bolsa' | 'red' | 'mis_propinas' | 'config' | 'historial';
 
 export default function PropinasModule() {
   const { profile } = useAuth();
@@ -28,6 +28,10 @@ export default function PropinasModule() {
   const [historial, setHistorial] = useState<any[]>([]);
   const [config, setConfig]       = useState<any>({ pct_meseros:70, pct_cocina:20, pct_host:10, modo:'turno', pct_sugerido:10 });
   const [guardandoConfig, setGuardandoConfig] = useState(false);
+  const [redRendimiento, setRedRendimiento] = useState<any[]>([]);
+  const [calculandoRed, setCalculandoRed] = useState(false);
+  const [ventasMeseros, setVentasMeseros] = useState<any[]>([]);
+  const [ventasCocina, setVentasCocina] = useState<any[]>([]);
   const [loading, setLoading]     = useState(true);
   const [toast, setToast]         = useState('');
   const [fechaFiltro, setFechaFiltro] = useState(new Date().toISOString().split('T')[0]);
@@ -41,6 +45,9 @@ export default function PropinasModule() {
       supabase.from('vista_propinas_dia').select('*').eq('fecha', fechaFiltro).order('total_propina', { ascending: false }),
       supabase.from('vista_bolsa_dia').select('*').eq('fecha', fechaFiltro).single(),
       supabase.from('propinas_config').select('*').eq('restaurante_id', 6).single(),
+      supabase.from('bonos_rendimiento').select('*').eq('fecha', fechaFiltro).eq('restaurante_id', 6).order('ventas_generadas', { ascending: false }),
+      supabase.from('vista_ventas_mesero').select('*').eq('fecha', fechaFiltro),
+      supabase.from('vista_ventas_cocina').select('*').eq('fecha', fechaFiltro),
       supabase.from('vista_propinas_dia').select('*').gte('fecha', new Date(Date.now()-30*86400000).toISOString().split('T')[0]).order('fecha', { ascending: false }).limit(60),
     ]);
     if (bolsaData.data) setBolsa(bolsaData.data);
@@ -48,6 +55,15 @@ export default function PropinasModule() {
     if (cfgData.data) setConfig(cfgData.data);
     if (histData.data) setHistorial(histData.data);
     setLoading(false);
+    // Cargar red de rendimiento
+    const [redData, vmData, vcData] = await Promise.all([
+      supabase.from('bonos_rendimiento').select('*').eq('fecha', fechaFiltro).eq('restaurante_id', 6).order('ventas_generadas', {ascending:false}),
+      supabase.from('vista_ventas_mesero').select('*').eq('fecha', fechaFiltro),
+      supabase.from('vista_ventas_cocina').select('*').eq('fecha', fechaFiltro),
+    ]);
+    if (redData.data) setRedRendimiento(redData.data);
+    if (vmData.data) setVentasMeseros(vmData.data);
+    if (vcData.data) setVentasCocina(vcData.data);
   }, [fechaFiltro]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
@@ -110,7 +126,10 @@ export default function PropinasModule() {
           {id:'bolsa',       l:'💰 Bolsa del turno'},
           {id:'mis_propinas',l:'👤 Por mesero'},
           {id:'historial',   l:'📅 Historial 30 días'},
-          ...(isGerencia?[{id:'config',l:'⚙️ Configuración'}]:[]),
+          ...(isGerencia?[
+            {id:'red',    l:'🏆 Red de rendimiento'},
+            {id:'config', l:'⚙️ Configuración'},
+          ]:[]),
         ] as {id:Tab,l:string}[]).map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
             style={{padding:'11px 16px',background:'none',border:'none',borderBottom:`2px solid ${tab===t.id?S.gold:'transparent'}`,color:tab===t.id?S.gold:S.t3,fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
@@ -309,6 +328,184 @@ export default function PropinasModule() {
               <div style={{textAlign:'center',padding:60,color:S.t3}}>
                 <div style={{fontSize:48,marginBottom:12}}>📅</div>
                 <div>Sin historial disponible</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══ RED DE RENDIMIENTO ══ */}
+        {tab==='red' && isGerencia && (
+          <div style={{flex:1,overflowY:'auto',padding:24}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:900,marginBottom:4}}>
+              🏆 Red de Rendimiento
+            </div>
+            <div style={{fontSize:12,color:S.t2,marginBottom:20,lineHeight:1.6}}>
+              El equipo que generó las ventas se lleva más. La distribución de propinas se pondera
+              por participación real — no por estar en el turno, sino por haber vendido.
+            </div>
+
+            {/* Botón calcular */}
+            <div style={{background:S.bg2,border:`1px solid ${S.gold}30`,borderRadius:16,padding:20,marginBottom:20}}>
+              <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:14}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:14,fontWeight:700,marginBottom:3}}>Calcular distribución por rendimiento</div>
+                  <div style={{fontSize:11,color:S.t3}}>
+                    Bolsa disponible: <strong style={{color:S.gold}}>{fmt(bolsaGlobal?.bolsa_total||0)}</strong> · 
+                    Fecha: {new Date(fechaFiltro+'T00:00:00').toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'})}
+                  </div>
+                </div>
+                <button onClick={async()=>{
+                  setCalculandoRed(true);
+                  const {data} = await supabase.rpc('calcular_bonos_turno', {
+                    p_fecha: fechaFiltro,
+                    p_turno: 'noche',
+                    p_bolsa_propinas: bolsaGlobal?.bolsa_total || 0,
+                    p_pct_meseros: config.pct_meseros,
+                    p_pct_cocina: config.pct_cocina,
+                    p_pct_host: config.pct_host,
+                  });
+                  if (data) {
+                    show('✓ Distribución calculada');
+                    await fetchData();
+                  }
+                  setCalculandoRed(false);
+                }} disabled={calculandoRed}
+                  style={{padding:'10px 22px',borderRadius:12,border:'none',background:calculandoRed?S.bg3:`linear-gradient(135deg,${S.gold},#d4943a)`,color:'#000',fontSize:13,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  {calculandoRed ? '⏳ Calculando...' : '⚡ Calcular ahora'}
+                </button>
+              </div>
+
+              {/* Explicación visual */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+                {[
+                  {e:'🧑‍💼',l:'Mesero',  desc:'Por ventas cobradas',      pct:config.pct_meseros, c:S.gold},
+                  {e:'👨‍🍳',l:'Cocina',  desc:'Por platos producidos',     pct:config.pct_cocina,  c:S.red},
+                  {e:'🎩',l:'Host',    desc:'División equitativa',        pct:config.pct_host,    c:S.blue},
+                ].map(r=>(
+                  <div key={r.l} style={{background:S.bg3,borderRadius:10,padding:'10px 12px',textAlign:'center'}}>
+                    <div style={{fontSize:20,marginBottom:4}}>{r.e}</div>
+                    <div style={{fontSize:11,fontWeight:700,color:r.c}}>{r.l}</div>
+                    <div style={{fontSize:9,color:S.t3,marginTop:2}}>{r.desc}</div>
+                    <div style={{fontSize:18,fontWeight:900,color:r.c,marginTop:4}}>{r.pct}%</div>
+                    <div style={{fontSize:10,color:S.t3}}>de la bolsa</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Resultados de la red */}
+            {redRendimiento.length > 0 && (
+              <div>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:14}}>
+                  Distribución calculada
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                  {redRendimiento.map((r:any,i:number)=>{
+                    const ROL_EMOJIS:any = {mesero:'🧑‍💼',bar:'🍸',cava:'🍷',postres:'🍮',cocina_caliente:'🔥',cocina_fria:'🧊',robata:'🥩',host:'🎩'};
+                    const emoji = ROL_EMOJIS[r.rol]||'👤';
+                    const colorBono = r.bono_final > 50000 ? S.green : r.bono_final > 20000 ? S.gold : S.t2;
+                    const rank = i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
+                    return (
+                      <div key={r.id} style={{background:S.bg2,border:`1px solid ${i===0?`${S.gold}40`:S.border}`,borderRadius:14,padding:'14px 18px'}}>
+                        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
+                          <div style={{width:44,height:44,borderRadius:'50%',background:`linear-gradient(135deg,${S.gold}40,${S.gold}20)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>
+                            {emoji}
+                          </div>
+                          <div style={{flex:1}}>
+                            <div style={{display:'flex',alignItems:'center',gap:8}}>
+                              <span style={{fontSize:14,fontWeight:700}}>{r.nombre}</span>
+                              <span style={{fontSize:14}}>{rank}</span>
+                            </div>
+                            <div style={{fontSize:10,color:S.t3,textTransform:'capitalize'}}>{r.rol.replace('_',' ')}</div>
+                          </div>
+                          <div style={{textAlign:'right'}}>
+                            <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:colorBono}}>{fmt(r.bono_final)}</div>
+                            <div style={{fontSize:9,color:S.t3}}>bono del turno</div>
+                          </div>
+                        </div>
+
+                        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
+                          {[
+                            {l:'Ventas generadas', v:fmt(r.ventas_generadas), c:S.blue},
+                            {l:'Participación',    v:`${r.pct_participacion}%`, c:S.purple},
+                            {l:'Estado',           v:r.estado==='pagado'?'✓ Pagado':'Pendiente', c:r.estado==='pagado'?S.green:S.gold},
+                          ].map(m=>(
+                            <div key={m.l} style={{background:S.bg3,borderRadius:8,padding:'8px 10px'}}>
+                              <div style={{fontSize:8,color:S.t3,marginBottom:2,textTransform:'uppercase'}}>{m.l}</div>
+                              <div style={{fontSize:12,fontWeight:700,color:m.c}}>{m.v}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Barra de participación */}
+                        <div style={{marginTop:8}}>
+                          <div style={{height:4,background:S.bg4,borderRadius:2,overflow:'hidden'}}>
+                            <div style={{height:'100%',width:`${Math.min(100,r.pct_participacion)}%`,background:`linear-gradient(90deg,${S.gold},${colorBono})`,borderRadius:2,transition:'width .5s'}}/>
+                          </div>
+                          <div style={{fontSize:9,color:S.t3,marginTop:3}}>{r.pct_participacion}% de participación en las ventas del turno</div>
+                        </div>
+
+                        {/* Marcar como pagado */}
+                        {r.estado !== 'pagado' && (
+                          <button onClick={async()=>{
+                            await supabase.from('bonos_rendimiento').update({estado:'pagado'}).eq('id',r.id);
+                            show(`✓ Bono de ${r.nombre} marcado como pagado`);
+                            fetchData();
+                          }}
+                            style={{marginTop:8,padding:'6px 16px',borderRadius:8,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                            ✓ Marcar como pagado
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {redRendimiento.length === 0 && !calculandoRed && (
+              <div style={{textAlign:'center',padding:60,color:S.t3}}>
+                <div style={{fontSize:48,marginBottom:12}}>🏆</div>
+                <div style={{fontSize:14,fontWeight:700,marginBottom:6}}>Sin cálculo para esta fecha</div>
+                <div style={{fontSize:12}}>Haz clic en "Calcular ahora" para distribuir la bolsa según el rendimiento real del equipo</div>
+              </div>
+            )}
+
+            {/* Ventas por mesero — fuente de datos */}
+            {ventasMeseros.length > 0 && (
+              <div style={{marginTop:24}}>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,marginBottom:12,color:S.t3}}>
+                  Detalle de ventas del día
+                </div>
+                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+                  <table style={{width:'100%',borderCollapse:'collapse'}}>
+                    <thead>
+                      <tr style={{background:S.bg3}}>
+                        {['Nombre','Cuentas','Ventas','Ticket prom.','% del día'].map(h=>(
+                          <th key={h} style={{padding:'8px 14px',textAlign:'left',fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase',borderBottom:`1px solid ${S.border}`}}>{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ventasMeseros.map((v:any,i:number)=>(
+                        <tr key={v.nombre} style={{borderBottom:`1px solid rgba(255,255,255,0.03)`,background:i%2===0?S.bg:S.bg2}}>
+                          <td style={{padding:'9px 14px',fontWeight:700}}>{v.nombre}</td>
+                          <td style={{padding:'9px 14px',color:S.t2}}>{v.cuentas}</td>
+                          <td style={{padding:'9px 14px',color:S.gold,fontWeight:700}}>{fmt(v.ventas_totales||0)}</td>
+                          <td style={{padding:'9px 14px',color:S.t2}}>{fmt(v.ticket_promedio||0)}</td>
+                          <td style={{padding:'9px 14px'}}>
+                            <div style={{display:'flex',alignItems:'center',gap:8}}>
+                              <div style={{height:4,width:60,background:S.bg4,borderRadius:2,overflow:'hidden'}}>
+                                <div style={{height:'100%',width:`${v.pct_ventas_dia||0}%`,background:S.gold}}/>
+                              </div>
+                              <span style={{fontSize:11,fontWeight:700,color:S.gold}}>{v.pct_ventas_dia||0}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </div>
