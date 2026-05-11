@@ -253,9 +253,9 @@ const Dashboard: React.FC = () => {
                id: 'operaciones', label: 'PAQUETE OPERACIONES',
               modules: [
                 { type: ModuleType.SERVICE_OS,   label: 'SERVICE OS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
-                { type: ModuleType.METRICAS,
-          ModuleType.PROPINAS, label: 'MÉTRICAS', sub: 'Tiempos · Quejas', icon: <BarChart3 size={18} /> },
-                 { type: ModuleType.FLOW,         label: 'FLOW',         sub: 'ESTACIONES',       icon: <ChefHat size={18} /> },
+                { type: ModuleType.PROPINAS,    label: 'PROPINAS',     sub: 'Bolsa del turno',  icon: <DollarSign size={18} /> },
+                { type: ModuleType.METRICAS,    label: 'MÉTRICAS',     sub: 'Tiempos · Quejas', icon: <BarChart3 size={18} /> },
+                { type: ModuleType.FLOW,        label: 'FLOW',         sub: 'ESTACIONES',       icon: <ChefHat size={18} /> },
               ]
             },
             {
