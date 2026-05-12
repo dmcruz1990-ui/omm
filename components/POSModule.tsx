@@ -3895,10 +3895,8 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 </button>
                 {/* Contenido expandible */}
                 {chatIAOpen && (
-                  <div className="pb-3 flex flex-col gap-2 overflow-y-auto" style={{maxHeight:320,scrollbarWidth:'thin'}}>                  <span className="text-[11px] font-black text-[#d4943a]">💬 Chat IA</span>
-                  <span className="ml-auto text-[9px] text-[#606060]">{new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'short'})}</span>
-                </div>
-                <div className="p-3 flex flex-col gap-2">
+                  <div className="pb-3 flex flex-col gap-2 overflow-y-auto" style={{maxHeight:320,scrollbarWidth:'thin'}}>
+                  <div className="p-3 flex flex-col gap-2">
 
                   {/* Platos del día — desde Supabase via Flow */}
                   <div className="text-[9px] text-[#606060] font-bold uppercase tracking-wider">🍽️ Platos del Chef hoy</div>
