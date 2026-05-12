@@ -3973,7 +3973,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                   </div>
                 )}
               </div>
-              </div>
 
               {/* ══ INTELIGENCIA OPERACIONAL ══ */}
               <div className="bg-[#1c1c1c] border border-[#e05050]/25 rounded-xl overflow-hidden">
