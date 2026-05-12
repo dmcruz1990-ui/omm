@@ -842,6 +842,22 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       }).subscribe();
 
     // Reservas Oh Yeah del día → badge en el POS
+    // Platos del día desde Supabase (actualizados desde Flow)
+    const fetchPlatosDia = async () => {
+      const { data } = await supabase.from('platos_dia')
+        .select('*').eq('restaurante_id',6).eq('activo',true)
+        .eq('fecha', new Date().toISOString().split('T')[0])
+        .order('created_at',{ascending:false});
+      if (data) setPlatosDia(data);
+    };
+    fetchPlatosDia();
+
+    // Realtime platos del día — cuando el chef activa o hace 86 un plato
+    const chPlatos = supabase.channel('platos-dia-live')
+      .on('postgres_changes',{event:'*',schema:'public',table:'platos_dia'},()=>{
+        fetchPlatosDia();
+      }).subscribe();
+
     const fetchReservasOhYeah = async () => {
       const hoy = new Date().toISOString().split('T')[0];
       const { data } = await supabase
@@ -1845,6 +1861,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [showPropCustom, setShowPropCustom] = useState(false);
   const [customPropina, setCustomPropina] = useState(0);
   const [divClientePax, setDivClientePax] = useState(1);
+  const [platosDia, setPlatosDia]         = useState<any[]>([]);
   const [reservasHoy, setReservasHoy] = useState<any[]>([]);
   // ── Mapa de mesas ──────────────────────────────────────────────────────
   const [showMapaMesas, setShowMapaMesas] = useState(false);
@@ -3758,29 +3775,15 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
             <Receipt size={11}/>
           </button>
         </div>
-        <div className="p-3 px-4 border-b border-[#2a2a2a] flex items-center gap-2.5 shrink-0">
-          <div className="w-[30px] h-[30px] rounded-lg bg-gradient-to-br from-[#d4943a] to-[#b07820] flex items-center justify-center text-[13px] font-extrabold text-black font-['Syne']">N</div>
-          <div className="flex-1">
-            <div className="font-['Syne'] text-[12px] font-bold text-[#f0f0f0]">NEXUM IA</div>
-            <div className="text-[9px] text-[#a0a0a0]">AI Asistente</div>
-          </div>
-          {/* Badge notificaciones */}
-          <button onClick={()=>setShowNotifPanel(p=>!p)} style={{position:'relative',background:'none',border:'none',cursor:'pointer',padding:4}}>
-            <span style={{fontSize:18}}>🔔</span>
-            {notifsBadge>0&&<span style={{position:'absolute',top:0,right:0,background:'#e05050',color:'#fff',fontSize:9,fontWeight:900,borderRadius:'50%',width:14,height:14,display:'flex',alignItems:'center',justifyContent:'center'}}>{notifsBadge}</span>}
+        <div className="px-3 py-1.5 border-b border-[#2a2a2a] flex items-center gap-2 shrink-0">
+          <button onClick={()=>setShowNotifPanel(p=>!p)} style={{position:"relative",background:"rgba(255,255,255,0.04)",border:"1px solid #2a2a2a",borderRadius:8,padding:"4px 7px",cursor:"pointer",display:"flex",alignItems:"center"}}>
+            <span style={{fontSize:16}}>🔔</span>
+            {notifsBadge>0&&<span style={{position:"absolute",top:0,right:0,background:"#e05050",color:"#fff",fontSize:8,fontWeight:900,borderRadius:99,padding:"1px 4px",lineHeight:1.2}}>{notifsBadge}</span>}
           </button>
-          {/* Badge reservas Oh Yeah */}
-          {reservasHoy.length > 0 && (
-            <button onClick={()=>showToast(`🦉 ${reservasHoy.length} reserva${reservasHoy.length>1?'s':''} hoy: ${reservasHoy.slice(0,2).map((r:any)=>r.cliente_nombre).join(', ')}`)}
-              style={{display:'flex',alignItems:'center',gap:3,padding:'3px 7px',borderRadius:20,border:'1px solid #FFE60040',background:'#FFE60010',cursor:'pointer'}}>
-              <span style={{fontSize:10}}>🦉</span>
-              <span style={{fontSize:9,fontWeight:900,color:'#FFE600'}}>{reservasHoy.length}</span>
-            </button>
-          )}
-          {/* Cuentas por cobrar */}
-          <button onClick={()=>setRightTab('Intel')} style={{background:'rgba(212,148,58,0.15)',border:'1px solid rgba(212,148,58,0.3)',borderRadius:8,padding:'4px 8px',cursor:'pointer'}}>
-            <div style={{fontSize:9,color:'#d4943a',fontWeight:700}}>💰 Por cobrar</div>
-            <div style={{fontSize:12,fontWeight:900,color:'#f0b45a'}}>{cuentasCobrar}</div>
+          {reservasHoy.length > 0 && (<button onClick={()=>showToast(`🦉 ${reservasHoy.length} reserva${reservasHoy.length>1?"s":""} hoy`)} style={{display:"flex",alignItems:"center",gap:3,padding:"3px 7px",borderRadius:20,background:"rgba(255,230,0,0.1)",border:"1px solid rgba(255,230,0,0.25)",cursor:"pointer"}}><span style={{fontSize:10}}>🦉</span><span style={{fontSize:9,fontWeight:900,color:"#FFE600"}}>{reservasHoy.length}</span></button>)}
+          <button onClick={()=>setRightTab("Intel")} style={{background:"rgba(212,148,58,0.15)",border:"1px solid rgba(212,148,58,0.3)",borderRadius:8,padding:"3px 8px",cursor:"pointer",textAlign:"center"}}>
+            <div style={{fontSize:9,color:"#d4943a",fontWeight:700}}>💰 Por cobrar</div>
+            <div style={{fontSize:12,fontWeight:900,color:"#f0b45a"}}>{cuentasCobrar}</div>
           </button>
         </div>
         {/* Panel notificaciones */}
@@ -3881,32 +3884,33 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 );
               })()}
 
-              {/* ══ BRIEF DEL DÍA ══ */}
+              {/* ══ CHAT IA ══ */}
               <div className="bg-[#1c1c1c] border border-[#d4943a]/30 rounded-xl overflow-hidden">
                 <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2">
-                  <span className="text-[11px] font-black text-[#d4943a]">📋 Brief del día</span>
+                  <span className="text-[11px] font-black text-[#d4943a]">💬 Chat IA</span>
                   <span className="ml-auto text-[9px] text-[#606060]">{new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'short'})}</span>
                 </div>
                 <div className="p-3 flex flex-col gap-2">
 
-                  {/* Platos del día — tarjetas visuales */}
+                  {/* Platos del día — desde Supabase via Flow */}
                   <div className="text-[9px] text-[#606060] font-bold uppercase tracking-wider">🍽️ Platos del Chef hoy</div>
                   <div className="flex flex-col gap-1.5">
-                    {[
-                      {p:'Omakase Chef',    emoji:'🍱', precio:'$185k', rentable:true,  disponible:true},
-                      {p:'Wagyū Premium',   emoji:'🥩', precio:'$220k', rentable:true,  disponible:true},
-                      {p:'Ramen Especial',  emoji:'🍜', precio:'$68k',  rentable:false, disponible:true},
-                      {p:'Salmón Robata',   emoji:'🐟', precio:'$95k',  rentable:true,  disponible:true},
-                    ].map(({p,emoji,precio,rentable,disponible})=>(
-                      <div key={p} className="flex items-center gap-2 px-2 py-2 rounded-lg bg-[#141414] border border-[#2a2a2a]">
-                        <span className="text-[18px] shrink-0">{emoji}</span>
+                    {(platosDia.length > 0 ? platosDia : [
+                      {nombre:'Omakase Chef',emoji:'🍱',precio:'$185k',rentable:true,disponible:true},
+                      {nombre:'Wagyū Premium',emoji:'🥩',precio:'$220k',rentable:true,disponible:true},
+                      {nombre:'Ramen Especial',emoji:'🍜',precio:'$68k',rentable:false,disponible:true},
+                    ]).map((p:any)=>(
+                      <div key={p.nombre||p.id} className={`flex items-center gap-2 px-2 py-2 rounded-lg border ${!p.disponible?'bg-[#e05050]/08 border-[#e05050]/30 opacity-60':'bg-[#141414] border-[#2a2a2a]'}`}>
+                        <span className="text-[18px] shrink-0">{p.emoji||'🍽️'}</span>
                         <div className="flex-1 min-w-0">
-                          <div className="text-[11px] font-bold text-[#f0f0f0] truncate">{p}</div>
-                          <div className="text-[9px] text-[#606060]">{precio}</div>
+                          <div className={`text-[11px] font-bold truncate ${!p.disponible?'line-through text-[#606060]':'text-[#f0f0f0]'}`}>{p.nombre}</div>
+                          <div className="text-[9px] text-[#606060]">{p.precio||''}</div>
                         </div>
-                        {rentable && <span className="text-[7px] bg-[#3dba6f]/15 text-[#3dba6f] border border-[#3dba6f]/25 px-1.5 py-0.5 rounded-full font-bold shrink-0">● Rentable</span>}
+                        {!p.disponible && <span className="text-[8px] font-black bg-[#e05050] text-white px-1.5 py-0.5 rounded shrink-0">86</span>}
+                        {p.disponible && p.rentable && <span className="text-[7px] bg-[#3dba6f]/15 text-[#3dba6f] border border-[#3dba6f]/25 px-1.5 py-0.5 rounded-full font-bold shrink-0">● Rentable</span>}
                       </div>
                     ))}
+                    {platosDia.length === 0 && <div className="text-[10px] text-[#606060] px-1 py-1">Activa platos desde Flow → 🍽️ Platos del día</div>}
                   </div>
 
                   {/* 86s — alertas agresivas */}
