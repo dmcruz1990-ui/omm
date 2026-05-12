@@ -1865,6 +1865,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [reservasHoy, setReservasHoy] = useState<any[]>([]);
   // ── Mapa de mesas ──────────────────────────────────────────────────────
   const [showMapaMesas, setShowMapaMesas] = useState(false);
+  const [chatIAOpen, setChatIAOpen]       = useState(false);
   const [mesasEstado, setMesasEstado] = useState<any[]>([]);
   const [formAbrirMesa, setFormAbrirMesa] = useState<{mesa:any,pax:number,cliente:string}|null>(null);
   const [pinDesbloqueo, setPinDesbloqueo] = useState('');
@@ -3766,7 +3767,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
             {(profile?.nombre_completo || 'U').charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[11px] font-bold text-[#f0f0f0] truncate">{profile?.nombre_completo?.split(' ')[0] || 'Usuario'}</div>
             <div className="text-[8px] text-[#d4943a] font-bold uppercase">{profile?.role === 'admin' ? 'Admin' : profile?.role === 'gerencia' ? 'Gerencia' : 'Mesero'}</div>
           </div>
           <button onClick={() => { setShowHistorial(true); fetchHistorial(); }}
@@ -3845,7 +3845,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
             ))}
           </div>
         </div>
-        <div className="flex-1 p-3 px-3.5 flex flex-col gap-2.5 overflow-y-auto" style={{minHeight:0,overflowY:'auto',WebkitOverflowScrolling:'touch'}}>
+        <div className="flex-1 p-3 px-3.5 flex flex-col gap-2.5 overflow-y-auto" style={{height:0,scrollbarWidth:"thin",scrollbarColor:"#2a2a2a transparent"}}>
 
           {rightTab === 'IA' && (
             <>
@@ -3883,11 +3883,19 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                   </div>
                 );
               })()}
-
-              {/* ══ CHAT IA ══ */}
-              <div className="bg-[#1c1c1c] border border-[#d4943a]/30 rounded-xl overflow-hidden">
-                <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2">
+              {/* ══ CHAT IA — ventana flotante al fondo ══ */}
+              <div className="sticky bottom-0 left-0 right-0 mt-auto" style={{background:'#141414',borderTop:'1px solid rgba(212,148,58,0.25)',marginLeft:'-12px',marginRight:'-12px',marginBottom:'-12px',paddingLeft:'12px',paddingRight:'12px'}}>
+                {/* Header colapsable */}
+                <button onClick={()=>setChatIAOpen(p=>!p)}
+                  className="w-full px-1 py-2 flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  style={{background:'transparent',border:'none',cursor:'pointer'}}>
                   <span className="text-[11px] font-black text-[#d4943a]">💬 Chat IA</span>
+                  <span className="text-[9px] text-[#606060] flex-1 text-left">{new Date().toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'})}</span>
+                  <span className="text-[10px] text-[#606060]">{chatIAOpen?'▼':'▲'}</span>
+                </button>
+                {/* Contenido expandible */}
+                {chatIAOpen && (
+                  <div className="pb-3 flex flex-col gap-2 overflow-y-auto" style={{maxHeight:320,scrollbarWidth:'thin'}}>                  <span className="text-[11px] font-black text-[#d4943a]">💬 Chat IA</span>
                   <span className="ml-auto text-[9px] text-[#606060]">{new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'short'})}</span>
                 </div>
                 <div className="p-3 flex flex-col gap-2">
@@ -3965,7 +3973,8 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                         : `${new Date().getHours()<16?'Mediodía':'Noche'} activo. ${ticketDia?.pendientes||0} mesa${(ticketDia?.pendientes||0)!==1?'s':''} abiertas.`}
                     </div>
                   </div>
-                </div>
+                )}
+              </div>
               </div>
 
               {/* ══ INTELIGENCIA OPERACIONAL ══ */}
