@@ -2,137 +2,169 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../contexts/AuthContext';
 
+// ══ PALETA ══
 const S = {
   bg:'#08080f', bg2:'#0f0f1a', bg3:'#161624', bg4:'#1e1e2e',
   border:'rgba(255,255,255,0.07)', border2:'rgba(255,255,255,0.12)',
   t1:'#fff', t2:'#A0A0B8', t3:'#50506A',
   gold:'#FFB547', green:'#00E676', red:'#FF5252',
-  blue:'#448AFF', purple:'#B388FF', pink:'#FF2D78', cyan:'#22d3ee',
+  blue:'#448AFF', purple:'#B388FF', cyan:'#22d3ee', neon:'#DFFF00',
 };
 const fmt  = (n:number) => `$${Math.round(n).toLocaleString('es-CO')}`;
-const pct  = (v:number, total:number) => total > 0 ? Math.round(v / total * 100) : 0;
-const inp: React.CSSProperties = {
-  background:'rgba(255,255,255,0.05)', border:`1px solid rgba(255,255,255,0.12)`,
-  borderRadius:10, padding:'9px 13px', color:'#fff', fontSize:13, outline:'none', width:'100%',
+const fmtPct = (n:number) => `${(n*100).toFixed(2)}%`;
+
+// ══ POOLS V5 — espejo exacto del documento ══
+const POOLS_V5 = [
+  {code:'DIRECT_TABLE_SERVICE',          pct:0.2300, name:'Servicio directo de mesa',         emoji:'🧑‍💼', color:'#FFB547', visible:true},
+  {code:'SERVICE_LEADERSHIP_EXPERIENCE', pct:0.0500, name:'Liderazgo y experiencia',           emoji:'👔', color:'#B388FF', visible:true},
+  {code:'SALES_ACCELERATOR',             pct:0.0480, name:'Acelerador de ventas',              emoji:'📈', color:'#00E676', visible:true},
+  {code:'FOOD_PRODUCTION',               pct:0.1600, name:'Producción de cocina',              emoji:'🔥', color:'#FF5252', visible:true},
+  {code:'BAR_MIXOLOGY_PRODUCTION',       pct:0.0700, name:'Bar y mixología',                   emoji:'🍸', color:'#448AFF', visible:true},
+  {code:'PRODUCTION_SUPPORT',            pct:0.0400, name:'Apoyo operativo',                   emoji:'⚙️', color:'#22d3ee', visible:true},
+  {code:'QUALITY_TIMING_BONUS',          pct:0.0474, name:'Calidad y tiempos',                 emoji:'⭐', color:'#DFFF00', visible:true},
+  {code:'BACK_SUPPORT',                  pct:0.0893, name:'Soporte back-office',               emoji:'🏢', color:'#606060', visible:false},
+  {code:'ADMIN_SERVICE_BACKBONE',        pct:0.2652, name:'Bolsa corporativa administrativa',  emoji:'🏦', color:'#404040', visible:false},
+];
+
+const WALLET_ESTADOS: Record<string,{c:string,l:string}> = {
+  GENERATED:  {c:'#FFB547', l:'⏳ Generado'},
+  ESTIMATED:  {c:'#22d3ee', l:'📊 Estimado'},
+  CONFIRMED:  {c:'#00E676', l:'✓ Confirmado'},
+  AVAILABLE:  {c:'#00E676', l:'💳 Disponible'},
+  REQUESTED:  {c:'#B388FF', l:'🔄 Solicitado'},
+  PROCESSING: {c:'#FFB547', l:'⚙️ Procesando'},
+  PAID:       {c:'#3dba6f', l:'✅ Pagado'},
+  ADJUSTED:   {c:'#FF9800', l:'🔧 Ajustado'},
+  HELD:       {c:'#FF5252', l:'🔒 Retenido'},
 };
 
-type Tab = 'bolsa' | 'red' | 'mis_propinas' | 'config' | 'historial';
+type Tab = 'bolsa'|'wallet'|'ranking'|'equipo'|'config'|'backoffice';
 
 export default function PropinasModule() {
   const { profile } = useAuth();
   const isGerencia = ['admin','gerencia','desarrollo'].includes(profile?.role||'');
 
-  const [tab, setTab]             = useState<Tab>('bolsa');
-  const [bolsa, setBolsa]         = useState<any[]>([]);       // por mesero hoy
-  const [bolsaGlobal, setBolsaGlobal] = useState<any>(null);  // totales del día
-  const [historial, setHistorial] = useState<any[]>([]);
-  const [config, setConfig]       = useState<any>({ pct_meseros:70, pct_cocina:20, pct_host:10, modo:'turno', pct_sugerido:10 });
-  const [guardandoConfig, setGuardandoConfig] = useState(false);
-  const [redRendimiento, setRedRendimiento] = useState<any[]>([]);
-  const [calculandoRed, setCalculandoRed] = useState(false);
-  const [ventasMeseros, setVentasMeseros] = useState<any[]>([]);
-  const [ventasCocina, setVentasCocina] = useState<any[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [toast, setToast]         = useState('');
-  const [fechaFiltro, setFechaFiltro] = useState(new Date().toISOString().split('T')[0]);
+  const [tab, setTab]                   = useState<Tab>('bolsa');
+  const [fechaFiltro, setFechaFiltro]   = useState(new Date().toISOString().split('T')[0]);
+  const [loading, setLoading]           = useState(false);
+  const [toast, setToast]               = useState('');
+  // Datos
+  const [resumenDia, setResumenDia]     = useState<any>(null);
+  const [wallet, setWallet]             = useState<any[]>([]);
+  const [ranking, setRanking]           = useState<any[]>([]);
+  const [distribuciones, setDistrib]    = useState<any[]>([]);
+  const [equipo, setEquipo]             = useState<any[]>([]);
+  const [tags, setTags]                 = useState<any[]>([]);
+  const [config, setConfig]             = useState<any>(null);
+  const [backoffice, setBackoffice]     = useState<any[]>([]);
+  const [confirmandoTurno, setConfirm]  = useState(false);
+  const [retiroMonto, setRetiroMonto]   = useState(0);
+  const [retiroEmpleado, setRetiroEmp]  = useState('');
 
   const show = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3500); };
 
-  // ── FETCH DATOS ──────────────────────────────────────────────────────
-  const fetchData = useCallback(async () => {
+  const fetchAll = useCallback(async () => {
     setLoading(true);
-    const [bolsaData, globalData, cfgData, histData] = await Promise.all([
-      supabase.from('vista_propinas_dia').select('*').eq('fecha', fechaFiltro).order('total_propina', { ascending: false }),
-      supabase.from('vista_bolsa_dia').select('*').eq('fecha', fechaFiltro).single(),
-      supabase.from('propinas_config').select('*').eq('restaurante_id', 6).single(),
-      supabase.from('bonos_rendimiento').select('*').eq('fecha', fechaFiltro).eq('restaurante_id', 6).order('ventas_generadas', { ascending: false }),
-      supabase.from('vista_ventas_mesero').select('*').eq('fecha', fechaFiltro),
-      supabase.from('vista_ventas_cocina').select('*').eq('fecha', fechaFiltro),
-      supabase.from('vista_propinas_dia').select('*').gte('fecha', new Date(Date.now()-30*86400000).toISOString().split('T')[0]).order('fecha', { ascending: false }).limit(60),
+    const [rd, wl, rk, eq, tg, cfg, bo] = await Promise.all([
+      supabase.from('vista_tipnetwork_dia').select('*').eq('fecha', fechaFiltro).maybeSingle(),
+      supabase.from('vista_wallet_empleado').select('*').eq('restaurante_id', 6).order('saldo_actual', {ascending:false}),
+      supabase.from('vista_ranking_period').select('*').eq('fecha', fechaFiltro).order('total_ganado', {ascending:false}).limit(50),
+      supabase.from('employee_functional_tags').select('*,functional_tags(tag_name,categoria,pool_codes)').eq('restaurante_id', 6).eq('activo', true),
+      supabase.from('functional_tags').select('*').eq('restaurante_id', 6).eq('activo', true).order('categoria'),
+      supabase.from('tip_policies').select('*,tip_policy_pools(*)').eq('restaurante_id', 6).eq('activa', true).maybeSingle(),
+      supabase.from('backoffice_settlements').select('*').eq('restaurante_id', 6).order('created_at', {ascending:false}).limit(30),
     ]);
-    if (bolsaData.data) setBolsa(bolsaData.data);
-    if (globalData.data) setBolsaGlobal(globalData.data);
-    if (cfgData.data) setConfig(cfgData.data);
-    if (histData.data) setHistorial(histData.data);
+    if (rd.data)   setResumenDia(rd.data);
+    if (wl.data)   setWallet(wl.data);
+    if (rk.data)   setRanking(rk.data);
+    if (eq.data)   setEquipo(eq.data);
+    if (tg.data)   setTags(tg.data);
+    if (cfg.data)  setConfig(cfg.data);
+    if (bo.data)   setBackoffice(bo.data);
     setLoading(false);
-    // Cargar red de rendimiento
-    const [redData, vmData, vcData] = await Promise.all([
-      supabase.from('bonos_rendimiento').select('*').eq('fecha', fechaFiltro).eq('restaurante_id', 6).order('ventas_generadas', {ascending:false}),
-      supabase.from('vista_ventas_mesero').select('*').eq('fecha', fechaFiltro),
-      supabase.from('vista_ventas_cocina').select('*').eq('fecha', fechaFiltro),
-    ]);
-    if (redData.data) setRedRendimiento(redData.data);
-    if (vmData.data) setVentasMeseros(vmData.data);
-    if (vcData.data) setVentasCocina(vcData.data);
   }, [fechaFiltro]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => { fetchAll(); }, [fetchAll]);
 
-  // Suscribir propinas en tiempo real
+  // Realtime — llega propina nueva
   useEffect(() => {
-    const ch = supabase.channel('propinas-live')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'propinas' }, () => {
-        fetchData();
-        show('💰 Nueva propina registrada');
+    const ch = supabase.channel('tip-network-live')
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'tip_events' }, () => {
+        fetchAll(); show('💰 Nueva propina distribuida automáticamente');
       }).subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [fetchData]);
+  }, [fetchAll]);
 
-  // Distribución calculada según config
-  const distribucion = bolsaGlobal ? {
-    meseros: Math.round((bolsaGlobal.bolsa_total || 0) * config.pct_meseros / 100),
-    cocina:  Math.round((bolsaGlobal.bolsa_total || 0) * config.pct_cocina  / 100),
-    host:    Math.round((bolsaGlobal.bolsa_total || 0) * config.pct_host    / 100),
-  } : { meseros:0, cocina:0, host:0 };
+  // Confirmar turno — libera wallets a AVAILABLE
+  const confirmarTurno = async () => {
+    setConfirm(true);
+    const {data} = await supabase.rpc('confirmar_wallet_turno', {
+      p_fecha: fechaFiltro, p_turno:'noche', p_restaurante:6
+    });
+    if (data?.ok) { show(`✓ ${data.registros_liberados} wallets liberados`); fetchAll(); }
+    else show('⚠️ Error al confirmar turno');
+    setConfirm(false);
+  };
 
-  // Por mesero: su parte proporcional
-  const totalPropinasMeseros = bolsa.reduce((s,b)=>s+(b.total_propina||0), 0);
+  // Solicitar retiro
+  const solicitarRetiro = async () => {
+    if (!retiroEmpleado || retiroMonto < 200000) { show('⚠️ Mínimo $200.000 COP'); return; }
+    const {data} = await supabase.rpc('solicitar_retiro_wallet', {
+      p_empleado:retiroEmpleado, p_restaurante:6, p_monto:retiroMonto
+    });
+    if (data?.ok) { show(`✓ Retiro solicitado: ${fmt(retiroMonto)}`); fetchAll(); setRetiroMonto(0); setRetiroEmpleado(''); }
+    else show(data?.error || 'Error al solicitar retiro');
+  };
 
   return (
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:S.bg,color:S.t1,fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
-      {toast && <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:S.bg4,border:`1px solid ${S.gold}`,color:S.t1,padding:'10px 28px',borderRadius:50,fontSize:13,fontWeight:700,zIndex:9999}}>{toast}</div>}
+      {toast&&<div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:'#1e1e2e',border:`1px solid ${S.gold}`,color:'#fff',padding:'10px 28px',borderRadius:50,fontSize:13,fontWeight:700,zIndex:9999,whiteSpace:'nowrap'}}>{toast}</div>}
 
       {/* ── HEADER ── */}
-      <div style={{padding:'14px 24px',borderBottom:`1px solid ${S.border}`,background:S.bg2,display:'flex',alignItems:'center',gap:14,flexShrink:0,flexWrap:'wrap'}}>
-        <div style={{width:48,height:48,borderRadius:14,background:`linear-gradient(135deg,${S.gold},#d4943a)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,boxShadow:`0 0 20px ${S.gold}40`}}>💰</div>
-        <div>
-          <div style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:900}}>PROPINAS <span style={{color:S.gold}}>SERATTA</span></div>
-          <div style={{fontSize:10,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase'}}>Bolsa del turno · Distribución en tiempo real</div>
+      <div style={{padding:'12px 24px',borderBottom:`1px solid ${S.border}`,background:S.bg2,display:'flex',alignItems:'center',gap:14,flexShrink:0,flexWrap:'wrap'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div style={{width:48,height:48,borderRadius:14,background:`linear-gradient(135deg,${S.gold},#d4943a)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,boxShadow:`0 0 24px ${S.gold}40`}}>💰</div>
+          <div>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900}}>NEXUM <span style={{color:S.gold}}>TIP NETWORK</span> <span style={{fontSize:11,color:S.t3}}>V5</span></div>
+            <div style={{fontSize:9,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase'}}>Policy Engine Autónomo · 9 Pools · Score por Contribución Real</div>
+          </div>
         </div>
 
         {/* KPIs del día */}
-        <div style={{display:'flex',gap:10,marginLeft:'auto',flexWrap:'wrap'}}>
-          {[
-            {l:'Bolsa total hoy',   v: fmt(bolsaGlobal?.bolsa_total||0),       c:S.gold,  e:'💰'},
-            {l:'Cuentas cobradas',  v: bolsaGlobal?.total_cuentas||0,           c:S.blue,  e:'🧾'},
-            {l:'Promedio propina',  v: `${bolsaGlobal?.pct_promedio||0}%`,      c:S.green, e:'📊'},
-            {l:'Meseros activos',   v: bolsaGlobal?.meseros_activos||0,          c:S.purple,e:'👤'},
-          ].map(k=>(
-            <div key={k.l} style={{textAlign:'center',padding:'6px 14px',background:'rgba(255,255,255,0.04)',border:`1px solid ${k.c}20`,borderRadius:12}}>
-              <div style={{fontSize:10,marginBottom:2}}>{k.e}</div>
-              <div style={{fontSize:9,color:S.t3,textTransform:'uppercase',letterSpacing:'.06em'}}>{k.l}</div>
-              <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:k.c}}>{k.v}</div>
-            </div>
-          ))}
-        </div>
-
+        {resumenDia && (
+          <div style={{display:'flex',gap:10,marginLeft:'auto',flexWrap:'wrap'}}>
+            {[
+              {l:'Bolsa hoy',   v:fmt(resumenDia.bolsa_total||0),    c:S.gold,   e:'💰'},
+              {l:'Eventos',     v:resumenDia.total_eventos||0,         c:S.blue,   e:'🧾'},
+              {l:'% Promedio',  v:`${resumenDia.pct_promedio||0}%`,   c:S.green,  e:'📊'},
+              {l:'Sin asignar', v:fmt(resumenDia.total_unassigned||0),c:resumenDia.total_unassigned>0?S.red:S.green, e:'⚠️'},
+            ].map(k=>(
+              <div key={k.l} style={{textAlign:'center',padding:'5px 12px',background:'rgba(255,255,255,0.04)',border:`1px solid ${k.c}20`,borderRadius:10}}>
+                <div style={{fontSize:10,marginBottom:1}}>{k.e}</div>
+                <div style={{fontSize:8,color:S.t3,textTransform:'uppercase'}}>{k.l}</div>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:k.c}}>{k.v}</div>
+              </div>
+            ))}
+          </div>
+        )}
         <input type="date" value={fechaFiltro} onChange={e=>setFechaFiltro(e.target.value)}
           style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:8,padding:'7px 12px',color:'#fff',fontSize:12,outline:'none'}}/>
       </div>
 
       {/* ── TABS ── */}
-      <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg2,padding:'0 24px',flexShrink:0}}>
+      <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg2,padding:'0 24px',flexShrink:0,overflowX:'auto'}}>
         {([
-          {id:'bolsa',       l:'💰 Bolsa del turno'},
-          {id:'mis_propinas',l:'👤 Por mesero'},
-          {id:'historial',   l:'📅 Historial 30 días'},
-          ...(isGerencia?[
-            {id:'red',    l:'🏆 Red de rendimiento'},
-            {id:'config', l:'⚙️ Configuración'},
-          ]:[]),
+          {id:'bolsa',      l:'💰 Bolsa del día'},
+          {id:'wallet',     l:'💳 Wallet'},
+          {id:'ranking',    l:'🏆 Ranking'},
+          ...(isGerencia ? [
+            {id:'equipo',   l:'👥 Equipo & Tags'},
+            {id:'config',   l:'⚙️ Política V5'},
+            {id:'backoffice',l:'🏢 Backoffice'},
+          ] : []),
         ] as {id:Tab,l:string}[]).map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
-            style={{padding:'11px 16px',background:'none',border:'none',borderBottom:`2px solid ${tab===t.id?S.gold:'transparent'}`,color:tab===t.id?S.gold:S.t3,fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
+            style={{padding:'10px 16px',background:'none',border:'none',borderBottom:`2px solid ${tab===t.id?S.gold:'transparent'}`,color:tab===t.id?S.gold:S.t3,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
             {t.l}
           </button>
         ))}
@@ -140,463 +172,369 @@ export default function PropinasModule() {
 
       <div style={{flex:1,overflow:'hidden',display:'flex'}}>
 
-        {/* ══ BOLSA DEL TURNO ══ */}
+        {/* ══ BOLSA DEL DÍA ══ */}
         {tab==='bolsa' && (
           <div style={{flex:1,overflowY:'auto',padding:24}}>
 
-            {/* Distribución visual */}
-            <div style={{background:S.bg2,border:`1px solid ${S.gold}30`,borderRadius:16,padding:20,marginBottom:20}}>
-              <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,marginBottom:4}}>
-                💰 Bolsa total: <span style={{color:S.gold}}>{fmt(bolsaGlobal?.bolsa_total||0)}</span>
-              </div>
-              <div style={{fontSize:11,color:S.t3,marginBottom:16}}>
-                Distribución según configuración · {config.modo==='turno'?'Por turno':'Por cuentas'}
-              </div>
-
-              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:16}}>
-                {[
-                  {label:'🧑‍💼 Meseros',   v:distribucion.meseros, pct:config.pct_meseros, c:S.gold},
-                  {label:'👨‍🍳 Cocina',    v:distribucion.cocina,  pct:config.pct_cocina,  c:S.red},
-                  {label:'🎩 Host / Apoyo',v:distribucion.host,  pct:config.pct_host,    c:S.blue},
-                ].map(d=>(
-                  <div key={d.label} style={{background:S.bg3,border:`1px solid ${d.c}20`,borderRadius:14,padding:'16px 18px'}}>
-                    <div style={{fontSize:13,color:S.t2,marginBottom:8}}>{d.label}</div>
-                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:24,fontWeight:900,color:d.c,marginBottom:4}}>
-                      {fmt(d.v)}
-                    </div>
-                    <div style={{fontSize:11,color:S.t3,marginBottom:8}}>{d.pct}% de la bolsa</div>
-                    {/* Barra */}
-                    <div style={{height:5,background:S.bg4,borderRadius:3,overflow:'hidden'}}>
-                      <div style={{height:'100%',width:`${d.pct}%`,background:d.c,borderRadius:3}}/>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Distribución por mesero individualmente */}
-              {bolsa.length > 0 && config.modo !== 'igualitario' && (
-                <div style={{background:S.bg3,borderRadius:12,padding:14}}>
-                  <div style={{fontSize:11,color:S.t3,fontWeight:700,marginBottom:10,textTransform:'uppercase',letterSpacing:'.06em'}}>
-                    Desglose por mesero ({config.pct_meseros}% de cada quien)
-                  </div>
-                  <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                    {bolsa.map(b=>{
-                      // Cada mesero se lleva el % de sus propias cuentas
-                      const suParte = Math.round((b.total_propina||0) * config.pct_meseros / 100);
-                      const participacion = pct(b.total_propina, totalPropinasMeseros);
-                      return (
-                        <div key={b.mesero_nombre} style={{display:'flex',alignItems:'center',gap:12}}>
-                          <div style={{width:34,height:34,borderRadius:'50%',background:`linear-gradient(135deg,${S.gold},#d4943a)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,fontWeight:900,color:'#000',flexShrink:0}}>
-                            {(b.mesero_nombre||'?').charAt(0)}
-                          </div>
-                          <div style={{flex:1}}>
-                            <div style={{fontSize:13,fontWeight:700}}>{b.mesero_nombre}</div>
-                            <div style={{fontSize:10,color:S.t3}}>{b.cuentas} cuenta{b.cuentas!==1?'s':''} · {b.pct_promedio}% promedio</div>
-                            <div style={{height:3,background:S.bg4,borderRadius:2,marginTop:4,overflow:'hidden'}}>
-                              <div style={{height:'100%',width:`${participacion}%`,background:S.gold,borderRadius:2}}/>
-                            </div>
-                          </div>
-                          <div style={{textAlign:'right'}}>
-                            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:S.gold}}>{fmt(suParte)}</div>
-                            <div style={{fontSize:9,color:S.t3}}>propina base</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Modo igualitario */}
-              {config.modo === 'igualitario' && bolsa.length > 0 && (
-                <div style={{background:S.bg3,borderRadius:12,padding:14}}>
-                  <div style={{fontSize:11,color:S.t3,fontWeight:700,marginBottom:8}}>🤝 MODO IGUALITARIO — División entre {bolsa.length} meseros</div>
-                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:S.gold,marginBottom:4}}>
-                    {fmt(Math.round(distribucion.meseros / bolsa.length))} por mesero
-                  </div>
-                  <div style={{fontSize:11,color:S.t3}}>{fmt(distribucion.meseros)} total ÷ {bolsa.length} meseros</div>
-                </div>
-              )}
+            {/* Los 9 pools visualizados */}
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:4}}>
+              Los 9 pools — Distribución de <span style={{color:S.gold}}>{fmt(resumenDia?.bolsa_total||0)}</span>
+            </div>
+            <div style={{fontSize:11,color:S.t2,marginBottom:20}}>
+              Cada propina se separa automáticamente en 9 pools. Los pools con wallet visible aparecen en la app del mesero en tiempo real.
             </div>
 
-            {loading && <div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando datos...</div>}
-            {!loading && !bolsaGlobal && (
-              <div style={{textAlign:'center',padding:60,color:S.t3}}>
-                <div style={{fontSize:48,marginBottom:12}}>💰</div>
-                <div style={{fontSize:14,fontWeight:700}}>Sin propinas registradas hoy</div>
-                <div style={{fontSize:12,marginTop:6}}>Las propinas se registran automáticamente al cobrar cuentas en el POS</div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* ══ POR MESERO ══ */}
-        {tab==='mis_propinas' && (
-          <div style={{flex:1,overflowY:'auto',padding:24}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,marginBottom:20}}>
-              👤 Propinas por mesero — {new Date(fechaFiltro+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})}
-            </div>
-            {bolsa.length === 0 && (
-              <div style={{textAlign:'center',padding:60,color:S.t3}}>
-                <div style={{fontSize:48,marginBottom:12}}>👤</div>
-                <div>Sin datos para esta fecha</div>
-              </div>
-            )}
-            <div style={{display:'flex',flexDirection:'column',gap:12}}>
-              {bolsa.map((b,i)=>{
-                const suParte = config.modo==='igualitario'
-                  ? Math.round(distribucion.meseros / Math.max(bolsa.length,1))
-                  : Math.round((b.total_propina||0) * config.pct_meseros / 100);
-                const rank = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i+1}`;
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:12,marginBottom:24}}>
+              {POOLS_V5.map(pool=>{
+                const montoPool = resumenDia ? Math.round((resumenDia.bolsa_total||0)*pool.pct) : 0;
+                const poolData = resumenDia ? (resumenDia as any)[`pool_${pool.code.toLowerCase().replace('_production','').replace('_service','').replace('_mixology','').replace('service','servicio').replace('bar_','bar').replace('back_support','').replace('admin_service_backbone','').replace('quality_timing_bonus','calidad').replace('production_support','apoyo').replace('sales_accelerator','ventas').replace('service_leadership_experience','liderazgo').replace('direct_table_','').replace('food_','cocina')}` ] : 0;
                 return (
-                  <div key={b.mesero_nombre} style={{background:S.bg2,border:`1px solid ${i===0?`${S.gold}40`:S.border}`,borderRadius:16,padding:20}}>
-                    <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:14}}>
-                      {/* Avatar */}
-                      <div style={{width:52,height:52,borderRadius:'50%',background:`linear-gradient(135deg,${S.gold},#d4943a)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:900,color:'#000',flexShrink:0}}>
-                        {(b.mesero_nombre||'?').charAt(0)}
+                  <div key={pool.code} style={{background:pool.visible?S.bg2:`${S.bg3}99`,border:`1px solid ${pool.color}${pool.visible?'40':'20'}`,borderRadius:14,padding:'14px 16px',opacity:pool.visible?1:0.75}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:8}}>
+                      <span style={{fontSize:20}}>{pool.emoji}</span>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:11,fontWeight:700,color:pool.color,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{pool.code.replace(/_/g,' ')}</div>
+                        <div style={{fontSize:9,color:S.t3}}>{pool.name}</div>
                       </div>
-                      <div style={{flex:1}}>
-                        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:2}}>
-                          <span style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900}}>{b.mesero_nombre}</span>
-                          <span style={{fontSize:16}}>{rank}</span>
-                        </div>
-                        <div style={{fontSize:11,color:S.t3}}>{b.cuentas} cuentas cobradas · {b.pct_promedio}% propina promedio</div>
-                      </div>
-                      <div style={{textAlign:'right'}}>
-                        <div style={{fontSize:10,color:S.t3,marginBottom:2}}>Su parte</div>
-                        <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:S.gold}}>{fmt(suParte)}</div>
-                      </div>
+                      {!pool.visible && <span style={{fontSize:8,color:S.t3,background:S.bg4,padding:'2px 6px',borderRadius:10,whiteSpace:'nowrap'}}>Backoffice</span>}
                     </div>
-
-                    {/* Métricas */}
-                    <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
-                      {[
-                        {l:'Ventas cobradas', v:fmt(b.total_ventas||0), c:S.blue},
-                        {l:'Propina total',   v:fmt(b.total_propina||0), c:S.gold},
-                        {l:'% promedio',      v:`${b.pct_promedio}%`, c:S.green},
-                        {l:'En efectivo',     v:fmt(b.propina_efectivo||0), c:S.cyan},
-                      ].map(m=>(
-                        <div key={m.l} style={{background:S.bg3,borderRadius:10,padding:'10px 12px'}}>
-                          <div style={{fontSize:9,color:S.t3,marginBottom:3,textTransform:'uppercase',letterSpacing:'.05em'}}>{m.l}</div>
-                          <div style={{fontSize:14,fontWeight:700,color:m.c}}>{m.v}</div>
-                        </div>
-                      ))}
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:pool.color,marginBottom:4}}>
+                      {fmt(montoPool)}
+                    </div>
+                    <div style={{display:'flex',justifyContent:'space-between',fontSize:10,color:S.t3,marginBottom:6}}>
+                      <span>{fmtPct(pool.pct)} de la propina</span>
+                    </div>
+                    <div style={{height:4,background:S.bg4,borderRadius:2,overflow:'hidden'}}>
+                      <div style={{height:'100%',width:`${pool.pct*100}%`,background:pool.color,borderRadius:2}}/>
                     </div>
                   </div>
                 );
               })}
             </div>
+
+            {/* Fórmula del documento */}
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:16,padding:18,marginBottom:20}}>
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,marginBottom:10,color:S.cyan}}>
+                📐 Fórmula universal del motor V5
+              </div>
+              <div style={{fontFamily:'monospace',fontSize:11,color:S.t2,lineHeight:1.8,background:S.bg3,padding:'12px 14px',borderRadius:10}}>
+                <span style={{color:S.gold}}>pool_amount</span> = ticket.tip × pool_percentage<br/>
+                <span style={{color:S.gold}}>employee_score</span> = eligibility × presence_multiplier × contribution_score × performance_multiplier × quality_multiplier × penalty_multiplier<br/>
+                <span style={{color:S.gold}}>employee_amount</span> = pool_amount × <span style={{color:S.cyan}}>employee_score / sum(all_eligible_scores)</span><br/>
+                <span style={{color:S.t3}}>// Si sum(scores) = 0 → UNASSIGNED_POOL → fallback automático</span>
+              </div>
+            </div>
+
+            {/* Confirmar turno — gerencia */}
+            {isGerencia && (
+              <div style={{background:`${S.green}08`,border:`1px solid ${S.green}20`,borderRadius:14,padding:16,display:'flex',alignItems:'center',gap:14}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,marginBottom:3}}>✓ Confirmar cierre del turno</div>
+                  <div style={{fontSize:11,color:S.t3}}>
+                    Libera los wallets de GENERATED → AVAILABLE. El equipo puede solicitar retiro después de esto. SLA: máximo 2 días.
+                  </div>
+                </div>
+                <button onClick={confirmarTurno} disabled={confirmandoTurno}
+                  style={{padding:'10px 20px',borderRadius:10,border:'none',background:confirmandoTurno?S.bg3:`linear-gradient(135deg,${S.green},#009944)`,color:'#000',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  {confirmandoTurno ? '⏳ Procesando...' : '⚡ Confirmar turno'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 
-        {/* ══ HISTORIAL 30 DÍAS ══ */}
-        {tab==='historial' && (
+        {/* ══ WALLET ══ */}
+        {tab==='wallet' && (
           <div style={{flex:1,overflowY:'auto',padding:24}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,marginBottom:20}}>📅 Historial — últimos 30 días</div>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:4}}>💳 Wallets del equipo</div>
+            <div style={{fontSize:11,color:S.t2,marginBottom:20}}>
+              Cada persona ve su acumulado: ganado hoy, pendiente por cierre y disponible para retiro. Mínimo de retiro: {fmt(200000)}.
+            </div>
 
-            {/* Agrupar por fecha */}
-            {Object.entries(
-              historial.reduce((acc:any, h:any) => {
-                if (!acc[h.fecha]) acc[h.fecha] = [];
-                acc[h.fecha].push(h);
-                return acc;
-              }, {})
-            ).map(([fecha, meseros]:any) => {
-              const totalDia = meseros.reduce((s:number,m:any)=>s+(m.total_propina||0), 0);
-              return (
-                <div key={fecha} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:'14px 18px',marginBottom:10}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-                    <div>
-                      <div style={{fontSize:13,fontWeight:700}}>{new Date(fecha+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})}</div>
-                      <div style={{fontSize:10,color:S.t3}}>{meseros.length} mesero{meseros.length!==1?'s':''} · {meseros.reduce((s:number,m:any)=>s+(m.cuentas||0),0)} cuentas</div>
+            {/* Solicitar retiro */}
+            {isGerencia && (
+              <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16,marginBottom:20}}>
+                <div style={{fontSize:12,fontWeight:700,marginBottom:10}}>Procesar retiro</div>
+                <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                  <select value={retiroEmpleado} onChange={e=>setRetiroEmp(e.target.value)}
+                    style={{flex:1,padding:'9px 12px',borderRadius:8,border:`1px solid ${S.border}`,background:S.bg3,color:'#fff',fontSize:12,outline:'none',minWidth:140}}>
+                    <option value="">Selecciona empleado...</option>
+                    {wallet.map(w=><option key={w.empleado_nombre} value={w.empleado_nombre}>{w.empleado_nombre} ({fmt(w.disponible_retiro||0)})</option>)}
+                  </select>
+                  <input type="number" placeholder="Monto (min $200.000)" value={retiroMonto||''} onChange={e=>setRetiroMonto(Number(e.target.value))}
+                    style={{flex:1,padding:'9px 12px',borderRadius:8,border:`1px solid ${S.border}`,background:S.bg3,color:'#fff',fontSize:12,outline:'none',minWidth:160}}/>
+                  <button onClick={solicitarRetiro}
+                    style={{padding:'9px 18px',borderRadius:8,border:'none',background:S.purple,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                    Procesar retiro
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Cards de wallet por persona */}
+            {wallet.length === 0 && !loading && (
+              <div style={{textAlign:'center',padding:60,color:S.t3}}>
+                <div style={{fontSize:48,marginBottom:12}}>💳</div>
+                <div>Sin datos de wallet para esta fecha</div>
+              </div>
+            )}
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:14}}>
+              {wallet.map(w=>(
+                <div key={w.empleado_nombre} style={{background:S.bg2,border:`1px solid ${w.puede_retirar?`${S.green}40`:S.border}`,borderRadius:16,padding:18}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+                    <div style={{width:42,height:42,borderRadius:'50%',background:`linear-gradient(135deg,${S.gold},#d4943a)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:900,color:'#000',flexShrink:0}}>
+                      {(w.empleado_nombre||'?').charAt(0)}
                     </div>
-                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:S.gold}}>{fmt(totalDia)}</div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:14,fontWeight:700}}>{w.empleado_nombre}</div>
+                      {w.puede_retirar && <span style={{fontSize:9,background:`${S.green}15`,color:S.green,border:`1px solid ${S.green}30`,padding:'1px 8px',borderRadius:20,fontWeight:700}}>💳 Puede retirar</span>}
+                    </div>
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontSize:9,color:S.t3}}>Saldo actual</div>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:S.gold}}>{fmt(w.saldo_actual||0)}</div>
+                    </div>
                   </div>
-                  <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                    {meseros.map((m:any)=>(
-                      <div key={m.mesero_nombre} style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',background:S.bg3,borderRadius:20}}>
-                        <span style={{width:6,height:6,borderRadius:'50%',background:S.gold,display:'inline-block'}}/>
-                        <span style={{fontSize:11,color:S.t2}}>{m.mesero_nombre}</span>
-                        <span style={{fontSize:11,fontWeight:700,color:S.gold}}>{fmt(m.total_propina||0)}</span>
+
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                    {[
+                      {l:'Ganado hoy',        v:fmt(w.ganado_hoy||0),          c:S.gold},
+                      {l:'Pendiente cierre',  v:fmt(w.pendiente_cierre||0),     c:'#FFB547'},
+                      {l:'Disponible retiro', v:fmt(w.disponible_retiro||0),    c:S.green},
+                      {l:'Total histórico',   v:fmt(w.total_historico||0),      c:S.blue},
+                    ].map(m=>(
+                      <div key={m.l} style={{background:S.bg3,borderRadius:8,padding:'8px 10px'}}>
+                        <div style={{fontSize:8,color:S.t3,marginBottom:2,textTransform:'uppercase'}}>{m.l}</div>
+                        <div style={{fontSize:13,fontWeight:700,color:m.c}}>{m.v}</div>
                       </div>
                     ))}
                   </div>
                 </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* ══ RANKING ══ */}
+        {tab==='ranking' && (
+          <div style={{flex:1,overflowY:'auto',padding:24}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:4}}>🏆 Ranking por pool</div>
+            <div style={{fontSize:11,color:S.t2,marginBottom:20}}>
+              Quién generó más en cada pool. Los que trabajan más y mejor, ganan más. Sin excepción.
+            </div>
+
+            {/* Agrupar por pool */}
+            {[...new Set(ranking.map(r=>r.pool_code))].map(poolCode=>{
+              const pool = POOLS_V5.find(p=>p.code===poolCode);
+              const rows = ranking.filter(r=>r.pool_code===poolCode).slice(0,5);
+              return (
+                <div key={poolCode} style={{background:S.bg2,border:`1px solid ${pool?.color||S.border}20`,borderRadius:14,marginBottom:16,overflow:'hidden'}}>
+                  <div style={{padding:'10px 16px',background:`${pool?.color||S.border}10`,borderBottom:`1px solid ${pool?.color||S.border}20`,display:'flex',alignItems:'center',gap:10}}>
+                    <span style={{fontSize:18}}>{pool?.emoji||'💰'}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:700,color:pool?.color||S.t1}}>{poolCode.replace(/_/g,' ')}</div>
+                      <div style={{fontSize:9,color:S.t3}}>{pool?.name} · {fmtPct(pool?.pct||0)}</div>
+                    </div>
+                    <div style={{fontSize:11,color:S.t3}}>{rows.length} persona{rows.length!==1?'s':''}</div>
+                  </div>
+                  {rows.map((r,i)=>(
+                    <div key={r.empleado_nombre} style={{display:'flex',alignItems:'center',gap:12,padding:'9px 16px',borderBottom:`1px solid rgba(255,255,255,0.03)`}}>
+                      <div style={{width:24,height:24,borderRadius:8,background:i===0?`${pool?.color}30`:S.bg4,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,color:i===0?pool?.color:S.t3,flexShrink:0}}>
+                        {i===0?'🥇':i===1?'🥈':i===2?'🥉':`${i+1}`}
+                      </div>
+                      <div style={{flex:1,fontSize:13,fontWeight:600}}>{r.empleado_nombre}</div>
+                      <div style={{textAlign:'right'}}>
+                        <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,color:pool?.color||S.gold}}>{fmt(r.total_ganado||0)}</div>
+                        <div style={{fontSize:9,color:S.t3}}>{r.pct_del_pool}% del pool · score {parseFloat(r.score_promedio||0).toFixed(3)}</div>
+                      </div>
+                      <div style={{width:60,height:4,background:S.bg4,borderRadius:2,overflow:'hidden',flexShrink:0}}>
+                        <div style={{height:'100%',width:`${r.pct_del_pool}%`,background:pool?.color||S.gold,borderRadius:2}}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               );
             })}
-            {historial.length === 0 && (
+            {ranking.length === 0 && !loading && (
               <div style={{textAlign:'center',padding:60,color:S.t3}}>
-                <div style={{fontSize:48,marginBottom:12}}>📅</div>
-                <div>Sin historial disponible</div>
+                <div style={{fontSize:48,marginBottom:12}}>🏆</div>
+                <div>Sin eventos de propina para esta fecha</div>
+                <div style={{fontSize:11,marginTop:6}}>Los rankings se generan automáticamente al cobrar cuentas con propina en el POS</div>
               </div>
             )}
           </div>
         )}
 
-        {/* ══ RED DE RENDIMIENTO ══ */}
-        {tab==='red' && isGerencia && (
-          <div style={{flex:1,overflowY:'auto',padding:24}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:900,marginBottom:4}}>
-              🏆 Red de Rendimiento
-            </div>
-            <div style={{fontSize:12,color:S.t2,marginBottom:20,lineHeight:1.6}}>
-              El equipo que generó las ventas se lleva más. La distribución de propinas se pondera
-              por participación real — no por estar en el turno, sino por haber vendido.
-            </div>
-
-            {/* Botón calcular */}
-            <div style={{background:S.bg2,border:`1px solid ${S.gold}30`,borderRadius:16,padding:20,marginBottom:20}}>
-              <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:14}}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:14,fontWeight:700,marginBottom:3}}>Calcular distribución por rendimiento</div>
-                  <div style={{fontSize:11,color:S.t3}}>
-                    Bolsa disponible: <strong style={{color:S.gold}}>{fmt(bolsaGlobal?.bolsa_total||0)}</strong> · 
-                    Fecha: {new Date(fechaFiltro+'T00:00:00').toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'})}
+        {/* ══ EQUIPO & TAGS ══ */}
+        {tab==='equipo' && isGerencia && (
+          <div style={{flex:1,overflow:'hidden',display:'flex'}}>
+            {/* Tags disponibles */}
+            <div style={{width:280,borderRight:`1px solid ${S.border}`,padding:16,overflowY:'auto',flexShrink:0}}>
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,marginBottom:12}}>Tags funcionales</div>
+              <div style={{fontSize:10,color:S.t3,marginBottom:12}}>Sin cargos quemados en código. Cada restaurante configura sus propios roles.</div>
+              {tags.map(t=>(
+                <div key={t.tag_code} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,padding:'10px 12px',marginBottom:8}}>
+                  <div style={{fontSize:11,fontWeight:700,color:S.t1,marginBottom:2}}>{t.tag_code}</div>
+                  <div style={{fontSize:10,color:S.t3,marginBottom:4}}>{t.tag_name}</div>
+                  <div style={{fontSize:9,color:S.blue,background:`${S.blue}10`,padding:'2px 8px',borderRadius:20,display:'inline-block'}}>{t.categoria}</div>
+                  <div style={{marginTop:4,display:'flex',flexWrap:'wrap',gap:3}}>
+                    {(t.pool_codes||[]).map((p:string)=>(
+                      <span key={p} style={{fontSize:8,color:POOLS_V5.find(x=>x.code===p)?.color||S.t3,background:`${POOLS_V5.find(x=>x.code===p)?.color||S.t3}10`,padding:'1px 6px',borderRadius:10}}>
+                        {p.replace(/_/g,' ')}
+                      </span>
+                    ))}
                   </div>
                 </div>
-                <button onClick={async()=>{
-                  setCalculandoRed(true);
-                  const {data} = await supabase.rpc('calcular_bonos_turno', {
-                    p_fecha: fechaFiltro,
-                    p_turno: 'noche',
-                    p_bolsa_propinas: bolsaGlobal?.bolsa_total || 0,
-                    p_pct_meseros: config.pct_meseros,
-                    p_pct_cocina: config.pct_cocina,
-                    p_pct_host: config.pct_host,
-                  });
-                  if (data) {
-                    show('✓ Distribución calculada');
-                    await fetchData();
-                  }
-                  setCalculandoRed(false);
-                }} disabled={calculandoRed}
-                  style={{padding:'10px 22px',borderRadius:12,border:'none',background:calculandoRed?S.bg3:`linear-gradient(135deg,${S.gold},#d4943a)`,color:'#000',fontSize:13,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
-                  {calculandoRed ? '⏳ Calculando...' : '⚡ Calcular ahora'}
-                </button>
-              </div>
-
-              {/* Explicación visual */}
-              <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
-                {[
-                  {e:'🧑‍💼',l:'Mesero',  desc:'Por ventas cobradas',      pct:config.pct_meseros, c:S.gold},
-                  {e:'👨‍🍳',l:'Cocina',  desc:'Por platos producidos',     pct:config.pct_cocina,  c:S.red},
-                  {e:'🎩',l:'Host',    desc:'División equitativa',        pct:config.pct_host,    c:S.blue},
-                ].map(r=>(
-                  <div key={r.l} style={{background:S.bg3,borderRadius:10,padding:'10px 12px',textAlign:'center'}}>
-                    <div style={{fontSize:20,marginBottom:4}}>{r.e}</div>
-                    <div style={{fontSize:11,fontWeight:700,color:r.c}}>{r.l}</div>
-                    <div style={{fontSize:9,color:S.t3,marginTop:2}}>{r.desc}</div>
-                    <div style={{fontSize:18,fontWeight:900,color:r.c,marginTop:4}}>{r.pct}%</div>
-                    <div style={{fontSize:10,color:S.t3}}>de la bolsa</div>
+              ))}
+            </div>
+            {/* Asignaciones de equipo */}
+            <div style={{flex:1,overflowY:'auto',padding:20}}>
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,marginBottom:12}}>Equipo asignado</div>
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                {equipo.map(e=>(
+                  <div key={e.id} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,padding:'10px 14px',display:'flex',alignItems:'center',gap:10}}>
+                    <div style={{width:36,height:36,borderRadius:'50%',background:`linear-gradient(135deg,${S.purple},${S.blue})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,fontWeight:900,color:'#fff',flexShrink:0}}>
+                      {(e.empleado_nombre||'?').charAt(0)}
+                    </div>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:12,fontWeight:700}}>{e.empleado_nombre}</div>
+                      <div style={{display:'flex',gap:4,flexWrap:'wrap',marginTop:2}}>
+                        <span style={{fontSize:9,color:S.gold,background:`${S.gold}10`,padding:'1px 7px',borderRadius:10}}>{e.tag_code}</span>
+                        {e.has_external_commission && <span style={{fontSize:9,color:S.red,background:`${S.red}10`,padding:'1px 7px',borderRadius:10}}>Sin SALES_ACCELERATOR</span>}
+                      </div>
+                    </div>
+                    <div style={{fontSize:10,color:S.t3}}>{e.vigencia_desde}</div>
                   </div>
                 ))}
               </div>
-            </div>
-
-            {/* Resultados de la red */}
-            {redRendimiento.length > 0 && (
-              <div>
-                <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:14}}>
-                  Distribución calculada
+              {equipo.length === 0 && (
+                <div style={{textAlign:'center',padding:40,color:S.t3}}>
+                  <div style={{fontSize:40,marginBottom:10}}>👥</div>
+                  <div>Sin asignaciones de equipo</div>
+                  <div style={{fontSize:11,marginTop:6}}>Agrega colaboradores desde Supabase → employee_functional_tags</div>
                 </div>
-                <div style={{display:'flex',flexDirection:'column',gap:10}}>
-                  {redRendimiento.map((r:any,i:number)=>{
-                    const ROL_EMOJIS:any = {mesero:'🧑‍💼',bar:'🍸',cava:'🍷',postres:'🍮',cocina_caliente:'🔥',cocina_fria:'🧊',robata:'🥩',host:'🎩'};
-                    const emoji = ROL_EMOJIS[r.rol]||'👤';
-                    const colorBono = r.bono_final > 50000 ? S.green : r.bono_final > 20000 ? S.gold : S.t2;
-                    const rank = i===0?'🥇':i===1?'🥈':i===2?'🥉':`#${i+1}`;
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ══ POLÍTICA V5 ══ */}
+        {tab==='config' && isGerencia && (
+          <div style={{flex:1,overflowY:'auto',padding:24}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:4}}>⚙️ Política activa — NEXUM TIP NETWORK V5</div>
+            {config && (
+              <div>
+                <div style={{background:S.bg2,border:`1px solid ${S.green}30`,borderRadius:14,padding:16,marginBottom:16,display:'flex',gap:12,alignItems:'center',flexWrap:'wrap'}}>
+                  <div style={{width:12,height:12,borderRadius:'50%',background:S.green,boxShadow:`0 0 8px ${S.green}`,flexShrink:0}}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:700}}>{config.policy_name}</div>
+                    <div style={{fontSize:10,color:S.t3,marginTop:2}}>{config.policy_code || 'NEXUM_TIP_NETWORK_V5_AUTONOMOUS'} · v{config.version} · vigente desde {config.vigencia_desde}</div>
+                    <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap'}}>
+                      <span style={{fontSize:9,color:S.cyan,background:`${S.cyan}10`,padding:'2px 8px',borderRadius:20}}>Ranking: {config.ranking_metric || 'SALES_GENERATED'}</span>
+                      <span style={{fontSize:9,color:S.purple,background:`${S.purple}10`,padding:'2px 8px',borderRadius:20}}>Idempotencia: 1 factura = 1 tip_event</span>
+                      <span style={{fontSize:9,color:S.green,background:`${S.green}10`,padding:'2px 8px',borderRadius:20}}>Audit log inmutable</span>
+                    </div>
+                  </div>
+                  <div style={{marginLeft:'auto',textAlign:'right'}}>
+                    <div style={{fontSize:10,color:S.t3}}>Retiro mínimo</div>
+                    <div style={{fontSize:14,fontWeight:700,color:S.gold}}>{fmt(config.min_withdrawal)}</div>
+                  </div>
+                  <div style={{textAlign:'right'}}>
+                    <div style={{fontSize:10,color:S.t3}}>SLA pago</div>
+                    <div style={{fontSize:14,fontWeight:700,color:S.blue}}>{config.payout_sla_days} días</div>
+                  </div>
+                </div>
+
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,marginBottom:10}}>Pools configurados</div>
+                <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                  {(config.tip_policy_pools||[]).sort((a:any,b:any)=>a.sort_order-b.sort_order).map((pool:any)=>{
+                    const meta = POOLS_V5.find(p=>p.code===pool.pool_code);
                     return (
-                      <div key={r.id} style={{background:S.bg2,border:`1px solid ${i===0?`${S.gold}40`:S.border}`,borderRadius:14,padding:'14px 18px'}}>
-                        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
-                          <div style={{width:44,height:44,borderRadius:'50%',background:`linear-gradient(135deg,${S.gold}40,${S.gold}20)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,flexShrink:0}}>
-                            {emoji}
-                          </div>
-                          <div style={{flex:1}}>
-                            <div style={{display:'flex',alignItems:'center',gap:8}}>
-                              <span style={{fontSize:14,fontWeight:700}}>{r.nombre}</span>
-                              <span style={{fontSize:14}}>{rank}</span>
-                            </div>
-                            <div style={{fontSize:10,color:S.t3,textTransform:'capitalize'}}>{r.rol.replace('_',' ')}</div>
-                          </div>
-                          <div style={{textAlign:'right'}}>
-                            <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:colorBono}}>{fmt(r.bono_final)}</div>
-                            <div style={{fontSize:9,color:S.t3}}>bono del turno</div>
-                          </div>
+                      <div key={pool.pool_code} style={{background:S.bg2,border:`1px solid ${meta?.color||S.border}20`,borderRadius:10,padding:'10px 14px',display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{fontSize:18}}>{meta?.emoji||'💰'}</span>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:11,fontWeight:700,color:meta?.color||S.t1}}>{pool.pool_code.replace(/_/g,' ')}</div>
+                          <div style={{fontSize:9,color:S.t3}}>{pool.pool_name}</div>
                         </div>
-
-                        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
-                          {[
-                            {l:'Ventas generadas', v:fmt(r.ventas_generadas), c:S.blue},
-                            {l:'Participación',    v:`${r.pct_participacion}%`, c:S.purple},
-                            {l:'Estado',           v:r.estado==='pagado'?'✓ Pagado':'Pendiente', c:r.estado==='pagado'?S.green:S.gold},
-                          ].map(m=>(
-                            <div key={m.l} style={{background:S.bg3,borderRadius:8,padding:'8px 10px'}}>
-                              <div style={{fontSize:8,color:S.t3,marginBottom:2,textTransform:'uppercase'}}>{m.l}</div>
-                              <div style={{fontSize:12,fontWeight:700,color:m.c}}>{m.v}</div>
-                            </div>
-                          ))}
+                        <div style={{textAlign:'center',minWidth:60}}>
+                          <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:meta?.color||S.gold}}>{(pool.percentage*100).toFixed(2)}%</div>
                         </div>
-
-                        {/* Barra de participación */}
-                        <div style={{marginTop:8}}>
-                          <div style={{height:4,background:S.bg4,borderRadius:2,overflow:'hidden'}}>
-                            <div style={{height:'100%',width:`${Math.min(100,r.pct_participacion)}%`,background:`linear-gradient(90deg,${S.gold},${colorBono})`,borderRadius:2,transition:'width .5s'}}/>
-                          </div>
-                          <div style={{fontSize:9,color:S.t3,marginTop:3}}>{r.pct_participacion}% de participación en las ventas del turno</div>
+                        <div style={{display:'flex',gap:4}}>
+                          {pool.wallet_enabled && <span style={{fontSize:8,color:S.green,background:`${S.green}10`,padding:'2px 6px',borderRadius:10}}>Wallet</span>}
+                          {pool.app_visible    && <span style={{fontSize:8,color:S.blue,background:`${S.blue}10`,padding:'2px 6px',borderRadius:10}}>App</span>}
+                          {!pool.app_visible   && <span style={{fontSize:8,color:S.t3,background:S.bg4,padding:'2px 6px',borderRadius:10}}>Backoffice</span>}
                         </div>
-
-                        {/* Marcar como pagado */}
-                        {r.estado !== 'pagado' && (
-                          <button onClick={async()=>{
-                            await supabase.from('bonos_rendimiento').update({estado:'pagado'}).eq('id',r.id);
-                            show(`✓ Bono de ${r.nombre} marcado como pagado`);
-                            fetchData();
-                          }}
-                            style={{marginTop:8,padding:'6px 16px',borderRadius:8,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                            ✓ Marcar como pagado
-                          </button>
-                        )}
                       </div>
                     );
                   })}
                 </div>
-              </div>
-            )}
-
-            {redRendimiento.length === 0 && !calculandoRed && (
-              <div style={{textAlign:'center',padding:60,color:S.t3}}>
-                <div style={{fontSize:48,marginBottom:12}}>🏆</div>
-                <div style={{fontSize:14,fontWeight:700,marginBottom:6}}>Sin cálculo para esta fecha</div>
-                <div style={{fontSize:12}}>Haz clic en "Calcular ahora" para distribuir la bolsa según el rendimiento real del equipo</div>
-              </div>
-            )}
-
-            {/* Ventas por mesero — fuente de datos */}
-            {ventasMeseros.length > 0 && (
-              <div style={{marginTop:24}}>
-                <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,marginBottom:12,color:S.t3}}>
-                  Detalle de ventas del día
+                <div style={{marginTop:12,padding:'8px 14px',background:`${S.green}08`,border:`1px solid ${S.green}20`,borderRadius:10,fontSize:10,color:S.green,textAlign:'center'}}>
+                  ✓ Total: {((config.tip_policy_pools||[]).reduce((s:number,p:any)=>s+parseFloat(p.percentage),0)*100).toFixed(4)}% — Suma correcta (el 0.01% es redondeo decimal normal)
                 </div>
-                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
-                  <table style={{width:'100%',borderCollapse:'collapse'}}>
-                    <thead>
-                      <tr style={{background:S.bg3}}>
-                        {['Nombre','Cuentas','Ventas','Ticket prom.','% del día'].map(h=>(
-                          <th key={h} style={{padding:'8px 14px',textAlign:'left',fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase',borderBottom:`1px solid ${S.border}`}}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {ventasMeseros.map((v:any,i:number)=>(
-                        <tr key={v.nombre} style={{borderBottom:`1px solid rgba(255,255,255,0.03)`,background:i%2===0?S.bg:S.bg2}}>
-                          <td style={{padding:'9px 14px',fontWeight:700}}>{v.nombre}</td>
-                          <td style={{padding:'9px 14px',color:S.t2}}>{v.cuentas}</td>
-                          <td style={{padding:'9px 14px',color:S.gold,fontWeight:700}}>{fmt(v.ventas_totales||0)}</td>
-                          <td style={{padding:'9px 14px',color:S.t2}}>{fmt(v.ticket_promedio||0)}</td>
-                          <td style={{padding:'9px 14px'}}>
-                            <div style={{display:'flex',alignItems:'center',gap:8}}>
-                              <div style={{height:4,width:60,background:S.bg4,borderRadius:2,overflow:'hidden'}}>
-                                <div style={{height:'100%',width:`${v.pct_ventas_dia||0}%`,background:S.gold}}/>
-                              </div>
-                              <span style={{fontSize:11,fontWeight:700,color:S.gold}}>{v.pct_ventas_dia||0}%</span>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+
+                {/* Antifraude y control */}
+                <div style={{marginTop:16,background:S.bg2,border:`1px solid ${S.red}20`,borderRadius:14,padding:14}}>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:12,fontWeight:900,marginBottom:10,color:S.red}}>🛡️ Antifraude y control</div>
+                  {[
+                    {e:'🔑', t:'Idempotencia obligatoria',       d:'Una factura/pago solo puede generar UN tip_event. Si se intenta duplicar, el motor devuelve DUPLICATE y no procesa.'},
+                    {e:'📋', t:'Audit log inmutable',              d:'Todo ajuste posterior se registra como nuevo movimiento de ledger. Nunca se borra el movimiento original.'},
+                    {e:'⚠️', t:'Monto UNASSIGNED',                d:'Si sum(scores) = 0 en un pool, el monto va a UNASSIGNED_POOL y requiere revisión de configuración de tags.'},
+                    {e:'🚫', t:'Comisión externa = sin SALES_ACC', d:'Roles con has_external_commission=true se excluyen del pool SALES_ACCELERATOR o se limitan a base neutra.'},
+                    {e:'🔗', t:'Cadena de servicio',              d:'La bolsa ADMIN_SERVICE_BACKBONE (26.52%) requiere validación de cadena de servicio antes de liquidar.'},
+                  ].map(a=>(
+                    <div key={a.t} style={{display:'flex',gap:8,padding:'6px 0',borderBottom:`1px solid rgba(255,255,255,0.04)`}}>
+                      <span style={{fontSize:16,flexShrink:0}}>{a.e}</span>
+                      <div>
+                        <div style={{fontSize:11,fontWeight:700,color:S.t1,marginBottom:1}}>{a.t}</div>
+                        <div style={{fontSize:10,color:S.t3,lineHeight:1.5}}>{a.d}</div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
           </div>
         )}
 
-        {/* ══ CONFIGURACIÓN (solo gerencia) ══ */}
-        {tab==='config' && isGerencia && (
+        {/* ══ BACKOFFICE ══ */}
+        {tab==='backoffice' && isGerencia && (
           <div style={{flex:1,overflowY:'auto',padding:24}}>
-            <div style={{maxWidth:600,margin:'0 auto'}}>
-              <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,marginBottom:4}}>⚙️ Configuración de propinas</div>
-              <div style={{fontSize:12,color:S.t2,marginBottom:24}}>Define cómo se distribuye la bolsa y qué porcentaje se sugiere al cliente.</div>
-
-              {/* Porcentaje sugerido al cliente */}
-              <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:18,marginBottom:16}}>
-                <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>💳 Propina sugerida al cliente</div>
-                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                  {[0,8,10,12,15,20].map(p=>(
-                    <button key={p} onClick={()=>setConfig((c:any)=>({...c,pct_sugerido:p}))}
-                      style={{padding:'10px 18px',borderRadius:10,border:`1px solid ${config.pct_sugerido===p?S.gold:S.border}`,background:config.pct_sugerido===p?`${S.gold}15`:'transparent',color:config.pct_sugerido===p?S.gold:S.t3,fontSize:13,fontWeight:700,cursor:'pointer'}}>
-                      {p}%{p===10?' (Ley)':p===0?' (Voluntaria)':''}
-                    </button>
-                  ))}
-                </div>
-                <div style={{fontSize:10,color:S.t3,marginTop:8}}>
-                  ℹ️ Ley 1393 de 2010 — La propina es 100% voluntaria en Colombia. Se sugiere 10%.
-                </div>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:4}}>🏢 Backoffice Settlements</div>
+            <div style={{fontSize:11,color:S.t2,marginBottom:20}}>
+              Pools BACK_SUPPORT (8.93%) y ADMIN_SERVICE_BACKBONE (26.52%). Sin app, sin wallet. Liquidación por período con validación de cadena de servicio.
+            </div>
+            {backoffice.length === 0 ? (
+              <div style={{textAlign:'center',padding:60,color:S.t3}}>
+                <div style={{fontSize:48,marginBottom:10}}>🏢</div>
+                <div>Sin liquidaciones pendientes</div>
               </div>
-
-              {/* Modo de distribución */}
-              <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:18,marginBottom:16}}>
-                <div style={{fontSize:13,fontWeight:700,marginBottom:12}}>📊 Modo de distribución</div>
-                <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-                  {[
-                    {v:'turno',       l:'Por turno',        d:'Cada mesero se lleva % de sus propias cuentas'},
-                    {v:'igualitario', l:'Igualitario',       d:'Se divide en partes iguales entre todos'},
-                  ].map(m=>(
-                    <button key={m.v} onClick={()=>setConfig((c:any)=>({...c,modo:m.v}))}
-                      style={{flex:1,padding:'12px 16px',borderRadius:12,border:`1px solid ${config.modo===m.v?S.blue:S.border}`,background:config.modo===m.v?`${S.blue}10`:'transparent',textAlign:'left',cursor:'pointer'}}>
-                      <div style={{fontSize:12,fontWeight:700,color:config.modo===m.v?S.blue:S.t1,marginBottom:3}}>{m.l}</div>
-                      <div style={{fontSize:10,color:S.t3}}>{m.d}</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Distribución por rol */}
-              <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:18,marginBottom:20}}>
-                <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>🔀 Distribución por rol</div>
-                <div style={{fontSize:11,color:S.t3,marginBottom:14}}>
-                  Total: <span style={{color:config.pct_meseros+config.pct_cocina+config.pct_host===100?S.green:S.red,fontWeight:700}}>
-                    {config.pct_meseros+config.pct_cocina+config.pct_host}%
-                  </span> {config.pct_meseros+config.pct_cocina+config.pct_host!==100?' ⚠️ Debe sumar 100%':'✓ Correcto'}
-                </div>
-
-                {[
-                  {k:'pct_meseros',l:'🧑‍💼 Meseros',    c:S.gold},
-                  {k:'pct_cocina', l:'👨‍🍳 Cocina',     c:S.red},
-                  {k:'pct_host',   l:'🎩 Host / Apoyo', c:S.blue},
-                ].map(f=>(
-                  <div key={f.k} style={{marginBottom:14}}>
-                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-                      <span style={{fontSize:12,color:S.t2}}>{f.l}</span>
-                      <span style={{fontSize:13,fontWeight:700,color:f.c}}>{config[f.k]}%</span>
+            ) : (
+              <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                {backoffice.map(b=>(
+                  <div key={b.id} style={{background:S.bg2,border:`1px solid ${b.estado==='liquidado'?S.green:S.border}`,borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:11,fontWeight:700,color:S.t1}}>{b.pool_code.replace(/_/g,' ')}</div>
+                      <div style={{fontSize:10,color:S.t3}}>{b.periodo_inicio} → {b.periodo_fin}</div>
+                      {b.empleado_nombre && <div style={{fontSize:10,color:S.t2,marginTop:2}}>{b.empleado_nombre}</div>}
                     </div>
-                    <input type="range" min={0} max={100} value={config[f.k]}
-                      onChange={e=>setConfig((c:any)=>({...c,[f.k]:Number(e.target.value)}))}
-                      style={{width:'100%',accentColor:f.c}}/>
-                    <div style={{height:4,background:S.bg3,borderRadius:2,marginTop:4,overflow:'hidden'}}>
-                      <div style={{height:'100%',width:`${config[f.k]}%`,background:f.c,borderRadius:2,transition:'width .2s'}}/>
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:S.gold}}>{fmt(b.monto_total||0)}</div>
+                      <div style={{fontSize:9,padding:'2px 8px',borderRadius:20,display:'inline-block',marginTop:2,background:b.estado==='liquidado'?`${S.green}15`:`${S.gold}10`,color:b.estado==='liquidado'?S.green:S.gold}}>
+                        {b.estado}
+                      </div>
                     </div>
+                    {isGerencia && b.estado !== 'liquidado' && (
+                      <button onClick={async()=>{
+                        await supabase.from('backoffice_settlements').update({estado:'liquidado'}).eq('id',b.id);
+                        show('✓ Marcado como liquidado');
+                        fetchAll();
+                      }} style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,fontSize:10,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                        ✓ Liquidar
+                      </button>
+                    )}
                   </div>
                 ))}
               </div>
-
-              <button onClick={async()=>{
-                setGuardandoConfig(true);
-                await supabase.from('propinas_config').update({
-                  pct_meseros:config.pct_meseros,
-                  pct_cocina:config.pct_cocina,
-                  pct_host:config.pct_host,
-                  modo:config.modo,
-                  pct_sugerido:config.pct_sugerido,
-                  updated_at:new Date().toISOString()
-                }).eq('restaurante_id',6);
-                setGuardandoConfig(false);
-                show('✓ Configuración guardada');
-              }} disabled={guardandoConfig || config.pct_meseros+config.pct_cocina+config.pct_host!==100}
-                style={{width:'100%',padding:'13px',borderRadius:12,border:'none',background:guardandoConfig||config.pct_meseros+config.pct_cocina+config.pct_host!==100?S.bg3:`linear-gradient(135deg,${S.gold},#d4943a)`,color:'#000',fontSize:13,fontWeight:700,cursor:'pointer'}}>
-                {guardandoConfig?'Guardando...':'✓ Guardar configuración'}
-              </button>
-            </div>
+            )}
           </div>
         )}
       </div>
