@@ -915,19 +915,47 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         // window.print() o integración con impresora
       }
 
-      // Registrar propina en la bolsa del turno
-      if (propinaCliente > 0) {
+      // ══ NEXUM TIP NETWORK V5 — Motor autónomo ══
+      // Registrar participante principal de la mesa
+      if (propinaCliente > 0 && meseroNombre) {
+        const facturaId = `fac_${Date.now()}_${selectedTableId}`;
+        // 1. Registrar al mesero como participante principal de la factura
+        await supabase.from('ticket_participants').insert({
+          factura_id: facturaId,
+          restaurante_id: 6,
+          empleado_nombre: meseroNombre,
+          tag_code: 'MESA_OWNER',
+          rol_en_factura: 'MESA_OWNER',
+          contribution_pct: 100,
+          venta_generada: Math.round(totalCliente),
+          upselling_items: pendingOrder.filter(o=>o.mesa===mesaCliente?.num).length,
+        }).then(()=>{}).catch(()=>{});
+
+        // 2. Ejecutar el motor V5 — distribuye la propina en los 9 pools automáticamente
+        await supabase.rpc('process_tip_event', {
+          p_factura_id:  facturaId,
+          p_restaurante: 6,
+          p_tip_amount:  Math.round(propinaCliente),
+          p_total:       Math.round(totalCliente),
+          p_pct_propina: totalCliente > 0 ? Math.round(propinaCliente / totalCliente * 100) : 10,
+          p_mesa_num:    mesaCliente?.num ?? null,
+          p_turno:       new Date().getHours() < 16 ? 'mediodia' : 'noche',
+          p_fecha:       new Date().toISOString().split('T')[0],
+          p_hora:        new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),
+        }).then(()=>{}).catch(()=>{});
+
+        // 3. Mantener compatibilidad con tabla propinas legacy
         await supabase.from('propinas').insert({
           restaurante_id: 6,
-          mesa_num: mesaCliente?.num ?? 0,
-          mesero_nombre: meseroNombre,
-          monto_cuenta: Math.round(totalCliente),
-          pct_propina: Math.round(propinaCliente / totalCliente * 100),
-          monto_propina: Math.round(propinaCliente),
-          metodo_pago: metodoPago || 'efectivo',
-          turno: new Date().getHours() < 16 ? 'mediodia' : 'noche',
-          fecha: new Date().toISOString().split('T')[0],
-          hora: new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),
+          mesa_num:       mesaCliente?.num ?? 0,
+          mesero_nombre:  meseroNombre,
+          monto_cuenta:   Math.round(totalCliente),
+          pct_propina:    totalCliente > 0 ? Math.round(propinaCliente / totalCliente * 100) : 10,
+          monto_propina:  Math.round(propinaCliente),
+          metodo_pago:    metodoPago || 'efectivo',
+          turno:          new Date().getHours() < 16 ? 'mediodia' : 'noche',
+          fecha:          new Date().toISOString().split('T')[0],
+          hora:           new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),
         }).then(()=>{}).catch(()=>{});
       }
 
@@ -2336,7 +2364,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             ))}
           </div>
           {/* Botón modificar propina */}
-          <button onClick={()=>{const v=prompt('Ingresa el porcentaje de propina (0-50):'); if(v!==null){const n=parseInt(v); if(!isNaN(n)&&n>=0&&n<=50)setClientePropina(n);}}}
+          <button onClick={() => setShowPropCustom(true)}
             style={{ width:'100%', padding:'11px', borderRadius:50, border:'2px dashed rgba(212,148,58,0.4)', background:'rgba(212,148,58,0.04)', color:'#d4943a', fontSize:13, fontWeight:700, cursor:'pointer' }}>
             ✏️ Deseo modificar mi propina
           </button>
@@ -2358,42 +2386,51 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             Confirmar
           </button>
 
-          {/* Propina personalizada — input directo */}
+          {/* Propina personalizada — teclado numérico */}
           <div style={{ marginTop: 4 }}>
             {showPropCustom ? (
-              <div style={{ background: '#f5f0e8', borderRadius: 14, padding: '14px 16px', border: '1px solid #e0d8cc' }}>
-                <div style={{ fontSize: 12, color: S.text3, marginBottom: 8, fontWeight: 700 }}>Propina personalizada</div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 14, color: S.text2 }}>$</span>
-                  <input
-                    type="number"
-                    placeholder="0"
-                    value={customPropina || ''}
-                    onChange={e => {
-                      const v = parseInt(e.target.value) || 0;
-                      setCustomPropina(v);
-                      // No llamar setPropinaCliente — propinaCliente es calculada
-                      // Guardamos en customPropina y lo aplicamos al confirmar
-                    }}
-                    style={{ flex: 1, border: '1px solid #ddd', borderRadius: 8, padding: '10px 12px', fontSize: 16, fontWeight: 700, outline: 'none', color: S.text }}
-                    autoFocus
-                  />
+              <div style={{ background: '#f5f0e8', borderRadius: 16, padding: '16px', border: '1px solid #e8d8b0' }}>
+                <div style={{ fontSize: 11, color: '#999', marginBottom: 6, fontWeight: 700, textTransform:'uppercase' }}>Propina personalizada</div>
+                {/* Display monto */}
+                <div style={{ textAlign:'center', fontSize:30, fontWeight:900, color:'#1a1a1a', marginBottom:12, minHeight:40, letterSpacing:'-0.02em' }}>
+                  {customPropina > 0 ? `$${customPropina.toLocaleString('es-CO')}` : '$ —'}
                 </div>
-                <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                  <button onClick={() => setShowPropCustom(false)}
-                    style={{ flex: 1, padding: '10px', borderRadius: 10, border: '1px solid #ddd', background: 'transparent', color: S.text3, fontSize: 13, cursor: 'pointer' }}>
+                {/* Teclado */}
+                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6, marginBottom:10 }}>
+                  {['1','2','3','4','5','6','7','8','9','000','0','⌫'].map(k=>(
+                    <button key={k} onClick={()=>{
+                      if (k==='⌫') { setCustomPropina(p=>Math.floor(p/10)); return; }
+                      setCustomPropina(p=>{ const n=p*(k==='000'?1000:10)+(k==='000'?0:parseInt(k)); return n<=9999999?n:p; });
+                    }}
+                      style={{ padding:'14px 8px', borderRadius:10, border:`1px solid ${k==='⌫'?'rgba(255,82,82,0.3)':'rgba(212,148,58,0.25)'}`, background:k==='⌫'?'rgba(255,82,82,0.08)':'white', fontSize:k==='⌫'?18:17, fontWeight:700, cursor:'pointer', color:k==='⌫'?'#e05050':'#1a1a1a' }}>
+                      {k}
+                    </button>
+                  ))}
+                </div>
+                {/* Accesos rápidos % */}
+                <div style={{ display:'flex', gap:5, marginBottom:10 }}>
+                  {[10,15,20].map(p=>(
+                    <button key={p} onClick={()=>setCustomPropina(Math.round(totalSinPropina*p/100))}
+                      style={{ flex:1, padding:'7px', borderRadius:8, border:'1px solid rgba(212,148,58,0.3)', background:'rgba(212,148,58,0.08)', fontSize:10, fontWeight:700, color:'#d4943a', cursor:'pointer' }}>
+                      {p}% · ${Math.round(totalSinPropina*p/100).toLocaleString('es-CO')}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ display:'flex', gap:8 }}>
+                  <button onClick={()=>{ setCustomPropina(0); setShowPropCustom(false); }}
+                    style={{ flex:1, padding:'10px', borderRadius:10, border:'1px solid #ddd', background:'white', fontSize:12, color:'#888', cursor:'pointer' }}>
                     Cancelar
                   </button>
-                  <button onClick={() => { setShowPropCustom(false); setClientePropina(0); setClientePaso('pago'); }}
-                    style={{ flex: 2, padding: '10px', borderRadius: 10, border: 'none', background: S.black, color: '#fff', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
-                    Confirmar ${(customPropina||0).toLocaleString('es-CO')}
+                  <button onClick={()=>{ setShowPropCustom(false); setClientePropina(0); }}
+                    style={{ flex:2, padding:'10px', borderRadius:10, border:'none', background:'#1a1a1a', color:'white', fontSize:13, fontWeight:700, cursor:'pointer' }}>
+                    ✓ Confirmar ${(customPropina||0).toLocaleString('es-CO')}
                   </button>
                 </div>
               </div>
             ) : (
               <button onClick={() => setShowPropCustom(true)}
                 style={{ width: '100%', padding: '12px', borderRadius: 12, border: '1px solid #e0d8cc', background: 'transparent', color: S.text3, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                ✏️ Personalizar monto de propina
+                🔢 Personalizar monto de propina
               </button>
             )}
           </div>
@@ -3850,6 +3887,82 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                   <span className="text-[11px] font-black text-[#d4943a]">📋 Brief del día</span>
                   <span className="ml-auto text-[9px] text-[#606060]">{new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'short'})}</span>
                 </div>
+                <div className="p-3 flex flex-col gap-2">
+
+                  {/* Platos del día — tarjetas visuales */}
+                  <div className="text-[9px] text-[#606060] font-bold uppercase tracking-wider">🍽️ Platos del Chef hoy</div>
+                  <div className="flex flex-col gap-1.5">
+                    {[
+                      {p:'Omakase Chef',    emoji:'🍱', precio:'$185k', rentable:true,  disponible:true},
+                      {p:'Wagyū Premium',   emoji:'🥩', precio:'$220k', rentable:true,  disponible:true},
+                      {p:'Ramen Especial',  emoji:'🍜', precio:'$68k',  rentable:false, disponible:true},
+                      {p:'Salmón Robata',   emoji:'🐟', precio:'$95k',  rentable:true,  disponible:true},
+                    ].map(({p,emoji,precio,rentable,disponible})=>(
+                      <div key={p} className="flex items-center gap-2 px-2 py-2 rounded-lg bg-[#141414] border border-[#2a2a2a]">
+                        <span className="text-[18px] shrink-0">{emoji}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[11px] font-bold text-[#f0f0f0] truncate">{p}</div>
+                          <div className="text-[9px] text-[#606060]">{precio}</div>
+                        </div>
+                        {rentable && <span className="text-[7px] bg-[#3dba6f]/15 text-[#3dba6f] border border-[#3dba6f]/25 px-1.5 py-0.5 rounded-full font-bold shrink-0">● Rentable</span>}
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* 86s — alertas agresivas */}
+                  {tips86.length > 0 && (
+                    <>
+                      <div className="text-[9px] text-[#e05050] font-bold uppercase tracking-wider mt-1 flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full bg-[#e05050] animate-pulse"/>
+                        ¡SIN STOCK! — No ofrecer
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {tips86.map((t:any,i:number)=>(
+                          <div key={i} className="flex items-center gap-2 px-2 py-2 rounded-lg bg-[#e05050]/10 border border-[#e05050]/40">
+                            <span className="text-[16px] shrink-0">{t.emoji||'🚫'}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[11px] font-black text-[#e05050] truncate">{t.name||t.nombre}</div>
+                              <div className="text-[9px] text-[#e05050]/70">{t.motivo||'Agotado'}</div>
+                            </div>
+                            <span className="text-[8px] font-black bg-[#e05050] text-white px-1.5 py-0.5 rounded shrink-0">86</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {tips86.length === 0 && (
+                    <div className="flex items-center gap-1.5 text-[10px] text-[#3dba6f] px-1">
+                      <span>✓</span> Todo el menú disponible
+                    </div>
+                  )}
+
+                  {/* KPIs compactos */}
+                  <div className="grid grid-cols-3 gap-1 mt-1">
+                    {[
+                      {l:'Mesas',  v:ticketDia?.pendientes||0, c:'#4a8fd4'},
+                      {l:'Cobros', v:ticketDia?.ordenes||0,    c:'#3dba6f'},
+                      {l:'Ventas', v:`$${Math.round((ticketDia?.ventas||0)/1000)}k`, c:'#f0b45a'},
+                    ].map(k=>(
+                      <div key={k.l} className="bg-[#141414] rounded-lg p-1.5 text-center border border-[#2a2a2a]">
+                        <div className="text-[14px] font-black" style={{color:k.c,fontFamily:"'Syne',sans-serif"}}>{k.v}</div>
+                        <div className="text-[8px] text-[#606060]">{k.l}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Insight IA */}
+                  <div className="p-2 bg-[#141414] rounded-lg border border-[#9b72ff]/20 mt-1">
+                    <div className="text-[9px] text-[#9b72ff] font-bold mb-1 flex items-center gap-1"><span>✦</span> Nexum IA</div>
+                    <div className="text-[10px] text-[#a0a0a0] leading-relaxed">
+                      {(ticketDia?.pendientes||0) > 8
+                        ? `⚠️ Alta ocupación — ${ticketDia?.pendientes} mesas. Coordinar con Flow.`
+                        : (ticketDia?.ordenes||0) > 5
+                        ? `Ticket prom: $${Math.round((ticketDia?.ventas||0)/(ticketDia?.ordenes||1)/1000)}k. Propina: $${Math.round((ticketDia?.propinaTotal||0)/1000)}k.`
+                        : `${new Date().getHours()<16?'Mediodía':'Noche'} activo. ${ticketDia?.pendientes||0} mesa${(ticketDia?.pendientes||0)!==1?'s':''} abiertas.`}
+                    </div>
+                  </div>
+                </div>
+              </div>
                 <div className="p-3 flex flex-col gap-2">
 
                   {/* Platos del día con indicador de rentabilidad */}
