@@ -72,6 +72,9 @@ export default function ReserveModule() {
   const [saving, setSaving]     = useState(false);
   const [plantaDB, setPlantaDB] = useState<any[]>([]);
   const [editMesa, setEditMesa] = useState<any|null>(null);
+  const [busquedaMesa, setBusquedaMesa] = useState('');
+  const [now, setNow] = useState(Date.now());
+  useEffect(()=>{ const t=setInterval(()=>setNow(Date.now()),30000); return ()=>clearInterval(t); },[]);
   const [form, setForm]         = useState({
     cliente_nombre:'',cliente_email:'',cliente_telefono:'',
     fecha:new Date().toISOString().split('T')[0],hora:'20:00',
@@ -86,7 +89,7 @@ export default function ReserveModule() {
     const { data: planta } = await supabase.from('planta_mesas').select('*').eq('restaurante_id',6).eq('activa',true).order('num');
     if (planta && planta.length > 0) setPlantaDB(planta);
     const [rv, ms, ohyeah] = await Promise.all([
-      supabase.from('reservations').select('*').eq('restaurante_id',6).gte('fecha',fechaFiltro).order('fecha').order('hora'),
+      supabase.from('reservations').select('*').eq('restaurante_id',6).eq('fecha',fechaFiltro).order('hora'),
       supabase.from('tables').select('*').eq('restaurante_id',6).order('name'),
       supabase.from('ohyeah_reservas').select('*').gte('fecha',fechaFiltro).eq('estado','confirmada').order('fecha').order('hora'),
     ]);
@@ -268,6 +271,9 @@ export default function ReserveModule() {
           onAsignarMesa={asignarMesa}
           onCambiarEstado={cambiarEstado}
           plantaDB={plantaDB}
+          now={now}
+          busquedaMesa={busquedaMesa}
+          setBusquedaMesa={setBusquedaMesa}
         />
       )}
 
@@ -352,9 +358,10 @@ export default function ReserveModule() {
 // ═══════════════════════════════════════════════════════════════════════
 // MAPA INTERACTIVO
 // ═══════════════════════════════════════════════════════════════════════
-function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB }:any) {
+function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, now, busquedaMesa, setBusquedaMesa }:any) {
   const [mesaSel, setMesaSel] = React.useState<any>(null);
   const [vistaZona, setVistaZona] = React.useState<string|null>(null);
+  const nowMs = now || Date.now();
 
   const fmt2 = (d:string) => new Date(d+'T00:00:00').toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'});
 
@@ -369,7 +376,33 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB }
     return {color:c,label:ESTADOS[r.estado]?.l||r.estado,reserva:r};
   };
 
-  const mesasFiltradas = Object.entries(plantaActiva).filter(([,m]:any)=>!vistaZona||m.zona===vistaZona);
+  // Cronómetro de estancia
+  const tiempoEstancia = (reserva:any) => {
+    if (!reserva?.sentada_en && !reserva?.updated_at) return null;
+    const desde = new Date(reserva.sentada_en || reserva.updated_at).getTime();
+    const mins = Math.floor((nowMs - desde) / 60000);
+    return mins;
+  };
+
+  // Contadores por zona
+  const contadoresZona = Object.entries(ZONA_AREAS).reduce((acc:any, [zona]:any) => {
+    const mesasZona = Object.values(plantaActiva).filter((m:any)=>m.zona===zona);
+    const ocupadas = mesasZona.filter((m:any)=>reservasHoy.find((r:any)=>r.mesa_num===m.num&&r.estado==='sentada')).length;
+    acc[zona] = { total: mesasZona.length, ocupadas, pct: mesasZona.length ? Math.round(ocupadas/mesasZona.length*100) : 0 };
+    return acc;
+  }, {});
+
+  // Filtro por búsqueda
+  const busqLower = (busquedaMesa||'').toLowerCase();
+  const mesasFiltradas = Object.entries(plantaActiva).filter(([,m]:any) => {
+    const zonaOk = !vistaZona || m.zona === vistaZona;
+    if (!busqLower) return zonaOk;
+    const r = reservasHoy.find((rv:any)=>rv.mesa_num===m.num);
+    const clienteMatch = r?.cliente_nombre?.toLowerCase().includes(busqLower);
+    const numMatch = String(m.num).includes(busqLower);
+    return zonaOk && (clienteMatch || numMatch);
+  });
+
   const stats = {
     libres:    Object.values(plantaActiva).filter((m:any)=>!reservasHoy.find((r:any)=>r.mesa_num===m.num)).length,
     ocupadas:  reservasHoy.filter((r:any)=>r.estado==='sentada').length,
@@ -381,18 +414,40 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB }
       {/* Toolbar */}
       <div style={{padding:'10px 20px',borderBottom:`1px solid rgba(255,255,255,0.07)`,background:'#0f0f1a',display:'flex',alignItems:'center',gap:12,flexShrink:0,flexWrap:'wrap'}}>
         <div style={{fontSize:12,color:'#A0A0B8'}}>Planta · <span style={{color:'#FFB547',fontWeight:700}}>{fmt2(fechaFiltro)}</span></div>
+
+        {/* KPIs */}
         <div style={{display:'flex',gap:8}}>
           {[{v:stats.libres,l:'Libres',c:'#3dba6f'},{v:stats.ocupadas,l:'Sentadas',c:'#FFB547'},{v:stats.reservadas,l:'Confirmadas',c:'#448AFF'}].map(s=>(
             <span key={s.l} style={{fontSize:11,color:s.c,fontWeight:700,background:`${s.c}15`,padding:'2px 10px',borderRadius:20}}>{s.v} {s.l}</span>
           ))}
         </div>
-        <div style={{marginLeft:'auto',display:'flex',gap:6}}>
-          {['Todas',...Object.keys(ZONA_COLORES)].map(z=>(
-            <button key={z} onClick={()=>setVistaZona(z==='Todas'?null:z)}
-              style={{padding:'4px 12px',borderRadius:20,border:`1px solid ${vistaZona===(z==='Todas'?null:z)?'#d4943a':'rgba(255,255,255,0.1)'}`,background:vistaZona===(z==='Todas'?null:z)?'rgba(212,148,58,0.15)':'transparent',color:vistaZona===(z==='Todas'?null:z)?'#d4943a':'#606060',fontSize:10,fontWeight:700,cursor:'pointer'}}>
-              {z==='Todas'?'🗺️ Todas':ZONA_COLORES[z]?.label||z}
-            </button>
-          ))}
+
+        {/* Buscador on-the-go */}
+        <div style={{display:'flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:8,padding:'5px 10px',flex:1,maxWidth:200}}>
+          <span style={{fontSize:12,color:'#606060'}}>🔍</span>
+          <input value={busquedaMesa||''} onChange={e=>setBusquedaMesa(e.target.value)}
+            placeholder="Buscar cliente o mesa..."
+            style={{background:'transparent',border:'none',outline:'none',color:'#f0f0f0',fontSize:11,flex:1,minWidth:0}}/>
+          {busquedaMesa && <button onClick={()=>setBusquedaMesa('')} style={{background:'none',border:'none',color:'#606060',cursor:'pointer',fontSize:12,padding:0}}>✕</button>}
+        </div>
+
+        {/* Filtros de zona con % ocupación */}
+        <div style={{marginLeft:'auto',display:'flex',gap:5,flexWrap:'wrap'}}>
+          <button onClick={()=>setVistaZona(null)}
+            style={{padding:'4px 10px',borderRadius:20,border:`1px solid ${!vistaZona?'#d4943a':'rgba(255,255,255,0.1)'}`,background:!vistaZona?'rgba(212,148,58,0.15)':'transparent',color:!vistaZona?'#d4943a':'#606060',fontSize:10,fontWeight:700,cursor:'pointer'}}>
+            🗺️ Todas
+          </button>
+          {Object.entries(ZONA_COLORES).map(([zona]:any)=>{
+            const cnt = contadoresZona[zona];
+            const pctColor = !cnt ? '#606060' : cnt.pct >= 80 ? '#FF5252' : cnt.pct >= 50 ? '#FFB547' : '#3dba6f';
+            return (
+              <button key={zona} onClick={()=>setVistaZona(vistaZona===zona?null:zona)}
+                style={{padding:'4px 10px',borderRadius:20,border:`1px solid ${vistaZona===zona?'#d4943a':'rgba(255,255,255,0.1)'}`,background:vistaZona===zona?'rgba(212,148,58,0.15)':'transparent',color:vistaZona===zona?'#d4943a':'#606060',fontSize:10,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:4}}>
+                {ZONA_COLORES[zona]?.label||zona}
+                {cnt && <span style={{fontSize:9,color:pctColor,fontWeight:900}}>{cnt.pct}%</span>}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -436,14 +491,26 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB }
               {mesasFiltradas.map(([key,mesa]:any)=>{
                 const {color,label,reserva} = getMesaColor(mesa.num);
                 const isSelected = mesaSel?.key===key;
+                const mins = reserva?.estado==='sentada' ? tiempoEstancia(reserva) : null;
+                // Alerta si supera 90 min
+                const enAlerta = mins !== null && mins > 90;
+                const mesaColor = enAlerta ? '#FF5252' : color;
                 return (
                   <div key={key}
-                    style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w}%`,height:`${mesa.h}%`,borderRadius:mesa.shape==='round'?'50%':10,background:`${color}${isSelected?'35':'15'}`,border:`2px solid ${color}${isSelected?'':'60'}`,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',transition:'all .18s',boxShadow:isSelected?`0 0 16px ${color}60`:'none',zIndex:isSelected?2:1}}
-                    onClick={()=>setMesaSel(mesaSel?.key===key?null:{key,...mesa,color,label,reserva})}
+                    style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w}%`,height:`${mesa.h}%`,borderRadius:mesa.shape==='round'?'50%':10,background:`${mesaColor}${isSelected?'35':'15'}`,border:`2px solid ${mesaColor}${isSelected?'':'60'}`,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',transition:'all .18s',boxShadow:enAlerta?`0 0 12px ${mesaColor}80`:isSelected?`0 0 16px ${mesaColor}60`:'none',zIndex:isSelected?2:1}}
+                    onClick={()=>setMesaSel(mesaSel?.key===key?null:{key,...mesa,color:mesaColor,label,reserva})}
                   >
-                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color,lineHeight:1}}>M{mesa.num}</div>
-                    {mesa.shape!=='round'&&<div style={{fontSize:'clamp(5px,0.7vw,9px)',color:`${color}aa`}}>{mesa.cap||mesa.capacidad}p</div>}
-                    {reserva?.estado==='sentada'&&<div style={{position:'absolute',top:3,right:3,width:6,height:6,borderRadius:'50%',background:'#FFB547'}}/>}
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color:mesaColor,lineHeight:1}}>M{mesa.num}</div>
+                    {mesa.shape!=='round'&&<div style={{fontSize:'clamp(5px,0.7vw,9px)',color:`${mesaColor}aa`}}>{mesa.cap||mesa.capacidad}p</div>}
+                    {/* Cronómetro de estancia */}
+                    {mins !== null && (
+                      <div style={{fontSize:'clamp(4px,0.6vw,8px)',color:mesaColor,fontWeight:700,marginTop:1}}>
+                        {mins < 60 ? `${mins}m` : `${Math.floor(mins/60)}h${mins%60}m`}
+                      </div>
+                    )}
+                    {/* Punto pulsante */}
+                    {reserva?.estado==='sentada' && <div style={{position:'absolute',top:2,right:2,width:6,height:6,borderRadius:'50%',background:mesaColor,boxShadow:enAlerta?`0 0 6px ${mesaColor}`:'none'}}/>}
+                    {enAlerta && <div style={{position:'absolute',top:-4,left:'50%',transform:'translateX(-50%)',fontSize:9,whiteSpace:'nowrap'}}>⚠️</div>}
                   </div>
                 );
               })}
