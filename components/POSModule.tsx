@@ -3971,6 +3971,8 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                         : `${new Date().getHours()<16?'Mediodía':'Noche'} activo. ${ticketDia?.pendientes||0} mesa${(ticketDia?.pendientes||0)!==1?'s':''} abiertas.`}
                     </div>
                   </div>
+                  </div>
+                  </div>
                 )}
               </div>
 
