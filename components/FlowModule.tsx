@@ -358,7 +358,6 @@ export default function FlowModule() {
                     const esEnFuego  = (isPending && tiempoPedido>objetivoSeg*1.5)
                                     || (isPreparing && tiempoProd>objetivoSeg);
                     const mesaEnRetraso = !!(item.table_id && mesasConRetraso.has(item.table_id) && (item.estacion||getStation(item)) !== 'cocina_caliente');
-                    const esAmarillo = !esEnFuego && (
                     const esAmarillo = !esEnFuego && ((isPending && tiempoPedido>objetivoSeg*0.8)||(isPreparing && tiempoProd>objetivoSeg*0.7)||mesaEnRetraso);
                     const barColor = pct>=100?'#FF5252':pct>=70?'#FFB547':est.color;
                     const tiempoVisible = isPreparing ? tiempoProd : tiempoPedido;
