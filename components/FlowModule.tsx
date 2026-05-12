@@ -382,7 +382,7 @@ export default function FlowModule() {
                               {item.quantity>1 && <span style={{fontSize:10,background:'rgba(255,255,255,0.1)',padding:'1px 6px',borderRadius:10}}>×{item.quantity}</span>}
                             </div>
                             <div style={{display:'flex',gap:6,marginTop:3,flexWrap:'wrap'}}>
-                              {item.table_id && (() => { const mc = getMesaColor(item.table_id); return <span style={{fontSize:10,background:mc.bg,color:mc.color,border:`1px solid ${mc.color}40`,padding:'1px 7px',borderRadius:20,fontWeight:700}}>M{item.table_id}</span>}
+                              {item.table_id && (()=>{ const mc=getMesaColor(item.table_id); return <span style={{fontSize:10,background:mc.bg,color:mc.color,border:`1px solid ${mc.color}40`,padding:'1px 7px',borderRadius:20,fontWeight:700}}>M{item.table_id}</span>; })()}
                               {item.mesero   && <span style={{fontSize:9,color:'#6b7280'}}>👤 {item.mesero.split(' ')[0]}</span>}
                               {item.cocinero && <span style={{fontSize:9,color:est.color}}>👨‍🍳 {item.cocinero.split(' ').slice(-1)[0]}</span>}
                             </div>
