@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase.ts';
 // ── KDS Avanzado — Multiestación con tiempos y alertas ──────────────────────
 
 const ESTACIONES: Record<string, {color:string; emoji:string; objetivo:number}> = {
-  cocina_caliente: { color:'#FF5252', emoji:'🔥', objetivo:480 },
+  cocina_caliente: { color:'#FF6B00', emoji:'🔥', objetivo:480 },
   cocina_fria:     { color:'#22d3ee', emoji:'🧊', objetivo:360 },
   robata:          { color:'#FF9800', emoji:'🥩', objetivo:600 },
   postres:         { color:'#B388FF', emoji:'🍮', objetivo:300 },
@@ -14,12 +14,38 @@ const ESTACIONES: Record<string, {color:string; emoji:string; objetivo:number}> 
 
 interface FlowItem {
   id:string; order_id:string;
-  status:'pending'|'preparing'|'served';
+  status:'pending'|'preparing'|'ready'|'served';
   quantity:number; notes:string|null; nombre_plato?:string|null;
   created_at:string; updated_at:string; tiempo_inicio?:string|null;
   table_id:number|null; menu_name:string|null; category:string|null;
   mesero?:string|null; estacion?:string|null; cocinero?:string|null;
 }
+
+// ── 20 COLORES ÚNICOS POR MESA ─────────────────────────────────────
+const MESA_COLORES: Record<number,{color:string;bg:string;label:string}> = {
+  1:  { color:'#1565C0', bg:'rgba(21,101,192,0.15)',  label:'Azul marino'    },
+  2:  { color:'#D81B60', bg:'rgba(216,27,96,0.15)',   label:'Fucsia'         },
+  3:  { color:'#2E7D32', bg:'rgba(46,125,50,0.15)',   label:'Verde bosque'   },
+  4:  { color:'#F9A825', bg:'rgba(249,168,37,0.15)',  label:'Ámbar'          },
+  5:  { color:'#6A1B9A', bg:'rgba(106,27,154,0.15)',  label:'Violeta'        },
+  6:  { color:'#00838F', bg:'rgba(0,131,143,0.15)',   label:'Teal'           },
+  7:  { color:'#BF360C', bg:'rgba(191,54,12,0.15)',   label:'Terracota'      },
+  8:  { color:'#1976D2', bg:'rgba(25,118,210,0.15)',  label:'Azul cobalto'   },
+  9:  { color:'#558B2F', bg:'rgba(85,139,47,0.15)',   label:'Verde oliva'    },
+  10: { color:'#E65100', bg:'rgba(230,81,0,0.15)',    label:'Naranja quemado'},
+  11: { color:'#4527A0', bg:'rgba(69,39,160,0.15)',   label:'Índigo'         },
+  12: { color:'#00695C', bg:'rgba(0,105,92,0.15)',    label:'Verde esmeralda'},
+  13: { color:'#AD1457', bg:'rgba(173,20,87,0.15)',   label:'Rosa oscuro'    },
+  14: { color:'#0277BD', bg:'rgba(2,119,189,0.15)',   label:'Azul cielo'     },
+  15: { color:'#6D4C41', bg:'rgba(109,76,65,0.15)',   label:'Café'           },
+  16: { color:'#37474F', bg:'rgba(55,71,79,0.15)',    label:'Gris pizarra'   },
+  17: { color:'#827717', bg:'rgba(130,119,23,0.15)',  label:'Oliva dorado'   },
+  18: { color:'#880E4F', bg:'rgba(136,14,79,0.15)',   label:'Burdeos'        },
+  19: { color:'#1A237E', bg:'rgba(26,35,126,0.15)',   label:'Azul noche'     },
+  20: { color:'#004D40', bg:'rgba(0,77,64,0.15)',     label:'Verde oscuro'   },
+};
+const getMesaColor = (tableId:number|null) =>
+  tableId && MESA_COLORES[tableId] ? MESA_COLORES[tableId] : { color:'#606060', bg:'rgba(96,96,96,0.1)', label:`M${tableId}` };
 
 const getNombre = (item:FlowItem) => item.nombre_plato ?? item.menu_name ?? item.notes ?? 'Plato';
 const getStation = (item:FlowItem): string => item.estacion || item.category || 'cocina_caliente';
@@ -43,7 +69,7 @@ export default function FlowModule() {
   const [pedidosDia, setPedidosDia] = useState<FlowItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(Date.now());
-  const [activeTab, setActiveTab] = useState<'live'|'dia'>('live');
+  const [activeTab, setActiveTab] = useState<'live'|'dia'|'platos'>('live');
   const [filtroEstacion, setFiltroEstacion] = useState<string|null>(null);
   const [tiemposMetrica, setTiemposMetrica] = useState<any[]>([]);
   const [filtroStatus, setFiltroStatus] = useState<string>('all');
@@ -135,10 +161,11 @@ export default function FlowModule() {
 
     await supabase.from('order_items').update(updates).eq('id', id);
 
-    // Notificar al mesero
+    // Notificar al mesero — notificación en nexum_notificaciones
     if (status === 'served') {
       const item = items.find(i => i.id === id);
       if (item) {
+        // Insertar alerta de plato listo
         await supabase.from('flow_alertas').insert({
           restaurante_id: 6,
           mesa_num:  item.table_id,
@@ -148,6 +175,16 @@ export default function FlowModule() {
           estacion:  item.estacion || getStation(item),
           leida:     false,
         });
+        // Notificación push al mesero en nexum_notificaciones
+        await supabase.from('nexum_notificaciones').insert({
+          restaurante_id: 6,
+          tipo:    'plato_listo',
+          titulo:  `🍽️ ${getNombre(item)} listo`,
+          mensaje: `Mesa ${item.table_id} · ${fmtTime(updates.duracion_seg||0)} de producción`,
+          urgente: false,
+          leida:   false,
+          destinatario_nombre: item.mesero || null,
+        }).then(()=>{}).catch(()=>{});
       }
     }
   };
@@ -157,6 +194,19 @@ export default function FlowModule() {
     acc[est] = items.filter(i => getStation(i)===est && (!filtroEstacion||filtroEstacion===est));
     return acc;
   }, {} as Record<string,FlowItem[]>);
+
+  // ── SEMÁFORO PROPAGADO: si cocina caliente se retrasa, advertir otros platos de la misma mesa ──
+  const mesasConRetraso = new Set(
+    items.filter(i => {
+      if (i.status === 'served' || i.status === 'cancelled') return false;
+      const est2 = ESTACIONES[i.estacion || getStation(i)] || ESTACIONES['cocina_caliente'];
+      const tp2 = tseconds(i.created_at);
+      const pp2 = i.tiempo_inicio ? tseconds(i.tiempo_inicio) : 0;
+      const esCal = (i.estacion || getStation(i)) === 'cocina_caliente';
+      return esCal && ((i.status==='pending' && tp2>est2.objetivo*1.5)||(i.status==='preparing' && pp2>est2.objetivo));
+    }).map(i => i.table_id)
+  );
+
 
   const enFuego = items.filter(i => {
     if (i.status==='pending') {
@@ -244,7 +294,7 @@ export default function FlowModule() {
 
       {/* Tabs */}
       <div style={{display:'flex',borderBottom:'1px solid rgba(255,255,255,0.07)',background:'#0f0f1a',padding:'0 20px',flexShrink:0}}>
-        {[{id:'live',l:'🔴 En vivo'},{id:'dia',l:'📋 Pedidos del día'}].map(t=>(
+        {[{id:'live',l:'🔴 En vivo'},{id:'dia',l:'📋 Pedidos del día'},{id:'platos',l:'🍽️ Activar platos'}].map(t=>(
           <button key={t.id} onClick={()=>setActiveTab(t.id as any)}
             style={{padding:'10px 16px',background:'none',border:'none',borderBottom:`2px solid ${activeTab===t.id?'#22d3ee':'transparent'}`,color:activeTab===t.id?'#22d3ee':'#50506A',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
             {t.l}
@@ -307,10 +357,9 @@ export default function FlowModule() {
                     // ── Semáforo verde/amarillo/rojo ──
                     const esEnFuego  = (isPending && tiempoPedido>objetivoSeg*1.5)
                                     || (isPreparing && tiempoProd>objetivoSeg);
+                    const mesaEnRetraso = !!(item.table_id && mesasConRetraso.has(item.table_id) && (item.estacion||getStation(item)) !== 'cocina_caliente');
                     const esAmarillo = !esEnFuego && (
-                                       (isPending   && tiempoPedido>objetivoSeg*0.8)
-                                    || (isPreparing && tiempoProd>objetivoSeg*0.7));
-                    const sColor = esEnFuego ? '#FF5252' : esAmarillo ? '#FFB547' : isPreparing ? '#00E676' : est.color;
+                    const esAmarillo = !esEnFuego && ((isPending && tiempoPedido>objetivoSeg*0.8)||(isPreparing && tiempoProd>objetivoSeg*0.7)||mesaEnRetraso);
                     const barColor = pct>=100?'#FF5252':pct>=70?'#FFB547':est.color;
                     const tiempoVisible = isPreparing ? tiempoProd : tiempoPedido;
                     const tiempoLabel   = isPreparing ? 'producción' : 'en espera';
@@ -320,19 +369,21 @@ export default function FlowModule() {
                         margin:8,
                         background: esEnFuego?'rgba(255,82,82,0.08)':esAmarillo?'rgba(255,181,71,0.06)':'rgba(255,255,255,0.03)',
                         border:`1px solid ${esEnFuego?'rgba(255,82,82,0.45)':esAmarillo?'rgba(255,181,71,0.35)':isPreparing?`${est.color}40`:'rgba(255,255,255,0.07)'}`,
-                        borderLeft:`3px solid ${sColor}`,
+                        borderLeft:`4px solid ${esEnFuego||esAmarillo?sColor:getMesaColor(item.table_id).color}`,
                         borderRadius:10,padding:'10px 12px',
                       }}>
                         <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:8,marginBottom:6}}>
                           <div style={{flex:1,minWidth:0}}>
                             <div style={{fontSize:13,fontWeight:700,color:'#f0f0f0',display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                               {esEnFuego && <span>🔥</span>}
+        {item.status==='ready' && !esEnFuego && <span style={{fontSize:11,background:'rgba(0,230,118,0.15)',color:'#00E676',padding:'1px 6px',borderRadius:10,fontWeight:700}}>🟢 LISTO</span>}
+                    {mesaEnRetraso && !esEnFuego && <span title='Cocina caliente retrasada en esta mesa' style={{fontSize:11}}>🍳⚠️</span>}
                               {esAmarillo && !esEnFuego && <span>⚠️</span>}
                               <span style={{flex:1}}>{getNombre(item)}</span>
                               {item.quantity>1 && <span style={{fontSize:10,background:'rgba(255,255,255,0.1)',padding:'1px 6px',borderRadius:10}}>×{item.quantity}</span>}
                             </div>
                             <div style={{display:'flex',gap:6,marginTop:3,flexWrap:'wrap'}}>
-                              {item.table_id && <span style={{fontSize:10,background:`${est.color}20`,color:est.color,padding:'1px 7px',borderRadius:20,fontWeight:700}}>M{item.table_id}</span>}
+                              {item.table_id && (() => { const mc = getMesaColor(item.table_id); return <span style={{fontSize:10,background:mc.bg,color:mc.color,border:`1px solid ${mc.color}40`,padding:'1px 7px',borderRadius:20,fontWeight:700}}>M{item.table_id}</span>}
                               {item.mesero   && <span style={{fontSize:9,color:'#6b7280'}}>👤 {item.mesero.split(' ')[0]}</span>}
                               {item.cocinero && <span style={{fontSize:9,color:est.color}}>👨‍🍳 {item.cocinero.split(' ').slice(-1)[0]}</span>}
                             </div>
@@ -361,22 +412,37 @@ export default function FlowModule() {
                             </div>
                           </>
                         )}
-
-                        {/* Botones */}
-                        <div style={{display:'flex',gap:6}}>
-                          {isPending && (
-                            <button onClick={()=>updateStatus(item.id,'preparing')}
-                              style={{flex:1,padding:'7px',borderRadius:8,border:`1px solid ${est.color}50`,background:`${est.color}15`,color:est.color,fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                              🍳 Comenzar
-                            </button>
-                          )}
-                          {isPreparing && (
-                            <button onClick={()=>updateStatus(item.id,'served')}
-                              style={{flex:1,padding:'7px',borderRadius:8,border:'1px solid rgba(0,230,118,0.5)',background:'rgba(0,230,118,0.15)',color:'#00E676',fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                              ✅ ¡Listo! — {fmtTime(tiempoProd)}
-                            </button>
-                          )}
-                        </div>
+        {/* ── BOTONES 3 PASOS ── */}
+        <div style={{display:'flex',gap:6,marginTop:6}}>
+        {isPending && (
+          <button onClick={async()=>{
+            await updateStatus(item.id,'preparing');
+            supabase.from('nexum_notificaciones').insert({restaurante_id:6,tipo:'preparacion_iniciada',titulo:`🍳 ${getNombre(item)} en preparación`,mensaje:`Mesa ${item.table_id} — ${getStation(item)} — Iniciado`,urgente:false,leida:false,destinatario_nombre:item.mesero||null}).then(()=>{}).catch(()=>{});
+          }}
+          style={{flex:1,padding:'8px 6px',borderRadius:9,border:`1px solid ${est.color}60`,background:`${est.color}18`,color:est.color,fontSize:11,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+            🍳 Comenzar preparación
+          </button>
+        )}
+        {item.status==='preparing' && (
+          <button onClick={async()=>{
+            await updateStatus(item.id,'ready');
+            supabase.from('nexum_notificaciones').insert({restaurante_id:6,tipo:'plato_casi_listo',titulo:`🟡 ${getNombre(item)} casi listo`,mensaje:`Mesa ${item.table_id} — Prepárate para retirar en ~2min`,urgente:false,leida:false,destinatario_nombre:item.mesero||null}).then(()=>{}).catch(()=>{});
+          }}
+          style={{flex:1,padding:'8px 6px',borderRadius:9,border:'1px solid rgba(255,181,71,0.6)',background:'rgba(255,181,71,0.15)',color:'#FFB547',fontSize:11,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4}}>
+            🟡 Prepárate para venir
+          </button>
+        )}
+        {item.status==='ready' && (
+          <button onClick={async()=>{
+            await updateStatus(item.id,'served');
+            supabase.from('nexum_notificaciones').insert({restaurante_id:6,tipo:'plato_listo',titulo:`✅ ${getNombre(item)} LISTO para entrega`,mensaje:`Mesa ${item.table_id} — ${fmtTime(tiempoProd)} producción — RETIRAR YA`,urgente:true,leida:false,destinatario_nombre:item.mesero||null}).then(()=>{}).catch(()=>{});
+            supabase.from('flow_alertas').insert({restaurante_id:6,mesa_num:item.table_id,plato:getNombre(item),mesero:item.mesero||null,cocinero:item.cocinero||null,estacion:getStation(item),leida:false}).then(()=>{}).catch(()=>{});
+          }}
+          style={{flex:1,padding:'8px 6px',borderRadius:9,border:'1px solid rgba(0,230,118,0.6)',background:'rgba(0,230,118,0.15)',color:'#00E676',fontSize:12,fontWeight:900,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:4,boxShadow:'0 0 10px rgba(0,230,118,0.2)'}}>
+            ✅ Listo para entrega · {fmtTime(tiempoProd)}
+          </button>
+        )}
+        </div>
                       </div>
                     );
                   })}
@@ -593,6 +659,93 @@ export default function FlowModule() {
               <div style={{textAlign:'center',padding:40,color:'#606060'}}>Sin pedidos para este filtro</div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* ── TAB PLATOS DEL DÍA ── */}
+      {activeTab==='platos' && (
+        <div style={{flex:1,overflowY:'auto'}}>
+          <PlatosDiaManager />
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+// ══ GESTOR DE PLATOS DEL DÍA ══════════════════════════════════════════
+import { supabase as _sb } from '../lib/supabase.ts';
+function PlatosDiaManager() {
+  const [platos, setPlatos] = React.useState<any[]>([]);
+  const [form, setForm] = React.useState({nombre:'',emoji:'🍽️',precio:'',estacion:'cocina_caliente',rentable:true});
+  const EMOJIS = ['🍽️','🥩','🍜','🐟','🦐','🥗','🍱','🍣','🍷','🍸','🎂'];
+  const ESTS: Record<string,string> = {
+    cocina_caliente:'🔥 Cocina caliente',cocina_fria:'🧊 Cocina fría',
+    bar:'🍸 Bar',cava:'🍷 Cava',robata:'🥩 Robata',postres:'🎂 Postres',
+  };
+
+  const fetchPlatos = async () => {
+    const { data } = await _sb.from('platos_dia').select('*').eq('restaurante_id',6).eq('activo',true).eq('fecha',new Date().toISOString().split('T')[0]).order('created_at',{ascending:false});
+    if (data) setPlatos(data);
+  };
+  React.useEffect(()=>{ fetchPlatos(); },[]);
+
+  const agregar = async () => {
+    if (!form.nombre) return;
+    await _sb.from('platos_dia').insert({restaurante_id:6,nombre:form.nombre,emoji:form.emoji,precio:form.precio,estacion:form.estacion,rentable:form.rentable,disponible:true,fecha:new Date().toISOString().split('T')[0]});
+    setForm({nombre:'',emoji:'🍽️',precio:'',estacion:'cocina_caliente',rentable:true});
+    fetchPlatos();
+  };
+  const toggle86 = async (id:string,disp:boolean) => { await _sb.from('platos_dia').update({disponible:!disp}).eq('id',id); fetchPlatos(); };
+  const eliminar = async (id:string) => { await _sb.from('platos_dia').update({activo:false}).eq('id',id); fetchPlatos(); };
+
+  return (
+    <div style={{padding:'16px 20px',flex:1,overflowY:'auto'}}>
+      <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:4}}>🍽️ Platos del día</div>
+      <div style={{fontSize:11,color:'#50506A',marginBottom:16}}>Los platos activos aparecen en el panel IA del POS en tiempo real. El 86 los tacha para todos los meseros.</div>
+      {/* Formulario */}
+      <div style={{background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:14,padding:14,marginBottom:16}}>
+        <div style={{fontSize:12,fontWeight:700,marginBottom:10,color:'#f0f0f0'}}>+ Agregar plato del Chef</div>
+        <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:8}}>
+          {EMOJIS.map(e=><button key={e} onClick={()=>setForm(p=>({...p,emoji:e}))} style={{width:32,height:32,borderRadius:8,border:`1px solid ${form.emoji===e?'#d4943a':'rgba(255,255,255,0.1)'}`,background:form.emoji===e?'rgba(212,148,58,0.2)':'transparent',fontSize:18,cursor:'pointer'}}>{e}</button>)}
+        </div>
+        <div style={{display:'flex',gap:8,marginBottom:8,flexWrap:'wrap'}}>
+          <input value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))} placeholder="Nombre del plato *" style={{flex:2,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',minWidth:140}}/>
+          <input value={form.precio} onChange={e=>setForm(p=>({...p,precio:e.target.value}))} placeholder="Ej: $185k" style={{flex:1,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',minWidth:80}}/>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          <select value={form.estacion} onChange={e=>setForm(p=>({...p,estacion:e.target.value}))} style={{flex:1,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:12,outline:'none'}}>
+            {Object.entries(ESTS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
+          </select>
+          <label style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'#a0a0a0',cursor:'pointer'}}>
+            <input type="checkbox" checked={form.rentable} onChange={e=>setForm(p=>({...p,rentable:e.target.checked}))}/> Alta rentabilidad
+          </label>
+          <button onClick={agregar} style={{padding:'9px 18px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#d4943a,#b07820)',color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>✓ Agregar</button>
+        </div>
+      </div>
+      {/* Lista */}
+      {platos.length === 0 ? (
+        <div style={{textAlign:'center',padding:40,color:'#50506A'}}><div style={{fontSize:40,marginBottom:10}}>🍽️</div><div>Sin platos activos hoy</div><div style={{fontSize:11,marginTop:6}}>Agrega los especiales del Chef arriba</div></div>
+      ) : (
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {platos.map((p:any)=>(
+            <div key={p.id} style={{display:'flex',alignItems:'center',gap:10,background:p.disponible?'rgba(255,255,255,0.03)':'rgba(255,82,82,0.06)',border:`1px solid ${p.disponible?'rgba(255,255,255,0.08)':'rgba(255,82,82,0.3)'}`,borderRadius:10,padding:'10px 14px'}}>
+              <span style={{fontSize:22}}>{p.emoji||'🍽️'}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:p.disponible?'#f0f0f0':'#606060',textDecoration:p.disponible?'none':'line-through'}}>{p.nombre}</div>
+                <div style={{display:'flex',gap:8,marginTop:2,flexWrap:'wrap'}}>
+                  {p.precio&&<span style={{fontSize:10,color:'#d4943a'}}>{p.precio}</span>}
+                  <span style={{fontSize:10,color:'#606060'}}>{ESTS[p.estacion]||p.estacion}</span>
+                  {p.rentable&&<span style={{fontSize:9,color:'#3dba6f',background:'rgba(61,186,111,0.12)',padding:'1px 6px',borderRadius:10}}>● Rentable</span>}
+                </div>
+              </div>
+              {!p.disponible&&<span style={{fontSize:10,color:'#FF5252',fontWeight:700,background:'rgba(255,82,82,0.12)',padding:'2px 8px',borderRadius:10}}>86</span>}
+              <div style={{display:'flex',gap:6,flexShrink:0}}>
+                <button onClick={()=>toggle86(p.id,p.disponible)} style={{padding:'5px 10px',borderRadius:7,border:`1px solid ${p.disponible?'rgba(255,82,82,0.4)':'rgba(61,186,111,0.4)'}`,background:'transparent',color:p.disponible?'#FF5252':'#3dba6f',fontSize:10,fontWeight:700,cursor:'pointer'}}>{p.disponible?'86':'✓ Ok'}</button>
+                <button onClick={()=>eliminar(p.id)} style={{padding:'5px 8px',borderRadius:7,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'#606060',fontSize:10,cursor:'pointer'}}>🗑</button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
