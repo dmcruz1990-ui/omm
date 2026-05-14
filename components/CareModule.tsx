@@ -803,9 +803,6 @@ export default function CareModule() {
         </div>
       )}
 
-  );
-}
-
 function PanelRespuesta({enc,onClose,onSend}:{enc:Encuesta;onClose:()=>void;onSend:()=>void}) {
   const nombre = enc.cliente.split(' ')[0];
   const [texto,setTexto] = useState(IA_RESPONSES[enc.estrellas]?.replace('[nombre]',nombre)||'');
