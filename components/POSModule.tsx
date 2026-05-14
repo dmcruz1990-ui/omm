@@ -617,8 +617,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   ]);
   const [posDescuento, setPosDescuento] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [barraColapsada, setBarraColapsada] = useState(false);
+  const [barraColapsada, setBarraColapsada] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedPlato, setSelectedPlato] = useState<any>(null); // plato seleccionado para info IA
   const [stockFlow, setStockFlow] = useState<Record<string, number>>(() => {
@@ -3191,36 +3190,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         {isFullscreen
           ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3"/></svg>
           : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-        }
-      </button>
-
-      {/* BOTÓN COLAPSAR SIDEBAR NEXUM — desplaza el nav izquierdo fuera de pantalla */}
-      <button
-        onClick={() => {
-          setSidebarCollapsed(prev => {
-            const next = !prev;
-            // Colapsar/expandir el sidebar global de Nexum
-            const nexumSidebar = document.querySelector('[class*="w-64"], [class*="sidebar"], nav.sidebar, [class*="left-sidebar"], aside') as HTMLElement;
-            // Buscar el primer elemento nav o aside antes del main
-            const sidebar = document.querySelector('body > div > div > nav, body > div > div > aside, [class*="flex"][class*="h-screen"] > [class*="w-"]:first-child') as HTMLElement;
-            if (sidebar) {
-              sidebar.style.transition = 'width 0.3s ease, opacity 0.3s ease';
-              sidebar.style.width = next ? '0px' : '';
-              sidebar.style.overflow = next ? 'hidden' : '';
-              sidebar.style.opacity = next ? '0' : '';
-            }
-            return next;
-          });
-        }}
-        title={sidebarCollapsed ? 'Mostrar navegación' : 'Ocultar navegación (más espacio)'}
-        className={`fixed top-2 z-[9000] flex items-center justify-center w-8 h-8 rounded-lg border font-semibold transition-all shadow-lg ${
-          sidebarCollapsed
-            ? 'bg-[#3dba6f] border-[#3dba6f] text-black'
-            : 'bg-[#1c1c1c] border-[#3dba6f]/60 text-[#3dba6f] hover:bg-[#3dba6f] hover:text-black'
-        }`} style={{ right:'44px' }}>
-        {sidebarCollapsed
-          ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 18l6-6-6-6"/></svg>
-          : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
         }
       </button>
 

@@ -322,6 +322,15 @@ const Dashboard: React.FC = () => {
         </div>
       </nav>
 
+      {/* Botón flotante para mostrar/ocultar sidebar — siempre visible (sobrevive al header oculto del POS en tablet) */}
+      <button
+        onClick={() => setSidebarOpen(p=>!p)}
+        title={sidebarOpen ? 'Ocultar menú Nexum' : 'Mostrar menú Nexum'}
+        className="fixed top-2 z-[9500] w-8 h-8 rounded-lg bg-[#1a1d24] border border-blue-500/40 text-blue-400 hover:bg-blue-500/20 hover:text-white transition-all flex items-center justify-center shadow-lg"
+        style={{left: sidebarOpen ? 308 : 8}}>
+        <LayoutPanelLeft size={14} />
+      </button>
+
       <main className="flex-1 flex flex-col overflow-hidden relative bg-[#0f1115]">
         <header className="h-10 border-b border-white/5 flex items-center justify-between px-4 z-40 bg-[#0a0a0c] shrink-0">
           {/* Izquierda: toggle sidebar + nombre */}
