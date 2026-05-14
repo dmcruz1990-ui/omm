@@ -4800,7 +4800,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         </div>
       )}
 
-    </div>
       {showPinPago && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowPinPago(false)}>
           <div style={{background:'#0f0f1a',border:'2px solid #d4943a',borderRadius:20,padding:32,width:320,textAlign:'center'}} onClick={e=>e.stopPropagation()}>
@@ -4868,6 +4867,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         </div>
       )}
 
+    </div>
   );
 };
 
