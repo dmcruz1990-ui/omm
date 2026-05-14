@@ -1113,10 +1113,19 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
   const addToOrder = (p: any) => {
     setOrder(prev => [...prev, { ...p, mesa: selectedTable.num }]);
-    const key = `${p.nombre}-${Date.now()}`;
     setAddedCards(prev => new Set([...prev, p.nombre]));
     setTimeout(() => setAddedCards(prev => { const n = new Set(prev); n.delete(p.nombre); return n; }), 1200);
     showToast(`✓ ${p.nombre} agregado al pedido`);
+    // Sync to Supabase → Flow (KDS) lo ve en tiempo real
+    insertarPedidoFlow(p.nombre, p.categoria ?? currentCat, selectedTable.num, p.precio ? parsePrecio(p.precio) : 0);
+    agregarPlatoFlow({
+      mesa: selectedTable.num,
+      plato: p.nombre,
+      emoji: p.emoji ?? '🍽️',
+      mesero: profile?.nombre_completo?.split(' ')[0] ?? 'Mesero',
+      etapa: 'cocina',
+      urgente: false,
+    });
     autoCheckRitual(p.categoria ?? currentCat);
   };
 
@@ -3512,10 +3521,21 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                       </button>
                       <button onClick={() => {
                         const items = pendingOrder.filter(o => o.mesa === selectedTable.num);
-                        items.forEach(item => setStockFlow(prev => ({ ...prev, [item.nombre]: Math.max(0, (prev[item.nombre] ?? 10) - 1) })));
+                        items.forEach(item => {
+                          setStockFlow(prev => ({ ...prev, [item.nombre]: Math.max(0, (prev[item.nombre] ?? 10) - 1) }));
+                          insertarPedidoFlow(item.nombre, item.categoria ?? currentCat, selectedTable.num, item.precio ? parsePrecio(item.precio) : 0);
+                          agregarPlatoFlow({
+                            mesa: selectedTable.num,
+                            plato: item.nombre,
+                            emoji: item.emoji ?? '🍽️',
+                            mesero: profile?.nombre_completo?.split(' ')[0] ?? 'Mesero',
+                            etapa: 'cocina',
+                            urgente: items.length >= 10,
+                          });
+                        });
                         setOrder(prev => [...prev, ...items]);
                         setPendingOrder(prev => prev.filter(o => o.mesa !== selectedTable.num));
-                        showToast(`✓ Orden Mesa ${selectedTable.num} → Flow`);
+                        showToast(`🔥 ${items.length} plato${items.length!==1?'s':''} marchando → Flow`);
                       }}
                         className="flex-1 py-2 rounded-lg bg-[#4a8fd4] text-white text-[10px] font-bold hover:bg-[#3dba6f] active:bg-[#3dba6f] transition-all">
                         🔥 Marchar todo
