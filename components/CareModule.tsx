@@ -39,10 +39,10 @@ const IA_RESPONSES: Record<number, string> = {
 };
 
 const NIVEL_COLORS: Record<string, string> = {
-  INICIADO: '#a0a0a0', REGULAR: '#448AFF', VIP: '#B388FF', ÉLITE: '#FFD700',
+  INICIADO: '#a0a0a0', REGULAR: '#448AFF', VIP: '#B388FF', CONSAGRADO: '#FF6B00', ÉLITE: '#FFD700',
 };
 const NIVEL_EMOJI: Record<string, string> = {
-  INICIADO: '⭐', REGULAR: '🌟', VIP: '💎', ÉLITE: '👑',
+  INICIADO: '⭐', REGULAR: '🌟', VIP: '💎', CONSAGRADO: '🔥', ÉLITE: '👑',
 };
 
 // ── COMPONENTE PANEL ALERTA ───────────────────────────────────────────
@@ -364,6 +364,7 @@ export default function CareModule() {
           <div className="grid grid-cols-4 gap-3">
             {[
               { l: 'Total', v: ohyeahClientes.length, c: '#FFB547' },
+              { l: 'CONSAGRADO', v: ohyeahClientes.filter(c => c.nivel === 'CONSAGRADO').length, c: '#FF6B00' },
               { l: 'ÉLITE', v: ohyeahClientes.filter(c => c.nivel === 'ÉLITE').length, c: '#FFD700' },
               { l: 'VIP',   v: ohyeahClientes.filter(c => c.nivel === 'VIP').length,   c: '#B388FF' },
               { l: 'Nuevos hoy', v: ohyeahClientes.filter(c => c.registro_at?.startsWith(hoy)).length, c: '#00E676' },
@@ -385,7 +386,7 @@ export default function CareModule() {
               {busquedaOY && <button onClick={() => setBusquedaOY('')} className="text-[#50506A] text-[11px]">✕</button>}
             </div>
             <div className="flex gap-2 flex-wrap">
-              {['todos', 'INICIADO', 'REGULAR', 'VIP', 'ÉLITE'].map(n => (
+              {['todos', 'INICIADO', 'REGULAR', 'VIP', 'CONSAGRADO', 'ÉLITE'].map(n => (
                 <button key={n} onClick={() => setFiltroNivel(n)}
                   className="px-3 py-1.5 rounded-full text-[10px] font-bold transition-all"
                   style={{
