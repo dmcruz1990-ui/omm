@@ -30,6 +30,7 @@ const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
 const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
 const SupplyModule = lazy(() => import('./components/SupplyModule.tsx')); // Supply IA real
 const MarketplaceModule = lazy(() => import('./components/MarketplaceModule.tsx'));
+const SerattaCrewPage = lazy(() => import('./components/SerattaCrewPage.tsx'));
 const PropinasModule = lazy(() => import('./components/PropinasModule.tsx'));
 const MetricasModule = lazy(() => import('./components/MetricasModule.tsx'));
 const FoodIntelligenceModule = lazy(() => import('./components/FoodIntelligenceModule.tsx'));
@@ -65,7 +66,7 @@ const Dashboard: React.FC = () => {
   const [isCockpitOpen, setIsCockpitOpen] = useState(false);
   
   const [isVisionAIOpen, setIsVisionAIOpen] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false); // retráctil por defecto cerrado
+  const [sidebarOpen, setSidebarOpen] = useState(true); // abierto por defecto
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
 
@@ -190,10 +191,19 @@ const Dashboard: React.FC = () => {
     );
   }
 
+  // Ruta /crew — app del mesero (PWA)
+  if (window.location.pathname === '/crew') {
+    return (
+      <React.Suspense fallback={<div style={{background:'#08080f',height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:'#FFB547',fontSize:24}}>⚡</div>}>
+        <SerattaCrewPage />
+      </React.Suspense>
+    );
+  }
+
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0c] text-white font-sans text-left">
-      <nav className="w-[300px] bg-[#0a0a0c] border-r border-white/5 flex flex-col px-6 py-8 z-50 overflow-y-auto custom-scrollbar">
-        <div className="flex items-center gap-4 mb-12 px-2">
+      <nav className={`bg-[#0a0a0c] border-r border-white/5 flex flex-col z-50 overflow-y-auto overflow-x-hidden transition-all duration-300 shrink-0 ${sidebarOpen ? 'w-[300px] px-6 py-8 opacity-100' : 'w-0 px-0 py-0 opacity-0 pointer-events-none'}`} style={{minWidth:sidebarOpen?300:0}}>
+        <div className="flex items-center gap-4 mb-12 px-2 whitespace-nowrap">
           <div className="w-12 h-12 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-600/30">
             <Zap className="text-white" size={24} fill="currentColor" />
           </div>
@@ -252,9 +262,9 @@ const Dashboard: React.FC = () => {
              {
                id: 'operaciones', label: 'PAQUETE OPERACIONES',
               modules: [
-                { type: ModuleType.SERVICE_OS,   label: 'SERVICE OS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
+                { type: ModuleType.SERVICE_OS,   label: 'SMART POS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
                 { type: ModuleType.PROPINAS,    label: 'PROPINAS',     sub: 'Bolsa del turno',  icon: <DollarSign size={18} /> },
-                { type: ModuleType.METRICAS,    label: 'MÉTRICAS',     sub: 'Tiempos · Quejas', icon: <BarChart3 size={18} /> },
+                { type: ModuleType.FLOW,        label: 'MÉTRICAS',     sub: 'En Flow · Tiempos', icon: <BarChart3 size={18} /> },
                 { type: ModuleType.FLOW,        label: 'FLOW',         sub: 'ESTACIONES',       icon: <ChefHat size={18} /> },
               ]
             },
@@ -275,7 +285,7 @@ const Dashboard: React.FC = () => {
               icon: <Globe size={14} className="text-purple-500" />,
               modules: [
                 { type: ModuleType.COMMAND,       label: 'COMMAND',      sub: 'ESTRATEGIA IA',        icon: <Globe size={18} /> },
-                { type: ModuleType.PROPINAS, label: 'PROPINAS', sub: 'Bolsa del turno', icon: <DollarSign size={18} /> },
+                { type: ModuleType.PROPINAS, label: 'PROPINAS ADMIN', sub: 'Team & Config', icon: <DollarSign size={18} /> },
                  { type: ModuleType.FINANCE_HUB,  label: 'FINANCE HUB',  sub: 'DINERO & KPI',         icon: <DollarSign size={18} /> },
                 { type: ModuleType.PAYROLL,       label: 'NÓMINA DIAN',  sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
                 { type: ModuleType.DIAN,          label: 'FACTURACIÓN',  sub: 'DIAN · UBL 2.1',       icon: <Receipt size={18} /> },
