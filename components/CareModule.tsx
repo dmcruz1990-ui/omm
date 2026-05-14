@@ -2,36 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { RefreshCw, X, Send, Star } from 'lucide-react';
 
-// ── TIPOS ─────────────────────────────────────────────────────────────
-type Tab = 'live' | 'encuestas' | 'cim' | 'ohyeah' | 'dashboard';
-
-interface XCareEncuesta {
-  id: string; created_at: string; restaurante_id: number;
-  mesa_num: number | null; mesero_nombre: string | null;
-  cliente_nombre: string | null; cliente_email: string | null;
-  estrellas: number; tags_positivos: string[] | null;
-  tags_negativos: string[] | null; micro_tags: string[] | null;
-  platos_problema: any | null; bebidas_problema: any | null;
-  comentario: string | null; estado: string;
-  respuesta_ia: string | null; alerta_preventiva: boolean;
-  items_consumidos: any | null; propina_pct: number | null;
-}
-
-interface XCareAlerta {
-  id: string; created_at: string; mesa_num: number | null;
-  mesero_nombre: string | null; senales: string[] | null;
-  nivel_riesgo: string; descripcion: string | null; resuelta: boolean;
-}
-
-interface OhYeahCliente {
-  id: string; nombre: string; email: string; telefono: string | null;
-  ciudad: string | null; nivel: string; visitas: number;
-  last_login: string | null; registro_at: string;
-  notas: string | null; restricciones: string | null;
-  total_reservas: number; ultima_reserva: string | null;
-  dias_sin_visitar: number | null;
-}
-
 // ── CONSTANTES ENCUESTA ───────────────────────────────────────────────
 const TAGS_5 = ['🍽 Comida','🍸 Cócteles','🤵 Servicio','👨‍🍳 Chef','🎶 Ambiente','🕯 Experiencia completa'];
 const TAGS_4 = ['⏱ Tiempo','🌡 Temperatura','🍽 Sabor','🍸 Balance','🤵 Atención','🎶 Ambiente'];
@@ -230,7 +200,7 @@ function EncuestaXCare({
                 )}
               </div>
               <button onClick={()=>setPaso('microtags')}
-                style={{width:'100%',padding:14,borderRadius:12,border:'none',background:`${S.red}20`,color:S.red,fontSize:13,fontWeight:700,cursor:'pointer',border:`1px solid ${S.red}40`} as any}>
+                style={{width:'100%',padding:14,borderRadius:12,background:`${S.red}20`,color:S.red,fontSize:13,fontWeight:700,cursor:'pointer',border:`1px solid ${S.red}40`,outline:'none'}}>
                 Siguiente →
               </button>
             </div>
@@ -256,7 +226,7 @@ function EncuestaXCare({
                 placeholder="Cuéntanos un poco más..." rows={2} required
                 style={{width:'100%',padding:'10px 12px',borderRadius:10,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.05)',color:S.t1,fontSize:12,outline:'none',resize:'none',marginBottom:16}}/>
               <button onClick={()=>setPaso('comentario')}
-                style={{width:'100%',padding:14,borderRadius:12,border:'none',background:`${S.red}20`,color:S.red,fontSize:13,fontWeight:700,cursor:'pointer',border:`1px solid ${S.red}40`} as any}>
+                style={{width:'100%',padding:14,borderRadius:12,background:`${S.red}20`,color:S.red,fontSize:13,fontWeight:700,cursor:'pointer',border:`1px solid ${S.red}40`,outline:'none'}}>
                 Finalizar →
               </button>
             </div>
@@ -317,6 +287,38 @@ function EncuestaXCare({
   );
 }
 
+
+// ── TIPOS ─────────────────────────────────────────────────────────────
+type Tab = 'live' | 'encuestas' | 'cim' | 'ohyeah' | 'dashboard';
+
+interface XCareEncuesta {
+  id: string; created_at: string; restaurante_id: number;
+  mesa_num: number | null; mesero_nombre: string | null;
+  cliente_nombre: string | null; cliente_email: string | null;
+  estrellas: number; tags_positivos: string[] | null;
+  tags_negativos: string[] | null; micro_tags: string[] | null;
+  platos_problema: any | null; bebidas_problema: any | null;
+  comentario: string | null; estado: string;
+  respuesta_ia: string | null; alerta_preventiva: boolean;
+  items_consumidos: any | null; propina_pct: number | null;
+}
+
+interface XCareAlerta {
+  id: string; created_at: string; mesa_num: number | null;
+  mesero_nombre: string | null; senales: string[] | null;
+  nivel_riesgo: string; descripcion: string | null; resuelta: boolean;
+}
+
+interface OhYeahCliente {
+  id: string; nombre: string; email: string; telefono: string | null;
+  ciudad: string | null; nivel: string; visitas: number;
+  last_login: string | null; registro_at: string;
+  notas: string | null; restricciones: string | null;
+  total_reservas: number; ultima_reserva: string | null;
+  dias_sin_visitar: number | null;
+}
+
+// EncuestaXCare y constantes — ver XCareEncuesta.tsx
 // ── PANEL RESPUESTA ────────────────────────────────────────────────────
 function PanelRespuesta({ enc, onClose, onSend }: { enc: XCareEncuesta; onClose:()=>void; onSend:()=>void }) {
   const nombre = enc.cliente_nombre?.split(' ')[0] || 'cliente';
