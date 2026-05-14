@@ -115,6 +115,7 @@ function PanelAlerta({alerta,onClose,onResolve}:{alerta:Alerta;onClose:()=>void;
         )}
       </div>
     </div>
+  );
 }
 
 export default function CareModule() {
