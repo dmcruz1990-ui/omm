@@ -3724,7 +3724,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
             <>
               {/* FILA RITUAL — solo mesa activa */}
               <div className="border-b border-[#1a1a1a] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-                <div className="flex items-center px-3 py-2 gap-1.5">
+                <div className="flex items-center px-2 py-1 gap-1.5">
                   {/* Botón colapsar barra — al inicio del ritual */}
                   <button onClick={() => setBarraColapsada((p:boolean) => !p)}
                     className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md border text-[9px] font-bold transition-all mr-1"
@@ -3764,7 +3764,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                         style={done
                           ? { background: activeBg, borderColor: activeColor+'80', color: activeColor }
                           : { background: 'transparent', borderColor: '#1e1e1e', color: '#444' }}
-                        className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg border text-[10px] font-bold whitespace-nowrap transition-all shrink-0 hover:opacity-90 active:scale-95">
+                        className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold whitespace-nowrap transition-all shrink-0 hover:opacity-90 active:scale-95">
                         <span style={{ fontSize: 15 }}>{done ? '✓' : stepEmojis[step]}</span>
                         <span style={{ fontSize: 10 }}>{shortLabel}</span>
                       </button>
@@ -3787,15 +3787,15 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                     { cat:'Licor',emoji:'🥂',color:'#ffd700',items:[{n:'Sake',p:'$45k',e:'🍶'},{n:'Heineken',p:'$15k',e:'🍺'},{n:'Old F.',p:'$48k',e:'🥃'}]},
                   ].map(({ cat, emoji, color, items }) => (
                     <div key={cat} className="flex flex-col shrink-0 border-r border-[#1a1a1a] last:border-r-0">
-                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-[#1a1a1a]" style={{ background: color+'12' }}>
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 border-b border-[#1a1a1a]" style={{ background: color+'12' }}>
                         <span style={{ fontSize: 13 }}>{emoji}</span>
                         <span style={{ fontSize: 10, color, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, whiteSpace: 'nowrap' }}>{cat}</span>
                       </div>
-                      <div className="flex gap-1 px-1.5 py-1.5">
+                      <div className="flex gap-1 px-1.5 py-1">
                         {items.map(item => (
                           <button key={item.n} onClick={() => agregarAOrden({ nombre: item.n, precio: item.p, emoji: item.e, categoria: cat })}
                             className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg border border-[#1a1a1a] bg-[#111] hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/25 active:border-[#3dba6f] transition-all" style={{ minWidth: 54 }}>
-                            <span style={{ fontSize: 22 }}>{item.e}</span>
+                            <span style={{ fontSize: 18 }}>{item.e}</span>
                             <span style={{ fontSize: 9, color: '#888', whiteSpace: 'nowrap' }}>{item.n}</span>
                             <span style={{ fontSize: 9, color, fontWeight: 700 }}>{item.p}</span>
                           </button>
@@ -3831,28 +3831,18 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
       {/* RIGHT PANEL — FIJO SIEMPRE VISIBLE */}
       <div className="bg-[#141414] border-l border-[#2a2a2a] flex flex-col shrink-0" style={{ width: 300 }}>
         {/* ── Barra usuario arriba derecha ── */}
-        <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2 shrink-0 bg-[#0f0f0f]">
-          <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[#d4943a] to-[#b07820] flex items-center justify-center text-[11px] font-black text-black">
-            {(profile?.nombre_completo || 'U').charAt(0).toUpperCase()}
+        <div className="px-3 py-2.5 border-b border-[#2a2a2a] flex items-center gap-2.5 shrink-0 bg-[#0d0d0d]">
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#d4943a] to-[#b07820] flex items-center justify-center text-[13px] font-black text-black shrink-0">
+            {(profile?.nombre_completo || profile?.full_name || 'U').charAt(0).toUpperCase()}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[8px] text-[#d4943a] font-bold uppercase">{profile?.role === 'admin' ? 'Admin' : profile?.role === 'gerencia' ? 'Gerencia' : 'Mesero'}</div>
+            <div className="text-[12px] font-bold text-[#f0f0f0] truncate">{profile?.nombre_completo || profile?.full_name || 'Usuario'}</div>
+            <div className="text-[9px] text-[#d4943a] font-bold uppercase">{profile?.role === 'admin' ? 'Admin' : profile?.role === 'gerencia' ? 'Gerencia' : profile?.role === 'desarrollo' ? 'Dev' : 'Mesero'}</div>
           </div>
           <button onClick={() => { setShowHistorial(true); fetchHistorial(); }}
-            className="w-[26px] h-[26px] rounded-lg bg-[#1c1c1c] border border-[#2a2a2a] flex items-center justify-center text-[#606060] hover:text-[#d4943a] hover:border-[#d4943a] transition-all"
+            className="w-[26px] h-[26px] rounded-lg bg-[#1c1c1c] border border-[#2a2a2a] flex items-center justify-center cursor-pointer hover:bg-[#2a2a2a] transition-all"
             title="Historial de pedidos">
             <Receipt size={11}/>
-          </button>
-        </div>
-        <div className="px-3 py-1.5 border-b border-[#2a2a2a] flex items-center gap-2 shrink-0">
-          <button onClick={()=>setShowNotifPanel(p=>!p)} style={{position:"relative",background:"rgba(255,255,255,0.04)",border:"1px solid #2a2a2a",borderRadius:8,padding:"4px 7px",cursor:"pointer",display:"flex",alignItems:"center"}}>
-            <span style={{fontSize:16}}>🛎️</span>
-            {notifsBadge>0&&<span style={{position:"absolute",top:0,right:0,background:"#e05050",color:"#fff",fontSize:8,fontWeight:900,borderRadius:99,padding:"1px 4px",lineHeight:1.2}}>{notifsBadge}</span>}
-          </button>
-          {reservasHoy.length > 0 && (<button onClick={()=>showToast(`🦉 ${reservasHoy.length} reserva${reservasHoy.length>1?"s":""} hoy`)} style={{display:"flex",alignItems:"center",gap:3,padding:"3px 7px",borderRadius:20,background:"rgba(255,230,0,0.1)",border:"1px solid rgba(255,230,0,0.25)",cursor:"pointer"}}><span style={{fontSize:10}}>🦉</span><span style={{fontSize:9,fontWeight:900,color:"#FFE600"}}>{reservasHoy.length}</span></button>)}
-          <button onClick={()=>setRightTab("Intel")} style={{background:"rgba(212,148,58,0.15)",border:"1px solid rgba(212,148,58,0.3)",borderRadius:8,padding:"3px 8px",cursor:"pointer",textAlign:"center"}}>
-            <div style={{fontSize:9,color:"#d4943a",fontWeight:700}}>💰 Por cobrar</div>
-            <div style={{fontSize:12,fontWeight:900,color:"#f0b45a"}}>{cuentasCobrar}</div>
           </button>
         </div>
         {/* Panel notificaciones */}
@@ -3904,8 +3894,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               {l:'Ventas', v:`$${Math.round((ticketDia?.ventas||0)/1000)}k`, c:'#3dba6f'},
               {l:'Cobros', v:ticketDia?.ordenes||0,                         c:'#4a8fd4'},
               {l:'Abiertas',v:ticketDia?.pendientes||0,                     c:'#f0b45a'},
-              {l:'Por cobrar',v:`$${Math.round((ticketDia?.porCobrar||0)/1000)}k`, c:'#e05050'},
-              {l:'Propinas',v:`$${Math.round((ticketDia?.propinaTotal||0)/1000)}k`, c:'#9b72ff'},
+                            {l:'Propinas',v:`$${Math.round((ticketDia?.propinaTotal||0)/1000)}k`, c:'#9b72ff'},
             ].map(k=>(
               <div key={k.l} className="flex items-center gap-1 shrink-0">
                 <span className="text-[9px] text-[#606060]">{k.l}</span>
@@ -3918,100 +3907,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
 
           {rightTab === 'IA' && (
             <>
-              {/* ══ CHAT IA — ventana flotante al fondo ══ */}
-              <div className="sticky bottom-0 left-0 right-0 mt-auto" style={{background:'#141414',borderTop:'1px solid rgba(212,148,58,0.25)',marginLeft:'-12px',marginRight:'-12px',marginBottom:'-12px',paddingLeft:'12px',paddingRight:'12px'}}>
-                {/* Header colapsable */}
-                <button onClick={()=>setChatIAOpen(p=>!p)}
-                  className="w-full px-1 py-2 flex items-center gap-2 hover:opacity-80 transition-opacity"
-                  style={{background:'transparent',border:'none',cursor:'pointer'}}>
-                  <span className="text-[11px] font-black text-[#d4943a]">💬 Chat IA</span>
-                  <span className="text-[9px] text-[#606060] flex-1 text-left">{new Date().toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'})}</span>
-                  <span className="text-[10px] text-[#606060]">{chatIAOpen?'▼':'▲'}</span>
-                </button>
-                {/* Contenido expandible */}
-                {chatIAOpen && (
-                  <div className="pb-3 flex flex-col gap-2 overflow-y-auto" style={{maxHeight:320,scrollbarWidth:'thin'}}>
-                  <div className="p-3 flex flex-col gap-2">
-
-                  {/* Platos del día — desde Supabase via Flow */}
-                  <div className="text-[9px] text-[#606060] font-bold uppercase tracking-wider">🍽️ Platos del Chef hoy</div>
-                  <div className="flex flex-col gap-1.5">
-                    {(platosDia.length > 0 ? platosDia : [
-                      {nombre:'Omakase Chef',emoji:'🍱',precio:'$185k',rentable:true,disponible:true},
-                      {nombre:'Wagyū Premium',emoji:'🥩',precio:'$220k',rentable:true,disponible:true},
-                      {nombre:'Ramen Especial',emoji:'🍜',precio:'$68k',rentable:false,disponible:true},
-                    ]).map((p:any)=>(
-                      <div key={p.nombre||p.id} className={`flex items-center gap-2 px-2 py-2 rounded-lg border ${!p.disponible?'bg-[#e05050]/08 border-[#e05050]/30 opacity-60':'bg-[#141414] border-[#2a2a2a]'}`}>
-                        <span className="text-[18px] shrink-0">{p.emoji||'🍽️'}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className={`text-[11px] font-bold truncate ${!p.disponible?'line-through text-[#606060]':'text-[#f0f0f0]'}`}>{p.nombre}</div>
-                          <div className="text-[9px] text-[#606060]">{p.precio||''}</div>
-                        </div>
-                        {!p.disponible && <span className="text-[8px] font-black bg-[#e05050] text-white px-1.5 py-0.5 rounded shrink-0">86</span>}
-                        {p.disponible && p.rentable && <span className="text-[7px] bg-[#3dba6f]/15 text-[#3dba6f] border border-[#3dba6f]/25 px-1.5 py-0.5 rounded-full font-bold shrink-0">● Rentable</span>}
-                      </div>
-                    ))}
-                    {platosDia.length === 0 && <div className="text-[10px] text-[#606060] px-1 py-1">Activa platos desde Flow → 🍽️ Platos del día</div>}
-                  </div>
-
-                  {/* 86s — alertas agresivas */}
-                  {tips86.length > 0 && (
-                    <>
-                      <div className="text-[9px] text-[#e05050] font-bold uppercase tracking-wider mt-1 flex items-center gap-1">
-                        <span className="inline-block w-2 h-2 rounded-full bg-[#e05050] animate-pulse"/>
-                        ¡SIN STOCK! — No ofrecer
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {tips86.map((t:any,i:number)=>(
-                          <div key={i} className="flex items-center gap-2 px-2 py-2 rounded-lg bg-[#e05050]/10 border border-[#e05050]/40">
-                            <span className="text-[16px] shrink-0">{t.emoji||'🚫'}</span>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[11px] font-black text-[#e05050] truncate">{t.name||t.nombre}</div>
-                              <div className="text-[9px] text-[#e05050]/70">{t.motivo||'Agotado'}</div>
-                            </div>
-                            <span className="text-[8px] font-black bg-[#e05050] text-white px-1.5 py-0.5 rounded shrink-0">86</span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  {tips86.length === 0 && (
-                    <div className="flex items-center gap-1.5 text-[10px] text-[#3dba6f] px-1">
-                      <span>✓</span> Todo el menú disponible
-                    </div>
-                  )}
-
-                  {/* KPIs compactos */}
-                  <div className="grid grid-cols-3 gap-1 mt-1">
-                    {[
-                      {l:'Mesas',  v:ticketDia?.pendientes||0, c:'#4a8fd4'},
-                      {l:'Cobros', v:ticketDia?.ordenes||0,    c:'#3dba6f'},
-                      {l:'Ventas', v:`$${Math.round((ticketDia?.ventas||0)/1000)}k`, c:'#f0b45a'},
-                    ].map(k=>(
-                      <div key={k.l} className="bg-[#141414] rounded-lg p-1.5 text-center border border-[#2a2a2a]">
-                        <div className="text-[14px] font-black" style={{color:k.c,fontFamily:"'Syne',sans-serif"}}>{k.v}</div>
-                        <div className="text-[8px] text-[#606060]">{k.l}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Insight IA */}
-                  <div className="p-2 bg-[#141414] rounded-lg border border-[#9b72ff]/20 mt-1">
-                    <div className="text-[9px] text-[#9b72ff] font-bold mb-1 flex items-center gap-1"><span>✦</span> Nexum IA</div>
-                    <div className="text-[10px] text-[#a0a0a0] leading-relaxed">
-                      {(ticketDia?.pendientes||0) > 8
-                        ? `⚠️ Alta ocupación — ${ticketDia?.pendientes} mesas. Coordinar con Flow.`
-                        : (ticketDia?.ordenes||0) > 5
-                        ? `Ticket prom: $${Math.round((ticketDia?.ventas||0)/(ticketDia?.ordenes||1)/1000)}k. Propina: $${Math.round((ticketDia?.propinaTotal||0)/1000)}k.`
-                        : `${new Date().getHours()<16?'Mediodía':'Noche'} activo. ${ticketDia?.pendientes||0} mesa${(ticketDia?.pendientes||0)!==1?'s':''} abiertas.`}
-                    </div>
-                  </div>
-                  </div>
-                  </div>
-                )}
-              </div>
-
-
               {/* ══ PERFIL CLIENTE — PRIMERO Y PROMINENTE ══ */}
               <div className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl overflow-hidden">
 
@@ -4144,6 +4039,100 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 })}
               </div>
             </>
+              {/* ══ CHAT IA — ventana flotante al fondo ══ */}
+              <div className="sticky bottom-0 left-0 right-0 mt-auto" style={{background:'#141414',borderTop:'1px solid rgba(212,148,58,0.25)',marginLeft:'-12px',marginRight:'-12px',marginBottom:'-12px',paddingLeft:'12px',paddingRight:'12px'}}>
+                {/* Header colapsable */}
+                <button onClick={()=>setChatIAOpen(p=>!p)}
+                  className="w-full px-1 py-2 flex items-center gap-2 hover:opacity-80 transition-opacity"
+                  style={{background:'transparent',border:'none',cursor:'pointer'}}>
+                  <span className="text-[11px] font-black text-[#d4943a]">💬 Chat IA</span>
+                  <span className="text-[9px] text-[#606060] flex-1 text-left">{new Date().toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'})}</span>
+                  <span className="text-[10px] text-[#606060]">{chatIAOpen?'▼':'▲'}</span>
+                </button>
+                {/* Contenido expandible */}
+                {chatIAOpen && (
+                  <div className="pb-3 flex flex-col gap-2 overflow-y-auto" style={{maxHeight:320,scrollbarWidth:'thin'}}>
+                  <div className="p-3 flex flex-col gap-2">
+
+                  {/* Platos del día — desde Supabase via Flow */}
+                  <div className="text-[9px] text-[#606060] font-bold uppercase tracking-wider">🍽️ Platos del Chef hoy</div>
+                  <div className="flex flex-col gap-1.5">
+                    {(platosDia.length > 0 ? platosDia : [
+                      {nombre:'Omakase Chef',emoji:'🍱',precio:'$185k',rentable:true,disponible:true},
+                      {nombre:'Wagyū Premium',emoji:'🥩',precio:'$220k',rentable:true,disponible:true},
+                      {nombre:'Ramen Especial',emoji:'🍜',precio:'$68k',rentable:false,disponible:true},
+                    ]).map((p:any)=>(
+                      <div key={p.nombre||p.id} className={`flex items-center gap-2 px-2 py-2 rounded-lg border ${!p.disponible?'bg-[#e05050]/08 border-[#e05050]/30 opacity-60':'bg-[#141414] border-[#2a2a2a]'}`}>
+                        <span className="text-[18px] shrink-0">{p.emoji||'🍽️'}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className={`text-[11px] font-bold truncate ${!p.disponible?'line-through text-[#606060]':'text-[#f0f0f0]'}`}>{p.nombre}</div>
+                          <div className="text-[9px] text-[#606060]">{p.precio||''}</div>
+                        </div>
+                        {!p.disponible && <span className="text-[8px] font-black bg-[#e05050] text-white px-1.5 py-0.5 rounded shrink-0">86</span>}
+                        {p.disponible && p.rentable && <span className="text-[7px] bg-[#3dba6f]/15 text-[#3dba6f] border border-[#3dba6f]/25 px-1.5 py-0.5 rounded-full font-bold shrink-0">● Rentable</span>}
+                      </div>
+                    ))}
+                    {platosDia.length === 0 && <div className="text-[10px] text-[#606060] px-1 py-1">Activa platos desde Flow → 🍽️ Platos del día</div>}
+                  </div>
+
+                  {/* 86s — alertas agresivas */}
+                  {tips86.length > 0 && (
+                    <>
+                      <div className="text-[9px] text-[#e05050] font-bold uppercase tracking-wider mt-1 flex items-center gap-1">
+                        <span className="inline-block w-2 h-2 rounded-full bg-[#e05050] animate-pulse"/>
+                        ¡SIN STOCK! — No ofrecer
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {tips86.map((t:any,i:number)=>(
+                          <div key={i} className="flex items-center gap-2 px-2 py-2 rounded-lg bg-[#e05050]/10 border border-[#e05050]/40">
+                            <span className="text-[16px] shrink-0">{t.emoji||'🚫'}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[11px] font-black text-[#e05050] truncate">{t.name||t.nombre}</div>
+                              <div className="text-[9px] text-[#e05050]/70">{t.motivo||'Agotado'}</div>
+                            </div>
+                            <span className="text-[8px] font-black bg-[#e05050] text-white px-1.5 py-0.5 rounded shrink-0">86</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {tips86.length === 0 && (
+                    <div className="flex items-center gap-1.5 text-[10px] text-[#3dba6f] px-1">
+                      <span>✓</span> Todo el menú disponible
+                    </div>
+                  )}
+
+                  {/* KPIs compactos */}
+                  <div className="grid grid-cols-3 gap-1 mt-1">
+                    {[
+                      {l:'Mesas',  v:ticketDia?.pendientes||0, c:'#4a8fd4'},
+                      {l:'Cobros', v:ticketDia?.ordenes||0,    c:'#3dba6f'},
+                      {l:'Ventas', v:`$${Math.round((ticketDia?.ventas||0)/1000)}k`, c:'#f0b45a'},
+                    ].map(k=>(
+                      <div key={k.l} className="bg-[#141414] rounded-lg p-1.5 text-center border border-[#2a2a2a]">
+                        <div className="text-[14px] font-black" style={{color:k.c,fontFamily:"'Syne',sans-serif"}}>{k.v}</div>
+                        <div className="text-[8px] text-[#606060]">{k.l}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Insight IA */}
+                  <div className="p-2 bg-[#141414] rounded-lg border border-[#9b72ff]/20 mt-1">
+                    <div className="text-[9px] text-[#9b72ff] font-bold mb-1 flex items-center gap-1"><span>✦</span> Nexum IA</div>
+                    <div className="text-[10px] text-[#a0a0a0] leading-relaxed">
+                      {(ticketDia?.pendientes||0) > 8
+                        ? `⚠️ Alta ocupación — ${ticketDia?.pendientes} mesas. Coordinar con Flow.`
+                        : (ticketDia?.ordenes||0) > 5
+                        ? `Ticket prom: $${Math.round((ticketDia?.ventas||0)/(ticketDia?.ordenes||1)/1000)}k. Propina: $${Math.round((ticketDia?.propinaTotal||0)/1000)}k.`
+                        : `${new Date().getHours()<16?'Mediodía':'Noche'} activo. ${ticketDia?.pendientes||0} mesa${(ticketDia?.pendientes||0)!==1?'s':''} abiertas.`}
+                    </div>
+                  </div>
+                  </div>
+                  </div>
+                )}
+              </div>
+
+
           )}
 
           {rightTab === 'Cuenta' && (
@@ -4249,205 +4238,123 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
 
           {/* Tab Menú eliminado */}
 
-          {rightTab === 'Intel' && (
-            <div className="flex flex-col gap-3">
+        {rightTab === 'Intel' && (
+          <div className="flex flex-col gap-3">
 
-              {/* ══ TICKET DEL DÍA ══ */}
-              <div className="bg-[#1c1c1c] border border-[#22d3ee]/30 rounded-xl overflow-hidden">
-                <div className="px-3 py-2 flex items-center gap-2 border-b border-[#2a2a2a]">
-                  <BarChart3 size={13} className="text-[#22d3ee]"/>
-                  <span className="text-[10px] font-black text-[#22d3ee] uppercase tracking-wider">Ticket del Día</span>
-                </div>
-                <div className="p-3 grid grid-cols-2 gap-2">
-                  {[
-                    { l:'Ventas', v:`$${Math.round((ticketDia?.total_ventas||0)/1000)}k`, c:'#22d3ee' },
-                    { l:'Órdenes', v:ticketDia?.total_ordenes||0, c:'#3dba6f' },
-                    { l:'Items', v:ticketDia?.total_items||0, c:'#d4943a' },
-                    { l:'Mesas', v:ticketDia?.mesas_atendidas||0, c:'#9b72ff' },
-                  ].map(k=>(
-                    <div key={k.l} style={{background:'#141414',borderRadius:8,padding:'8px 10px'}}>
-                      <div style={{fontSize:9,color:'#606060',marginBottom:2,textTransform:'uppercase' as const}}>{k.l}</div>
-                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:k.c}}>{k.v}</div>
-                    </div>
-                  ))}
-                </div>
+            {/* ══ 86 EN VIVO ══ */}
+            <div className="bg-[#1c1c1c] border border-[#e05050]/30 rounded-xl overflow-hidden">
+              <div className="px-3 py-2 flex items-center gap-2 border-b border-[#2a2a2a]">
+                <span style={{fontSize:11,width:6,height:6,borderRadius:'50%',background:'#e05050',display:'inline-block',animation:'pulse 1s infinite'}}/>
+                <span className="text-[10px] font-black text-[#e05050] uppercase tracking-wider">🚫 86 en vivo — No ofrecer</span>
               </div>
-
-              {/* ══ CUENTAS POR COBRAR ══ */}
-              <div className="bg-[#1c1c1c] border border-[#d4943a]/30 rounded-xl overflow-hidden">
-                <div className="px-3 py-2 flex items-center justify-between border-b border-[#2a2a2a]">
-                  <div className="flex items-center gap-2">
-                    <Receipt size={13} className="text-[#d4943a]"/>
-                    <span className="text-[10px] font-black text-[#d4943a] uppercase tracking-wider">Cuentas por Cobrar</span>
-                  </div>
-                  <span style={{background:'rgba(212,148,58,0.15)',border:'1px solid rgba(212,148,58,0.3)',borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:900,color:'#f0b45a'}}>{cuentasCobrar} mesas</span>
-                </div>
-                <div className="p-3">
-                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:26,fontWeight:900,color:'#f0b45a',marginBottom:6}}>
-                    ${(1455088).toLocaleString('es-CO')}
-                  </div>
-                  <div style={{fontSize:10,color:'#606060',marginBottom:10}}>Total acumulado órdenes abiertas</div>
-                  {/* Mesas con orden abierta */}
-                  <div className="flex flex-wrap gap-1.5">
-                    {displayTables.filter(t=>t.estado==='ocupada'||t.ticket>0).map(t=>(
-                      <div key={t.id} style={{background:'rgba(212,148,58,0.1)',border:'1px solid rgba(212,148,58,0.25)',borderRadius:8,padding:'4px 10px',fontSize:10,fontWeight:700,color:'#d4943a',cursor:'pointer'}}
-                        onClick={()=>{ setSelectedTableId(t.id); setRightTab('Cuenta'); }}>
-                        M{t.num} · ${Math.round(t.ticket/1000)}k
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* ══ TIPS DE VENTA — STOCK ALTO / 86 ══ */}
-              <div className="bg-[#1c1c1c] border border-[#3dba6f]/30 rounded-xl overflow-hidden">
-                <div className="px-3 py-2 flex items-center gap-2 border-b border-[#2a2a2a]">
-                  <Sparkles size={13} className="text-[#3dba6f]"/>
-                  <span className="text-[10px] font-black text-[#3dba6f] uppercase tracking-wider">Tips de Venta · Supply</span>
-                </div>
-                <div className="p-2 flex flex-col gap-1.5">
-                  {tipsVenta.length===0&&(
-                    <div style={{fontSize:11,color:'#606060',textAlign:'center',padding:'12px 0'}}>
-                      ✓ Sin alertas de stock
+              <div className="p-2 flex flex-col gap-1">
+                {tips86.length === 0 && (
+                  <div style={{fontSize:11,color:'#606060',textAlign:'center',padding:'12px 0'}}>✓ Todo el menú disponible</div>
+                )}
+                {tips86.slice(0,6).map((t:any,i:number)=>(
+                  <div key={i} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:8,background:'rgba(224,80,80,0.06)'}}>
+                    <span style={{fontSize:16}}>{t.emoji||'🚫'}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:11,fontWeight:700,color:'#f0f0f0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{t.nombre||t.name}</div>
+                      <div style={{fontSize:9,color:'#e05050',fontWeight:700}}>86 — {t.motivo||'Agotado'}</div>
                     </div>
-                  )}
-                  {/* Platos del stockFlow con poco stock */}
-                  {Object.entries(stockFlow).filter(([,v])=>v<=6).slice(0,4).map(([name,qty])=>(
-                    <div key={name} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',background:qty<=0?'rgba(224,80,80,0.08)':'rgba(240,180,90,0.08)',borderRadius:8,border:`1px solid ${qty<=0?'rgba(224,80,80,0.2)':'rgba(240,180,90,0.2)'}`}}>
-                      <span style={{fontSize:14}}>{qty<=0?'🚫':'⚠️'}</span>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:11,fontWeight:700,color:'#f0f0f0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{name}</div>
-                        <div style={{fontSize:9,color:qty<=0?'#e05050':'#f0b45a'}}>{qty<=0?'86 — No disponible':`Stock bajo: ${qty} unidades`}</div>
-                      </div>
-                      {qty>0&&<span style={{fontSize:10,color:'#3dba6f',background:'rgba(61,186,111,0.1)',padding:'2px 8px',borderRadius:10,fontWeight:700,cursor:'pointer',flexShrink:0}}
-                        onClick={()=>{ addToOrder({nombre:name,precio:'$0',emoji:'🍽️'}); showToast(`✓ ${name} → vender hoy`); }}>
-                        Sugerir
-                      </span>}
-                    </div>
-                  ))}
-                  {tipsVenta.slice(0,3).map((m:any)=>(
-                    <div key={m.id} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',background:'rgba(61,186,111,0.06)',borderRadius:8,border:'1px solid rgba(61,186,111,0.15)'}}>
-                      <span style={{fontSize:14}}>{m.emoji||'🍽️'}</span>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:11,fontWeight:700,color:'#f0f0f0',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.name}</div>
-                        <div style={{fontSize:9,color:'#3dba6f'}}>Mover hoy · Stock: {m.stock_actual}</div>
-                      </div>
-                      <span style={{fontSize:10,color:'#3dba6f',fontWeight:700,flexShrink:0}}>Recomendar</span>
-                    </div>
-                  ))}
-                  {/* Botón crear alerta manual */}
-                  <button onClick={async()=>{
-                    const msg = prompt('Mensaje de alerta para el equipo:');
-                    if(msg){
-                      await supabase.from('nexum_notificaciones').insert({
-                        restaurante_id:6,tipo:'operaciones',titulo:'Alerta de operaciones',
-                        mensaje:msg,prioridad:'alta',creado_por:profile?.nombre_completo||'Staff'
-                      });
-                      showToast('✓ Alerta enviada al equipo');
-                      setNotifsBadge(p=>p+1);
-                    }
-                  }} style={{width:'100%',padding:'8px',borderRadius:10,border:'1px dashed rgba(61,186,111,0.3)',background:'transparent',color:'#3dba6f',fontSize:10,fontWeight:700,cursor:'pointer',marginTop:4}}>
-                    + Crear alerta para el equipo
-                  </button>
-                </div>
-              </div>
-
-              {/* ══ PUNTOS POR PEDIDO ══ */}
-              <div className="bg-[#1c1c1c] border border-[#9b72ff]/30 rounded-xl overflow-hidden">
-                <div className="px-3 py-2 flex items-center gap-2 border-b border-[#2a2a2a]">
-                  <span style={{fontSize:12}}>⭐</span>
-                  <span className="text-[10px] font-black text-[#9b72ff] uppercase tracking-wider">Puntos por Pedido</span>
-                </div>
-                <div className="p-3">
-                  <div style={{fontSize:11,color:'#a0a0a0',marginBottom:10,lineHeight:1.5}}>
-                    Cada plato suma <b style={{color:'#9b72ff'}}>10 puntos</b> al perfil del cliente.
-                    Las bebidas suman <b style={{color:'#9b72ff'}}>5 puntos</b>.
+                    <span style={{fontSize:9,fontWeight:900,color:'#fff',background:'#e05050',padding:'2px 6px',borderRadius:6,flexShrink:0}}>86</span>
                   </div>
-                  <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                    {[
-                      {icon:'🍽️',label:'Plato principal',pts:10,color:'#9b72ff'},
-                      {icon:'🍸',label:'Cóctel / Bebida',pts:5,color:'#4a8fd4'},
-                      {icon:'🍮',label:'Postre',pts:8,color:'#f0b45a'},
-                      {icon:'⭐',label:'Plato especial',pts:20,color:'#d4943a'},
-                    ].map(r=>(
-                      <div key={r.label} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',background:'rgba(155,114,255,0.06)',borderRadius:8,border:'1px solid rgba(155,114,255,0.12)'}}>
-                        <span style={{fontSize:16}}>{r.icon}</span>
-                        <span style={{flex:1,fontSize:11,color:'#f0f0f0'}}>{r.label}</span>
-                        <span style={{fontSize:11,fontWeight:900,color:r.color}}>+{r.pts} pts</span>
-                      </div>
-                    ))}
+                ))}
+                {/* Stock bajo */}
+                {Object.entries(stockFlow).filter(([,v])=>(v as number)<=4&&(v as number)>0).slice(0,3).map(([name,qty])=>(
+                  <div key={name} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:8,background:'rgba(240,180,90,0.06)'}}>
+                    <span style={{fontSize:14}}>⚠️</span>
+                    <div style={{flex:1}}><div style={{fontSize:11,color:'#f0f0f0'}}>{name}</div><div style={{fontSize:9,color:'#f0b45a'}}>Stock bajo: {qty as number} uds</div></div>
                   </div>
-                  {/* Puntos mesa actual */}
-                  {order.filter(o=>o.mesa===selectedTable.num).length>0&&(
-                    <div style={{marginTop:10,background:'rgba(155,114,255,0.1)',border:'1px solid rgba(155,114,255,0.25)',borderRadius:10,padding:'8px 12px',textAlign:'center'}}>
-                      <div style={{fontSize:10,color:'#9b72ff',marginBottom:2}}>Esta mesa generará</div>
-                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:'#b388ff'}}>
-                        {order.filter(o=>o.mesa===selectedTable.num).length * 10} pts
-                      </div>
-                      <div style={{fontSize:9,color:'#606060'}}>para {selectedTable.cliente}</div>
-                    </div>
-                  )}
-                </div>
+                ))}
               </div>
-
-              {/* ══ ANÁLISIS DE TIEMPOS Y CARGA ══ */}
-              <div className="bg-[#1c1c1c] border border-[#22d3ee]/20 rounded-xl overflow-hidden">
-                <div className="px-3 py-2 flex items-center gap-2 border-b border-[#2a2a2a]">
-                  <span style={{fontSize:12}}>⏱️</span>
-                  <span className="text-[10px] font-black text-[#22d3ee] uppercase tracking-wider">Tiempos & Carga</span>
-                </div>
-                <div className="p-3">
-                  <div style={{fontSize:10,color:'#606060',marginBottom:6,fontWeight:700}}>Platos lentos (avg)</div>
-                  {([{n:'Arroz Gohan',t:15},{n:'Pulpo Ton',t:18},{n:'Bao Pato Pekin',t:14},{n:'Edamame Robata',t:12}] as const).map((p:any)=>(
-                    <div key={p.n} style={{display:'flex',alignItems:'center',gap:6,padding:'3px 0',borderBottom:'1px solid #1a1a1a'}}>
-                      <span style={{flex:1,fontSize:11,color:'#f0f0f0'}}>{p.n}</span>
-                      <span style={{fontSize:10,fontWeight:700,color:p.t>=15?'#e05050':'#f0b45a'}}>{p.t}m</span>
-                    </div>
-                  ))}
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:6,marginTop:10}}>
-                    {[
-                      {l:'Cocina',v:order.filter((o:any)=>o.mesa===selectedTable.num).length,c:'#e05050'},
-                      {l:'Bar',v:order.filter((o:any)=>o.mesa===selectedTable.num&&['Coctel','Sake','Gin','Yin'].some((k:string)=>o.nombre.includes(k))).length,c:'#448AFF'},
-                      {l:'Total',v:order.filter((o:any)=>o.mesa===selectedTable.num).length,c:'#22d3ee'},
-                    ].map((e:any)=>(
-                      <div key={e.l} style={{background:'#141414',borderRadius:8,padding:'6px 8px',textAlign:'center' as const}}>
-                        <div style={{fontSize:9,color:'#606060'}}>{e.l}</div>
-                        <div style={{fontSize:18,fontWeight:900,color:e.c}}>{e.v}</div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              {/* ══ ACCESO MAÎTRE ══ */}
-              <div className="bg-[#1c1c1c] border border-[#e05050]/20 rounded-xl overflow-hidden">
-                <div className="px-3 py-2 flex items-center justify-between border-b border-[#2a2a2a]">
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck size={13} className="text-[#e05050]"/>
-                    <span className="text-[10px] font-black text-[#e05050] uppercase tracking-wider">Acceso Maître</span>
-                  </div>
-                </div>
-                <div className="p-3 flex flex-col gap-2">
-                  {[
-                    {label:'Editar cuenta activa',icon:'✏️',action:()=>{ setRightTab('Cuenta'); showToast('Ve al tab Cuenta para editar'); }},
-                    {label:'Aplicar descuento',icon:'🎫',action:()=>requirePin(()=>showToast('✓ Descuento habilitado por Maître'))},
-                    {label:'Cerrar mesa sin cobro',icon:'🔓',action:()=>requirePin(()=>showToast('✓ Mesa cerrada — registrado por Maître'))},
-                    {label:'Enviar alerta a caja',icon:'📢',action:async()=>{
-                      await supabase.from('nexum_notificaciones').insert({restaurante_id:6,tipo:'maître',titulo:'Aviso de Maître',mensaje:`Mesa ${selectedTable.num} requiere revisión`,prioridad:'alta',mesa_numero:selectedTable.num,creado_por:'Maître'});
-                      showToast('✓ Caja notificada');
-                    }},
-                  ].map(a=>(
-                    <button key={a.label} onClick={a.action}
-                      style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'rgba(224,80,80,0.05)',border:'1px solid rgba(224,80,80,0.15)',borderRadius:8,cursor:'pointer',width:'100%',textAlign:'left' as const}}>
-                      <span style={{fontSize:14}}>{a.icon}</span>
-                      <span style={{fontSize:11,color:'#f0f0f0',fontWeight:600}}>{a.label}</span>
-                      <span style={{marginLeft:'auto',fontSize:10,color:'#606060'}}>🔐 PIN</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
             </div>
-          )}
+
+            {/* ══ MENSAJE MOTIVACIONAL ══ */}
+            {(() => {
+              const hr = new Date().getHours();
+              const ventas = ticketDia?.ventas||0;
+              const mesas = ticketDia?.pendientes||0;
+              const msgs = [
+                ventas > 2000000  ? { ico:'🔥', txt:`¡Noche increíble! $${Math.round(ventas/1000)}k en ventas. El equipo lo está dando todo.` } : null,
+                mesas >= 8        ? { ico:'🎯', txt:`${mesas} mesas activas. Alta ocupación — coordina con Flow para sincronizar tiempos.` } : null,
+                hr >= 20          ? { ico:'🌙', txt:'Servicio nocturno en curso. Cada detalle cuenta para el cierre perfecto.' } : null,
+                hr >= 12&&hr<16   ? { ico:'☀️', txt:'Almuerzo activo. Velocidad y precisión — los clientes valoran el tiempo.' } : null,
+                tips86.length > 2 ? { ico:'📋', txt:`${tips86.length} items en 86. Guía al equipo para evitar friciones en mesa.` } : null,
+                { ico:'✨', txt:`${profile?.full_name?.split(' ')[0]||'Equipo'}, cada mesa es una experiencia única. Hazla memorable.` }
+              ].filter(Boolean);
+              const msg = msgs[0] || msgs[msgs.length-1];
+              return msg ? (
+                <div style={{background:'linear-gradient(135deg,rgba(212,148,58,0.08),rgba(155,114,255,0.06))',border:'1px solid rgba(212,148,58,0.2)',borderRadius:12,padding:'12px 14px'}}>
+                  <div style={{fontSize:20,marginBottom:6}}>{(msg as any).ico}</div>
+                  <div style={{fontSize:12,color:'#f0f0f0',lineHeight:1.5}}>{(msg as any).txt}</div>
+                </div>
+              ) : null;
+            })()}
+
+            {/* ══ RESUMEN DEL DÍA ══ */}
+            <div className="bg-[#1c1c1c] border border-[#22d3ee]/30 rounded-xl overflow-hidden">
+              <div className="px-3 py-2 flex items-center gap-2 border-b border-[#2a2a2a]">
+                <BarChart3 size={13} className="text-[#22d3ee]"/>
+                <span className="text-[10px] font-black text-[#22d3ee] uppercase tracking-wider">Resumen del día</span>
+                <button onClick={fetchTicketDia} style={{marginLeft:'auto',fontSize:9,color:'#606060',background:'none',border:'none',cursor:'pointer'}}>↻</button>
+              </div>
+              <div className="p-3 grid grid-cols-2 gap-2">
+                {[
+                  {l:'Ventas',  v:`$${Math.round((ticketDia?.ventas||0)/1000)}k`,     c:'#22d3ee'},
+                  {l:'Cobros',  v:ticketDia?.ordenes||0,                              c:'#3dba6f'},
+                  {l:'Abiertas',v:ticketDia?.pendientes||0,                           c:'#f0b45a'},
+                  {l:'Propinas',v:`$${Math.round((ticketDia?.propinaTotal||0)/1000)}k`,c:'#9b72ff'},
+                ].map(k=>(
+                  <div key={k.l} style={{background:'#141414',borderRadius:8,padding:'8px 10px'}}>
+                    <div style={{fontSize:9,color:'#606060',marginBottom:2,textTransform:'uppercase',letterSpacing:'.06em'}}>{k.l}</div>
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:k.c}}>{k.v}</div>
+                  </div>
+                ))}
+              </div>
+              {/* Mesas activas */}
+              {displayTables.filter(t=>t.estado==='ocupada').length > 0 && (
+                <div style={{padding:'0 12px 10px'}}>
+                  <div style={{fontSize:9,color:'#606060',marginBottom:6,fontWeight:700,textTransform:'uppercase'}}>Mesas activas</div>
+                  <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                    {displayTables.filter(t=>t.estado==='ocupada').map(t=>(
+                      <button key={t.id} onClick={()=>{ setSelectedTableId(t.id); setRightTab('Cuenta'); }}
+                        style={{background:'rgba(212,148,58,0.1)',border:'1px solid rgba(212,148,58,0.3)',borderRadius:6,padding:'3px 8px',fontSize:10,color:'#f0b45a',fontWeight:700,cursor:'pointer'}}>
+                        M{t.num}{t.ticket>0?` · $${Math.round(t.ticket/1000)}k`:''}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* ══ ACCESO MAÎTRE ══ */}
+            <div className="bg-[#1c1c1c] border border-[#e05050]/20 rounded-xl overflow-hidden">
+              <div className="px-3 py-2 flex items-center justify-between border-b border-[#2a2a2a]">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={13} className="text-[#e05050]"/>
+                  <span className="text-[10px] font-black text-[#e05050] uppercase tracking-wider">Acceso Maître</span>
+                </div>
+              </div>
+              <div className="p-3 flex flex-col gap-2">
+                {[
+                  {label:'Editar cuenta activa',  icon:'✏️', action:()=>{ setRightTab('Cuenta'); showToast('Modo edición'); }},
+                  {label:'Aplicar descuento',     icon:'🎫', action:()=>requirePin(()=>showToast('✓ Descuento aplicado'))},
+                  {label:'Cerrar mesa sin cobro', icon:'🔓', action:()=>requirePin(()=>showToast('✓ Mesa cerrada'))},
+                ].map(a=>(
+                  <button key={a.label} onClick={a.action}
+                    style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:'rgba(224,80,80,0.05)',border:'1px solid rgba(224,80,80,0.15)',borderRadius:8,cursor:'pointer',width:'100%',textAlign:'left'}}>
+                    <span style={{fontSize:14}}>{a.icon}</span>
+                    <span style={{fontSize:11,color:'#f0f0f0',fontWeight:600}}>{a.label}</span>
+                    <span style={{marginLeft:'auto',fontSize:10,color:'#606060'}}>🔐</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+          </div>
+        )}
 
           {rightTab === 'Chat' && (
             <div className="flex flex-col h-full">
