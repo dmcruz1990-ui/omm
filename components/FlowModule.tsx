@@ -16,12 +16,12 @@ interface FlowItem {
   status:'pending'|'preparing'|'ready'|'served';
   quantity:number; notes:string|null; nombre_plato?:string|null;
   created_at:string; updated_at:string; tiempo_inicio?:string|null;
-  table_id:number|null; menu_name:string|null; category:string|null;
-  mesero?:string|null; estacion?:string|null; cocinero?:string|null;
-  duracion_seg?:number|null; price_at_time?:number|null;
+  table_id:number|null; mesero?:string|null; estacion?:string|null;
+  cocinero?:string|null; duracion_seg?:number|null; price_at_time?:number|null;
+  categoria?:string|null;
 }
 
-// ── 20 COLORES POR MESA ───────────────────────────────────────────────
+// ── COLORES MESA ──────────────────────────────────────────────────────
 const MESA_COLORES: Record<number,{color:string;bg:string}> = {
   1:{color:'#1565C0',bg:'rgba(21,101,192,0.18)'},
   2:{color:'#D81B60',bg:'rgba(216,27,96,0.18)'},
@@ -35,39 +35,32 @@ const MESA_COLORES: Record<number,{color:string;bg:string}> = {
   10:{color:'#E65100',bg:'rgba(230,81,0,0.18)'},
   11:{color:'#4527A0',bg:'rgba(69,39,160,0.18)'},
   12:{color:'#00695C',bg:'rgba(0,105,92,0.18)'},
-  13:{color:'#AD1457',bg:'rgba(173,20,87,0.18)'},
-  14:{color:'#0277BD',bg:'rgba(2,119,189,0.18)'},
-  15:{color:'#6D4C41',bg:'rgba(109,76,65,0.18)'},
-  16:{color:'#37474F',bg:'rgba(55,71,79,0.18)'},
-  17:{color:'#827717',bg:'rgba(130,119,23,0.18)'},
-  18:{color:'#880E4F',bg:'rgba(136,14,79,0.18)'},
-  19:{color:'#1A237E',bg:'rgba(26,35,126,0.18)'},
-  20:{color:'#004D40',bg:'rgba(0,77,64,0.18)'},
 };
 const getMC = (id:number|null) => id && MESA_COLORES[id] ? MESA_COLORES[id] : {color:'#606060',bg:'rgba(96,96,96,0.12)'};
 
-const getNombre  = (i:FlowItem) => i.nombre_plato ?? i.menu_name ?? i.notes ?? 'Sin nombre';
-const getStation = (i:FlowItem) => i.estacion || (i as any).categoria || 'cocina_caliente';
+const getNombre  = (i:FlowItem) => i.nombre_plato ?? i.notes ?? 'Sin nombre';
+const getStation = (i:FlowItem) => i.estacion || i.categoria || 'cocina_caliente';
 const tsec       = (iso:string) => Math.floor((Date.now()-new Date(iso).getTime())/1000);
 const fmtT = (s:number) => {
-  if (!s || s <= 0) return '—';
+  if (!s || s<=0) return '—';
   const m = Math.floor(s/60);
-  return m === 0 ? '<1min' : `${m + (s%60 >= 30 ? 1 : 0)}min`;
+  return m===0 ? '<1min' : `${m}min`;
 };
+const fmtHora = (iso:string) => new Date(iso).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'});
 
 // ── COMPONENTE PRINCIPAL ───────────────────────────────────────────────
 export default function FlowModule() {
-  const [items,     setItems]     = useState<FlowItem[]>([]);
-  const [diasItems, setDiasItems] = useState<FlowItem[]>([]);
-  const [loading,   setLoading]   = useState(true);
-  const [activeTab, setActiveTab] = useState<'live'|'dia'|'platos'|'metricas'>('live');
-  const [filtroEst, setFiltroEst] = useState<string>('all');
-  const [statsHoy,  setStatsHoy]  = useState<any>(null);
-  const [tick,      setTick]      = useState(0);
+  const [items,      setItems]      = useState<FlowItem[]>([]);
+  const [diasItems,  setDiasItems]  = useState<FlowItem[]>([]);
+  const [loading,    setLoading]    = useState(true);
+  const [activeTab,  setActiveTab]  = useState<'live'|'dia'|'platos'|'metricas'>('live');
+  const [filtroEst,  setFiltroEst]  = useState<string>('all');
+  const [statsHoy,   setStatsHoy]   = useState<any>(null);
+  const [careMetrics,setCareMetrics] = useState<any>(null);
+  const [tick,       setTick]       = useState(0);
 
-  // Reloj para cronómetros
   useEffect(() => {
-    const t = setInterval(() => setTick(p => p+1), 10000);
+    const t = setInterval(() => setTick(p=>p+1), 10000);
     return () => clearInterval(t);
   }, []);
 
@@ -87,70 +80,74 @@ export default function FlowModule() {
     const { data } = await supabase
       .from('flow_order_items')
       .select('*')
-      .gte('created_at', hoy + 'T00:00:00')
-      .order('created_at', { ascending: false });
+      .gte('created_at', hoy+'T00:00:00')
+      .order('created_at', {ascending:false});
     if (data) {
       setDiasItems(data as FlowItem[]);
-      // Calcular stats
-      const served  = data.filter(i => i.status === 'served');
-      const tiempos = served.filter(i => i.duracion_seg && i.duracion_seg > 0).map(i => i.duracion_seg as number);
+      const served  = data.filter(i=>i.status==='served');
+      const tiempos = served.filter(i=>i.duracion_seg&&i.duracion_seg>0).map(i=>i.duracion_seg as number);
       const avgT    = tiempos.length ? Math.round(tiempos.reduce((a,b)=>a+b,0)/tiempos.length) : 0;
-      const ventas  = served.reduce((s,i) => s + (i.price_at_time||0) * (i.quantity||1), 0);
+      const totalT  = tiempos.reduce((a,b)=>a+b,0);
       setStatsHoy({
         total:    data.length,
         served:   served.length,
-        pending:  data.filter(i => i.status === 'pending').length,
-        prep:     data.filter(i => i.status === 'preparing').length,
-        ready:    data.filter(i => i.status === 'ready').length,
+        pending:  data.filter(i=>i.status==='pending').length,
+        prep:     data.filter(i=>i.status==='preparing').length,
+        ready:    data.filter(i=>i.status==='ready').length,
         avgTiempo: avgT,
-        ventas,
+        totalTiempo: totalT,
         estaciones: Object.entries(
           data.reduce((acc:any,i) => {
             const est = getStation(i);
-            if (!acc[est]) acc[est] = {platos:0,tiempo:0,count:0};
+            if (!acc[est]) acc[est]={platos:0,tiempo:0,count:0};
             acc[est].platos++;
-            if (i.duracion_seg) { acc[est].tiempo += i.duracion_seg; acc[est].count++; }
+            if (i.duracion_seg) {acc[est].tiempo+=i.duracion_seg; acc[est].count++;}
             return acc;
           }, {})
-        ).map(([est,v]:any) => ({est, platos:v.platos, avgT: v.count ? Math.round(v.tiempo/v.count) : 0})),
+        ).map(([est,v]:any) => ({est, platos:v.platos, avgT:v.count?Math.round(v.tiempo/v.count):0})),
       });
     }
   }, []);
 
-  useEffect(() => { fetchLive(); fetchDia(); }, [fetchLive, fetchDia]);
+  const fetchCareMetrics = useCallback(async () => {
+    const { data } = await supabase
+      .from('flow_care_metricas')
+      .select('*')
+      .limit(7);
+    if (data && data.length > 0) setCareMetrics(data[0]);
+  }, []);
+
+  useEffect(() => { fetchLive(); fetchDia(); fetchCareMetrics(); }, [fetchLive, fetchDia, fetchCareMetrics]);
   useEffect(() => { const t = setInterval(fetchLive, 15000); return () => clearInterval(t); }, [fetchLive]);
 
-  // Realtime
   useEffect(() => {
     const ch = supabase.channel('flow-kds')
-      .on('postgres_changes', { event:'*', schema:'public', table:'order_items' }, () => {
-        fetchLive(); fetchDia();
-      }).subscribe();
+      .on('postgres_changes',{event:'*',schema:'public',table:'order_items'},()=>{fetchLive();fetchDia();})
+      .on('postgres_changes',{event:'*',schema:'public',table:'orders'},()=>{fetchLive();fetchDia();})
+      .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [fetchLive, fetchDia]);
 
   // ── UPDATE STATUS ─────────────────────────────────────────────────
   const updateStatus = async (id:string, status:FlowItem['status']) => {
-    const updates: any = { status, updated_at: new Date().toISOString() };
-    if (status === 'preparing') updates.tiempo_inicio = new Date().toISOString();
-    if (status === 'served')    updates.duracion_seg  = tsec(
-      items.find(i => i.id === id)?.tiempo_inicio || new Date().toISOString()
-    );
-    await supabase.from('order_items').update(updates).eq('id', id);
-    // Notificar al mesero cuando está listo
-    if (status === 'ready' || status === 'served') {
-      const item = items.find(i => i.id === id);
+    const item = items.find(i=>i.id===id);
+    const updates:any = {status, updated_at:new Date().toISOString()};
+    if (status==='preparing') updates.tiempo_inicio = new Date().toISOString();
+    if (status==='served' && item?.tiempo_inicio)
+      updates.duracion_seg = tsec(item.tiempo_inicio);
+    await supabase.from('order_items').update(updates).eq('id',id);
+    if (status==='ready'||status==='served') {
       if (item) {
-        const titulo = status === 'ready'
-          ? `🟡 ${getNombre(item)} casi listo`
+        const msg = status==='ready'
+          ? `⏰ ${getNombre(item)} casi listo — 2 minutos`
           : `✅ ${getNombre(item)} LISTO para entrega`;
-        const urgente = status === 'served';
         await supabase.from('nexum_notificaciones').insert({
-          restaurante_id:6, tipo: urgente ? 'plato_listo' : 'plato_casi_listo',
-          titulo, mensaje:`Mesa ${item.table_id} — ${fmtT(tsec(item.tiempo_inicio||item.created_at))} producción`,
-          urgente, leida:false, destinatario_nombre: item.mesero||null,
+          restaurante_id:6, tipo:status==='ready'?'plato_casi_listo':'plato_listo',
+          titulo:msg,
+          mensaje:`Mesa ${item.table_id} · ${fmtT(item.tiempo_inicio?tsec(item.tiempo_inicio):0)} producción`,
+          urgente:status==='served', leida:false, destinatario_nombre:item.mesero||null,
         }).then(()=>{}).catch(()=>{});
-        if (urgente) {
+        if (status==='served') {
           await supabase.from('flow_alertas').insert({
             restaurante_id:6, mesa_num:item.table_id, plato:getNombre(item),
             mesero:item.mesero||null, cocinero:item.cocinero||null,
@@ -164,58 +161,61 @@ export default function FlowModule() {
 
   // ── SEMÁFORO PROPAGADO ────────────────────────────────────────────
   const mesasConRetraso = new Set(
-    items.filter(i => {
+    items.filter(i=>{
       if (i.status==='served'||i.status==='ready') return false;
-      const est = ESTACIONES[getStation(i)] || ESTACIONES.cocina_caliente;
+      const est = ESTACIONES[getStation(i)]||ESTACIONES.cocina_caliente;
       const tp  = tsec(i.created_at);
-      const pp  = i.tiempo_inicio ? tsec(i.tiempo_inicio) : 0;
-      const esCal = getStation(i) === 'cocina_caliente';
-      return esCal && ((i.status==='pending'&&tp>est.objetivo*1.5)||(i.status==='preparing'&&pp>est.objetivo));
-    }).map(i => i.table_id)
+      const pp  = i.tiempo_inicio?tsec(i.tiempo_inicio):0;
+      return getStation(i)==='cocina_caliente'&&((i.status==='pending'&&tp>est.objetivo*1.5)||(i.status==='preparing'&&pp>est.objetivo));
+    }).map(i=>i.table_id)
   );
 
-  // Filtrar items
-  const estaciones = ['all', ...Array.from(new Set(items.map(i => getStation(i))))];
-  const itemsFiltrados = filtroEst === 'all' ? items : items.filter(i => getStation(i) === filtroEst);
+  const estaciones = ['all',...Array.from(new Set(items.map(i=>getStation(i))))];
+  const itemsFiltrados = filtroEst==='all'?items:items.filter(i=>getStation(i)===filtroEst);
 
-  // Agrupar por mesa
-  const porMesa = itemsFiltrados.reduce((acc:any, i) => {
-    const k = i.table_id ?? 0;
-    if (!acc[k]) acc[k] = [];
-    acc[k].push(i);
+  // Agrupar por pedido (order_id) — no por mesa
+  const porPedido = itemsFiltrados.reduce((acc:any, i) => {
+    const k = i.order_id||i.id;
+    if (!acc[k]) acc[k]={order_id:k, table_id:i.table_id, mesero:i.mesero, items:[], created_at:i.created_at};
+    acc[k].items.push(i);
     return acc;
   }, {});
+
+  // Ordenar pedidos por orden de llegada
+  const pedidosOrdenados = Object.values(porPedido)
+    .sort((a:any,b:any)=>new Date(a.created_at).getTime()-new Date(b.created_at).getTime());
 
   const S = {
     bg:'#08080f', bg2:'#0f0f1a', bg3:'#161624',
     border:'rgba(255,255,255,0.07)',
     t1:'#fff', t2:'#A0A0B8', t3:'#50506A',
-    gold:'#FFB547', green:'#00E676', red:'#FF5252',
+    gold:'#FFB547', green:'#00E676', red:'#FF5252', blue:'#448AFF',
   };
 
   return (
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:S.bg,color:S.t1,fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
 
       {/* ── HEADER ── */}
-      <div style={{padding:'12px 20px',borderBottom:`1px solid ${S.border}`,background:S.bg2,display:'flex',alignItems:'center',gap:14,flexShrink:0,flexWrap:'wrap'}}>
+      <div style={{padding:'10px 20px',borderBottom:`1px solid ${S.border}`,background:S.bg2,display:'flex',alignItems:'center',gap:14,flexShrink:0,flexWrap:'wrap'}}>
         <div style={{display:'flex',alignItems:'center',gap:10}}>
-          <div style={{width:42,height:42,borderRadius:12,background:'linear-gradient(135deg,#FF6B00,#d4943a)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>🔥</div>
+          <div style={{width:40,height:40,borderRadius:12,background:'linear-gradient(135deg,#FF6B00,#d4943a)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>🔥</div>
           <div>
             <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900}}>COMMAND FLOW <span style={{color:S.gold,fontSize:11}}>KDS</span></div>
-            <div style={{fontSize:9,color:S.t3,textTransform:'uppercase',letterSpacing:'.08em'}}>Kitchen Display · Semáforo · Tiempos</div>
+            <div style={{fontSize:9,color:S.t3,textTransform:'uppercase',letterSpacing:'.08em'}}>Kitchen Display · Semáforo · Care</div>
           </div>
         </div>
-        {/* KPIs */}
+        {/* KPIs header */}
         <div style={{display:'flex',gap:8,marginLeft:'auto',flexWrap:'wrap'}}>
           {[
-            {l:'En vivo', v:items.length,           c:'#FF6B00'},
-            {l:'Hoy',     v:statsHoy?.total||0,      c:S.gold},
-            {l:'Servidos',v:statsHoy?.served||0,     c:S.green},
-            {l:'Avg',     v:fmtT(statsHoy?.avgTiempo||0), c:S.t2},
+            {l:'Pedidos vivos', v:pedidosOrdenados.length,        c:'#FF6B00'},
+            {l:'Items vivos',   v:items.length,                   c:S.gold},
+            {l:'Servidos hoy',  v:statsHoy?.served||0,            c:S.green},
+            {l:'Avg prod.',     v:fmtT(statsHoy?.avgTiempo||0),   c:S.t2},
+            {l:'Total prod.',   v:fmtT(statsHoy?.totalTiempo||0), c:S.blue},
           ].map(k=>(
-            <div key={k.l} style={{textAlign:'center',padding:'4px 12px',background:'rgba(255,255,255,0.04)',borderRadius:10,border:`1px solid ${k.c}20`}}>
+            <div key={k.l} style={{textAlign:'center',padding:'4px 10px',background:'rgba(255,255,255,0.04)',borderRadius:10,border:`1px solid ${k.c}20`}}>
               <div style={{fontSize:8,color:S.t3,textTransform:'uppercase'}}>{k.l}</div>
-              <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:k.c}}>{k.v}</div>
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,color:k.c}}>{k.v}</div>
             </div>
           ))}
         </div>
@@ -224,13 +224,13 @@ export default function FlowModule() {
       {/* ── TABS ── */}
       <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg2,padding:'0 20px',flexShrink:0}}>
         {([
-          {id:'live',    l:'🔴 En vivo'},
-          {id:'dia',     l:'📋 Pedidos del día'},
-          {id:'platos',  l:'🍽️ Platos del día'},
-          {id:'metricas',l:'📊 Métricas'},
+          {id:'live',     l:'🔴 En vivo'},
+          {id:'dia',      l:'📋 Pedidos del día'},
+          {id:'platos',   l:'🍽️ Mi Menú'},
+          {id:'metricas', l:'📊 Métricas + Care'},
         ] as {id:typeof activeTab,l:string}[]).map(t=>(
           <button key={t.id} onClick={()=>setActiveTab(t.id)}
-            style={{padding:'10px 14px',background:'none',border:'none',borderBottom:`2px solid ${activeTab===t.id?S.gold:'transparent'}`,color:activeTab===t.id?S.gold:S.t3,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
+            style={{padding:'9px 14px',background:'none',border:'none',borderBottom:`2px solid ${activeTab===t.id?S.gold:'transparent'}`,color:activeTab===t.id?S.gold:S.t3,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
             {t.l}
           </button>
         ))}
@@ -238,119 +238,117 @@ export default function FlowModule() {
 
       <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
 
-        {/* ══ EN VIVO ══ */}
+        {/* ══ EN VIVO — por pedido en orden de llegada ══ */}
         {activeTab==='live' && (
           <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden'}}>
             {/* Filtro estaciones */}
-            <div style={{padding:'8px 16px',borderBottom:`1px solid ${S.border}`,background:S.bg2,display:'flex',gap:6,flexWrap:'wrap',flexShrink:0,alignItems:'center'}}>
-              {items.filter(i=>i.status==='ready').length > 0 && (
-                <div style={{marginLeft:'auto',background:'rgba(0,230,118,0.12)',border:'1px solid rgba(0,230,118,0.4)',borderRadius:20,padding:'3px 12px',fontSize:10,color:'#00E676',fontWeight:700,animation:'pulse 1.5s infinite'}}>
-                  🟢 {items.filter(i=>i.status==='ready').length} listo{items.filter(i=>i.status==='ready').length>1?'s':''} para entrega
-                </div>
-              )}
+            <div style={{padding:'6px 16px',borderBottom:`1px solid ${S.border}`,background:S.bg2,display:'flex',gap:6,flexWrap:'wrap',flexShrink:0,alignItems:'center'}}>
               {estaciones.map(est=>{
                 const meta = ESTACIONES[est];
+                const cnt  = est==='all'?items.length:items.filter(i=>getStation(i)===est).length;
                 return (
                   <button key={est} onClick={()=>setFiltroEst(est)}
-                    style={{padding:'4px 12px',borderRadius:20,border:`1px solid ${filtroEst===est?(meta?.color||S.gold):'rgba(255,255,255,0.1)'}`,background:filtroEst===est?`${meta?.color||S.gold}15`:'transparent',color:filtroEst===est?(meta?.color||S.gold):S.t3,fontSize:10,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:4}}>
-                    {meta ? `${meta.emoji} ${est.replace('_',' ')}` : '🔴 Todas'}
-                    {est!=='all' && <span style={{fontSize:9,opacity:.7}}>({items.filter(i=>getStation(i)===est).length})</span>}
+                    style={{padding:'3px 10px',borderRadius:20,border:`1px solid ${filtroEst===est?(meta?.color||S.gold):'rgba(255,255,255,0.1)'}`,background:filtroEst===est?`${meta?.color||S.gold}15`:'transparent',color:filtroEst===est?(meta?.color||S.gold):S.t3,fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                    {meta?`${meta.emoji} ${est.replace('_',' ')}`:'🔴 Todas'} ({cnt})
                   </button>
                 );
               })}
+              {items.filter(i=>i.status==='ready').length>0 && (
+                <div style={{marginLeft:'auto',background:'rgba(0,230,118,0.12)',border:'1px solid rgba(0,230,118,0.4)',borderRadius:20,padding:'3px 12px',fontSize:10,color:S.green,fontWeight:700,animation:'pulse 1.5s infinite'}}>
+                  🟢 {items.filter(i=>i.status==='ready').length} listo{items.filter(i=>i.status==='ready').length>1?'s':''} para entrega
+                </div>
+              )}
             </div>
 
-            {/* Cards */}
-            <div style={{flex:1,overflowY:'auto',padding:12}}>
+            {/* Cards por pedido (orden de llegada) */}
+            <div style={{flex:1,overflowY:'auto',padding:12,display:'flex',flexDirection:'column',gap:8}}>
               {loading && <div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando...</div>}
-              {!loading && items.length===0 && (
+              {!loading && pedidosOrdenados.length===0 && (
                 <div style={{textAlign:'center',padding:60,color:S.t3}}>
                   <div style={{fontSize:48,marginBottom:12}}>✅</div>
                   <div style={{fontSize:14,fontWeight:700}}>Cocina al día</div>
-                  <div style={{fontSize:12,marginTop:4}}>Sin pedidos pendientes</div>
                 </div>
               )}
-              {Object.entries(porMesa).map(([mesaId, mesaItems]:any) => {
-                const mc = getMC(Number(mesaId));
+              {pedidosOrdenados.map((pedido:any) => {
+                const mc = getMC(pedido.table_id);
                 return (
-                  <div key={mesaId} style={{background:S.bg2,border:`2px solid ${mc.color}30`,borderLeft:`4px solid ${mc.color}`,borderRadius:14,marginBottom:12,overflow:'hidden'}}>
-                    {/* Header mesa */}
-                    <div style={{padding:'8px 14px',background:`${mc.color}10`,display:'flex',alignItems:'center',gap:8,borderBottom:`1px solid ${mc.color}20`}}>
-                      <span style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:mc.color}}>Mesa {mesaId}</span>
-                      <span style={{fontSize:10,color:S.t3}}>{mesaItems.length} item{mesaItems.length!==1?'s':''}</span>
+                  <div key={pedido.order_id} style={{background:S.bg2,border:`1px solid ${mc.color}25`,borderLeft:`4px solid ${mc.color}`,borderRadius:14,overflow:'hidden'}}>
+                    {/* Header pedido */}
+                    <div style={{padding:'6px 12px',background:`${mc.color}08`,display:'flex',alignItems:'center',gap:8,borderBottom:`1px solid ${mc.color}15`}}>
+                      <span style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,color:mc.color}}>
+                        M{pedido.table_id||'?'}
+                      </span>
+                      <span style={{fontSize:10,color:S.t3}}>{pedido.items.length} item{pedido.items.length>1?'s':''}</span>
+                      <span style={{fontSize:9,color:S.t3,marginLeft:4}}>🕐 {fmtHora(pedido.created_at)}</span>
+                      {pedido.mesero && <span style={{fontSize:9,color:S.t3}}>👤 {pedido.mesero.split(' ')[0]}</span>}
+                      {/* Badges de estado */}
                       <div style={{marginLeft:'auto',display:'flex',gap:4}}>
-                        {['pending','preparing','ready'].map(s=>{
-                          const n = mesaItems.filter((i:FlowItem)=>i.status===s).length;
-                          const colors:any = {pending:S.t3,preparing:'#FFB547',ready:S.green};
-                          return n>0 ? <span key={s} style={{fontSize:9,fontWeight:700,color:colors[s],background:`${colors[s]}15`,padding:'1px 6px',borderRadius:10}}>{n} {s}</span> : null;
+                        {(['pending','preparing','ready'] as const).map(s=>{
+                          const n = pedido.items.filter((i:FlowItem)=>i.status===s).length;
+                          const colors:any={pending:S.t3,preparing:'#FFB547',ready:S.green};
+                          return n>0?<span key={s} style={{fontSize:9,color:colors[s],background:`${colors[s]}15`,padding:'1px 6px',borderRadius:10,fontWeight:700}}>{n} {s}</span>:null;
                         })}
                       </div>
                     </div>
-                    {/* Items */}
-                    <div style={{padding:10,display:'flex',flexDirection:'column',gap:6}}>
-                      {mesaItems.map((item:FlowItem) => {
-                        const est   = ESTACIONES[getStation(item)] || ESTACIONES.cocina_caliente;
+                    {/* Items del pedido */}
+                    <div style={{padding:'8px 10px',display:'flex',flexDirection:'column',gap:6}}>
+                      {pedido.items.map((item:FlowItem) => {
+                        const est   = ESTACIONES[getStation(item)]||ESTACIONES.cocina_caliente;
                         const tp    = tsec(item.created_at);
-                        const pp    = item.tiempo_inicio ? tsec(item.tiempo_inicio) : 0;
+                        const pp    = item.tiempo_inicio?tsec(item.tiempo_inicio):0;
                         const isPending   = item.status==='pending';
                         const isPreparing = item.status==='preparing';
                         const isReady     = item.status==='ready';
-                        const pct = isPreparing ? Math.min(100,Math.round(pp/est.objetivo*100)) : isPending ? Math.min(100,Math.round(tp/(est.objetivo*1.5)*100)) : 100;
-                        const esEnFuego  = (isPending&&tp>est.objetivo*1.5)||(isPreparing&&pp>est.objetivo);
-                        const mesaRet    = !!(item.table_id&&mesasConRetraso.has(item.table_id)&&getStation(item)!=='cocina_caliente');
-                        const esAmarillo = !esEnFuego&&((isPending&&tp>est.objetivo*0.8)||(isPreparing&&pp>est.objetivo*0.7)||mesaRet);
-                        const sColor     = esEnFuego?S.red:esAmarillo?'#FFB547':S.green;
+                        const pct = isPreparing?Math.min(100,Math.round(pp/est.objetivo*100)):isPending?Math.min(100,Math.round(tp/(est.objetivo*1.5)*100)):100;
+                        const esRetrasado = (isPending&&tp>est.objetivo*1.5)||(isPreparing&&pp>est.objetivo);
+                        const esAmarillo  = !esRetrasado&&((isPending&&tp>est.objetivo*0.8)||(isPreparing&&pp>est.objetivo*0.7)||mesasConRetraso.has(item.table_id));
+                        const sColor = esRetrasado?S.red:esAmarillo?'#FFB547':S.green;
                         return (
-                          <div key={item.id} style={{background:esEnFuego?'rgba(255,82,82,0.08)':esAmarillo?'rgba(255,181,71,0.06)':'rgba(255,255,255,0.03)',border:`1px solid ${esEnFuego?'rgba(255,82,82,0.35)':esAmarillo?'rgba(255,181,71,0.25)':'rgba(255,255,255,0.07)'}`,borderLeft:`4px solid ${sColor}`,borderRadius:10,padding:'10px 12px'}}>
-                            {/* Fila superior */}
-                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-                              <span style={{fontSize:18}}>{est.emoji}</span>
+                          <div key={item.id} style={{background:esRetrasado?'rgba(255,82,82,0.06)':esAmarillo?'rgba(255,181,71,0.04)':'rgba(255,255,255,0.02)',border:`1px solid ${esRetrasado?'rgba(255,82,82,0.3)':esAmarillo?'rgba(255,181,71,0.2)':'rgba(255,255,255,0.06)'}`,borderLeft:`3px solid ${sColor}`,borderRadius:8,padding:'8px 10px'}}>
+                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:isPending||isPreparing?6:0}}>
+                              <span style={{fontSize:16}}>{est.emoji}</span>
                               <div style={{flex:1}}>
-                                <div style={{fontSize:13,fontWeight:700,color:S.t1}}>{item.quantity > 1 ? `${item.quantity}x ` : ''}{getNombre(item)}</div>
-                                <div style={{display:'flex',gap:6,marginTop:2,flexWrap:'wrap'}}>
-                                  {item.table_id && <span style={{fontSize:10,background:mc.bg,color:mc.color,border:`1px solid ${mc.color}30`,padding:'1px 7px',borderRadius:20,fontWeight:700}}>M{item.table_id}</span>}
-                                  {item.mesero   && <span style={{fontSize:9,color:S.t3}}>👤 {item.mesero.split(' ')[0]}</span>}
-                                  {item.cocinero && <span style={{fontSize:9,color:est.color}}>👨‍🍳 {item.cocinero.split(' ').slice(-1)[0]}</span>}
-                                  {isReady && <span style={{fontSize:10,background:'rgba(0,230,118,0.15)',color:S.green,padding:'1px 6px',borderRadius:10,fontWeight:700}}>🟢 LISTO</span>}
-                                  {esEnFuego && <span style={{fontSize:11}}>🔥</span>}
-                                  {mesaRet && !esEnFuego && <span title="Cocina caliente retrasada" style={{fontSize:11}}>🍳⚠️</span>}
-                                  {esAmarillo && !esEnFuego && !mesaRet && <span style={{fontSize:11}}>⚠️</span>}
+                                <div style={{fontSize:12,fontWeight:700,color:S.t1}}>{item.quantity>1?`${item.quantity}× `:''}{getNombre(item)}</div>
+                                <div style={{display:'flex',gap:6,marginTop:2,flexWrap:'wrap',alignItems:'center'}}>
+                                  <span style={{fontSize:9,color:est.color}}>{est.emoji} {getStation(item).replace('_',' ')}</span>
+                                  {item.cocinero && <span style={{fontSize:9,color:S.t3}}>👨‍🍳 {item.cocinero.split(' ').slice(-1)[0]}</span>}
+                                  {isReady && <span style={{fontSize:9,background:'rgba(0,230,118,0.15)',color:S.green,padding:'1px 5px',borderRadius:8,fontWeight:700}}>✅ LISTO</span>}
+                                  {esRetrasado && <span style={{fontSize:11}}>🔥</span>}
                                 </div>
+                                {item.notes && item.notes!==getNombre(item) && <div style={{fontSize:9,color:'#FFB547',marginTop:2,fontStyle:'italic'}}>📝 {item.notes}</div>}
                               </div>
                               {/* Tiempo */}
                               <div style={{textAlign:'right',flexShrink:0}}>
-                                <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:sColor}}>
-                                  {isPreparing ? fmtT(pp) : isPending ? fmtT(tp) : fmtT(item.duracion_seg||0)}
+                                <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,color:sColor}}>
+                                  {isPreparing?fmtT(pp):isPending?fmtT(tp):fmtT(item.duracion_seg||0)}
                                 </div>
-                                <div style={{fontSize:9,color:S.t3}}>{isPreparing?'producción':isPending?'en espera':'total'}</div>
+                                <div style={{fontSize:8,color:S.t3}}>{isPreparing?'prod.':isPending?'espera':'total'}</div>
                               </div>
                             </div>
                             {/* Barra progreso */}
                             {(isPending||isPreparing) && (
-                              <div style={{height:3,background:'rgba(255,255,255,0.06)',borderRadius:2,overflow:'hidden',marginBottom:8}}>
+                              <div style={{height:2,background:'rgba(255,255,255,0.06)',borderRadius:2,overflow:'hidden',marginBottom:6}}>
                                 <div style={{height:'100%',width:`${pct}%`,background:`linear-gradient(90deg,${est.color},${sColor})`,borderRadius:2,transition:'width 1s'}}/>
                               </div>
                             )}
-                            {/* Notas */}
-                            {item.notes && <div style={{fontSize:10,color:'#FFB547',marginBottom:8,fontStyle:'italic'}}>📝 {item.notes}</div>}
-                            {/* Botones 3 pasos */}
-                            <div style={{display:'flex',gap:6}}>
+                            {/* ── 3 BOTONES DE FLUJO ── */}
+                            <div style={{display:'flex',gap:5}}>
                               {isPending && (
                                 <button onClick={()=>updateStatus(item.id,'preparing')}
-                                  style={{flex:1,padding:'8px 6px',borderRadius:9,border:`1px solid ${est.color}60`,background:`${est.color}18`,color:est.color,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                                  style={{flex:1,padding:'7px 6px',borderRadius:8,border:`1px solid ${est.color}60`,background:`${est.color}15`,color:est.color,fontSize:11,fontWeight:700,cursor:'pointer'}}>
                                   🍳 Comenzar preparación
                                 </button>
                               )}
                               {isPreparing && (
                                 <button onClick={()=>updateStatus(item.id,'ready')}
-                                  style={{flex:1,padding:'8px 6px',borderRadius:9,border:'1px solid rgba(255,181,71,0.5)',background:'rgba(255,181,71,0.12)',color:'#FFB547',fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                                  🟡 Prepárate para venir
+                                  style={{flex:1,padding:'7px 6px',borderRadius:8,border:'1px solid rgba(255,181,71,0.5)',background:'rgba(255,181,71,0.1)',color:'#FFB547',fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                                  ⏰ Prepárate para venir — casi listo (2 min)
                                 </button>
                               )}
                               {isReady && (
                                 <button onClick={()=>updateStatus(item.id,'served')}
-                                  style={{flex:1,padding:'8px 6px',borderRadius:9,border:`1px solid ${S.green}60`,background:`${S.green}12`,color:S.green,fontSize:12,fontWeight:900,cursor:'pointer',boxShadow:`0 0 8px ${S.green}20`}}>
-                                  ✅ Listo para entrega · {fmtT(pp)}
+                                  style={{flex:1,padding:'7px 6px',borderRadius:8,border:`1px solid ${S.green}60`,background:`${S.green}10`,color:S.green,fontSize:12,fontWeight:900,cursor:'pointer',boxShadow:`0 0 8px ${S.green}20`}}>
+                                  ✅ Listo para entrega
                                 </button>
                               )}
                             </div>
@@ -368,42 +366,67 @@ export default function FlowModule() {
         {/* ══ PEDIDOS DEL DÍA ══ */}
         {activeTab==='dia' && (
           <div style={{flex:1,overflowY:'auto',padding:16}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:16}}>📋 Pedidos del día</div>
+            {/* Totales de tiempo arriba */}
+            {statsHoy && (
+              <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
+                {[
+                  {l:'Total servidos',   v:statsHoy.served,                 c:S.green},
+                  {l:'Tiempo prom.',     v:fmtT(statsHoy.avgTiempo),        c:S.gold},
+                  {l:'Tiempo total prod.',v:fmtT(statsHoy.totalTiempo),     c:S.blue},
+                  {l:'Pendientes',       v:statsHoy.pending,                c:S.red},
+                ].map(k=>(
+                  <div key={k.l} style={{padding:'6px 14px',background:S.bg2,borderRadius:10,border:`1px solid ${k.c}20`}}>
+                    <div style={{fontSize:8,color:S.t3,textTransform:'uppercase'}}>{k.l}</div>
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:k.c}}>{k.v}</div>
+                  </div>
+                ))}
+              </div>
+            )}
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
               <thead>
                 <tr style={{background:S.bg2}}>
-                  {['Plato','Mesa','Estación','Estado','⏱ Inicio','⏱ Final','⏱ Total','Cocinero'].map(h=>(
-                    <th key={h} style={{padding:'8px 12px',textAlign:'left',fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase',borderBottom:`1px solid ${S.border}`}}>{h}</th>
+                  {['Plato','Mesa','Estación','Estado','⏱ Inicio','⏱ Final','⏱ Total','Responsable área'].map(h=>(
+                    <th key={h} style={{padding:'7px 10px',textAlign:'left',fontSize:9,color:S.t3,fontWeight:700,textTransform:'uppercase',borderBottom:`1px solid ${S.border}`}}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {diasItems.map((i,idx)=>{
-                  const est = ESTACIONES[getStation(i)] || ESTACIONES.cocina_caliente;
+                  const est = ESTACIONES[getStation(i)]||ESTACIONES.cocina_caliente;
                   const mc  = getMC(i.table_id);
-                  const statusColors:any = {pending:S.t3,preparing:'#FFB547',ready:S.green,served:'#606060'};
+                  const statusColors:any={pending:S.t3,preparing:'#FFB547',ready:S.green,served:'#404060'};
+                  // Detectar retrasado
+                  const durTotal = i.duracion_seg||0;
+                  const esRetrasado = i.status==='served' && durTotal > est.objetivo * 1.5;
+                  const esCorrecto  = i.status==='served' && durTotal <= est.objetivo;
+                  const rowBg = esRetrasado?'rgba(255,82,82,0.04)':esCorrecto?'rgba(0,230,118,0.03)':idx%2===0?S.bg:S.bg2;
+                  const tiempoColor = esRetrasado?S.red:esCorrecto?S.green:S.t2;
                   return (
-                    <tr key={i.id} style={{background:idx%2===0?S.bg:S.bg2,borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
-                      <td style={{padding:'8px 12px',fontWeight:600,color:S.t1}}>{i.quantity>1?`${i.quantity}x `:''}{getNombre(i)}</td>
-                      <td style={{padding:'8px 12px'}}>
-                        {i.table_id ? <span style={{color:mc.color,fontWeight:700,fontSize:11}}>M{i.table_id}</span> : <span style={{color:S.t3}}>—</span>}
+                    <tr key={i.id} style={{background:rowBg,borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                      <td style={{padding:'7px 10px',fontWeight:600,color:S.t1}}>{i.quantity>1?`${i.quantity}× `:''}{getNombre(i)}</td>
+                      <td style={{padding:'7px 10px'}}>
+                        {i.table_id?<span style={{color:mc.color,fontWeight:700,fontSize:11}}>M{i.table_id}</span>:<span style={{color:S.t3}}>—</span>}
                       </td>
-                      <td style={{padding:'8px 12px'}}>
-                        <span style={{color:est.color,fontSize:11}}>{est.emoji} {getStation(i).replace('_',' ')}</span>
+                      <td style={{padding:'7px 10px'}}>
+                        <span style={{color:est.color,fontSize:10}}>{est.emoji} {getStation(i).replace('_',' ')}</span>
                       </td>
-                      <td style={{padding:'8px 12px'}}>
-                        <span style={{fontSize:10,color:statusColors[i.status],background:`${statusColors[i.status]}15`,padding:'2px 8px',borderRadius:20,fontWeight:700}}>{i.status}</span>
+                      <td style={{padding:'7px 10px'}}>
+                        <span style={{fontSize:9,color:statusColors[i.status],background:`${statusColors[i.status]}15`,padding:'2px 7px',borderRadius:20,fontWeight:700}}>{i.status}</span>
                       </td>
-                      <td style={{padding:'8px 12px',color:S.t3,fontSize:11}}>
-                        {i.created_at ? new Date(i.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) : '—'}
+                      {/* ⏱ Inicio */}
+                      <td style={{padding:'7px 10px',color:S.t3,fontSize:10}}>{fmtHora(i.created_at)}</td>
+                      {/* ⏱ Final */}
+                      <td style={{padding:'7px 10px',color:S.t3,fontSize:10}}>
+                        {i.status==='served'?fmtHora(i.updated_at):'—'}
                       </td>
-                      <td style={{padding:'8px 12px',color:S.t3,fontSize:11}}>
-                        {i.updated_at && i.status==='served' ? new Date(i.updated_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) : '—'}
+                      {/* ⏱ Total — rojo si retrasado, verde si a tiempo */}
+                      <td style={{padding:'7px 10px',fontFamily:"'Syne',sans-serif",fontWeight:700,color:tiempoColor}}>
+                        {i.duracion_seg?fmtT(i.duracion_seg):i.tiempo_inicio?fmtT(tsec(i.tiempo_inicio)):'—'}
+                        {esRetrasado && <span style={{fontSize:8,marginLeft:4}}>🔴</span>}
+                        {esCorrecto  && <span style={{fontSize:8,marginLeft:4}}>🟢</span>}
                       </td>
-                      <td style={{padding:'8px 12px',color:S.t2,fontFamily:"'Syne',sans-serif",fontWeight:700}}>
-                        {i.duracion_seg ? fmtT(i.duracion_seg) : i.tiempo_inicio ? fmtT(tsec(i.tiempo_inicio)) : '—'}
-                      </td>
-                      <td style={{padding:'8px 12px',color:S.t3,fontSize:11}}>{i.cocinero||'—'}</td>
+                      {/* Responsable área (antes cocinero) */}
+                      <td style={{padding:'7px 10px',color:S.t3,fontSize:10}}>{i.cocinero||'—'}</td>
                     </tr>
                   );
                 })}
@@ -413,43 +436,47 @@ export default function FlowModule() {
           </div>
         )}
 
-        {/* ══ PLATOS DEL DÍA ══ */}
+        {/* ══ MI MENÚ (Platos del día) ══ */}
         {activeTab==='platos' && <PlatosDia />}
 
-        {/* ══ MÉTRICAS ══ */}
+        {/* ══ MÉTRICAS + CARE ══ */}
         {activeTab==='metricas' && (
           <div style={{flex:1,overflowY:'auto',padding:16}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:16}}>📊 Métricas del día</div>
-            {statsHoy ? (
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:14}}>📊 Métricas del día</div>
+
+            {statsHoy && (
               <div style={{display:'flex',flexDirection:'column',gap:14}}>
-                {/* KPIs */}
-                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:10}}>
+                {/* KPIs producción */}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(130px,1fr))',gap:8}}>
                   {[
-                    {l:'Total pedidos',  v:statsHoy.total,                  c:'#FFB547'},
-                    {l:'Servidos',       v:statsHoy.served,                 c:S.green},
-                    {l:'En preparación', v:statsHoy.prep,                   c:'#FF6B00'},
-                    {l:'Listos',         v:statsHoy.ready,                  c:S.green},
-                    {l:'Pendientes',     v:statsHoy.pending,                c:S.t3},
-                    {l:'Tiempo promedio',v:fmtT(statsHoy.avgTiempo),        c:S.gold},
+                    {l:'Total pedidos',   v:statsHoy.total,              c:'#FFB547'},
+                    {l:'Servidos',        v:statsHoy.served,             c:S.green},
+                    {l:'En prep.',        v:statsHoy.prep,               c:'#FF6B00'},
+                    {l:'Listos',          v:statsHoy.ready,              c:S.green},
+                    {l:'Pendientes',      v:statsHoy.pending,            c:S.t3},
+                    {l:'Tiempo prom.',    v:fmtT(statsHoy.avgTiempo),    c:S.gold},
+                    {l:'Tiempo total',    v:fmtT(statsHoy.totalTiempo),  c:S.blue},
                   ].map(k=>(
-                    <div key={k.l} style={{background:S.bg2,border:`1px solid ${k.c}20`,borderRadius:12,padding:'12px 14px'}}>
-                      <div style={{fontSize:9,color:S.t3,textTransform:'uppercase',marginBottom:4}}>{k.l}</div>
-                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:k.c}}>{k.v}</div>
+                    <div key={k.l} style={{background:S.bg2,border:`1px solid ${k.c}20`,borderRadius:10,padding:'10px 12px'}}>
+                      <div style={{fontSize:8,color:S.t3,textTransform:'uppercase',marginBottom:3}}>{k.l}</div>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:k.c}}>{k.v}</div>
                     </div>
                   ))}
                 </div>
+
                 {/* Por estación */}
-                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
-                  <div style={{fontSize:12,fontWeight:700,marginBottom:12}}>Por estación</div>
+                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:14}}>
+                  <div style={{fontSize:11,fontWeight:700,marginBottom:10}}>Por estación</div>
                   {statsHoy.estaciones.map((e:any)=>{
-                    const meta = ESTACIONES[e.est] || ESTACIONES.cocina_caliente;
+                    const meta = ESTACIONES[e.est]||ESTACIONES.cocina_caliente;
+                    const maxPlatos = Math.max(...statsHoy.estaciones.map((x:any)=>x.platos));
                     return (
-                      <div key={e.est} style={{display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
-                        <span style={{fontSize:18,flexShrink:0}}>{meta.emoji}</span>
+                      <div key={e.est} style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                        <span style={{fontSize:16,flexShrink:0}}>{meta.emoji}</span>
                         <div style={{flex:1}}>
-                          <div style={{fontSize:11,fontWeight:600,marginBottom:3}}>{e.est.replace('_',' ')}</div>
+                          <div style={{fontSize:10,fontWeight:600,marginBottom:2}}>{e.est.replace('_',' ')}</div>
                           <div style={{height:4,background:'rgba(255,255,255,0.06)',borderRadius:2,overflow:'hidden'}}>
-                            <div style={{height:'100%',width:`${Math.min(100,e.platos/Math.max(...statsHoy.estaciones.map((x:any)=>x.platos))*100)}%`,background:meta.color,borderRadius:2}}/>
+                            <div style={{height:'100%',width:`${Math.min(100,e.platos/maxPlatos*100)}%`,background:meta.color,borderRadius:2}}/>
                           </div>
                         </div>
                         <div style={{textAlign:'right',flexShrink:0}}>
@@ -461,8 +488,88 @@ export default function FlowModule() {
                   })}
                 </div>
               </div>
+            )}
+
+            {/* ══ REPORTE X-CARE™ CONECTADO ══ */}
+            <div style={{marginTop:20,fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,marginBottom:12,display:'flex',alignItems:'center',gap:8}}>
+              ❤️ Reporte X-CARE™
+              <span style={{fontSize:10,color:S.t3,fontFamily:"'DM Sans',sans-serif",fontWeight:400}}>Platos con quejas y felicitaciones del día</span>
+            </div>
+
+            {careMetrics ? (
+              <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                {/* KPIs Care */}
+                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
+                  {[
+                    {l:'Encuestas',  v:careMetrics.total_encuestas||0, c:'#FFB547'},
+                    {l:'Promedio ★', v:`${careMetrics.promedio_estrellas||0}★`, c:'#FFD700'},
+                    {l:'Positivas',  v:`${careMetrics.positivas||0}`, c:S.green},
+                    {l:'Negativas',  v:`${careMetrics.negativas||0}`, c:S.red},
+                  ].map(k=>(
+                    <div key={k.l} style={{background:S.bg2,border:`1px solid ${k.c}20`,borderRadius:10,padding:'8px 10px',textAlign:'center'}}>
+                      <div style={{fontSize:8,color:S.t3,textTransform:'uppercase'}}>{k.l}</div>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:k.c}}>{k.v}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Platos con quejas */}
+                {careMetrics.platos_con_quejas?.length > 0 && (
+                  <div style={{background:`rgba(255,82,82,0.05)`,border:`1px solid rgba(255,82,82,0.25)`,borderRadius:12,padding:14}}>
+                    <div style={{fontSize:11,fontWeight:700,color:S.red,marginBottom:8}}>🚨 Se quejaron de estos platos hoy</div>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                      {careMetrics.platos_con_quejas.map((p:string,i:number)=>(
+                        <span key={i} style={{fontSize:11,background:`rgba(255,82,82,0.1)`,color:S.red,border:`1px solid rgba(255,82,82,0.3)`,padding:'3px 10px',borderRadius:20}}>
+                          ⚠️ {p}
+                        </span>
+                      ))}
+                    </div>
+                    {careMetrics.micro_tags_quejas?.length > 0 && (
+                      <div style={{marginTop:8,display:'flex',flexWrap:'wrap',gap:4}}>
+                        {careMetrics.micro_tags_quejas.map((t:string,i:number)=>(
+                          <span key={i} style={{fontSize:10,background:'rgba(255,255,255,0.05)',color:S.t3,padding:'2px 7px',borderRadius:10}}>{t}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Tags positivos */}
+                {careMetrics.tags_positivos_dia?.length > 0 && (
+                  <div style={{background:`rgba(0,230,118,0.04)`,border:`1px solid rgba(0,230,118,0.2)`,borderRadius:12,padding:14}}>
+                    <div style={{fontSize:11,fontWeight:700,color:S.green,marginBottom:8}}>🏆 Felicitaron esto hoy</div>
+                    <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                      {careMetrics.tags_positivos_dia.map((t:string,i:number)=>(
+                        <span key={i} style={{fontSize:11,background:`rgba(0,230,118,0.1)`,color:S.green,border:`1px solid rgba(0,230,118,0.25)`,padding:'3px 10px',borderRadius:20}}>
+                          ✓ {t}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Sin datos de Care aún */}
+                {!careMetrics.platos_con_quejas?.length && !careMetrics.tags_positivos_dia?.length && (
+                  <div style={{textAlign:'center',padding:30,color:S.t3,background:S.bg2,borderRadius:12}}>
+                    <div style={{fontSize:24,marginBottom:8}}>❤️</div>
+                    <div style={{fontSize:12}}>Sin encuestas completadas hoy aún</div>
+                    <div style={{fontSize:10,marginTop:4}}>Aparecen automáticamente al confirmar el pago</div>
+                  </div>
+                )}
+
+                {careMetrics.meseros_alertas?.length > 0 && (
+                  <div style={{background:`rgba(255,181,71,0.05)`,border:`1px solid rgba(255,181,71,0.2)`,borderRadius:12,padding:12}}>
+                    <div style={{fontSize:10,color:'#FFB547',fontWeight:700,marginBottom:6}}>⚠️ Alertas de mesero hoy (≤2★)</div>
+                    <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                      {careMetrics.meseros_alertas.map((m:string,i:number)=>(
+                        <span key={i} style={{fontSize:11,color:'#FFB547',background:'rgba(255,181,71,0.1)',padding:'2px 8px',borderRadius:10}}>{m}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
-              <div style={{textAlign:'center',padding:40,color:S.t3}}>Sin datos hoy</div>
+              <div style={{textAlign:'center',padding:30,color:S.t3}}>Cargando datos de X-CARE...</div>
             )}
           </div>
         )}
@@ -471,107 +578,103 @@ export default function FlowModule() {
   );
 }
 
-// ══ PLATOS DEL DÍA — componente separado limpio ════════════════════════
+// ══ MI MENÚ (Platos del día) ══════════════════════════════════════════
 function PlatosDia() {
   const [platos, setPlatos] = useState<any[]>([]);
   const [form,   setForm]   = useState({nombre:'',emoji:'🍽️',precio:'',estacion:'cocina_caliente',rentable:true});
-
-  const EMOJIS = ['🍽️','🥩','🍜','🐟','🦐','🥗','🍱','🍣','🍷','🍸','🎂'];
+  const S = {bg:'#08080f',bg2:'#0f0f1a',border:'rgba(255,255,255,0.08)',t1:'#fff',t2:'#a0a0a0',t3:'#50506A',gold:'#FFB547'};
+  const EMOJIS = ['🍽️','🥩','🍜','🐟','🦐','🥗','🍱','🍣','🍷','🍸','🎂','🫁','🦀','🥟'];
   const ESTS: Record<string,string> = {
     cocina_caliente:'🔥 Cocina caliente', cocina_fria:'🧊 Cocina fría',
     bar:'🍸 Bar', cava:'🍷 Cava', robata:'🥩 Robata', postres:'🎂 Postres',
   };
 
-  const fetchPlatos = async () => {
-    const { data } = await supabase.from('platos_dia').select('*')
+  const fetch = async () => {
+    const {data} = await supabase.from('platos_dia').select('*')
       .eq('restaurante_id',6).eq('activo',true)
-      .eq('fecha', new Date().toISOString().split('T')[0])
-      .order('created_at', { ascending: false });
+      .eq('fecha',new Date().toISOString().split('T')[0])
+      .order('created_at',{ascending:false});
     if (data) setPlatos(data);
   };
-  useEffect(() => { fetchPlatos(); }, []);
+  useEffect(()=>{fetch();},[]);
 
   const agregar = async () => {
     if (!form.nombre) return;
     await supabase.from('platos_dia').insert({
       restaurante_id:6, nombre:form.nombre, emoji:form.emoji,
-      precio:form.precio, estacion:form.estacion,
-      rentable:form.rentable, disponible:true,
-      fecha: new Date().toISOString().split('T')[0],
+      precio:form.precio, estacion:form.estacion, rentable:form.rentable,
+      disponible:true, fecha:new Date().toISOString().split('T')[0],
     });
     setForm({nombre:'',emoji:'🍽️',precio:'',estacion:'cocina_caliente',rentable:true});
-    fetchPlatos();
+    fetch();
   };
-  const toggle86  = async (id:string, disp:boolean) => { await supabase.from('platos_dia').update({disponible:!disp}).eq('id',id); fetchPlatos(); };
-  const eliminar  = async (id:string) => { await supabase.from('platos_dia').update({activo:false}).eq('id',id); fetchPlatos(); };
+  const toggle86 = async (id:string,disp:boolean) => {await supabase.from('platos_dia').update({disponible:!disp}).eq('id',id);fetch();};
+  const eliminar = async (id:string) => {await supabase.from('platos_dia').update({activo:false}).eq('id',id);fetch();};
+
+  const inp:React.CSSProperties = {width:'100%',padding:'8px 12px',borderRadius:8,border:`1px solid ${S.border}`,background:'rgba(255,255,255,0.05)',color:S.t1,fontSize:13,outline:'none'};
 
   return (
-    <div style={{flex:1,overflowY:'auto',padding:'16px 20px'}}>
-      <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:4}}>🍽️ Platos del día</div>
-      <div style={{fontSize:11,color:'#50506A',marginBottom:16}}>Los platos activos aparecen en el panel IA del POS. El 86 los tacha en tiempo real.</div>
+    <div style={{flex:1,overflowY:'auto',padding:'14px 20px'}}>
+      <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:4}}>🍽️ Mi Menú — Platos del día</div>
+      <div style={{fontSize:11,color:S.t3,marginBottom:14}}>Los platos activos aparecen en el panel IA del POS. El 86 los tacha en tiempo real.</div>
       {/* Formulario */}
-      <div style={{background:'#0f0f1a',border:'1px solid rgba(255,255,255,0.08)',borderRadius:14,padding:14,marginBottom:16}}>
-        <div style={{fontSize:12,fontWeight:700,marginBottom:10,color:'#f0f0f0'}}>+ Agregar plato del Chef</div>
+      <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:14,marginBottom:14}}>
+        <div style={{fontSize:12,fontWeight:700,marginBottom:10}}>+ Agregar plato del Chef</div>
         <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:8}}>
           {EMOJIS.map(e=>(
             <button key={e} onClick={()=>setForm(p=>({...p,emoji:e}))}
-              style={{width:32,height:32,borderRadius:8,border:`1px solid ${form.emoji===e?'#d4943a':'rgba(255,255,255,0.1)'}`,background:form.emoji===e?'rgba(212,148,58,0.2)':'transparent',fontSize:18,cursor:'pointer'}}>
+              style={{width:30,height:30,borderRadius:7,border:`1px solid ${form.emoji===e?S.gold:'rgba(255,255,255,0.1)'}`,background:form.emoji===e?`${S.gold}20`:'transparent',fontSize:16,cursor:'pointer'}}>
               {e}
             </button>
           ))}
         </div>
         <div style={{display:'flex',gap:8,marginBottom:8,flexWrap:'wrap'}}>
           <input value={form.nombre} onChange={e=>setForm(p=>({...p,nombre:e.target.value}))}
-            placeholder="Nombre del plato *"
-            style={{flex:2,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',minWidth:140}}/>
+            placeholder="Nombre del plato *" style={{...inp,flex:2,minWidth:140}}/>
           <input value={form.precio} onChange={e=>setForm(p=>({...p,precio:e.target.value}))}
-            placeholder="Precio ej: $185k"
-            style={{flex:1,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',minWidth:80}}/>
+            placeholder="Precio ej: $185k" style={{...inp,flex:1,minWidth:80}}/>
         </div>
         <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
           <select value={form.estacion} onChange={e=>setForm(p=>({...p,estacion:e.target.value}))}
-            style={{flex:1,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:12,outline:'none'}}>
+            style={{...inp,flex:1}}>
             {Object.entries(ESTS).map(([k,v])=><option key={k} value={k}>{v}</option>)}
           </select>
-          <label style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:'#a0a0a0',cursor:'pointer'}}>
+          <label style={{display:'flex',alignItems:'center',gap:6,fontSize:11,color:S.t2,cursor:'pointer'}}>
             <input type="checkbox" checked={form.rentable} onChange={e=>setForm(p=>({...p,rentable:e.target.checked}))}/>
             Alta rentabilidad
           </label>
           <button onClick={agregar}
-            style={{padding:'9px 18px',borderRadius:8,border:'none',background:'linear-gradient(135deg,#d4943a,#b07820)',color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+            style={{padding:'8px 16px',borderRadius:8,border:'none',background:`linear-gradient(135deg,${S.gold},#d4943a)`,color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
             ✓ Agregar
           </button>
         </div>
       </div>
       {/* Lista */}
-      {platos.length === 0 ? (
-        <div style={{textAlign:'center',padding:40,color:'#50506A'}}>
-          <div style={{fontSize:40,marginBottom:10}}>🍽️</div>
-          <div>Sin platos activos hoy</div>
+      {platos.length===0 ? (
+        <div style={{textAlign:'center',padding:40,color:S.t3}}>
+          <div style={{fontSize:40,marginBottom:10}}>🍽️</div><div>Sin platos activos hoy</div>
         </div>
       ) : (
-        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        <div style={{display:'flex',flexDirection:'column',gap:7}}>
           {platos.map(p=>(
-            <div key={p.id} style={{display:'flex',alignItems:'center',gap:10,background:p.disponible?'rgba(255,255,255,0.03)':'rgba(255,82,82,0.06)',border:`1px solid ${p.disponible?'rgba(255,255,255,0.08)':'rgba(255,82,82,0.3)'}`,borderRadius:10,padding:'10px 14px'}}>
-              <span style={{fontSize:22}}>{p.emoji||'🍽️'}</span>
+            <div key={p.id} style={{display:'flex',alignItems:'center',gap:10,background:p.disponible?'rgba(255,255,255,0.03)':'rgba(255,82,82,0.05)',border:`1px solid ${p.disponible?'rgba(255,255,255,0.07)':'rgba(255,82,82,0.25)'}`,borderRadius:10,padding:'9px 12px'}}>
+              <span style={{fontSize:20}}>{p.emoji||'🍽️'}</span>
               <div style={{flex:1}}>
-                <div style={{fontSize:13,fontWeight:700,color:p.disponible?'#f0f0f0':'#606060',textDecoration:p.disponible?'none':'line-through'}}>{p.nombre}</div>
-                <div style={{display:'flex',gap:8,marginTop:2,flexWrap:'wrap'}}>
-                  {p.precio && <span style={{fontSize:10,color:'#d4943a'}}>{p.precio}</span>}
-                  <span style={{fontSize:10,color:'#606060'}}>{ESTS[p.estacion]||p.estacion}</span>
-                  {p.rentable && <span style={{fontSize:9,color:'#3dba6f',background:'rgba(61,186,111,0.12)',padding:'1px 6px',borderRadius:10}}>● Rentable</span>}
+                <div style={{fontSize:12,fontWeight:700,color:p.disponible?S.t1:'#606060',textDecoration:p.disponible?'none':'line-through'}}>{p.nombre}</div>
+                <div style={{display:'flex',gap:6,marginTop:1}}>
+                  {p.precio&&<span style={{fontSize:10,color:S.gold}}>{p.precio}</span>}
+                  <span style={{fontSize:9,color:S.t3}}>{ESTS[p.estacion]||p.estacion}</span>
+                  {p.rentable&&<span style={{fontSize:9,color:'#3dba6f',background:'rgba(61,186,111,0.1)',padding:'1px 5px',borderRadius:8}}>● Rentable</span>}
                 </div>
               </div>
-              {!p.disponible && <span style={{fontSize:10,color:'#FF5252',fontWeight:700,background:'rgba(255,82,82,0.12)',padding:'2px 8px',borderRadius:10}}>86</span>}
-              <div style={{display:'flex',gap:6,flexShrink:0}}>
+              {!p.disponible&&<span style={{fontSize:9,color:'#FF5252',fontWeight:700,background:'rgba(255,82,82,0.1)',padding:'2px 7px',borderRadius:8}}>86</span>}
+              <div style={{display:'flex',gap:5,flexShrink:0}}>
                 <button onClick={()=>toggle86(p.id,p.disponible)}
-                  style={{padding:'5px 10px',borderRadius:7,border:`1px solid ${p.disponible?'rgba(255,82,82,0.4)':'rgba(61,186,111,0.4)'}`,background:'transparent',color:p.disponible?'#FF5252':'#3dba6f',fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                  style={{padding:'4px 9px',borderRadius:7,border:`1px solid ${p.disponible?'rgba(255,82,82,0.35)':'rgba(61,186,111,0.35)'}`,background:'transparent',color:p.disponible?'#FF5252':'#3dba6f',fontSize:10,fontWeight:700,cursor:'pointer'}}>
                   {p.disponible?'86':'✓ Ok'}
                 </button>
                 <button onClick={()=>eliminar(p.id)}
-                  style={{padding:'5px 8px',borderRadius:7,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'#606060',fontSize:10,cursor:'pointer'}}>
-                  🗑
-                </button>
+                  style={{padding:'4px 8px',borderRadius:7,border:'1px solid rgba(255,255,255,0.08)',background:'transparent',color:S.t3,fontSize:10,cursor:'pointer'}}>🗑</button>
               </div>
             </div>
           ))}
