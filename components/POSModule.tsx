@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { Table, RitualTask } from '../types.ts';
-import { BellRing, Settings, MonitorPlay, MessageSquare, Sparkles, Receipt, X, ShoppingCart, Lock, Zap, BarChart3, ShieldCheck } from 'lucide-react';
+import { BellRing as BellIcon, Settings, MonitorPlay, MessageSquare, Sparkles, Receipt, X, ShoppingCart, Lock, Zap, BarChart3, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
 // ══ PLANTA OMM — constantes globales del mapa de mesas ══════════════
@@ -582,6 +582,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [showNotifications, setShowNotifications] = useState(false);
   const [showOrderPanel, setShowOrderPanel] = useState(false);
   const [mostrarTraspaso, setMostrarTraspaso] = useState(false);
+  const [showPinPago,    setShowPinPago]    = useState(false);
+  const [pinPagoInput,   setPinPagoInput]   = useState('');
+  const [pinPagoError,   setPinPagoError]   = useState('');
+  const [pinPagoCfg,     setPinPagoCfg]     = useState('9876');
+  const [showTraspasoModal, setShowTraspasoModal] = useState(false);
+  const [meserosTodas,   setMeserosTodas]   = useState<any[]>([]);
   const [mesaDestino, setMesaDestino] = useState<number | null>(null);
   const [tipoTraspaso, setTipoTraspaso] = useState<'mesa'|'barra'|'barra-a-mesa'>('mesa');
   const [miMenu, setMiMenu] = useState<any[]>([]);
@@ -857,6 +863,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       .on('postgres_changes',{event:'*',schema:'public',table:'platos_dia'},()=>{
         fetchPlatosDia();
       }).subscribe();
+
+    // Config PIN gerencia
+    supabase.from('gerencia_config').select('pin_pago,pin_gerencia').eq('restaurante_id',6).maybeSingle()
+      .then(({data})=>{ if(data?.pin_pago) setPinPagoCfg(data.pin_pago); });
+    // Meseros para traspaso
+    supabase.from('staff_nexum').select('*').eq('restaurante_id',6).eq('activo',true).eq('rol','mesero')
+      .then(({data})=>{ if(data) setMeserosTodas(data); });
 
     const fetchReservasOhYeah = async () => {
       const hoy = new Date().toISOString().split('T')[0];
@@ -1353,11 +1366,23 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     const totalConPropina = total + propinaMonto;
     const iva = impoconsumo; // alias para compatibilidad
 
-    const procesarPago = (metodo: string, conPropina: boolean) => {
-      const montoFinal = conPropina ? totalConPropina : total;
-      // Abrir flujo de factura obligatorio antes de cerrar
-      abrirFacturaModal(tableId, metodo, montoFinal);
-    };
+const procesarPago = (metodo: string, conPropina: boolean) => {
+  const montoFinal = conPropina ? totalConPropina : total;
+  if (metodo === 'Gerencia') {
+    setPinPagoInput(''); setPinPagoError(''); setShowPinPago(true);
+    (window as any)._pendingGerenciaPago = { metodo, montoFinal };
+    return;
+  }
+  abrirFacturaModal(tableId, metodo, montoFinal);
+};
+
+const confirmarPinPago = () => {
+  if (pinPagoInput === pinPagoCfg) {
+    setShowPinPago(false);
+    const p = (window as any)._pendingGerenciaPago;
+    if (p) abrirFacturaModal(tableId, p.metodo, p.montoFinal);
+  } else { setPinPagoError('PIN incorrecto'); setPinPagoInput(''); }
+};
 
     // ── MODAL FACTURA OBLIGATORIO ──────────────────────────
     const abrirFacturaModal = (tid: number, metodo: string, monto: number) => {
@@ -1787,7 +1812,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             </div>
           </div>
 
-          {/* Dividir cuenta — selector 2-10 personas */}
+          {/* 🧮 Calculadora de cuenta — selector 2-10 personas */}
           <div className="rounded-xl border border-[#2a2a2a] overflow-hidden mb-3">
             <div className="px-3 py-2 bg-[#1c1c1c] flex items-center justify-between">
               <span className="text-[11px] text-[#a0a0a0] font-bold">👥 Dividir cuenta</span>
@@ -3777,7 +3802,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         </div>
         <div className="px-3 py-1.5 border-b border-[#2a2a2a] flex items-center gap-2 shrink-0">
           <button onClick={()=>setShowNotifPanel(p=>!p)} style={{position:"relative",background:"rgba(255,255,255,0.04)",border:"1px solid #2a2a2a",borderRadius:8,padding:"4px 7px",cursor:"pointer",display:"flex",alignItems:"center"}}>
-            <span style={{fontSize:16}}>🔔</span>
+            <span style={{fontSize:16}}>🛎️</span>
             {notifsBadge>0&&<span style={{position:"absolute",top:0,right:0,background:"#e05050",color:"#fff",fontSize:8,fontWeight:900,borderRadius:99,padding:"1px 4px",lineHeight:1.2}}>{notifsBadge}</span>}
           </button>
           {reservasHoy.length > 0 && (<button onClick={()=>showToast(`🦉 ${reservasHoy.length} reserva${reservasHoy.length>1?"s":""} hoy`)} style={{display:"flex",alignItems:"center",gap:3,padding:"3px 7px",borderRadius:20,background:"rgba(255,230,0,0.1)",border:"1px solid rgba(255,230,0,0.25)",cursor:"pointer"}}><span style={{fontSize:10}}>🦉</span><span style={{fontSize:9,fontWeight:900,color:"#FFE600"}}>{reservasHoy.length}</span></button>)}
@@ -3801,7 +3826,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
             {notifs.map((n:any)=>(
               <div key={n.id} style={{padding:'10px 14px',borderBottom:'1px solid #1a1a1a',background:n.leida?'transparent':'rgba(212,148,58,0.05)'}}>
                 <div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
-                  <span style={{fontSize:16,flexShrink:0}}>{n.tipo==='stock_86'?'⚠️':n.tipo==='alerta_patio'?'🏠':n.tipo==='maître'?'👔':'🔔'}</span>
+                  <span style={{fontSize:16,flexShrink:0}}>{n.tipo==='stock_86'?'⚠️':n.tipo==='alerta_patio'?'🏠':n.tipo==='maître'?'👔':'🛎️'}</span>
                   <div>
                     <div style={{fontSize:12,fontWeight:700,color:'#f0f0f0'}}>{n.titulo}</div>
                     {n.mensaje&&<div style={{fontSize:11,color:'#a0a0a0',marginTop:2}}>{n.mensaje}</div>}
@@ -4776,6 +4801,73 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
       )}
 
     </div>
+      {showPinPago && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowPinPago(false)}>
+          <div style={{background:'#0f0f1a',border:'2px solid #d4943a',borderRadius:20,padding:32,width:320,textAlign:'center'}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontSize:32,marginBottom:8}}>🏛️</div>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:'#d4943a',marginBottom:4}}>PIN Pago Gerencia</div>
+            <div style={{fontSize:11,color:'#50506A',marginBottom:20}}>Ingresa el PIN para autorizar este cobro</div>
+            <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:16}}>
+              {[0,1,2,3].map(i=>(
+                <div key={i} style={{width:14,height:14,borderRadius:'50%',background:pinPagoInput.length>i?'#d4943a':'rgba(255,255,255,0.15)'}}/>
+              ))}
+            </div>
+            {pinPagoError && <div style={{color:'#FF5252',fontSize:11,marginBottom:12}}>{pinPagoError}</div>}
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:12}}>
+              {[1,2,3,4,5,6,7,8,9,'✕',0,'✓'].map((n,i)=>(
+                <button key={i} onClick={()=>{
+                  if(n==='✕'){ setPinPagoInput(p=>p.slice(0,-1)); setPinPagoError(''); }
+                  else if(n==='✓'){ confirmarPinPago(); }
+                  else if(typeof n==='number' && pinPagoInput.length<4){
+                    const np=pinPagoInput+n;
+                    setPinPagoInput(np);
+                    if(np.length===4){ setTimeout(()=>{ if(np===pinPagoCfg){setShowPinPago(false);const p=(window as any)._pendingGerenciaPago;if(p)abrirFacturaModal(tableId,p.metodo,p.montoFinal);}else{setPinPagoError('PIN incorrecto');setPinPagoInput('');}},200); }
+                  }
+                }} style={{padding:'14px 0',borderRadius:10,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.05)',color:n==='✓'?'#00E676':n==='✕'?'#FF5252':'#fff',fontSize:18,fontWeight:700,cursor:'pointer'}}>
+                  {n}
+                </button>
+              ))}
+            </div>
+            <button onClick={()=>setShowPinPago(false)} style={{fontSize:11,color:'#50506A',background:'none',border:'none',cursor:'pointer'}}>Cancelar</button>
+          </div>
+        </div>
+      )}
+      {showTraspasoModal && tableId && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:9990,display:'flex',alignItems:'center',justifyContent:'center'}} onClick={()=>setShowTraspasoModal(false)}>
+          <div style={{background:'#0f0f1a',border:'1px solid rgba(255,255,255,0.12)',borderRadius:20,padding:28,width:380}} onClick={e=>e.stopPropagation()}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:4}}>🔄 Traspaso / Cerrar mesa {tableId}</div>
+            <div style={{fontSize:11,color:'#50506A',marginBottom:20}}>Selecciona la acción para esta mesa</div>
+            <div style={{display:'flex',flexDirection:'column',gap:10}}>
+              <div style={{background:'rgba(255,255,255,0.04)',borderRadius:12,padding:14,border:'1px solid rgba(255,255,255,0.08)'}}>
+                <div style={{fontSize:12,fontWeight:700,marginBottom:8,color:'#f0f0f0'}}>👤 Cambiar mesero</div>
+                <select onChange={async(e)=>{const m=e.target.value;if(!m)return;await supabase.from('tables').update({mesero_nombre:m}).eq('id',tableId);showToast(`✓ Mesa ${tableId} → ${m}`);setShowTraspasoModal(false);fetchTables();}} defaultValue=""
+                  style={{width:'100%',padding:'9px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none'}}>
+                  <option value="">— Selecciona mesero —</option>
+                  {meserosTodas.map((m:any)=><option key={m.id} value={m.nombre}>{m.nombre}</option>)}
+                </select>
+              </div>
+              <div style={{background:'rgba(255,255,255,0.04)',borderRadius:12,padding:14,border:'1px solid rgba(255,255,255,0.08)'}}>
+                <div style={{fontSize:12,fontWeight:700,marginBottom:8,color:'#f0f0f0'}}>🔀 Traspasar a otra mesa</div>
+                <div style={{display:'flex',gap:8}}>
+                  <select onChange={e=>setMesaDestino(Number(e.target.value))} defaultValue=""
+                    style={{flex:1,padding:'9px 12px',borderRadius:8,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none'}}>
+                    <option value="">— Mesa libre —</option>
+                    {mesas.filter((m:any)=>m.id!==tableId&&m.estado==='libre').map((m:any)=><option key={m.id} value={m.id}>{m.name||`Mesa ${m.id}`}</option>)}
+                  </select>
+                  <button onClick={async()=>{if(!mesaDestino)return;await supabase.from('tables').update({estado:'libre',order_id_activo:null,mesero_nombre:null}).eq('id',tableId);await supabase.from('tables').update({estado:'ocupada'}).eq('id',mesaDestino);showToast(`✓ Traspaso a mesa ${mesaDestino}`);setShowTraspasoModal(false);fetchTables();}}
+                    style={{padding:'9px 16px',borderRadius:8,border:'none',background:'#448AFF',color:'#fff',fontWeight:700,fontSize:12,cursor:'pointer'}}>→</button>
+                </div>
+              </div>
+              <button onClick={async()=>{if(!window.confirm('¿Cerrar mesa sin cobro?'))return;await supabase.from('tables').update({estado:'libre',order_id_activo:null,mesero_nombre:null,pax_actual:0,cliente_nombre:null}).eq('id',tableId);setTableId(null);setOrder([]);setShowTraspasoModal(false);showToast('✓ Mesa cerrada');fetchTables();}}
+                style={{padding:'12px',borderRadius:10,border:'1px solid rgba(255,82,82,0.4)',background:'rgba(255,82,82,0.08)',color:'#FF5252',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                ✗ Cerrar mesa sin cobro
+              </button>
+              <button onClick={()=>setShowTraspasoModal(false)} style={{padding:'10px',borderRadius:10,border:'1px solid rgba(255,255,255,0.1)',background:'transparent',color:'#606060',fontSize:12,cursor:'pointer'}}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
   );
 };
 
