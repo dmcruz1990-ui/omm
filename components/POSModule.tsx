@@ -3672,27 +3672,24 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
             <>
               {/* FILA RITUAL — solo mesa activa */}
               <div className="border-b border-[#1a1a1a] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-                <div className="flex items-center px-2 py-1 gap-1.5">
+                <div className="flex items-center px-2 py-0.5 gap-1">
                   {/* Botón colapsar barra — al inicio del ritual */}
                   <button onClick={() => setBarraColapsada((p:boolean) => !p)}
-                    className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md border text-[9px] font-bold transition-all mr-1"
+                    className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[9px] font-bold transition-all mr-1"
                     style={{borderColor: barraColapsada?'#d4943a':'#2a2a2a', background: barraColapsada?'#d4943a15':'#141414', color: barraColapsada?'#d4943a':'#606060'}}>
                     {barraColapsada ? '▲' : '▼'}
                   </button>
                   {/* Label mesa activa + progreso ritual */}
-                  <div className="flex items-center gap-1 shrink-0 mr-2" style={{maxWidth:90}}>
+                  <div className="flex items-center gap-1 shrink-0 mr-2" style={{maxWidth:80}}>
                     <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-[#d4943a] text-black shrink-0">M{selectedTable.num}</span>
-                    <div className="flex flex-col gap-0.5 min-w-0">
-                      <span className="text-[8px] text-[#606060] font-medium truncate">{selectedTable.cliente}</span>
-                      <div className="flex items-center gap-1">
-                        <div className="w-16 h-1.5 bg-[#1e1e1e] rounded-full overflow-hidden">
-                          <div className="h-full rounded-full transition-all duration-500"
-                            style={{ width: `${getRitualProgress(selectedTable.id)}%`, background: getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4' }}/>
-                        </div>
-                        <span className="text-[9px] font-black" style={{ color: getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4' }}>
-                          {getRitualProgress(selectedTable.id)}%
-                        </span>
+                    <div className="flex items-center gap-1">
+                      <div className="w-12 h-1 bg-[#1e1e1e] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500"
+                          style={{ width: `${getRitualProgress(selectedTable.id)}%`, background: getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4' }}/>
                       </div>
+                      <span className="text-[8px] font-black" style={{ color: getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4' }}>
+                        {getRitualProgress(selectedTable.id)}%
+                      </span>
                     </div>
                   </div>
                   {/* Steps solo de la mesa activa */}
@@ -3712,9 +3709,9 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                         style={done
                           ? { background: activeBg, borderColor: activeColor+'80', color: activeColor }
                           : { background: 'transparent', borderColor: '#1e1e1e', color: '#444' }}
-                        className="flex items-center gap-1 px-2 py-1 rounded-lg border text-[10px] font-bold whitespace-nowrap transition-all shrink-0 hover:opacity-90 active:scale-95">
-                        <span style={{ fontSize: 15 }}>{done ? '✓' : stepEmojis[step]}</span>
-                        <span style={{ fontSize: 10 }}>{shortLabel}</span>
+                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[9px] font-bold whitespace-nowrap transition-all shrink-0 hover:opacity-90 active:scale-95">
+                        <span style={{ fontSize: 13 }}>{done ? '✓' : stepEmojis[step]}</span>
+                        <span style={{ fontSize: 9 }}>{shortLabel}</span>
                       </button>
                     );
                   })}
@@ -3735,17 +3732,17 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                     { cat:'Licor',emoji:'🥂',color:'#ffd700',items:[{n:'Sake',p:'$45k',e:'🍶'},{n:'Heineken',p:'$15k',e:'🍺'},{n:'Old F.',p:'$48k',e:'🥃'}]},
                   ].map(({ cat, emoji, color, items }) => (
                     <div key={cat} className="flex flex-col shrink-0 border-r border-[#1a1a1a] last:border-r-0">
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 border-b border-[#1a1a1a]" style={{ background: color+'12' }}>
-                        <span style={{ fontSize: 13 }}>{emoji}</span>
-                        <span style={{ fontSize: 10, color, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, whiteSpace: 'nowrap' }}>{cat}</span>
+                      <div className="flex items-center gap-1 px-2 py-0.5 border-b border-[#1a1a1a]" style={{ background: color+'12' }}>
+                        <span style={{ fontSize: 11 }}>{emoji}</span>
+                        <span style={{ fontSize: 9, color, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, whiteSpace: 'nowrap' }}>{cat}</span>
                       </div>
-                      <div className="flex gap-1 px-1.5 py-1">
+                      <div className="flex gap-1 px-1 py-0.5">
                         {items.map(item => (
                           <button key={item.n} onClick={() => agregarAOrden({ nombre: item.n, precio: item.p, emoji: item.e, categoria: cat })}
-                            className="flex flex-col items-center gap-0.5 px-2 py-1.5 rounded-lg border border-[#1a1a1a] bg-[#111] hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/25 active:border-[#3dba6f] transition-all" style={{ minWidth: 54 }}>
-                            <span style={{ fontSize: 18 }}>{item.e}</span>
-                            <span style={{ fontSize: 9, color: '#888', whiteSpace: 'nowrap' }}>{item.n}</span>
-                            <span style={{ fontSize: 9, color, fontWeight: 700 }}>{item.p}</span>
+                            className="flex flex-col items-center gap-0 px-1.5 py-1 rounded-md border border-[#1a1a1a] bg-[#111] hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/25 active:border-[#3dba6f] transition-all" style={{ minWidth: 48 }}>
+                            <span style={{ fontSize: 15 }}>{item.e}</span>
+                            <span style={{ fontSize: 8, color: '#888', whiteSpace: 'nowrap' }}>{item.n}</span>
+                            <span style={{ fontSize: 8, color, fontWeight: 700 }}>{item.p}</span>
                           </button>
                         ))}
                       </div>
@@ -3755,18 +3752,18 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
               </div>
 
               {/* IA RECS */}
-              <div className="flex items-center px-3 py-1.5 overflow-x-auto gap-2" style={{ scrollbarWidth: 'none', minHeight: 58 }}>
+              <div className="flex items-center px-3 py-1 overflow-x-auto gap-2" style={{ scrollbarWidth: 'none', minHeight: 42 }}>
                 <div className="flex flex-col items-center shrink-0 mr-1">
-                  <span style={{ fontSize: 13, color: '#d4943a' }}>✦</span>
-                  <span style={{ fontSize: 9, color: '#606060', fontWeight: 700, textTransform: 'uppercase' }}>IA</span>
+                  <span style={{ fontSize: 11, color: '#d4943a' }}>✦</span>
+                  <span style={{ fontSize: 8, color: '#606060', fontWeight: 700, textTransform: 'uppercase' }}>IA</span>
                 </div>
                 {recs.map((r, i) => (
                   <button key={i} onClick={() => addToOrder({ nombre: r.name, precio: r.precio, emoji: r.emoji })}
-                    className={`flex items-center gap-2 rounded-lg border px-2.5 py-1.5 shrink-0 hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/20 transition-all ${r.top ? 'border-[#d4943a]/30 bg-[#d4943a]/5' : 'border-[#1a1a1a] bg-[#111]'}`} style={{ minWidth: 140 }}>
-                    <span style={{ fontSize: 20 }}>{r.emoji}</span>
+                    className={`flex items-center gap-1.5 rounded-md border px-2 py-1 shrink-0 hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/20 transition-all ${r.top ? 'border-[#d4943a]/30 bg-[#d4943a]/5' : 'border-[#1a1a1a] bg-[#111]'}`} style={{ minWidth: 130 }}>
+                    <span style={{ fontSize: 16 }}>{r.emoji}</span>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 11, fontWeight: 700, color: '#f0f0f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 110 }}>{r.name}</div>
-                      <div style={{ fontSize: 10, color: '#d4943a', fontWeight: 700 }}>{r.precio}</div>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: '#f0f0f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 100 }}>{r.name}</div>
+                      <div style={{ fontSize: 9, color: '#d4943a', fontWeight: 700 }}>{r.precio}</div>
                     </div>
                   </button>
                 ))}
@@ -3851,7 +3848,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
             ))}
           </div>
         </div>
-        <div className="flex-1 p-3 px-3.5 flex flex-col gap-2.5 overflow-y-auto" style={{height:0,scrollbarWidth:"thin",scrollbarColor:"#2a2a2a transparent"}}>
+        <div className={`flex-1 p-3 px-3.5 flex flex-col gap-2.5 min-h-0 ${rightTab==='Chat' ? 'overflow-hidden' : 'overflow-y-auto'}`} style={{scrollbarWidth:"thin",scrollbarColor:"#2a2a2a transparent"}}>
 
           {rightTab === 'IA' && (
             <>
@@ -4306,15 +4303,15 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         )}
 
           {rightTab === 'Chat' && (
-            <div className="flex flex-col h-full">
-              {/* 86s al inicio del chat */}
+            <div className="flex flex-col h-full min-h-0">
+              {/* 86s al inicio del chat — shrink-0 (no scroll, fijo arriba) */}
               {tips86.length > 0 && (
-                <div className="bg-[#e05050]/10 border border-[#e05050]/30 rounded-xl overflow-hidden mb-2">
+                <div className="bg-[#e05050]/10 border border-[#e05050]/30 rounded-xl overflow-hidden mb-2 shrink-0">
                   <div className="px-3 py-1.5 flex items-center gap-2 border-b border-[#e05050]/20">
                     <span className="w-1.5 h-1.5 rounded-full bg-[#e05050] animate-pulse inline-block"/>
                     <span className="text-[10px] font-black text-[#e05050] uppercase tracking-wider">⚠️ En 86 — Informar al equipo</span>
                   </div>
-                  <div className="flex flex-col px-3 py-1.5 gap-1">
+                  <div className="flex flex-col px-3 py-1.5 gap-1 max-h-[80px] overflow-y-auto">
                     {tips86.slice(0,5).map((t:any,i:number)=>(
                       <div key={i} className="flex items-center gap-2">
                         <span className="text-[13px]">{t.emoji||'🔴'}</span>
@@ -4325,7 +4322,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                   </div>
                 </div>
               )}
-              <div className="flex gap-1.5 mb-3 flex-wrap">
+              <div className="flex gap-1.5 mb-2 flex-wrap shrink-0">
                 {(['Mesero','Cocina','Host','Maître'] as const).map(rol => {
                   const colors: Record<string,string> = { Mesero:'#4a8fd4', Cocina:'#e05050', Host:'#3dba6f', Maître:'#9b72ff' };
                   return (
@@ -4337,7 +4334,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                   );
                 })}
               </div>
-              <div className="flex-1 overflow-y-auto flex flex-col gap-2 mb-3 pr-1">
+              <div className="flex-1 overflow-y-auto flex flex-col gap-2 mb-2 pr-1 min-h-0">
                 {chatHistory.map((msg, idx) => {
                   const colorMap: Record<string,string> = { Cocina:'#e05050', Host:'#3dba6f', Maître:'#9b72ff', Mesero:'#4a8fd4', Tú:'#4a8fd4' };
                   const c = colorMap[msg.sender] ?? '#a0a0a0';
@@ -4353,7 +4350,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                   );
                 })}
               </div>
-              <div className="mt-auto flex gap-2">
+              <div className="flex gap-2 shrink-0">
                 <input type="text" value={chatMessage} onChange={e => setChatMessage(e.target.value)}
                   onKeyDown={e => {
                     if (e.key === 'Enter' && chatMessage.trim()) {
