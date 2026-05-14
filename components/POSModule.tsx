@@ -3873,6 +3873,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         <div className="flex-1 p-3 px-3.5 flex flex-col gap-2.5 overflow-y-auto" style={{height:0,scrollbarWidth:"thin",scrollbarColor:"#2a2a2a transparent"}}>
 
           {rightTab === 'IA' && (
+            <>
               {/* ══ CHAT IA — ventana flotante al fondo ══ */}
               <div className="sticky bottom-0 left-0 right-0 mt-auto" style={{background:'#141414',borderTop:'1px solid rgba(212,148,58,0.25)',marginLeft:'-12px',marginRight:'-12px',marginBottom:'-12px',paddingLeft:'12px',paddingRight:'12px'}}>
                 {/* Header colapsable */}
