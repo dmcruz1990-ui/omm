@@ -115,312 +115,6 @@ function PanelAlerta({alerta,onClose,onResolve}:{alerta:Alerta;onClose:()=>void;
         )}
       </div>
     </div>
-      {/* ══ TAB OH YEAH — CLIENTES EN TIEMPO REAL ══ */}
-      {activeTab === 'ohyeah' && (
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-
-          {/* Header con stats */}
-          <div className="grid grid-cols-4 gap-3">
-            {[
-              { l:'Total clientes', v:ohyeahClientes.length,                                                    c:'#FFB547' },
-              { l:'ÉLITE',          v:ohyeahClientes.filter(c=>c.nivel==='ÉLITE').length,                       c:'#FFD700' },
-              { l:'VIP',            v:ohyeahClientes.filter(c=>c.nivel==='VIP').length,                         c:'#B388FF' },
-              { l:'Nuevos hoy',     v:ohyeahClientes.filter(c=>c.created_at?.startsWith(new Date().toISOString().split('T')[0])).length, c:'#00E676' },
-            ].map(k=>(
-              <div key={k.l} className="bg-[#0f0f1a] border rounded-xl p-3 text-center" style={{borderColor:`${k.c}20`}}>
-                <div className="text-[9px] text-[#50506A] uppercase mb-1">{k.l}</div>
-                <div className="font-['Syne'] text-[22px] font-black" style={{color:k.c}}>{k.v}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Filtros y búsqueda */}
-          <div className="flex gap-3 flex-wrap items-center">
-            <div className="flex-1 flex items-center gap-2 bg-[#0f0f1a] border border-white/10 rounded-lg px-3 py-2">
-              <span className="text-[12px] text-[#50506A]">🔍</span>
-              <input value={busquedaOY} onChange={e=>setBusquedaOY(e.target.value)}
-                placeholder="Buscar por nombre, email o ciudad..."
-                className="flex-1 bg-transparent text-[12px] text-white outline-none placeholder-[#50506A]"/>
-              {busquedaOY && <button onClick={()=>setBusquedaOY('')} className="text-[#50506A] text-[11px]">✕</button>}
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {['todos','INICIADO','REGULAR','VIP','ÉLITE'].map(n=>{
-                const colors: Record<string,string> = {todos:'#606060',INICIADO:'#a0a0a0',REGULAR:'#448AFF',VIP:'#B388FF',ÉLITE:'#FFD700'};
-                return (
-                  <button key={n} onClick={()=>setFiltroNivel(n)}
-                    className="px-3 py-1.5 rounded-full text-[10px] font-bold transition-all"
-                    style={{border:`1px solid ${filtroNivel===n?colors[n]:'rgba(255,255,255,0.1)'}`,background:filtroNivel===n?`${colors[n]}15`:'transparent',color:filtroNivel===n?colors[n]:'#606060'}}>
-                    {n === 'todos' ? '🔵 Todos' : n}
-                  </button>
-                );
-              })}
-            </div>
-            <button onClick={fetchOhYeahClientes} className="text-[11px] text-[#50506A] hover:text-white flex items-center gap-1">
-              <RefreshCw size={12}/> Actualizar
-            </button>
-          </div>
-
-          {/* Lista de clientes */}
-          {ohyeahLoading ? (
-            <div className="text-center py-10 text-[#50506A]">Cargando clientes...</div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {ohyeahClientes
-                .filter(cl => {
-                  const busq = busquedaOY.toLowerCase();
-                  const matchBusq = !busq || cl.nombre?.toLowerCase().includes(busq) || cl.email?.toLowerCase().includes(busq) || cl.ciudad?.toLowerCase().includes(busq);
-                  const matchNivel = filtroNivel === 'todos' || cl.nivel === filtroNivel;
-                  return matchBusq && matchNivel;
-                })
-                .map(cl => {
-                  const NIVEL_COLORS: Record<string,string> = {INICIADO:'#a0a0a0',REGULAR:'#448AFF',VIP:'#B388FF',ÉLITE:'#FFD700'};
-                  const NIVEL_EMOJI: Record<string,string>  = {INICIADO:'⭐',REGULAR:'🌟',VIP:'💎',ÉLITE:'👑'};
-                  const nc = NIVEL_COLORS[cl.nivel] || '#606060';
-                  const diasSinVisitar = cl.dias_sin_visitar;
-                  return (
-                    <div key={cl.id} className="bg-[#0f0f1a] border border-white/7 rounded-xl p-4 hover:border-white/15 transition-all">
-                      <div className="flex items-start gap-3">
-                        {/* Avatar */}
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-[16px] font-black shrink-0"
-                          style={{background:`${nc}20`,border:`2px solid ${nc}40`,color:nc}}>
-                          {cl.nombre?.charAt(0).toUpperCase()}
-                        </div>
-                        {/* Info principal */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <span className="font-bold text-[13px] text-white">{cl.nombre}</span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:`${nc}15`,color:nc,border:`1px solid ${nc}30`}}>
-                              {NIVEL_EMOJI[cl.nivel]} {cl.nivel}
-                            </span>
-                            {diasSinVisitar !== null && diasSinVisitar > 30 && (
-                              <span className="text-[9px] bg-[#FF5252]/15 text-[#FF5252] border border-[#FF5252]/30 px-2 py-0.5 rounded-full font-bold">
-                                ⚠️ {diasSinVisitar}d sin visitar
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex gap-4 flex-wrap">
-                            {cl.email    && <span className="text-[10px] text-[#50506A]">✉️ {cl.email}</span>}
-                            {cl.telefono && <span className="text-[10px] text-[#50506A]">📱 {cl.telefono}</span>}
-                            {cl.ciudad   && <span className="text-[10px] text-[#50506A]">📍 {cl.ciudad}</span>}
-                          </div>
-                        </div>
-                        {/* Métricas */}
-                        <div className="flex gap-3 shrink-0">
-                          {[
-                            {l:'Visitas',   v:cl.visitas||0,       c:'#FFB547'},
-                            {l:'Puntos',    v:cl.puntos||0,        c:nc},
-                            {l:'Reservas',  v:cl.total_reservas||0,c:'#448AFF'},
-                          ].map(m=>(
-                            <div key={m.l} className="text-center">
-                              <div className="font-['Syne'] text-[16px] font-black" style={{color:m.c}}>{m.v}</div>
-                              <div className="text-[8px] text-[#50506A]">{m.l}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      {/* Última visita */}
-                      {cl.ultima_reserva && (
-                        <div className="mt-2 pt-2 border-t border-white/5 text-[10px] text-[#50506A] flex gap-4">
-                          <span>Última reserva: {new Date(cl.ultima_reserva).toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'})}</span>
-                          <span>Login: {new Date(cl.last_login).toLocaleDateString('es-CO',{day:'numeric',month:'short'})}</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              {ohyeahClientes.filter(cl => {
-                const busq = busquedaOY.toLowerCase();
-                return (!busq || cl.nombre?.toLowerCase().includes(busq) || cl.email?.toLowerCase().includes(busq)) && (filtroNivel==='todos'||cl.nivel===filtroNivel);
-              }).length === 0 && (
-                <div className="text-center py-10 text-[#50506A]">
-                  <div className="text-[40px] mb-2">🦉</div>
-                  <div>Sin clientes que coincidan</div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-  );
-}
-
-function PanelRespuesta({enc,onClose,onSend}:{enc:Encuesta;onClose:()=>void;onSend:()=>void}) {
-  const nombre = enc.cliente.split(' ')[0];
-  const [texto,setTexto] = useState(IA_RESPONSES[enc.estrellas]?.replace('[nombre]',nombre)||'');
-  const c = starC(enc.estrellas);
-  const reg = getRegalo(enc);
-  return (
-    <div style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={onClose}>
-      <div style={{background:'#0d0d0d',border:'1px solid #1e1e1e',borderRadius:'20px 20px 0 0',padding:24,width:'100%',maxWidth:560,maxHeight:'88vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
-        <div style={{width:40,height:4,borderRadius:2,background:'#2a2a2a',margin:'0 auto 20px'}}/>
-        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
-          <div style={{display:'flex',gap:2}}>{[1,2,3,4,5].map(s=><Star key={s} size={16} fill={s<=enc.estrellas?c:'transparent'} color={s<=enc.estrellas?c:'#2a2a2a'}/>)}</div>
-          <span style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:15,color:'#f0f0f0',flex:1}}>{enc.cliente}</span>
-          <span style={{fontSize:10,color:'#404040'}}>Mesa {enc.mesa}</span>
-        </div>
-        <div style={{background:'#111',border:'1px solid #1a1a1a',borderRadius:10,padding:12,marginBottom:14,fontSize:13,color:'#808080',fontStyle:'italic',lineHeight:1.6}}>"{enc.comentario}"</div>
-        {enc.platos&&enc.estrellas<=3&&(
-          <div style={{marginBottom:14}}>
-            <div style={{fontSize:10,color:'#606060',fontWeight:700,textTransform:'uppercase',letterSpacing:'1px',marginBottom:8}}>Platos de la visita</div>
-            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{enc.platos.map(p=><span key={p} style={{padding:'4px 10px',borderRadius:20,fontSize:11,background:'#141414',border:'1px solid #1e1e1e',color:'#808080'}}>{p}</span>)}</div>
-          </div>
-        )}
-        <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:14}}>{enc.tags.map(tag=><span key={tag} style={{padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:600,background:`${c}12`,color:c,border:`1px solid ${c}25`}}>{tag}</span>)}</div>
-        {reg&&(
-          <div style={{background:'rgba(155,114,255,.06)',border:'1px solid rgba(155,114,255,.2)',borderRadius:10,padding:12,marginBottom:14}}>
-            <div style={{fontSize:10,color:'#9b72ff',fontWeight:700,letterSpacing:'1px',textTransform:'uppercase',marginBottom:4}}>✦ Sugerencia interna — solo gerencia</div>
-            <div style={{fontSize:13,color:'#c0a0ff',marginBottom:4}}>{reg}</div>
-            <div style={{fontSize:11,color:'#606060'}}>Comunicar como: "Será un placer sorprenderte."</div>
-          </div>
-        )}
-        <div style={{marginBottom:16}}>
-          <div style={{fontSize:10,color:'#404040',fontWeight:700,letterSpacing:'1px',textTransform:'uppercase',marginBottom:8,display:'flex',alignItems:'center',gap:6}}><Brain size={12} color="#9b72ff"/> Respuesta X-CARE™ · Nivel Ritz Carlton</div>
-          <textarea value={texto} onChange={e=>setTexto(e.target.value)} rows={7} style={{width:'100%',background:'#111',border:'1px solid #1e1e1e',borderRadius:10,padding:14,color:'#d0d0d0',fontSize:13,lineHeight:1.7,outline:'none',resize:'none',fontFamily:'DM Sans,sans-serif',boxSizing:'border-box'}}/>
-        </div>
-        <div style={{display:'flex',gap:10}}>
-          <button onClick={onClose} style={{flex:1,padding:14,borderRadius:12,background:'transparent',border:'1px solid #1e1e1e',color:'#606060',fontSize:13,fontWeight:600,cursor:'pointer'}}>Cancelar</button>
-          <button onClick={onSend} style={{flex:2,padding:14,borderRadius:12,border:'none',background:'linear-gradient(135deg,#9b72ff,#7b52df)',color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',fontFamily:'Syne,sans-serif'}}>📩 Enviar respuesta</button>
-        </div>
-      </div>
-    </div>
-      {/* ══ TAB OH YEAH — CLIENTES EN TIEMPO REAL ══ */}
-      {activeTab === 'ohyeah' && (
-        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
-
-          {/* Header con stats */}
-          <div className="grid grid-cols-4 gap-3">
-            {[
-              { l:'Total clientes', v:ohyeahClientes.length,                                                    c:'#FFB547' },
-              { l:'ÉLITE',          v:ohyeahClientes.filter(c=>c.nivel==='ÉLITE').length,                       c:'#FFD700' },
-              { l:'VIP',            v:ohyeahClientes.filter(c=>c.nivel==='VIP').length,                         c:'#B388FF' },
-              { l:'Nuevos hoy',     v:ohyeahClientes.filter(c=>c.created_at?.startsWith(new Date().toISOString().split('T')[0])).length, c:'#00E676' },
-            ].map(k=>(
-              <div key={k.l} className="bg-[#0f0f1a] border rounded-xl p-3 text-center" style={{borderColor:`${k.c}20`}}>
-                <div className="text-[9px] text-[#50506A] uppercase mb-1">{k.l}</div>
-                <div className="font-['Syne'] text-[22px] font-black" style={{color:k.c}}>{k.v}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Filtros y búsqueda */}
-          <div className="flex gap-3 flex-wrap items-center">
-            <div className="flex-1 flex items-center gap-2 bg-[#0f0f1a] border border-white/10 rounded-lg px-3 py-2">
-              <span className="text-[12px] text-[#50506A]">🔍</span>
-              <input value={busquedaOY} onChange={e=>setBusquedaOY(e.target.value)}
-                placeholder="Buscar por nombre, email o ciudad..."
-                className="flex-1 bg-transparent text-[12px] text-white outline-none placeholder-[#50506A]"/>
-              {busquedaOY && <button onClick={()=>setBusquedaOY('')} className="text-[#50506A] text-[11px]">✕</button>}
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              {['todos','INICIADO','REGULAR','VIP','ÉLITE'].map(n=>{
-                const colors: Record<string,string> = {todos:'#606060',INICIADO:'#a0a0a0',REGULAR:'#448AFF',VIP:'#B388FF',ÉLITE:'#FFD700'};
-                return (
-                  <button key={n} onClick={()=>setFiltroNivel(n)}
-                    className="px-3 py-1.5 rounded-full text-[10px] font-bold transition-all"
-                    style={{border:`1px solid ${filtroNivel===n?colors[n]:'rgba(255,255,255,0.1)'}`,background:filtroNivel===n?`${colors[n]}15`:'transparent',color:filtroNivel===n?colors[n]:'#606060'}}>
-                    {n === 'todos' ? '🔵 Todos' : n}
-                  </button>
-                );
-              })}
-            </div>
-            <button onClick={fetchOhYeahClientes} className="text-[11px] text-[#50506A] hover:text-white flex items-center gap-1">
-              <RefreshCw size={12}/> Actualizar
-            </button>
-          </div>
-
-          {/* Lista de clientes */}
-          {ohyeahLoading ? (
-            <div className="text-center py-10 text-[#50506A]">Cargando clientes...</div>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {ohyeahClientes
-                .filter(cl => {
-                  const busq = busquedaOY.toLowerCase();
-                  const matchBusq = !busq || cl.nombre?.toLowerCase().includes(busq) || cl.email?.toLowerCase().includes(busq) || cl.ciudad?.toLowerCase().includes(busq);
-                  const matchNivel = filtroNivel === 'todos' || cl.nivel === filtroNivel;
-                  return matchBusq && matchNivel;
-                })
-                .map(cl => {
-                  const NIVEL_COLORS: Record<string,string> = {INICIADO:'#a0a0a0',REGULAR:'#448AFF',VIP:'#B388FF',ÉLITE:'#FFD700'};
-                  const NIVEL_EMOJI: Record<string,string>  = {INICIADO:'⭐',REGULAR:'🌟',VIP:'💎',ÉLITE:'👑'};
-                  const nc = NIVEL_COLORS[cl.nivel] || '#606060';
-                  const diasSinVisitar = cl.dias_sin_visitar;
-                  return (
-                    <div key={cl.id} className="bg-[#0f0f1a] border border-white/7 rounded-xl p-4 hover:border-white/15 transition-all">
-                      <div className="flex items-start gap-3">
-                        {/* Avatar */}
-                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-[16px] font-black shrink-0"
-                          style={{background:`${nc}20`,border:`2px solid ${nc}40`,color:nc}}>
-                          {cl.nombre?.charAt(0).toUpperCase()}
-                        </div>
-                        {/* Info principal */}
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1 flex-wrap">
-                            <span className="font-bold text-[13px] text-white">{cl.nombre}</span>
-                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:`${nc}15`,color:nc,border:`1px solid ${nc}30`}}>
-                              {NIVEL_EMOJI[cl.nivel]} {cl.nivel}
-                            </span>
-                            {diasSinVisitar !== null && diasSinVisitar > 30 && (
-                              <span className="text-[9px] bg-[#FF5252]/15 text-[#FF5252] border border-[#FF5252]/30 px-2 py-0.5 rounded-full font-bold">
-                                ⚠️ {diasSinVisitar}d sin visitar
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex gap-4 flex-wrap">
-                            {cl.email    && <span className="text-[10px] text-[#50506A]">✉️ {cl.email}</span>}
-                            {cl.telefono && <span className="text-[10px] text-[#50506A]">📱 {cl.telefono}</span>}
-                            {cl.ciudad   && <span className="text-[10px] text-[#50506A]">📍 {cl.ciudad}</span>}
-                          </div>
-                        </div>
-                        {/* Métricas */}
-                        <div className="flex gap-3 shrink-0">
-                          {[
-                            {l:'Visitas',   v:cl.visitas||0,       c:'#FFB547'},
-                            {l:'Puntos',    v:cl.puntos||0,        c:nc},
-                            {l:'Reservas',  v:cl.total_reservas||0,c:'#448AFF'},
-                          ].map(m=>(
-                            <div key={m.l} className="text-center">
-                              <div className="font-['Syne'] text-[16px] font-black" style={{color:m.c}}>{m.v}</div>
-                              <div className="text-[8px] text-[#50506A]">{m.l}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                      {/* Última visita */}
-                      {cl.ultima_reserva && (
-                        <div className="mt-2 pt-2 border-t border-white/5 text-[10px] text-[#50506A] flex gap-4">
-                          <span>Última reserva: {new Date(cl.ultima_reserva).toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'})}</span>
-                          <span>Login: {new Date(cl.last_login).toLocaleDateString('es-CO',{day:'numeric',month:'short'})}</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              {ohyeahClientes.filter(cl => {
-                const busq = busquedaOY.toLowerCase();
-                return (!busq || cl.nombre?.toLowerCase().includes(busq) || cl.email?.toLowerCase().includes(busq)) && (filtroNivel==='todos'||cl.nivel===filtroNivel);
-              }).length === 0 && (
-                <div className="text-center py-10 text-[#50506A]">
-                  <div className="text-[40px] mb-2">🦉</div>
-                  <div>Sin clientes que coincidan</div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-  );
-}
-
-// ── INTERFAZ CLIENTE OH YEAH ──────────────────────────────────────
-interface OhYeahCliente {
-  id: number; nombre: string; email: string; telefono: string;
-  ciudad: string; nivel: string; puntos: number; visitas: number;
-  last_login: string; created_at: string; notas: string | null;
-  tags: string[]; total_reservas: number; ultima_reserva: string | null;
-  dias_sin_visitar: number | null;
 }
 
 export default function CareModule() {
@@ -864,7 +558,7 @@ export default function CareModule() {
               { l:'Total clientes', v:ohyeahClientes.length,                                                    c:'#FFB547' },
               { l:'ÉLITE',          v:ohyeahClientes.filter(c=>c.nivel==='ÉLITE').length,                       c:'#FFD700' },
               { l:'VIP',            v:ohyeahClientes.filter(c=>c.nivel==='VIP').length,                         c:'#B388FF' },
-              { l:'Nuevos hoy',     v:ohyeahClientes.filter(c=>c.created_at?.startsWith(new Date().toISOString().split('T')[0])).length, c:'#00E676' },
+              { l:'Nuevos hoy',     v:ohyeahClientes.filter(c=>c.registro_at?.startsWith(new Date().toISOString().split('T')[0])).length, c:'#00E676' },
             ].map(k=>(
               <div key={k.l} className="bg-[#0f0f1a] border rounded-xl p-3 text-center" style={{borderColor:`${k.c}20`}}>
                 <div className="text-[9px] text-[#50506A] uppercase mb-1">{k.l}</div>
@@ -947,7 +641,7 @@ export default function CareModule() {
                         <div className="flex gap-3 shrink-0">
                           {[
                             {l:'Visitas',   v:cl.visitas||0,       c:'#FFB547'},
-                            {l:'Puntos',    v:cl.puntos||0,        c:nc},
+                            {l:'Puntos',    v:0,        c:nc},
                             {l:'Reservas',  v:cl.total_reservas||0,c:'#448AFF'},
                           ].map(m=>(
                             <div key={m.l} className="text-center">
@@ -981,5 +675,311 @@ export default function CareModule() {
         </div>
       )}
 
+      {/* ══ TAB OH YEAH — CLIENTES EN TIEMPO REAL ══ */}
+      {activeTab === 'ohyeah' && (
+        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+
+          {/* Header con stats */}
+          <div className="grid grid-cols-4 gap-3">
+            {[
+              { l:'Total clientes', v:ohyeahClientes.length,                                                    c:'#FFB547' },
+              { l:'ÉLITE',          v:ohyeahClientes.filter(c=>c.nivel==='ÉLITE').length,                       c:'#FFD700' },
+              { l:'VIP',            v:ohyeahClientes.filter(c=>c.nivel==='VIP').length,                         c:'#B388FF' },
+              { l:'Nuevos hoy',     v:ohyeahClientes.filter(c=>c.registro_at?.startsWith(new Date().toISOString().split('T')[0])).length, c:'#00E676' },
+            ].map(k=>(
+              <div key={k.l} className="bg-[#0f0f1a] border rounded-xl p-3 text-center" style={{borderColor:`${k.c}20`}}>
+                <div className="text-[9px] text-[#50506A] uppercase mb-1">{k.l}</div>
+                <div className="font-['Syne'] text-[22px] font-black" style={{color:k.c}}>{k.v}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Filtros y búsqueda */}
+          <div className="flex gap-3 flex-wrap items-center">
+            <div className="flex-1 flex items-center gap-2 bg-[#0f0f1a] border border-white/10 rounded-lg px-3 py-2">
+              <span className="text-[12px] text-[#50506A]">🔍</span>
+              <input value={busquedaOY} onChange={e=>setBusquedaOY(e.target.value)}
+                placeholder="Buscar por nombre, email o ciudad..."
+                className="flex-1 bg-transparent text-[12px] text-white outline-none placeholder-[#50506A]"/>
+              {busquedaOY && <button onClick={()=>setBusquedaOY('')} className="text-[#50506A] text-[11px]">✕</button>}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {['todos','INICIADO','REGULAR','VIP','ÉLITE'].map(n=>{
+                const colors: Record<string,string> = {todos:'#606060',INICIADO:'#a0a0a0',REGULAR:'#448AFF',VIP:'#B388FF',ÉLITE:'#FFD700'};
+                return (
+                  <button key={n} onClick={()=>setFiltroNivel(n)}
+                    className="px-3 py-1.5 rounded-full text-[10px] font-bold transition-all"
+                    style={{border:`1px solid ${filtroNivel===n?colors[n]:'rgba(255,255,255,0.1)'}`,background:filtroNivel===n?`${colors[n]}15`:'transparent',color:filtroNivel===n?colors[n]:'#606060'}}>
+                    {n === 'todos' ? '🔵 Todos' : n}
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={fetchOhYeahClientes} className="text-[11px] text-[#50506A] hover:text-white flex items-center gap-1">
+              <RefreshCw size={12}/> Actualizar
+            </button>
+          </div>
+
+          {/* Lista de clientes */}
+          {ohyeahLoading ? (
+            <div className="text-center py-10 text-[#50506A]">Cargando clientes...</div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {ohyeahClientes
+                .filter(cl => {
+                  const busq = busquedaOY.toLowerCase();
+                  const matchBusq = !busq || cl.nombre?.toLowerCase().includes(busq) || cl.email?.toLowerCase().includes(busq) || cl.ciudad?.toLowerCase().includes(busq);
+                  const matchNivel = filtroNivel === 'todos' || cl.nivel === filtroNivel;
+                  return matchBusq && matchNivel;
+                })
+                .map(cl => {
+                  const NIVEL_COLORS: Record<string,string> = {INICIADO:'#a0a0a0',REGULAR:'#448AFF',VIP:'#B388FF',ÉLITE:'#FFD700'};
+                  const NIVEL_EMOJI: Record<string,string>  = {INICIADO:'⭐',REGULAR:'🌟',VIP:'💎',ÉLITE:'👑'};
+                  const nc = NIVEL_COLORS[cl.nivel] || '#606060';
+                  const diasSinVisitar = cl.dias_sin_visitar;
+                  return (
+                    <div key={cl.id} className="bg-[#0f0f1a] border border-white/7 rounded-xl p-4 hover:border-white/15 transition-all">
+                      <div className="flex items-start gap-3">
+                        {/* Avatar */}
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-[16px] font-black shrink-0"
+                          style={{background:`${nc}20`,border:`2px solid ${nc}40`,color:nc}}>
+                          {cl.nombre?.charAt(0).toUpperCase()}
+                        </div>
+                        {/* Info principal */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="font-bold text-[13px] text-white">{cl.nombre}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:`${nc}15`,color:nc,border:`1px solid ${nc}30`}}>
+                              {NIVEL_EMOJI[cl.nivel]} {cl.nivel}
+                            </span>
+                            {diasSinVisitar !== null && diasSinVisitar > 30 && (
+                              <span className="text-[9px] bg-[#FF5252]/15 text-[#FF5252] border border-[#FF5252]/30 px-2 py-0.5 rounded-full font-bold">
+                                ⚠️ {diasSinVisitar}d sin visitar
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex gap-4 flex-wrap">
+                            {cl.email    && <span className="text-[10px] text-[#50506A]">✉️ {cl.email}</span>}
+                            {cl.telefono && <span className="text-[10px] text-[#50506A]">📱 {cl.telefono}</span>}
+                            {cl.ciudad   && <span className="text-[10px] text-[#50506A]">📍 {cl.ciudad}</span>}
+                          </div>
+                        </div>
+                        {/* Métricas */}
+                        <div className="flex gap-3 shrink-0">
+                          {[
+                            {l:'Visitas',   v:cl.visitas||0,       c:'#FFB547'},
+                            {l:'Puntos',    v:0,        c:nc},
+                            {l:'Reservas',  v:cl.total_reservas||0,c:'#448AFF'},
+                          ].map(m=>(
+                            <div key={m.l} className="text-center">
+                              <div className="font-['Syne'] text-[16px] font-black" style={{color:m.c}}>{m.v}</div>
+                              <div className="text-[8px] text-[#50506A]">{m.l}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      {/* Última visita */}
+                      {cl.ultima_reserva && (
+                        <div className="mt-2 pt-2 border-t border-white/5 text-[10px] text-[#50506A] flex gap-4">
+                          <span>Última reserva: {new Date(cl.ultima_reserva).toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'})}</span>
+                          <span>Login: {new Date(cl.last_login).toLocaleDateString('es-CO',{day:'numeric',month:'short'})}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              {ohyeahClientes.filter(cl => {
+                const busq = busquedaOY.toLowerCase();
+                return (!busq || cl.nombre?.toLowerCase().includes(busq) || cl.email?.toLowerCase().includes(busq)) && (filtroNivel==='todos'||cl.nivel===filtroNivel);
+              }).length === 0 && (
+                <div className="text-center py-10 text-[#50506A]">
+                  <div className="text-[40px] mb-2">🦉</div>
+                  <div>Sin clientes que coincidan</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+  );
+}
+
+function PanelRespuesta({enc,onClose,onSend}:{enc:Encuesta;onClose:()=>void;onSend:()=>void}) {
+  const nombre = enc.cliente.split(' ')[0];
+  const [texto,setTexto] = useState(IA_RESPONSES[enc.estrellas]?.replace('[nombre]',nombre)||'');
+  const c = starC(enc.estrellas);
+  const reg = getRegalo(enc);
+  return (
+    <div style={{position:'fixed',inset:0,zIndex:1000,background:'rgba(0,0,0,.8)',display:'flex',alignItems:'flex-end',justifyContent:'center'}} onClick={onClose}>
+      <div style={{background:'#0d0d0d',border:'1px solid #1e1e1e',borderRadius:'20px 20px 0 0',padding:24,width:'100%',maxWidth:560,maxHeight:'88vh',overflowY:'auto'}} onClick={e=>e.stopPropagation()}>
+        <div style={{width:40,height:4,borderRadius:2,background:'#2a2a2a',margin:'0 auto 20px'}}/>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+          <div style={{display:'flex',gap:2}}>{[1,2,3,4,5].map(s=><Star key={s} size={16} fill={s<=enc.estrellas?c:'transparent'} color={s<=enc.estrellas?c:'#2a2a2a'}/>)}</div>
+          <span style={{fontFamily:'Syne,sans-serif',fontWeight:800,fontSize:15,color:'#f0f0f0',flex:1}}>{enc.cliente}</span>
+          <span style={{fontSize:10,color:'#404040'}}>Mesa {enc.mesa}</span>
+        </div>
+        <div style={{background:'#111',border:'1px solid #1a1a1a',borderRadius:10,padding:12,marginBottom:14,fontSize:13,color:'#808080',fontStyle:'italic',lineHeight:1.6}}>"{enc.comentario}"</div>
+        {enc.platos&&enc.estrellas<=3&&(
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:10,color:'#606060',fontWeight:700,textTransform:'uppercase',letterSpacing:'1px',marginBottom:8}}>Platos de la visita</div>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{enc.platos.map(p=><span key={p} style={{padding:'4px 10px',borderRadius:20,fontSize:11,background:'#141414',border:'1px solid #1e1e1e',color:'#808080'}}>{p}</span>)}</div>
+          </div>
+        )}
+        <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:14}}>{enc.tags.map(tag=><span key={tag} style={{padding:'3px 10px',borderRadius:20,fontSize:10,fontWeight:600,background:`${c}12`,color:c,border:`1px solid ${c}25`}}>{tag}</span>)}</div>
+        {reg&&(
+          <div style={{background:'rgba(155,114,255,.06)',border:'1px solid rgba(155,114,255,.2)',borderRadius:10,padding:12,marginBottom:14}}>
+            <div style={{fontSize:10,color:'#9b72ff',fontWeight:700,letterSpacing:'1px',textTransform:'uppercase',marginBottom:4}}>✦ Sugerencia interna — solo gerencia</div>
+            <div style={{fontSize:13,color:'#c0a0ff',marginBottom:4}}>{reg}</div>
+            <div style={{fontSize:11,color:'#606060'}}>Comunicar como: "Será un placer sorprenderte."</div>
+          </div>
+        )}
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:10,color:'#404040',fontWeight:700,letterSpacing:'1px',textTransform:'uppercase',marginBottom:8,display:'flex',alignItems:'center',gap:6}}><Brain size={12} color="#9b72ff"/> Respuesta X-CARE™ · Nivel Ritz Carlton</div>
+          <textarea value={texto} onChange={e=>setTexto(e.target.value)} rows={7} style={{width:'100%',background:'#111',border:'1px solid #1e1e1e',borderRadius:10,padding:14,color:'#d0d0d0',fontSize:13,lineHeight:1.7,outline:'none',resize:'none',fontFamily:'DM Sans,sans-serif',boxSizing:'border-box'}}/>
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <button onClick={onClose} style={{flex:1,padding:14,borderRadius:12,background:'transparent',border:'1px solid #1e1e1e',color:'#606060',fontSize:13,fontWeight:600,cursor:'pointer'}}>Cancelar</button>
+          <button onClick={onSend} style={{flex:2,padding:14,borderRadius:12,border:'none',background:'linear-gradient(135deg,#9b72ff,#7b52df)',color:'#fff',fontSize:14,fontWeight:800,cursor:'pointer',fontFamily:'Syne,sans-serif'}}>📩 Enviar respuesta</button>
+        </div>
+      </div>
+    </div>
+      {/* ══ TAB OH YEAH — CLIENTES EN TIEMPO REAL ══ */}
+      {activeTab === 'ohyeah' && (
+        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+
+          {/* Header con stats */}
+          <div className="grid grid-cols-4 gap-3">
+            {[
+              { l:'Total clientes', v:ohyeahClientes.length,                                                    c:'#FFB547' },
+              { l:'ÉLITE',          v:ohyeahClientes.filter(c=>c.nivel==='ÉLITE').length,                       c:'#FFD700' },
+              { l:'VIP',            v:ohyeahClientes.filter(c=>c.nivel==='VIP').length,                         c:'#B388FF' },
+              { l:'Nuevos hoy',     v:ohyeahClientes.filter(c=>c.registro_at?.startsWith(new Date().toISOString().split('T')[0])).length, c:'#00E676' },
+            ].map(k=>(
+              <div key={k.l} className="bg-[#0f0f1a] border rounded-xl p-3 text-center" style={{borderColor:`${k.c}20`}}>
+                <div className="text-[9px] text-[#50506A] uppercase mb-1">{k.l}</div>
+                <div className="font-['Syne'] text-[22px] font-black" style={{color:k.c}}>{k.v}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Filtros y búsqueda */}
+          <div className="flex gap-3 flex-wrap items-center">
+            <div className="flex-1 flex items-center gap-2 bg-[#0f0f1a] border border-white/10 rounded-lg px-3 py-2">
+              <span className="text-[12px] text-[#50506A]">🔍</span>
+              <input value={busquedaOY} onChange={e=>setBusquedaOY(e.target.value)}
+                placeholder="Buscar por nombre, email o ciudad..."
+                className="flex-1 bg-transparent text-[12px] text-white outline-none placeholder-[#50506A]"/>
+              {busquedaOY && <button onClick={()=>setBusquedaOY('')} className="text-[#50506A] text-[11px]">✕</button>}
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              {['todos','INICIADO','REGULAR','VIP','ÉLITE'].map(n=>{
+                const colors: Record<string,string> = {todos:'#606060',INICIADO:'#a0a0a0',REGULAR:'#448AFF',VIP:'#B388FF',ÉLITE:'#FFD700'};
+                return (
+                  <button key={n} onClick={()=>setFiltroNivel(n)}
+                    className="px-3 py-1.5 rounded-full text-[10px] font-bold transition-all"
+                    style={{border:`1px solid ${filtroNivel===n?colors[n]:'rgba(255,255,255,0.1)'}`,background:filtroNivel===n?`${colors[n]}15`:'transparent',color:filtroNivel===n?colors[n]:'#606060'}}>
+                    {n === 'todos' ? '🔵 Todos' : n}
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={fetchOhYeahClientes} className="text-[11px] text-[#50506A] hover:text-white flex items-center gap-1">
+              <RefreshCw size={12}/> Actualizar
+            </button>
+          </div>
+
+          {/* Lista de clientes */}
+          {ohyeahLoading ? (
+            <div className="text-center py-10 text-[#50506A]">Cargando clientes...</div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {ohyeahClientes
+                .filter(cl => {
+                  const busq = busquedaOY.toLowerCase();
+                  const matchBusq = !busq || cl.nombre?.toLowerCase().includes(busq) || cl.email?.toLowerCase().includes(busq) || cl.ciudad?.toLowerCase().includes(busq);
+                  const matchNivel = filtroNivel === 'todos' || cl.nivel === filtroNivel;
+                  return matchBusq && matchNivel;
+                })
+                .map(cl => {
+                  const NIVEL_COLORS: Record<string,string> = {INICIADO:'#a0a0a0',REGULAR:'#448AFF',VIP:'#B388FF',ÉLITE:'#FFD700'};
+                  const NIVEL_EMOJI: Record<string,string>  = {INICIADO:'⭐',REGULAR:'🌟',VIP:'💎',ÉLITE:'👑'};
+                  const nc = NIVEL_COLORS[cl.nivel] || '#606060';
+                  const diasSinVisitar = cl.dias_sin_visitar;
+                  return (
+                    <div key={cl.id} className="bg-[#0f0f1a] border border-white/7 rounded-xl p-4 hover:border-white/15 transition-all">
+                      <div className="flex items-start gap-3">
+                        {/* Avatar */}
+                        <div className="w-10 h-10 rounded-full flex items-center justify-center text-[16px] font-black shrink-0"
+                          style={{background:`${nc}20`,border:`2px solid ${nc}40`,color:nc}}>
+                          {cl.nombre?.charAt(0).toUpperCase()}
+                        </div>
+                        {/* Info principal */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <span className="font-bold text-[13px] text-white">{cl.nombre}</span>
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full" style={{background:`${nc}15`,color:nc,border:`1px solid ${nc}30`}}>
+                              {NIVEL_EMOJI[cl.nivel]} {cl.nivel}
+                            </span>
+                            {diasSinVisitar !== null && diasSinVisitar > 30 && (
+                              <span className="text-[9px] bg-[#FF5252]/15 text-[#FF5252] border border-[#FF5252]/30 px-2 py-0.5 rounded-full font-bold">
+                                ⚠️ {diasSinVisitar}d sin visitar
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex gap-4 flex-wrap">
+                            {cl.email    && <span className="text-[10px] text-[#50506A]">✉️ {cl.email}</span>}
+                            {cl.telefono && <span className="text-[10px] text-[#50506A]">📱 {cl.telefono}</span>}
+                            {cl.ciudad   && <span className="text-[10px] text-[#50506A]">📍 {cl.ciudad}</span>}
+                          </div>
+                        </div>
+                        {/* Métricas */}
+                        <div className="flex gap-3 shrink-0">
+                          {[
+                            {l:'Visitas',   v:cl.visitas||0,       c:'#FFB547'},
+                            {l:'Puntos',    v:0,        c:nc},
+                            {l:'Reservas',  v:cl.total_reservas||0,c:'#448AFF'},
+                          ].map(m=>(
+                            <div key={m.l} className="text-center">
+                              <div className="font-['Syne'] text-[16px] font-black" style={{color:m.c}}>{m.v}</div>
+                              <div className="text-[8px] text-[#50506A]">{m.l}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      {/* Última visita */}
+                      {cl.ultima_reserva && (
+                        <div className="mt-2 pt-2 border-t border-white/5 text-[10px] text-[#50506A] flex gap-4">
+                          <span>Última reserva: {new Date(cl.ultima_reserva).toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'})}</span>
+                          <span>Login: {new Date(cl.last_login).toLocaleDateString('es-CO',{day:'numeric',month:'short'})}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              {ohyeahClientes.filter(cl => {
+                const busq = busquedaOY.toLowerCase();
+                return (!busq || cl.nombre?.toLowerCase().includes(busq) || cl.email?.toLowerCase().includes(busq)) && (filtroNivel==='todos'||cl.nivel===filtroNivel);
+              }).length === 0 && (
+                <div className="text-center py-10 text-[#50506A]">
+                  <div className="text-[40px] mb-2">🦉</div>
+                  <div>Sin clientes que coincidan</div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+  );
+}
+
+// ── INTERFAZ CLIENTE OH YEAH ──────────────────────────────────────
+interface OhYeahCliente {
+  id: number; nombre: string; email: string; telefono: string;
+  ciudad: string; nivel: string; puntos: number; visitas: number;
+  last_login: string; created_at: string; notas: string | null;
+  tags: string[]; total_reservas: number; ultima_reserva: string | null;
+  dias_sin_visitar: number | null;
   );
 }
