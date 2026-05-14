@@ -30,7 +30,6 @@ const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
 const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
 const SupplyModule = lazy(() => import('./components/SupplyModule.tsx')); // Supply IA real
 const MarketplaceModule = lazy(() => import('./components/MarketplaceModule.tsx'));
-const SerattaCrewPage = lazy(() => import('./components/SerattaCrewPage.tsx'));
 const PropinasModule = lazy(() => import('./components/PropinasModule.tsx'));
 const MetricasModule = lazy(() => import('./components/MetricasModule.tsx'));
 const FoodIntelligenceModule = lazy(() => import('./components/FoodIntelligenceModule.tsx'));
@@ -191,14 +190,7 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  // Ruta /crew — app del mesero (PWA)
-  if (window.location.pathname === '/crew') {
-    return (
-      <React.Suspense fallback={<div style={{background:'#08080f',height:'100vh',display:'flex',alignItems:'center',justifyContent:'center',color:'#FFB547',fontSize:24}}>⚡</div>}>
-        <SerattaCrewPage />
-      </React.Suspense>
-    );
-  }
+  // Ruta /crew — SerattaCrewPage vive en el repo separado seratta-crew, no aquí
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#0a0a0c] text-white font-sans text-left">
