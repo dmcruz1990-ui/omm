@@ -2,13 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase.ts';
 
 // ── ESTACIONES KDS ────────────────────────────────────────────────────
-const ESTACIONES: Record<string,{color:string;emoji:string;objetivo:number}> = {
-  cocina_caliente: { color:'#FF6B00', emoji:'🔥', objetivo:480 },
-  cocina_fria:     { color:'#22d3ee', emoji:'🧊', objetivo:360 },
-  robata:          { color:'#FF9800', emoji:'🥩', objetivo:600 },
-  postres:         { color:'#B388FF', emoji:'🍮', objetivo:300 },
-  bar:             { color:'#448AFF', emoji:'🍸', objetivo:180 },
-  cava:            { color:'#FFB547', emoji:'🍷', objetivo:120 },
+const ESTACIONES: Record<string,{color:string;emoji:string;objetivo:number;responsable:string}> = {
+  cocina_caliente: { color:'#FF6B00', emoji:'🔥', objetivo:480, responsable:'Resp. Cocina Caliente' },
+  cocina_fria:     { color:'#22d3ee', emoji:'🧊', objetivo:360, responsable:'Resp. Cocina Fría' },
+  robata:          { color:'#FF9800', emoji:'🥩', objetivo:600, responsable:'Resp. Robata' },
+  postres:         { color:'#B388FF', emoji:'🍮', objetivo:300, responsable:'Resp. Postres' },
+  bar:             { color:'#448AFF', emoji:'🍸', objetivo:180, responsable:'Resp. Bar' },
+  cava:            { color:'#FFB547', emoji:'🍷', objetivo:120, responsable:'Resp. Cava' },
 };
 
 interface FlowItem {
@@ -48,11 +48,18 @@ const getMC = (id:number|null) => id && MESA_COLORES[id] ? MESA_COLORES[id] : {c
 
 const getNombre  = (i:FlowItem) => i.nombre_plato ?? i.menu_name ?? i.notes ?? 'Sin nombre';
 const getStation = (i:FlowItem) => i.estacion || (i as any).categoria || 'cocina_caliente';
+const getResponsable = (i:FlowItem) => i.cocinero || ESTACIONES[getStation(i)]?.responsable || 'Sin asignar';
 const tsec       = (iso:string) => Math.floor((Date.now()-new Date(iso).getTime())/1000);
 const fmtT = (s:number) => {
   if (!s || s <= 0) return '—';
   const m = Math.floor(s/60);
   return m === 0 ? '<1min' : `${m + (s%60 >= 30 ? 1 : 0)}min`;
+};
+const fmtTotal = (s:number) => {
+  if (!s || s <= 0) return '0min';
+  const h = Math.floor(s/3600);
+  const m = Math.floor((s%3600)/60);
+  return h>0 ? `${h}h ${m}min` : `${m}min`;
 };
 
 // ── COMPONENTE PRINCIPAL ───────────────────────────────────────────────
@@ -63,7 +70,8 @@ export default function FlowModule() {
   const [activeTab, setActiveTab] = useState<'live'|'dia'|'platos'|'metricas'>('live');
   const [filtroEst, setFiltroEst] = useState<string>('all');
   const [statsHoy,  setStatsHoy]  = useState<any>(null);
-  const [tick,      setTick]      = useState(0);
+  const [careStats, setCareStats] = useState<any>(null);
+  const [, setTick]               = useState(0);
 
   // Reloj para cronómetros
   useEffect(() => {
@@ -95,6 +103,7 @@ export default function FlowModule() {
       const served  = data.filter(i => i.status === 'served');
       const tiempos = served.filter(i => i.duracion_seg && i.duracion_seg > 0).map(i => i.duracion_seg as number);
       const avgT    = tiempos.length ? Math.round(tiempos.reduce((a,b)=>a+b,0)/tiempos.length) : 0;
+      const totalProd = tiempos.reduce((a,b)=>a+b,0);
       const ventas  = served.reduce((s,i) => s + (i.price_at_time||0) * (i.quantity||1), 0);
       setStatsHoy({
         total:    data.length,
@@ -103,6 +112,7 @@ export default function FlowModule() {
         prep:     data.filter(i => i.status === 'preparing').length,
         ready:    data.filter(i => i.status === 'ready').length,
         avgTiempo: avgT,
+        totalProd,
         ventas,
         estaciones: Object.entries(
           data.reduce((acc:any,i) => {
@@ -117,7 +127,41 @@ export default function FlowModule() {
     }
   }, []);
 
-  useEffect(() => { fetchLive(); fetchDia(); }, [fetchLive, fetchDia]);
+  // ── CARE — quejas/felicitaciones del día por plato ──────────────────
+  const fetchCare = useCallback(async () => {
+    const hoy = new Date().toISOString().split('T')[0];
+    const { data } = await supabase
+      .from('xcare_encuestas')
+      .select('estrellas,tags_positivos,tags_negativos,platos_problema,nps_score,mesa_numero,created_at')
+      .gte('created_at', hoy + 'T00:00:00');
+    if (!data) { setCareStats({total:0,positivas:0,negativas:0,quejadosPorPlato:{},tagsPositivos:{},tagsNegativos:{}}); return; }
+
+    const positivas = data.filter((d:any)=>d.estrellas>=4).length;
+    const negativas = data.filter((d:any)=>d.estrellas<=3 && d.estrellas>0).length;
+    const quejadosPorPlato: Record<string,{count:number;estrellas:number[];mesas:number[]}> = {};
+    const tagsPositivos: Record<string,number> = {};
+    const tagsNegativos: Record<string,number> = {};
+
+    data.forEach((d:any) => {
+      (d.platos_problema || []).forEach((p:string) => {
+        if (!quejadosPorPlato[p]) quejadosPorPlato[p] = {count:0,estrellas:[],mesas:[]};
+        quejadosPorPlato[p].count++;
+        quejadosPorPlato[p].estrellas.push(d.estrellas);
+        if (d.mesa_numero) quejadosPorPlato[p].mesas.push(d.mesa_numero);
+      });
+      (d.tags_positivos || []).forEach((t:string) => { tagsPositivos[t] = (tagsPositivos[t]||0)+1; });
+      (d.tags_negativos || []).forEach((t:string) => { tagsNegativos[t] = (tagsNegativos[t]||0)+1; });
+    });
+
+    setCareStats({
+      total:    data.length,
+      positivas, negativas,
+      avgEstrellas: data.length ? (data.reduce((s:number,d:any)=>s+(d.estrellas||0),0)/data.length).toFixed(1) : '0',
+      quejadosPorPlato, tagsPositivos, tagsNegativos,
+    });
+  }, []);
+
+  useEffect(() => { fetchLive(); fetchDia(); fetchCare(); }, [fetchLive, fetchDia, fetchCare]);
   useEffect(() => { const t = setInterval(fetchLive, 15000); return () => clearInterval(t); }, [fetchLive]);
 
   // Realtime
@@ -125,9 +169,12 @@ export default function FlowModule() {
     const ch = supabase.channel('flow-kds')
       .on('postgres_changes', { event:'*', schema:'public', table:'order_items' }, () => {
         fetchLive(); fetchDia();
+      })
+      .on('postgres_changes', { event:'*', schema:'public', table:'xcare_encuestas' }, () => {
+        fetchCare();
       }).subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [fetchLive, fetchDia]);
+  }, [fetchLive, fetchDia, fetchCare]);
 
   // ── UPDATE STATUS ─────────────────────────────────────────────────
   const updateStatus = async (id:string, status:FlowItem['status']) => {
@@ -142,7 +189,7 @@ export default function FlowModule() {
       const item = items.find(i => i.id === id);
       if (item) {
         const titulo = status === 'ready'
-          ? `🟡 ${getNombre(item)} casi listo`
+          ? `🟡 ${getNombre(item)} casi listo (2 mins)`
           : `✅ ${getNombre(item)} LISTO para entrega`;
         const urgente = status === 'served';
         await supabase.from('nexum_notificaciones').insert({
@@ -174,17 +221,10 @@ export default function FlowModule() {
     }).map(i => i.table_id)
   );
 
-  // Filtrar items
+  // Filtrar items y ordenar por created_at (FIFO — orden de llegada)
   const estaciones = ['all', ...Array.from(new Set(items.map(i => getStation(i))))];
-  const itemsFiltrados = filtroEst === 'all' ? items : items.filter(i => getStation(i) === filtroEst);
-
-  // Agrupar por mesa
-  const porMesa = itemsFiltrados.reduce((acc:any, i) => {
-    const k = i.table_id ?? 0;
-    if (!acc[k]) acc[k] = [];
-    acc[k].push(i);
-    return acc;
-  }, {});
+  const itemsFiltrados = (filtroEst === 'all' ? items : items.filter(i => getStation(i) === filtroEst))
+    .slice().sort((a,b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
 
   const S = {
     bg:'#08080f', bg2:'#0f0f1a', bg3:'#161624',
@@ -192,6 +232,9 @@ export default function FlowModule() {
     t1:'#fff', t2:'#A0A0B8', t3:'#50506A',
     gold:'#FFB547', green:'#00E676', red:'#FF5252',
   };
+
+  // Set de platos con quejas hoy (para tag en live cards)
+  const platosConQueja = new Set(Object.keys(careStats?.quejadosPorPlato || {}));
 
   return (
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:S.bg,color:S.t1,fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
@@ -226,7 +269,7 @@ export default function FlowModule() {
         {([
           {id:'live',    l:'🔴 En vivo'},
           {id:'dia',     l:'📋 Pedidos del día'},
-          {id:'platos',  l:'🍽️ Platos del día'},
+          {id:'platos',  l:'🍽️ Mi Menú'},
           {id:'metricas',l:'📊 Métricas'},
         ] as {id:typeof activeTab,l:string}[]).map(t=>(
           <button key={t.id} onClick={()=>setActiveTab(t.id)}
@@ -260,107 +303,97 @@ export default function FlowModule() {
               })}
             </div>
 
-            {/* Cards */}
+            {/* Grid de cards — un pedido = una card, orden de llegada (FIFO) */}
             <div style={{flex:1,overflowY:'auto',padding:12}}>
               {loading && <div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando...</div>}
-              {!loading && items.length===0 && (
+              {!loading && itemsFiltrados.length===0 && (
                 <div style={{textAlign:'center',padding:60,color:S.t3}}>
                   <div style={{fontSize:48,marginBottom:12}}>✅</div>
                   <div style={{fontSize:14,fontWeight:700}}>Cocina al día</div>
                   <div style={{fontSize:12,marginTop:4}}>Sin pedidos pendientes</div>
                 </div>
               )}
-              {Object.entries(porMesa).map(([mesaId, mesaItems]:any) => {
-                const mc = getMC(Number(mesaId));
-                return (
-                  <div key={mesaId} style={{background:S.bg2,border:`2px solid ${mc.color}30`,borderLeft:`4px solid ${mc.color}`,borderRadius:14,marginBottom:12,overflow:'hidden'}}>
-                    {/* Header mesa */}
-                    <div style={{padding:'8px 14px',background:`${mc.color}10`,display:'flex',alignItems:'center',gap:8,borderBottom:`1px solid ${mc.color}20`}}>
-                      <span style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:mc.color}}>Mesa {mesaId}</span>
-                      <span style={{fontSize:10,color:S.t3}}>{mesaItems.length} item{mesaItems.length!==1?'s':''}</span>
-                      <div style={{marginLeft:'auto',display:'flex',gap:4}}>
-                        {['pending','preparing','ready'].map(s=>{
-                          const n = mesaItems.filter((i:FlowItem)=>i.status===s).length;
-                          const colors:any = {pending:S.t3,preparing:'#FFB547',ready:S.green};
-                          return n>0 ? <span key={s} style={{fontSize:9,fontWeight:700,color:colors[s],background:`${colors[s]}15`,padding:'1px 6px',borderRadius:10}}>{n} {s}</span> : null;
-                        })}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:10}}>
+                {itemsFiltrados.map((item) => {
+                  const est   = ESTACIONES[getStation(item)] || ESTACIONES.cocina_caliente;
+                  const mc    = getMC(item.table_id);
+                  const tp    = tsec(item.created_at);
+                  const pp    = item.tiempo_inicio ? tsec(item.tiempo_inicio) : 0;
+                  const isPending   = item.status==='pending';
+                  const isPreparing = item.status==='preparing';
+                  const isReady     = item.status==='ready';
+                  const pct = isPreparing ? Math.min(100,Math.round(pp/est.objetivo*100)) : isPending ? Math.min(100,Math.round(tp/(est.objetivo*1.5)*100)) : 100;
+                  const esEnFuego  = (isPending&&tp>est.objetivo*1.5)||(isPreparing&&pp>est.objetivo);
+                  const mesaRet    = !!(item.table_id&&mesasConRetraso.has(item.table_id)&&getStation(item)!=='cocina_caliente');
+                  const esAmarillo = !esEnFuego&&((isPending&&tp>est.objetivo*0.8)||(isPreparing&&pp>est.objetivo*0.7)||mesaRet);
+                  const sColor     = esEnFuego?S.red:esAmarillo?'#FFB547':S.green;
+                  const tieneQueja = platosConQueja.has(getNombre(item));
+                  const responsable = getResponsable(item);
+                  return (
+                    <div key={item.id} style={{background:esEnFuego?'rgba(255,82,82,0.08)':esAmarillo?'rgba(255,181,71,0.06)':S.bg2,border:`1px solid ${esEnFuego?'rgba(255,82,82,0.35)':esAmarillo?'rgba(255,181,71,0.25)':S.border}`,borderLeft:`4px solid ${sColor}`,borderRadius:12,padding:'12px 14px',display:'flex',flexDirection:'column',gap:8}}>
+                      {/* Header card */}
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <span style={{fontSize:22}}>{est.emoji}</span>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontSize:13,fontWeight:700,color:S.t1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{item.quantity > 1 ? `${item.quantity}x ` : ''}{getNombre(item)}</div>
+                          <div style={{fontSize:9,color:S.t3,marginTop:1}}>{est.emoji} {getStation(item).replace('_',' ')}</div>
+                        </div>
+                        {/* Tiempo */}
+                        <div style={{textAlign:'right',flexShrink:0}}>
+                          <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:sColor,lineHeight:1}}>
+                            {isPreparing ? fmtT(pp) : isPending ? fmtT(tp) : fmtT(item.duracion_seg||0)}
+                          </div>
+                          <div style={{fontSize:8,color:S.t3,marginTop:2}}>{isPreparing?'producción':isPending?'en espera':'total'}</div>
+                        </div>
+                      </div>
+
+                      {/* Badges */}
+                      <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                        {item.table_id && <span style={{fontSize:10,background:mc.bg,color:mc.color,border:`1px solid ${mc.color}40`,padding:'2px 8px',borderRadius:20,fontWeight:800}}>Mesa {item.table_id}</span>}
+                        {item.mesero   && <span style={{fontSize:9,color:S.t2,background:'rgba(255,255,255,0.04)',padding:'2px 6px',borderRadius:10}}>👤 {item.mesero.split(' ')[0]}</span>}
+                        <span style={{fontSize:9,color:est.color,background:`${est.color}15`,padding:'2px 6px',borderRadius:10}}>👨‍🍳 {responsable.replace('Resp. ','').split(' ')[0]}</span>
+                        {isReady && <span style={{fontSize:9,background:'rgba(0,230,118,0.15)',color:S.green,padding:'2px 6px',borderRadius:10,fontWeight:700}}>🟢 LISTO</span>}
+                        {esEnFuego && <span style={{fontSize:11}}>🔥</span>}
+                        {mesaRet && !esEnFuego && <span title="Cocina caliente retrasada" style={{fontSize:11}}>🍳⚠️</span>}
+                        {esAmarillo && !esEnFuego && !mesaRet && <span style={{fontSize:11}}>⚠️</span>}
+                        {tieneQueja && <span title="Plato con quejas hoy" style={{fontSize:9,background:'rgba(255,82,82,0.15)',color:S.red,padding:'2px 6px',borderRadius:10,fontWeight:700}}>★ Care queja</span>}
+                      </div>
+
+                      {/* Barra progreso */}
+                      {(isPending||isPreparing) && (
+                        <div style={{height:3,background:'rgba(255,255,255,0.06)',borderRadius:2,overflow:'hidden'}}>
+                          <div style={{height:'100%',width:`${pct}%`,background:`linear-gradient(90deg,${est.color},${sColor})`,borderRadius:2,transition:'width 1s'}}/>
+                        </div>
+                      )}
+
+                      {/* Notas */}
+                      {item.notes && item.notes !== getNombre(item) && <div style={{fontSize:10,color:'#FFB547',fontStyle:'italic'}}>📝 {item.notes}</div>}
+
+                      {/* Botones 3 pasos */}
+                      <div style={{display:'flex',gap:6,marginTop:'auto'}}>
+                        {isPending && (
+                          <button onClick={()=>updateStatus(item.id,'preparing')}
+                            style={{flex:1,padding:'9px 6px',borderRadius:9,border:`1px solid ${est.color}60`,background:`${est.color}18`,color:est.color,fontSize:12,fontWeight:800,cursor:'pointer'}}>
+                            🍳 Comenzar
+                          </button>
+                        )}
+                        {isPreparing && (
+                          <button onClick={()=>updateStatus(item.id,'ready')}
+                            style={{flex:1,padding:'9px 6px',borderRadius:9,border:'1px solid rgba(255,181,71,0.5)',background:'rgba(255,181,71,0.12)',color:'#FFB547',fontSize:12,fontWeight:800,cursor:'pointer'}}>
+                            🟡 Casi listo (2 mins)
+                          </button>
+                        )}
+                        {isReady && (
+                          <button onClick={()=>updateStatus(item.id,'served')}
+                            style={{flex:1,padding:'9px 6px',borderRadius:9,border:`1px solid ${S.green}60`,background:`${S.green}12`,color:S.green,fontSize:12,fontWeight:900,cursor:'pointer',boxShadow:`0 0 8px ${S.green}20`}}>
+                            ✅ Listo para entrega
+                          </button>
+                        )}
                       </div>
                     </div>
-                    {/* Items */}
-                    <div style={{padding:10,display:'flex',flexDirection:'column',gap:6}}>
-                      {mesaItems.map((item:FlowItem) => {
-                        const est   = ESTACIONES[getStation(item)] || ESTACIONES.cocina_caliente;
-                        const tp    = tsec(item.created_at);
-                        const pp    = item.tiempo_inicio ? tsec(item.tiempo_inicio) : 0;
-                        const isPending   = item.status==='pending';
-                        const isPreparing = item.status==='preparing';
-                        const isReady     = item.status==='ready';
-                        const pct = isPreparing ? Math.min(100,Math.round(pp/est.objetivo*100)) : isPending ? Math.min(100,Math.round(tp/(est.objetivo*1.5)*100)) : 100;
-                        const esEnFuego  = (isPending&&tp>est.objetivo*1.5)||(isPreparing&&pp>est.objetivo);
-                        const mesaRet    = !!(item.table_id&&mesasConRetraso.has(item.table_id)&&getStation(item)!=='cocina_caliente');
-                        const esAmarillo = !esEnFuego&&((isPending&&tp>est.objetivo*0.8)||(isPreparing&&pp>est.objetivo*0.7)||mesaRet);
-                        const sColor     = esEnFuego?S.red:esAmarillo?'#FFB547':S.green;
-                        return (
-                          <div key={item.id} style={{background:esEnFuego?'rgba(255,82,82,0.08)':esAmarillo?'rgba(255,181,71,0.06)':'rgba(255,255,255,0.03)',border:`1px solid ${esEnFuego?'rgba(255,82,82,0.35)':esAmarillo?'rgba(255,181,71,0.25)':'rgba(255,255,255,0.07)'}`,borderLeft:`4px solid ${sColor}`,borderRadius:10,padding:'10px 12px'}}>
-                            {/* Fila superior */}
-                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
-                              <span style={{fontSize:18}}>{est.emoji}</span>
-                              <div style={{flex:1}}>
-                                <div style={{fontSize:13,fontWeight:700,color:S.t1}}>{item.quantity > 1 ? `${item.quantity}x ` : ''}{getNombre(item)}</div>
-                                <div style={{display:'flex',gap:6,marginTop:2,flexWrap:'wrap'}}>
-                                  {item.table_id && <span style={{fontSize:10,background:mc.bg,color:mc.color,border:`1px solid ${mc.color}30`,padding:'1px 7px',borderRadius:20,fontWeight:700}}>M{item.table_id}</span>}
-                                  {item.mesero   && <span style={{fontSize:9,color:S.t3}}>👤 {item.mesero.split(' ')[0]}</span>}
-                                  {item.cocinero && <span style={{fontSize:9,color:est.color}}>👨‍🍳 {item.cocinero.split(' ').slice(-1)[0]}</span>}
-                                  {isReady && <span style={{fontSize:10,background:'rgba(0,230,118,0.15)',color:S.green,padding:'1px 6px',borderRadius:10,fontWeight:700}}>🟢 LISTO</span>}
-                                  {esEnFuego && <span style={{fontSize:11}}>🔥</span>}
-                                  {mesaRet && !esEnFuego && <span title="Cocina caliente retrasada" style={{fontSize:11}}>🍳⚠️</span>}
-                                  {esAmarillo && !esEnFuego && !mesaRet && <span style={{fontSize:11}}>⚠️</span>}
-                                </div>
-                              </div>
-                              {/* Tiempo */}
-                              <div style={{textAlign:'right',flexShrink:0}}>
-                                <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:sColor}}>
-                                  {isPreparing ? fmtT(pp) : isPending ? fmtT(tp) : fmtT(item.duracion_seg||0)}
-                                </div>
-                                <div style={{fontSize:9,color:S.t3}}>{isPreparing?'producción':isPending?'en espera':'total'}</div>
-                              </div>
-                            </div>
-                            {/* Barra progreso */}
-                            {(isPending||isPreparing) && (
-                              <div style={{height:3,background:'rgba(255,255,255,0.06)',borderRadius:2,overflow:'hidden',marginBottom:8}}>
-                                <div style={{height:'100%',width:`${pct}%`,background:`linear-gradient(90deg,${est.color},${sColor})`,borderRadius:2,transition:'width 1s'}}/>
-                              </div>
-                            )}
-                            {/* Notas */}
-                            {item.notes && <div style={{fontSize:10,color:'#FFB547',marginBottom:8,fontStyle:'italic'}}>📝 {item.notes}</div>}
-                            {/* Botones 3 pasos */}
-                            <div style={{display:'flex',gap:6}}>
-                              {isPending && (
-                                <button onClick={()=>updateStatus(item.id,'preparing')}
-                                  style={{flex:1,padding:'8px 6px',borderRadius:9,border:`1px solid ${est.color}60`,background:`${est.color}18`,color:est.color,fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                                  🍳 Comenzar preparación
-                                </button>
-                              )}
-                              {isPreparing && (
-                                <button onClick={()=>updateStatus(item.id,'ready')}
-                                  style={{flex:1,padding:'8px 6px',borderRadius:9,border:'1px solid rgba(255,181,71,0.5)',background:'rgba(255,181,71,0.12)',color:'#FFB547',fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                                  🟡 Prepárate para venir
-                                </button>
-                              )}
-                              {isReady && (
-                                <button onClick={()=>updateStatus(item.id,'served')}
-                                  style={{flex:1,padding:'8px 6px',borderRadius:9,border:`1px solid ${S.green}60`,background:`${S.green}12`,color:S.green,fontSize:12,fontWeight:900,cursor:'pointer',boxShadow:`0 0 8px ${S.green}20`}}>
-                                  ✅ Listo para entrega · {fmtT(pp)}
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}
@@ -368,11 +401,29 @@ export default function FlowModule() {
         {/* ══ PEDIDOS DEL DÍA ══ */}
         {activeTab==='dia' && (
           <div style={{flex:1,overflowY:'auto',padding:16}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:16}}>📋 Pedidos del día</div>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14,flexWrap:'wrap',gap:10}}>
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900}}>📋 Pedidos del día</div>
+              {statsHoy && (
+                <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                  <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,padding:'6px 12px'}}>
+                    <div style={{fontSize:8,color:S.t3,textTransform:'uppercase'}}>Total producción</div>
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,color:S.gold}}>{fmtTotal(statsHoy.totalProd||0)}</div>
+                  </div>
+                  <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,padding:'6px 12px'}}>
+                    <div style={{fontSize:8,color:S.t3,textTransform:'uppercase'}}>Avg por plato</div>
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,color:S.t1}}>{fmtT(statsHoy.avgTiempo||0)}</div>
+                  </div>
+                  <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,padding:'6px 12px'}}>
+                    <div style={{fontSize:8,color:S.t3,textTransform:'uppercase'}}>Servidos</div>
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,color:S.green}}>{statsHoy.served}</div>
+                  </div>
+                </div>
+              )}
+            </div>
             <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
               <thead>
                 <tr style={{background:S.bg2}}>
-                  {['Plato','Mesa','Estación','Estado','⏱ Inicio','⏱ Final','⏱ Total','Cocinero'].map(h=>(
+                  {['Plato','Mesa','Estación','Estado','⏱ Inicio','⏱ Final','⏱ Total','vs Objetivo','Responsable'].map(h=>(
                     <th key={h} style={{padding:'8px 12px',textAlign:'left',fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase',borderBottom:`1px solid ${S.border}`}}>{h}</th>
                   ))}
                 </tr>
@@ -382,8 +433,17 @@ export default function FlowModule() {
                   const est = ESTACIONES[getStation(i)] || ESTACIONES.cocina_caliente;
                   const mc  = getMC(i.table_id);
                   const statusColors:any = {pending:S.t3,preparing:'#FFB547',ready:S.green,served:'#606060'};
+                  // Color de fila según retraso (solo servidos)
+                  const dur = i.duracion_seg || (i.tiempo_inicio ? tsec(i.tiempo_inicio) : 0);
+                  const isServed = i.status === 'served';
+                  const enRetraso = isServed && dur > est.objetivo;
+                  const aTiempo = isServed && dur > 0 && dur <= est.objetivo;
+                  const rowBg = enRetraso ? 'rgba(255,82,82,0.06)' : aTiempo ? 'rgba(0,230,118,0.04)' : (idx%2===0?S.bg:S.bg2);
+                  const rowBorder = enRetraso ? `3px solid ${S.red}` : aTiempo ? `3px solid ${S.green}` : '3px solid transparent';
+                  const deltaSeg = isServed ? dur - est.objetivo : 0;
+                  const deltaSign = deltaSeg > 0 ? '+' : deltaSeg < 0 ? '-' : '';
                   return (
-                    <tr key={i.id} style={{background:idx%2===0?S.bg:S.bg2,borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                    <tr key={i.id} style={{background:rowBg,borderBottom:'1px solid rgba(255,255,255,0.03)',borderLeft:rowBorder}}>
                       <td style={{padding:'8px 12px',fontWeight:600,color:S.t1}}>{i.quantity>1?`${i.quantity}x `:''}{getNombre(i)}</td>
                       <td style={{padding:'8px 12px'}}>
                         {i.table_id ? <span style={{color:mc.color,fontWeight:700,fontSize:11}}>M{i.table_id}</span> : <span style={{color:S.t3}}>—</span>}
@@ -400,10 +460,13 @@ export default function FlowModule() {
                       <td style={{padding:'8px 12px',color:S.t3,fontSize:11}}>
                         {i.updated_at && i.status==='served' ? new Date(i.updated_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) : '—'}
                       </td>
-                      <td style={{padding:'8px 12px',color:S.t2,fontFamily:"'Syne',sans-serif",fontWeight:700}}>
+                      <td style={{padding:'8px 12px',color:enRetraso?S.red:aTiempo?S.green:S.t2,fontFamily:"'Syne',sans-serif",fontWeight:700}}>
                         {i.duracion_seg ? fmtT(i.duracion_seg) : i.tiempo_inicio ? fmtT(tsec(i.tiempo_inicio)) : '—'}
                       </td>
-                      <td style={{padding:'8px 12px',color:S.t3,fontSize:11}}>{i.cocinero||'—'}</td>
+                      <td style={{padding:'8px 12px',fontSize:11,fontWeight:700,color:enRetraso?S.red:aTiempo?S.green:S.t3}}>
+                        {isServed ? `${deltaSign}${fmtT(Math.abs(deltaSeg))}` : '—'}
+                      </td>
+                      <td style={{padding:'8px 12px',color:S.t3,fontSize:11}}>{getResponsable(i)}</td>
                     </tr>
                   );
                 })}
@@ -413,7 +476,7 @@ export default function FlowModule() {
           </div>
         )}
 
-        {/* ══ PLATOS DEL DÍA ══ */}
+        {/* ══ MI MENÚ (antes Platos del día) ══ */}
         {activeTab==='platos' && <PlatosDia />}
 
         {/* ══ MÉTRICAS ══ */}
@@ -422,7 +485,7 @@ export default function FlowModule() {
             <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:16}}>📊 Métricas del día</div>
             {statsHoy ? (
               <div style={{display:'flex',flexDirection:'column',gap:14}}>
-                {/* KPIs */}
+                {/* KPIs operación */}
                 <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(140px,1fr))',gap:10}}>
                   {[
                     {l:'Total pedidos',  v:statsHoy.total,                  c:'#FFB547'},
@@ -431,6 +494,7 @@ export default function FlowModule() {
                     {l:'Listos',         v:statsHoy.ready,                  c:S.green},
                     {l:'Pendientes',     v:statsHoy.pending,                c:S.t3},
                     {l:'Tiempo promedio',v:fmtT(statsHoy.avgTiempo),        c:S.gold},
+                    {l:'Total producción',v:fmtTotal(statsHoy.totalProd||0),c:S.gold},
                   ].map(k=>(
                     <div key={k.l} style={{background:S.bg2,border:`1px solid ${k.c}20`,borderRadius:12,padding:'12px 14px'}}>
                       <div style={{fontSize:9,color:S.t3,textTransform:'uppercase',marginBottom:4}}>{k.l}</div>
@@ -438,16 +502,96 @@ export default function FlowModule() {
                     </div>
                   ))}
                 </div>
-                {/* Por estación */}
+
+                {/* ── CARE: quejas / felicitaciones ── */}
+                {careStats && careStats.total > 0 && (
+                  <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
+                      <div style={{fontSize:12,fontWeight:700}}>X-CARE — Experiencia del cliente</div>
+                      <span style={{fontSize:10,color:S.t3}}>· {careStats.total} encuesta{careStats.total!==1?'s':''}</span>
+                    </div>
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(120px,1fr))',gap:8,marginBottom:14}}>
+                      <div style={{background:'rgba(0,230,118,0.06)',border:'1px solid rgba(0,230,118,0.2)',borderRadius:10,padding:'10px 12px'}}>
+                        <div style={{fontSize:9,color:S.t3,textTransform:'uppercase',marginBottom:2}}>Felicitaron</div>
+                        <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:S.green}}>{careStats.positivas}</div>
+                        <div style={{fontSize:9,color:S.t3}}>≥4★</div>
+                      </div>
+                      <div style={{background:'rgba(255,82,82,0.06)',border:'1px solid rgba(255,82,82,0.2)',borderRadius:10,padding:'10px 12px'}}>
+                        <div style={{fontSize:9,color:S.t3,textTransform:'uppercase',marginBottom:2}}>Se quejaron</div>
+                        <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:S.red}}>{careStats.negativas}</div>
+                        <div style={{fontSize:9,color:S.t3}}>≤3★</div>
+                      </div>
+                      <div style={{background:'rgba(255,181,71,0.06)',border:'1px solid rgba(255,181,71,0.2)',borderRadius:10,padding:'10px 12px'}}>
+                        <div style={{fontSize:9,color:S.t3,textTransform:'uppercase',marginBottom:2}}>Promedio</div>
+                        <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:S.gold}}>{careStats.avgEstrellas}★</div>
+                      </div>
+                    </div>
+
+                    {/* Platos quejados */}
+                    {Object.keys(careStats.quejadosPorPlato).length > 0 && (
+                      <div style={{marginBottom:14}}>
+                        <div style={{fontSize:11,fontWeight:700,color:S.red,marginBottom:8}}>🔻 Platos con quejas</div>
+                        <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                          {Object.entries(careStats.quejadosPorPlato).sort((a:any,b:any)=>b[1].count-a[1].count).map(([plato,info]:any)=>{
+                            const avgStars = info.estrellas.length ? (info.estrellas.reduce((a:number,b:number)=>a+b,0)/info.estrellas.length).toFixed(1) : '0';
+                            return (
+                              <div key={plato} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:'rgba(255,82,82,0.04)',border:'1px solid rgba(255,82,82,0.15)',borderRadius:10}}>
+                                <span style={{fontSize:16}}>🔻</span>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontSize:12,fontWeight:700,color:S.t1}}>{plato}</div>
+                                  <div style={{fontSize:9,color:S.t3,marginTop:2}}>Mesas: {info.mesas.length ? info.mesas.map((m:number)=>`M${m}`).join(', ') : '—'}</div>
+                                </div>
+                                <div style={{textAlign:'right',flexShrink:0}}>
+                                  <div style={{fontSize:13,fontWeight:700,color:S.red}}>{info.count} queja{info.count!==1?'s':''}</div>
+                                  <div style={{fontSize:9,color:S.gold}}>{avgStars}★ promedio</div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Tags positivos / negativos */}
+                    <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+                      <div>
+                        <div style={{fontSize:10,fontWeight:700,color:S.green,marginBottom:6}}>✨ Felicitaron por</div>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                          {Object.keys(careStats.tagsPositivos).length === 0 && <span style={{fontSize:10,color:S.t3}}>—</span>}
+                          {Object.entries(careStats.tagsPositivos).sort((a:any,b:any)=>b[1]-a[1]).map(([t,n]:any)=>(
+                            <span key={t} style={{fontSize:10,background:'rgba(0,230,118,0.1)',color:S.green,border:'1px solid rgba(0,230,118,0.2)',padding:'2px 8px',borderRadius:20,fontWeight:600}}>{t} · {n}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{fontSize:10,fontWeight:700,color:S.red,marginBottom:6}}>⚠️ Se quejaron de</div>
+                        <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                          {Object.keys(careStats.tagsNegativos).length === 0 && <span style={{fontSize:10,color:S.t3}}>—</span>}
+                          {Object.entries(careStats.tagsNegativos).sort((a:any,b:any)=>b[1]-a[1]).map(([t,n]:any)=>(
+                            <span key={t} style={{fontSize:10,background:'rgba(255,82,82,0.08)',color:S.red,border:'1px solid rgba(255,82,82,0.2)',padding:'2px 8px',borderRadius:20,fontWeight:600}}>{t} · {n}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Por estación — operación + care cruzados */}
                 <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
                   <div style={{fontSize:12,fontWeight:700,marginBottom:12}}>Por estación</div>
                   {statsHoy.estaciones.map((e:any)=>{
                     const meta = ESTACIONES[e.est] || ESTACIONES.cocina_caliente;
+                    // Quejas que tocaron platos de esta estación (aprox: si el plato_problema coincide con algún diasItem de la estación)
+                    const platosDeEstacion = new Set(diasItems.filter(d=>getStation(d)===e.est).map(d=>getNombre(d)));
+                    const quejasEst = careStats ? Object.entries(careStats.quejadosPorPlato).filter(([p]:any)=>platosDeEstacion.has(p)).reduce((s:number,[,info]:any)=>s+info.count,0) : 0;
                     return (
                       <div key={e.est} style={{display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
                         <span style={{fontSize:18,flexShrink:0}}>{meta.emoji}</span>
                         <div style={{flex:1}}>
-                          <div style={{fontSize:11,fontWeight:600,marginBottom:3}}>{e.est.replace('_',' ')}</div>
+                          <div style={{fontSize:11,fontWeight:600,marginBottom:3}}>
+                            {e.est.replace('_',' ')}
+                            {quejasEst>0 && <span style={{fontSize:9,color:S.red,marginLeft:8,fontWeight:700}}>· {quejasEst} queja{quejasEst!==1?'s':''}</span>}
+                          </div>
                           <div style={{height:4,background:'rgba(255,255,255,0.06)',borderRadius:2,overflow:'hidden'}}>
                             <div style={{height:'100%',width:`${Math.min(100,e.platos/Math.max(...statsHoy.estaciones.map((x:any)=>x.platos))*100)}%`,background:meta.color,borderRadius:2}}/>
                           </div>
@@ -471,7 +615,7 @@ export default function FlowModule() {
   );
 }
 
-// ══ PLATOS DEL DÍA — componente separado limpio ════════════════════════
+// ══ MI MENÚ — Platos del día ════════════════════════════════════════════
 function PlatosDia() {
   const [platos, setPlatos] = useState<any[]>([]);
   const [form,   setForm]   = useState({nombre:'',emoji:'🍽️',precio:'',estacion:'cocina_caliente',rentable:true});
@@ -507,7 +651,7 @@ function PlatosDia() {
 
   return (
     <div style={{flex:1,overflowY:'auto',padding:'16px 20px'}}>
-      <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:4}}>🍽️ Platos del día</div>
+      <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:4}}>🍽️ Mi Menú · Platos del día</div>
       <div style={{fontSize:11,color:'#50506A',marginBottom:16}}>Los platos activos aparecen en el panel IA del POS. El 86 los tacha en tiempo real.</div>
       {/* Formulario */}
       <div style={{background:'#0f0f1a',border:'1px solid rgba(255,255,255,0.08)',borderRadius:14,padding:14,marginBottom:16}}>
