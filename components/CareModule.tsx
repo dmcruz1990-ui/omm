@@ -548,7 +548,7 @@ export default function CareModule() {
       {alertaSel&&<PanelAlerta alerta={alertaSel} onClose={()=>setAlertaSel(null)} onResolve={resolverAlerta}/>}
       {encSel&&<PanelRespuesta enc={encSel} onClose={()=>setEncSel(null)} onSend={enviarRespuesta}/>}
       <style>{`@keyframes xpulse{0%,100%{opacity:1}50%{opacity:.35}}`}</style>
-    </div>
+
       {/* ══ TAB OH YEAH — CLIENTES EN TIEMPO REAL ══ */}
       {activeTab === 'ohyeah' && (
         <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
@@ -972,15 +972,6 @@ function PanelRespuesta({enc,onClose,onSend}:{enc:Encuesta;onClose:()=>void;onSe
         </div>
       )}
 
-  );
-}
-
-// ── INTERFAZ CLIENTE OH YEAH ──────────────────────────────────────
-interface OhYeahCliente {
-  id: number; nombre: string; email: string; telefono: string;
-  ciudad: string; nivel: string; puntos: number; visitas: number;
-  last_login: string; created_at: string; notas: string | null;
-  tags: string[]; total_reservas: number; ultima_reserva: string | null;
-  dias_sin_visitar: number | null;
+    </div>
   );
 }
