@@ -122,7 +122,27 @@ export default function ReserveModule() {
     return ()=>{ supabase.removeChannel(ch); };
   },[fetchData]);
 
-  const guardar = async () => {
+  // ── Cancelar reserva Oh Yeah con notificación ──────────────────
+const cancelarOhYeah = async (id:string, guestName:string) => {
+  await supabase.from('ohyeah_reservas').update({ status: 'cancelled' }).eq('id', id);
+  await supabase.from('nexum_notificaciones').insert({
+    restaurante_id: 6, tipo: 'reserva_cancelada',
+    titulo: `❌ Reserva cancelada — ${guestName}`,
+    mensaje: `La reserva de ${guestName} fue cancelada desde NEXUM`,
+    urgente: false, leida: false,
+  }).then(()=>{}).catch(()=>{});
+  show(`✓ Reserva de ${guestName} cancelada`);
+  fetchData();
+};
+
+// ── Confirmar reserva pendiente Oh Yeah ─────────────────────────
+const confirmarOhYeah = async (id:string) => {
+  await supabase.from('ohyeah_reservas').update({ status: 'confirmed' }).eq('id', id);
+  show('✓ Reserva confirmada');
+  fetchData();
+};
+
+const guardar = async () => {
     if (!form.cliente_nombre) { show('⚠️ Nombre requerido'); return; }
     setSaving(true);
     const payload = {...form,restaurante_id:6,estado:'confirmada',mesa_num:form.mesa_num||null};
@@ -136,19 +156,32 @@ export default function ReserveModule() {
     setSaving(false); setTab('lista'); fetchData();
   };
 
-  const cambiarEstado = async (id:number,estado:string,esOhYeah:boolean=false) => {
-    const tabla = esOhYeah?'ohyeah_reservas':'reservations';
-    const idReal = esOhYeah?id-100000:id;
-    await supabase.from(tabla).update({estado}).eq('id',idReal);
-    show(`✓ ${ESTADOS[estado]?.l||estado}`);
-    fetchData();
-  };
+const cambiarEstado = async (id:any, estado:string, esOhYeah:boolean=false) => {
+  if (esOhYeah) {
+    const statusMap: Record<string,string> = {
+      confirmada:'confirmed', sentada:'seated',
+      completada:'completed', cancelada:'cancelled', pendiente:'pending',
+    };
+    await supabase.from('ohyeah_reservas').update({ status: statusMap[estado]||estado }).eq('id',id);
+  } else {
+    await supabase.from('reservations').update({ estado }).eq('id',id);
+  }
+  show(`✓ ${ESTADOS[estado]?.l||estado}`);
+  fetchData();
+};
 
-  const asignarMesa = async (reservaId:number,mesaNum:number) => {
-    await supabase.from('reservations').update({mesa_num:mesaNum,estado:'sentada'}).eq('id',reservaId);
-    show(`✓ Mesa ${mesaNum} asignada`);
-    fetchData();
-  };
+const asignarMesa = async (reservaId:any, mesaNum:number) => {
+  const esOhYeah = typeof reservaId === 'string' && reservaId.includes('-');
+  if (esOhYeah) {
+    await supabase.from('ohyeah_reservas')
+      .update({ status:'seated', mesa_num:mesaNum, mesa_asignada_at:new Date().toISOString() })
+      .eq('id',reservaId);
+  } else {
+    await supabase.from('reservations').update({ mesa_num:mesaNum, estado:'sentada' }).eq('id',reservaId);
+  }
+  show(`✓ Mesa ${mesaNum} asignada`);
+  fetchData();
+};
 
   const hoy = new Date().toISOString().split('T')[0];
   const reservasHoy = reservas.filter(r=>r.fecha===hoy);
@@ -271,7 +304,7 @@ export default function ReserveModule() {
                   <span style={{fontSize:11,color:S.gold,fontWeight:700}}>🕐 {r.hora}</span>
                   <span style={{fontSize:11,color:S.blue,fontWeight:700}}>👥 {r.pax} pax</span>
                   {r.ocasion && r.ocasion!=='Sin ocasión especial' && <span style={{fontSize:10,color:S.purple}}>🎉 {r.ocasion}</span>}
-                  {r.mood && <span style={{fontSize:10,color:'#B388FF'}}>✨ {r.mood}</span>}
+                  {(r.mood||'Sin motivo') !== 'Sin motivo especial' && r.mood && <span style={{fontSize:10,color:'#B388FF'}}>✨ {r.mood}</span>}
                   {r.cliente_telefono && <span style={{fontSize:10,color:S.t3}}>📱 {r.cliente_telefono}</span>}
                 </div>
               </div>
@@ -301,10 +334,18 @@ export default function ReserveModule() {
               <div style={{display:'flex',flexDirection:'column',gap:4,alignItems:'flex-end',flexShrink:0}}>
                 <span style={{fontSize:10,background:`${est.c}15`,color:est.c,border:`1px solid ${est.c}30`,padding:'2px 10px',borderRadius:20,fontWeight:700}}>{est.l}</span>
                 <div style={{display:'flex',gap:4}}>
-                  {r.estado==='pendiente'   && <button onClick={()=>cambiarEstado(r.id,'confirmada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,cursor:'pointer'}}>✓ Confirmar</button>}
-                  {r.estado==='confirmada'  && <button onClick={()=>cambiarEstado(r.id,'sentada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,cursor:'pointer'}}>🪑 Sentar</button>}
-                  {r.estado==='sentada'     && <button onClick={()=>cambiarEstado(r.id,'completada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,cursor:'pointer'}}>✅ Completar</button>}
-                  {!['cancelada','completada'].includes(r.estado) && <button onClick={()=>cambiarEstado(r.id,'cancelada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.red}40`,background:`${S.red}10`,color:S.red,cursor:'pointer'}}>✗</button>}
+                  {r.estado==='pendiente'   && <button onClick={()=>cambiarEstado(r.id,'confirmada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,cursor:'pointer',fontWeight:700}}>✓ Confirmar</button>}
+                  {r.estado==='confirmada'  && <button onClick={()=>{
+                    cambiarEstado(r.id,'sentada',esOhYeah);
+                    // Ir al mapa para asignar mesa
+                    setAsignandoMesa(r);
+                    setTab('mapa');
+                  }} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,cursor:'pointer',fontWeight:700}}>🪑 Sentar → Mesa</button>}
+                  {r.estado==='sentada'     && <button onClick={()=>cambiarEstado(r.id,'completada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,cursor:'pointer',fontWeight:700}}>✅ Completar</button>}
+                  {!['cancelada','completada'].includes(r.estado) && <button onClick={()=>esOhYeah?cancelarOhYeah(r.id,r.cliente_nombre):cambiarEstado(r.id,'cancelada',false)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.red}40`,background:`${S.red}10`,color:S.red,cursor:'pointer',fontWeight:700}}>✗ Cancelar</button>}
+                  {esOhYeah && r.estado==='confirmada' && !r.mesa_num && (
+                    <span style={{fontSize:9,color:S.gold,background:`${S.gold}10`,padding:'2px 6px',borderRadius:6}}>Sin mesa</span>
+                  )}
                 </div>
               </div>
             </div>
