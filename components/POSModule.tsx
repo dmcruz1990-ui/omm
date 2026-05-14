@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase.ts';
+import { EncuestaXCare } from './CareModule';
 import { Table, RitualTask } from '../types.ts';
 import { BellRing, Settings, MonitorPlay, MessageSquare, Sparkles, Receipt, X, ShoppingCart, Lock, Zap, BarChart3, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -583,6 +584,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [showOrderPanel, setShowOrderPanel] = useState(false);
   const [mostrarTraspaso, setMostrarTraspaso] = useState(false);
   const [showPinPago,    setShowPinPago]    = useState(false);
+  const [showXCare,      setShowXCare]      = useState(false);
+  const [xcareData,      setXcareData]      = useState<any>(null);
   const [pinPagoInput,   setPinPagoInput]   = useState('');
   const [pinPagoError,   setPinPagoError]   = useState('');
   const [pinPagoCfg,     setPinPagoCfg]     = useState('9876');
@@ -1503,6 +1506,27 @@ const confirmarPinPago = () => {
         showToast(`🔔 Mesa ${mesa.num} cerrada — notificando a ${mesa.mesero || 'mesero'}`);
       }
       setPantallaConfirmacion({ activa: true, monto, metodo, facMsg, tableId: tid });
+  // Lanzar encuesta X-CARE después de 2 segundos (mientras el mesero trae el datáfono)
+  const mesaActual = displayTables.find(x => x.id === tid);
+  const clienteCRM = mesaActual ? (clienteData as any)[mesaActual.id] : null;
+  setTimeout(() => {
+    setXcareData({
+      mesaNum:          mesaActual?.num || tid,
+      meseroNombre:     mesaActual?.mesero || profile?.full_name || null,
+      itemsConsumidos:  order.filter(i => i.tableId === tid || !i.tableId).map(i => ({
+        nombre_plato: i.name, emoji: i.emoji || '🍽️',
+        estacion: i.category || 'cocina_caliente', quantity: i.quantity,
+      })),
+      totalCuenta:      monto,
+      propinaPct:       10,
+      propinaMonto:     Math.round(monto * 0.1),
+      clienteNombre:    clienteCRM?.nombreCompleto || mesaActual?.cliente || '',
+      clienteEmail:     clienteCRM?.email || '',
+      clienteTelefono:  clienteCRM?.phone || '',
+      facturaId:        `FAC-${tid}-${Date.now()}`,
+    });
+    setShowXCare(true);
+  }, 2000);
     };
 
     // ── BONO / TARJETA REGALO ──
@@ -4691,6 +4715,27 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
             <button onClick={()=>{setMesaDesbloquear(null);setPinDesbloqueo('');}} style={{width:'100%',padding:'10px',borderRadius:10,border:'1px solid #2a2a2a',background:'transparent',color:'#606060',cursor:'pointer',fontSize:13}}>Cancelar</button>
           </div>
         </div>
+      )}
+
+      {showXCare && xcareData && (
+        <EncuestaXCare
+          mesaNum={xcareData.mesaNum}
+          meseroNombre={xcareData.meseroNombre}
+          itemsConsumidos={xcareData.itemsConsumidos}
+          totalCuenta={xcareData.totalCuenta}
+          propinaPct={xcareData.propinaPct}
+          propinaMonto={xcareData.propinaMonto}
+          clienteNombre={xcareData.clienteNombre}
+          clienteEmail={xcareData.clienteEmail}
+          clienteTelefono={xcareData.clienteTelefono}
+          facturaId={xcareData.facturaId}
+          onClose={()=>{ setShowXCare(false); setXcareData(null); }}
+          onGuardar={(data:any)=>{
+            setShowXCare(false);
+            setXcareData(null);
+            showToast(`✅ Encuesta X-CARE guardada — ${data.estrellas}★`);
+          }}
+        />
       )}
 
       {showPinPago && (
