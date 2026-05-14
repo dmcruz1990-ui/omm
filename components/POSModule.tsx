@@ -3193,6 +3193,25 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         }
       </button>
 
+      {/* BOTÓN FLOTANTE BARRA INFERIOR — siempre visible, sube/baja Ritual+Quick-add+IA */}
+      <button
+        onClick={() => setBarraColapsada(p => !p)}
+        title={barraColapsada ? 'Mostrar barra (Ritual · Quick-add · IA)' : 'Ocultar barra inferior'}
+        className={`fixed bottom-3 z-[9000] flex items-center gap-1.5 px-3 h-9 rounded-full border font-bold shadow-lg transition-all ${
+          barraColapsada
+            ? 'bg-[#1c1c1c] border-[#4a8fd4]/60 text-[#4a8fd4] hover:bg-[#4a8fd4] hover:text-white'
+            : 'bg-[#4a8fd4] border-[#4a8fd4] text-white hover:bg-[#3d7fc4]'
+        }`}
+        style={{left: '50%', transform: 'translateX(-50%)'}}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          {barraColapsada
+            ? <path d="M18 15l-6-6-6 6"/>
+            : <path d="M6 9l6 6 6-6"/>
+          }
+        </svg>
+        <span className="text-[11px]">{barraColapsada ? 'Mostrar barra' : 'Ocultar barra'}</span>
+      </button>
+
       {/* LEFT PANEL */}
       <div className="bg-[#141414] border-r border-[#2a2a2a] flex flex-col shrink-0" style={{ width: 200 }}>
         <div className="p-2 px-3 pb-2 flex items-center gap-2 border-b border-[#2a2a2a] shrink-0 relative">
