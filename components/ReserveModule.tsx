@@ -52,7 +52,7 @@ const ESTADOS:any = {
 };
 const OCASIONES = ['Cumpleaños','Aniversario','Negocio','Primera cita','Graduación','Despedida','Celebración','Sin ocasión especial'];
 
-type Tab = 'mapa'|'lista'|'nueva'|'editor';
+type Tab = 'home'|'mapa'|'lista'|'nueva'|'editor';
 
 interface Reserva {
   id:number;cliente_nombre:string;cliente_email?:string;cliente_telefono?:string;
@@ -62,13 +62,14 @@ interface Reserva {
 
 export default function ReserveModule() {
   const { profile } = useAuth();
-  const [tab, setTab]           = useState<Tab>('lista');
+  const [tab, setTab]           = useState<Tab>('home');
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [mesas, setMesas]       = useState<any[]>([]);
   const [loading, setLoading]   = useState(true);
   const [toast, setToast]       = useState('');
   const [fechaFiltro, setFechaFiltro] = useState(new Date().toISOString().split('T')[0]);
-  const [selected, setSelected] = useState<Reserva|null>(null);
+  const [selected, setSelected]         = useState<Reserva|null>(null);
+  const [asignandoMesa, setAsignandoMesa] = useState<Reserva|null>(null);
   const [saving, setSaving]     = useState(false);
   const [plantaDB, setPlantaDB] = useState<any[]>([]);
   const [editMesa, setEditMesa] = useState<any|null>(null);
@@ -91,12 +92,20 @@ export default function ReserveModule() {
     const [rv, ms, ohyeah] = await Promise.all([
       supabase.from('reservations').select('*').eq('restaurante_id',6).eq('fecha',fechaFiltro).order('hora'),
       supabase.from('tables').select('*').eq('restaurante_id',6).order('name'),
-      supabase.from('ohyeah_reservas').select('*').gte('fecha',fechaFiltro).eq('estado','confirmada').order('fecha').order('hora'),
+      supabase.from('ohyeah_reservas').select('*').eq('date',fechaFiltro).eq('status','confirmedada').order('fecha').order('hora'),
     ]);
     const todas = [
       ...(rv.data||[]).map((r:any)=>({...r,origen:'nexum'})),
-      ...(ohyeah.data||[]).map((r:any)=>({...r,origen:'ohyeah',id:r.id+100000})),
-    ].sort((a,b)=>a.fecha.localeCompare(b.fecha)||a.hora.localeCompare(b.hora));
+      ...(ohyeah.data||[]).map((r:any)=>({
+        id:r.id, cliente_nombre:r.guest_name, cliente_email:r.guest_email,
+        cliente_telefono:r.guest_phone, fecha:r.date, hora:r.time, pax:r.pax,
+        estado:r.status==='confirmed'?'confirmada':r.status,
+        ocasion:r.occasion, notas:r.observations, mesa_num:null, restaurante_id:6,
+        gourmand_level:r.gourmand_level, is_first_visit:r.is_first_visit,
+        visit_count:r.visit_count, mood:r.mood, nexum_brief:r.nexum_brief,
+        bono_aplicado:r.bono_aplicado, origen:'ohyeah',
+      })),
+    ].sort((a:any,b:any)=>(a.fecha||'').localeCompare(b.fecha||'')||(a.hora||'').localeCompare(b.hora||''));
     setReservas(todas);
     if (ms.data) setMesas(ms.data);
     setLoading(false);
@@ -107,7 +116,7 @@ export default function ReserveModule() {
   useEffect(()=>{
     const ch = supabase.channel('reserve-live')
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'ohyeah_reservas'},(p)=>{
-        show(`🦉 Nueva reserva Oh Yeah: ${(p.new as any).cliente_nombre}`);
+        show(`🦉 Nueva reserva Oh Yeah: ${(p.new as any).guest_name || 'cliente'} — ${(p.new as any).time}`);
         fetchData();
       }).subscribe();
     return ()=>{ supabase.removeChannel(ch); };
@@ -182,7 +191,7 @@ export default function ReserveModule() {
       {/* Tabs */}
       <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg2,padding:'0 24px',flexShrink:0}}>
         {([
-          {id:'lista',l:'📋 Lista'},
+          {id:'home',l:'🏠 Hoy'},{id:'lista',l:'📋 Lista'},
           {id:'mapa',l:'🗺️ Mapa de mesas'},
           {id:'editor',l:'⚙️ Editor de planta'},
           {id:'nueva',l:'✦ Nueva / Editar'},
@@ -195,7 +204,118 @@ export default function ReserveModule() {
       </div>
 
       {/* ── LISTA ── */}
-      {tab==='lista' && (
+      
+{/* ══════════════════════════════════════════════════
+    TAB HOME — Dashboard del día con asignación de mesa
+═══════════════════════════════════════════════════════ */}
+{tab==='home' && (
+  <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:0}}>
+
+    {/* ── KPIs del día ── */}
+    <div style={{display:'flex',gap:10,padding:'14px 16px',background:S.bg2,borderBottom:`1px solid ${S.border}`,flexWrap:'wrap'}}>
+      {[
+        {l:'Total hoy',      v:reservasHoy.length,                                                      c:S.gold},
+        {l:'Oh Yeah',        v:reservasHoy.filter((r:any)=>r.origen==='ohyeah').length,                c:'#FFE600'},
+        {l:'Confirmadas',    v:reservasHoy.filter((r:any)=>r.estado==='confirmada').length,            c:S.green},
+        {l:'Sin mesa',       v:reservasHoy.filter((r:any)=>!r.mesa_num&&r.estado!=='cancelada').length,c:S.red},
+        {l:'Pax total',      v:reservasHoy.reduce((s:number,r:any)=>s+(r.pax||0),0),                   c:S.blue},
+      ].map(k=>(
+        <div key={k.l} style={{textAlign:'center',padding:'8px 14px',background:S.bg3,borderRadius:12,border:`1px solid ${k.c}20`,flex:'1 1 80px'}}>
+          <div style={{fontSize:8,color:S.t3,textTransform:'uppercase',marginBottom:2}}>{k.l}</div>
+          <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:k.c}}>{k.v}</div>
+        </div>
+      ))}
+    </div>
+
+    {/* ── Lista de reservas del día como cards ── */}
+    <div style={{flex:1,overflowY:'auto',padding:14}}>
+      {loading && <div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando...</div>}
+      {!loading && reservasHoy.length===0 && (
+        <div style={{textAlign:'center',padding:60,color:S.t3}}>
+          <div style={{fontSize:48,marginBottom:12}}>📅</div>
+          <div style={{fontSize:14,fontWeight:700}}>Sin reservas para hoy</div>
+          <button onClick={()=>setTab('nueva')} style={{marginTop:16,padding:'10px 24px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.gold},#d4943a)`,color:'#000',fontWeight:700,fontSize:13,cursor:'pointer'}}>
+            + Crear reserva
+          </button>
+        </div>
+      )}
+      <div style={{display:'flex',flexDirection:'column',gap:8}}>
+        {reservasHoy.map((r:any)=>{
+          const est     = ESTADOS[r.estado]||{c:S.t3,l:r.estado};
+          const esOhYeah = r.origen==='ohyeah';
+          const sinMesa  = !r.mesa_num && r.estado!=='cancelada' && r.estado!=='completada';
+          const NIVEL_C: Record<string,string> = {ÉLITE:'#FFD700',VIP:'#B388FF',REGULAR:'#448AFF',INICIADO:'#a0a0a0'};
+          const nc = NIVEL_C[r.gourmand_level||''] || S.t3;
+          return (
+            <div key={r.id} style={{
+              background:S.bg2,
+              border:`1px solid ${sinMesa?`${S.red}40`:esOhYeah?`${S.gold}30`:S.border}`,
+              borderLeft:`4px solid ${sinMesa?S.red:esOhYeah?S.gold:est.c}`,
+              borderRadius:14,padding:'12px 16px',
+              display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',
+            }}>
+              {/* Avatar */}
+              <div style={{width:42,height:42,borderRadius:'50%',background:`${est.c}20`,border:`2px solid ${est.c}40`,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:est.c,flexShrink:0}}>
+                {(r.cliente_nombre||'?').charAt(0).toUpperCase()}
+              </div>
+
+              {/* Info principal */}
+              <div style={{flex:1,minWidth:160}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:3}}>
+                  <span style={{fontWeight:700,fontSize:13,color:S.t1}}>{r.cliente_nombre}</span>
+                  {esOhYeah && <span style={{fontSize:9,background:`${S.gold}20`,color:S.gold,border:`1px solid ${S.gold}30`,padding:'1px 7px',borderRadius:20,fontWeight:700}}>🦉 Oh Yeah</span>}
+                  {r.gourmand_level && esOhYeah && <span style={{fontSize:9,background:`${nc}15`,color:nc,padding:'1px 6px',borderRadius:20,fontWeight:700}}>{r.gourmand_level}</span>}
+                  {r.is_first_visit && esOhYeah && <span style={{fontSize:9,color:S.green,fontWeight:700}}>★ Primera visita</span>}
+                </div>
+                <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+                  <span style={{fontSize:11,color:S.gold,fontWeight:700}}>🕐 {r.hora}</span>
+                  <span style={{fontSize:11,color:S.blue,fontWeight:700}}>👥 {r.pax} pax</span>
+                  {r.ocasion && r.ocasion!=='Sin ocasión especial' && <span style={{fontSize:10,color:S.purple}}>🎉 {r.ocasion}</span>}
+                  {r.mood && <span style={{fontSize:10,color:'#B388FF'}}>✨ {r.mood}</span>}
+                  {r.cliente_telefono && <span style={{fontSize:10,color:S.t3}}>📱 {r.cliente_telefono}</span>}
+                </div>
+              </div>
+
+              {/* Mesa asignada o botón asignar */}
+              <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,flexShrink:0}}>
+                {r.mesa_num ? (
+                  <div style={{textAlign:'center'}}>
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:24,fontWeight:900,color:S.blue,lineHeight:1}}>M{r.mesa_num}</div>
+                    <div style={{fontSize:9,color:S.t3}}>asignada</div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={()=>{ setAsignandoMesa(r); setTab('mapa'); }}
+                    style={{
+                      padding:'8px 14px',borderRadius:10,border:`2px solid ${S.gold}`,
+                      background:`${S.gold}15`,color:S.gold,fontSize:11,fontWeight:700,
+                      cursor:'pointer',whiteSpace:'nowrap',
+                      animation: sinMesa ? 'pulse 2s infinite' : 'none',
+                    }}>
+                    🗺️ Asignar mesa
+                  </button>
+                )}
+              </div>
+
+              {/* Estado + acciones */}
+              <div style={{display:'flex',flexDirection:'column',gap:4,alignItems:'flex-end',flexShrink:0}}>
+                <span style={{fontSize:10,background:`${est.c}15`,color:est.c,border:`1px solid ${est.c}30`,padding:'2px 10px',borderRadius:20,fontWeight:700}}>{est.l}</span>
+                <div style={{display:'flex',gap:4}}>
+                  {r.estado==='pendiente'   && <button onClick={()=>cambiarEstado(r.id,'confirmada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,cursor:'pointer'}}>✓ Confirmar</button>}
+                  {r.estado==='confirmada'  && <button onClick={()=>cambiarEstado(r.id,'sentada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,cursor:'pointer'}}>🪑 Sentar</button>}
+                  {r.estado==='sentada'     && <button onClick={()=>cambiarEstado(r.id,'completada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,cursor:'pointer'}}>✅ Completar</button>}
+                  {!['cancelada','completada'].includes(r.estado) && <button onClick={()=>cambiarEstado(r.id,'cancelada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.red}40`,background:`${S.red}10`,color:S.red,cursor:'pointer'}}>✗</button>}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  </div>
+)}
+
+{tab==='lista' && (
         <div style={{flex:1,overflowY:'auto'}}>
           {loading&&<div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando...</div>}
           {!loading&&reservas.length===0&&<div style={{textAlign:'center',padding:60,color:S.t3}}><div style={{fontSize:48,marginBottom:12}}>📅</div><div>Sin reservas para esta fecha</div></div>}
@@ -265,16 +385,31 @@ export default function ReserveModule() {
 
       {/* ── MAPA ── */}
       {tab==='mapa' && (
+        <>
+        {asignandoMesa && (
+          <div style={{padding:'10px 16px',background:'rgba(255,181,71,0.12)',borderBottom:'2px solid rgba(255,181,71,0.4)',display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
+            <span style={{fontSize:18}}>🗺️</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:700,color:'#FFB547'}}>Asignando mesa — {asignandoMesa.cliente_nombre}</div>
+              <div style={{fontSize:10,color:'#a0a0a0'}}>🕐 {asignandoMesa.hora} · 👥 {asignandoMesa.pax} pax · Toca una mesa libre</div>
+            </div>
+            <button onClick={()=>{setAsignandoMesa(null);setTab('home');}}
+              style={{padding:'4px 12px',borderRadius:8,border:'1px solid rgba(255,181,71,0.4)',background:'transparent',color:'#FFB547',fontSize:11,cursor:'pointer',fontWeight:700}}>
+              ✕ Cancelar
+            </button>
+          </div>
+        )}
         <MapaInteractivo
           reservasHoy={reservasHoy}
           fechaFiltro={fechaFiltro}
-          onAsignarMesa={asignarMesa}
+          onAsignarMesa={(id:any,mesa:number)=>{asignarMesa(id,mesa);setAsignandoMesa(null);setTab('home');}}
           onCambiarEstado={cambiarEstado}
           plantaDB={plantaDB}
           now={now}
           busquedaMesa={busquedaMesa}
           setBusquedaMesa={setBusquedaMesa}
         />
+        </>
       )}
 
       {/* ── EDITOR DE PLANTA ── */}
