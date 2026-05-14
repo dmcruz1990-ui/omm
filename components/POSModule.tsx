@@ -3873,41 +3873,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         <div className="flex-1 p-3 px-3.5 flex flex-col gap-2.5 overflow-y-auto" style={{height:0,scrollbarWidth:"thin",scrollbarColor:"#2a2a2a transparent"}}>
 
           {rightTab === 'IA' && (
-            <>
-              {/* ══ CLIENTE ACTIVO — SIEMPRE ARRIBA ══ */}
-              {(() => {
-                const mesa = displayTables.find((t:any) => t.id === selectedTableId);
-                const cData = mesa ? (clienteData as any)[mesa.id] : null;
-                if (!cData) return null;
-                return (
-                  <div className="bg-gradient-to-r from-[#1c1c1c] to-[#141414] border border-[#9b72ff]/25 rounded-xl overflow-hidden shrink-0">
-                    <div className="px-3 py-2 flex items-center gap-2.5">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#9b72ff] to-[#6a4fc7] flex items-center justify-center text-white text-[14px] font-black shrink-0">
-                        {(cData.nombre||'?').charAt(0)}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[12px] font-black text-[#f0f0f0] truncate">{cData.nombreCompleto||cData.nombre}</div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[9px] text-[#9b72ff] font-bold">{cData.visitas||0} visitas</span>
-                          {cData.tags?.some((t:string)=>t.includes('Malbec')||t.includes('vino')) && <span className="text-[9px] text-[#f0b45a]">🍷 Vino</span>}
-                          {cData.puntos > 0 && <span className="text-[9px] text-[#9b72ff]">✦ {cData.puntos}pts</span>}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="text-[9px] text-[#d4943a] font-bold">M{mesa.num}</div>
-                        <div className="text-[9px] text-[#606060] truncate max-w-[60px]">{mesa.cliente}</div>
-                      </div>
-                    </div>
-                    {cData.tags?.some((t:string)=>t.includes('⚠️')||t.includes('Sin ')) && (
-                      <div className="px-3 py-1.5 bg-[#e05050]/10 border-t border-[#e05050]/20 flex flex-wrap gap-1">
-                        {cData.tags.filter((t:string)=>t.includes('⚠️')||t.includes('Sin ')).map((t:string,i:number)=>(
-                          <span key={i} className="text-[9px] text-[#e05050] bg-[#e05050]/15 px-1.5 py-0.5 rounded-full">{t}</span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })()}
               {/* ══ CHAT IA — ventana flotante al fondo ══ */}
               <div className="sticky bottom-0 left-0 right-0 mt-auto" style={{background:'#141414',borderTop:'1px solid rgba(212,148,58,0.25)',marginLeft:'-12px',marginRight:'-12px',marginBottom:'-12px',paddingLeft:'12px',paddingRight:'12px'}}>
                 {/* Header colapsable */}
@@ -4001,79 +3966,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 )}
               </div>
 
-              {/* ══ INTELIGENCIA OPERACIONAL ══ */}
-              <div className="bg-[#1c1c1c] border border-[#e05050]/25 rounded-xl overflow-hidden">
-                <div className="px-3 py-2 border-b border-[#2a2a2a] flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-[#e05050] animate-pulse inline-block"/>
-                  <span className="text-[10px] font-bold text-[#e05050] uppercase tracking-wider">⚡ Command Flow — Cocina</span>
-                  <span className="ml-auto text-[9px] text-[#606060]">Semáforo en vivo</span>
-                </div>
-
-                {/* Semáforo de estaciones KDS */}
-                <div className="p-2 grid grid-cols-3 gap-1.5">
-                  {[
-                    {slug:'cocina_caliente', emoji:'🔥', label:'Caliente', color:'#FF5252'},
-                    {slug:'cocina_fria',     emoji:'🧊', label:'Fría',    color:'#22d3ee'},
-                    {slug:'bar',             emoji:'🍸', label:'Bar',     color:'#448AFF'},
-                    {slug:'robata',          emoji:'🥩', label:'Robata',  color:'#FF9800'},
-                    {slug:'postres',         emoji:'🍮', label:'Postres', color:'#B388FF'},
-                    {slug:'cava',            emoji:'🍷', label:'Cava',    color:'#FFB547'},
-                  ].map(est=>{
-                    // Contar pedidos pendientes y en fuego de esta estación
-                    const pendientes = flowAlertas.filter((a:any)=>a.estacion===est.slug&&!a.leida).length;
-                    const semaforo = pendientes === 0 ? 'libre' : pendientes <= 2 ? 'activo' : 'fuego';
-                    const sColor = semaforo==='libre'?'#3dba6f':semaforo==='activo'?'#f0b45a':'#e05050';
-                    return (
-                      <div key={est.slug} className="flex flex-col items-center gap-0.5 p-1.5 rounded-lg bg-[#141414] border border-[#2a2a2a]">
-                        <span className="text-[16px]">{est.emoji}</span>
-                        <span className="text-[8px] text-[#606060]">{est.label}</span>
-                        <div className="flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full inline-block" style={{background:sColor, boxShadow:semaforo==='fuego'?`0 0 6px ${sColor}`:''}}/>
-                          <span className="text-[9px] font-bold" style={{color:sColor}}>
-                            {semaforo==='libre'?'Libre':semaforo==='fuego'?`🔥 ${pendientes}`:`${pendientes}`}
-                          </span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Alertas activas */}
-                <div className="flex flex-col border-t border-[#2a2a2a]">
-                  {(ticketDia?.pendientes||0)>4 && (
-                    <div className="flex items-center gap-2.5 px-3 py-2 border-b border-[#1a1a1a]">
-                      <span className="text-[14px]">⚠️</span>
-                      <div className="flex-1">
-                        <div className="text-[10px] font-bold text-[#f0b45a]">Alta ocupación — {ticketDia?.pendientes} mesas</div>
-                        <div className="text-[9px] text-[#606060]">Anticipar tiempos · Coordinar cocina</div>
-                      </div>
-                    </div>
-                  )}
-                  {flowAlertas.filter((a:any)=>!a.leida).length > 0 && (
-                    <div className="flex items-center gap-2.5 px-3 py-2 border-b border-[#1a1a1a]">
-                      <span className="text-[14px]">🍽️</span>
-                      <div className="flex-1">
-                        <div className="text-[10px] font-bold text-[#3dba6f]">{flowAlertas.filter((a:any)=>!a.leida).length} platos listos para entregar</div>
-                        <div className="text-[9px] text-[#606060]">Revisar campana de notificaciones</div>
-                      </div>
-                    </div>
-                  )}
-                  {(ticketDia?.porCobrar||0)>200000 && (
-                    <div className="flex items-center gap-2.5 px-3 py-2">
-                      <span className="text-[14px]">💰</span>
-                      <div className="flex-1">
-                        <div className="text-[10px] font-bold text-[#3dba6f]">Cuentas por cobrar</div>
-                        <div className="text-[9px] text-[#606060]">${Math.round((ticketDia?.porCobrar||0)/1000)}k pendientes</div>
-                      </div>
-                    </div>
-                  )}
-                  {(ticketDia?.pendientes||0)<=4 && flowAlertas.filter((a:any)=>!a.leida).length===0 && (
-                    <div className="px-3 py-2 text-[10px] text-[#3dba6f] flex items-center gap-2">
-                      <span>✓</span> Servicio estable — sin alertas
-                    </div>
-                  )}
-                </div>
-              </div>
 
               {/* ══ PERFIL CLIENTE — PRIMERO Y PROMINENTE ══ */}
               <div className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl overflow-hidden">
