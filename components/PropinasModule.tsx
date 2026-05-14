@@ -38,7 +38,7 @@ const WALLET_ESTADOS: Record<string,{c:string,l:string}> = {
   HELD:       {c:'#FF5252', l:'🔒 Retenido'},
 };
 
-type Tab = 'bolsa'|'wallet'|'ranking'|'equipo'|'config'|'backoffice';
+type Tab = 'bolsa'|'wallet'|'ranking'|'equipo'|'config'|'backoffice'|'admin';
 
 export default function PropinasModule() {
   const { profile } = useAuth();
@@ -58,6 +58,12 @@ export default function PropinasModule() {
   const [config, setConfig]             = useState<any>(null);
   const [backoffice, setBackoffice]     = useState<any[]>([]);
   const [confirmandoTurno, setConfirm]  = useState(false);
+  // Admin equipo
+  const [staff, setStaff]               = useState<any[]>([]);
+  const [staffForm, setStaffForm]       = useState<any>({nombre:'',rol:'mesero',turno:'noche',restaurante_id:6,activo:true,turno_partido:false});
+  const [editingStaff, setEditingStaff] = useState<any>(null);
+  const [staffTab, setStaffTab]         = useState<'activos'|'inactivos'|'nuevo'>('activos');
+  const [fotoPreview, setFotoPreview]   = useState<string>('');
   const [retiroMonto, setRetiroMonto]   = useState(0);
   const [retiroEmpleado, setRetiroEmp]  = useState('');
 
@@ -81,6 +87,9 @@ export default function PropinasModule() {
     if (tg.data)   setTags(tg.data);
     if (cfg.data)  setConfig(cfg.data);
     if (bo.data)   setBackoffice(bo.data);
+    // Staff completo para admin
+    const st = await supabase.from('staff_nexum').select('*').eq('restaurante_id',6).order('nombre');
+    if (st.data) setStaff(st.data);
     setLoading(false);
   }, [fechaFiltro]);
 
@@ -538,6 +547,205 @@ export default function PropinasModule() {
           </div>
         )}
       </div>
+
+        {/* ══════════════════════════════════════════════
+            TAB ADMIN EQUIPO — Solo Gerencia
+        ════════════════════════════════════════════════ */}
+        {tab==='admin' && isGerencia && (
+          <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+
+            {/* Sub-tabs */}
+            <div style={{display:'flex',gap:0,borderBottom:`1px solid ${S.border}`,flexShrink:0,background:S.bg2,padding:'0 20px'}}>
+              {[
+                {id:'activos',   l:`👥 Activos (${staff.filter(s=>s.activo!==false).length})`},
+                {id:'inactivos', l:`📁 Ex-empleados (${staff.filter(s=>s.activo===false).length})`},
+                {id:'nuevo',     l:'➕ Agregar colaborador'},
+              ].map(t=>(
+                <button key={t.id} onClick={()=>setStaffTab(t.id as any)}
+                  style={{padding:'10px 16px',background:'none',border:'none',borderBottom:`2px solid ${staffTab===t.id?S.gold:'transparent'}`,color:staffTab===t.id?S.gold:S.t3,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  {t.l}
+                </button>
+              ))}
+            </div>
+
+            {/* ── Activos ── */}
+            {staffTab==='activos' && (
+              <div style={{flex:1,overflowY:'auto',padding:20}}>
+                <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                  {staff.filter(s=>s.activo!==false).map(s=>(
+                    <div key={s.id} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:'14px 16px',display:'flex',alignItems:'center',gap:12}}>
+                      {/* Foto o inicial */}
+                      <div style={{width:48,height:48,borderRadius:'50%',flexShrink:0,overflow:'hidden',border:`2px solid ${S.border}`,background:`linear-gradient(135deg,${S.purple},${S.blue})`}}>
+                        {s.foto_base64
+                          ? <img src={s.foto_base64} alt={s.nombre} style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                          : <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:900,color:'#fff'}}>{s.nombre?.charAt(0)}</div>
+                        }
+                      </div>
+                      {/* Info */}
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:700,color:S.t1,marginBottom:2}}>{s.nombre}</div>
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                          <span style={{fontSize:10,color:S.gold,background:`${S.gold}10`,padding:'1px 8px',borderRadius:20}}>{s.rol}</span>
+                          <span style={{fontSize:10,color:S.blue,background:`${S.blue}10`,padding:'1px 8px',borderRadius:20}}>{s.turno}</span>
+                          {s.turno_partido && <span style={{fontSize:10,color:S.purple,background:`${S.purple}10`,padding:'1px 8px',borderRadius:20}}>⏰ Turno partido</span>}
+                          {s.telefono && <span style={{fontSize:10,color:S.t3}}>📱 {s.telefono}</span>}
+                        </div>
+                      </div>
+                      {/* Acciones */}
+                      <div style={{display:'flex',gap:6,flexShrink:0}}>
+                        <button onClick={()=>{ setEditingStaff(s); setStaffForm({...s}); setFotoPreview(s.foto_base64||''); setStaffTab('nuevo'); }}
+                          style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${S.border}`,background:'transparent',color:S.t2,fontSize:11,cursor:'pointer',fontWeight:700}}>
+                          ✏️ Editar
+                        </button>
+                        <button onClick={()=>desactivarStaff(s.id,s.nombre)}
+                          style={{padding:'6px 10px',borderRadius:8,border:`1px solid ${S.red}30`,background:`${S.red}08`,color:S.red,fontSize:11,cursor:'pointer'}}>
+                          Desactivar
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                  {staff.filter(s=>s.activo!==false).length===0 && (
+                    <div style={{textAlign:'center',padding:40,color:S.t3}}>
+                      <div style={{fontSize:40,marginBottom:10}}>👥</div>
+                      <div>Sin colaboradores activos</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Ex-empleados ── */}
+            {staffTab==='inactivos' && (
+              <div style={{flex:1,overflowY:'auto',padding:20}}>
+                <div style={{fontSize:11,color:S.t3,marginBottom:14}}>Historial de ex-colaboradores. Sus registros se conservan en Supabase.</div>
+                <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                  {staff.filter(s=>s.activo===false).map(s=>(
+                    <div key={s.id} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12,opacity:0.7}}>
+                      <div style={{width:40,height:40,borderRadius:'50%',background:S.bg3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,color:S.t3,flexShrink:0}}>
+                        {s.nombre?.charAt(0)}
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:12,fontWeight:700,color:S.t2}}>{s.nombre}</div>
+                        <div style={{fontSize:10,color:S.t3}}>{s.rol} · Salió: {s.fecha_salida||'—'}</div>
+                      </div>
+                      <button onClick={async()=>{ await supabase.from('staff_nexum').update({activo:true,fecha_salida:null}).eq('id',s.id); show('✓ Reactivado'); fetchAll(); }}
+                        style={{padding:'5px 10px',borderRadius:8,border:`1px solid ${S.green}30`,background:`${S.green}08`,color:S.green,fontSize:10,cursor:'pointer',fontWeight:700}}>
+                        Reactivar
+                      </button>
+                    </div>
+                  ))}
+                  {staff.filter(s=>s.activo===false).length===0 && (
+                    <div style={{textAlign:'center',padding:40,color:S.t3}}>Sin ex-colaboradores</div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ── Formulario nuevo / editar ── */}
+            {staffTab==='nuevo' && (
+              <div style={{flex:1,overflowY:'auto',padding:20}}>
+                <div style={{maxWidth:600,margin:'0 auto'}}>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,marginBottom:20}}>
+                    {editingStaff ? `Editar: ${editingStaff.nombre}` : '+ Nuevo colaborador'}
+                  </div>
+
+                  {/* Foto */}
+                  <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:20,padding:16,background:S.bg2,borderRadius:14,border:`1px solid ${S.border}`}}>
+                    <div style={{width:72,height:72,borderRadius:'50%',overflow:'hidden',background:S.bg3,border:`2px solid ${S.border}`,flexShrink:0}}>
+                      {fotoPreview
+                        ? <img src={fotoPreview} alt="foto" style={{width:'100%',height:'100%',objectFit:'cover'}}/>
+                        : <div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,color:S.t3}}>👤</div>
+                      }
+                    </div>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>Foto del colaborador</div>
+                      <label style={{padding:'7px 14px',borderRadius:8,border:`1px solid ${S.border}`,background:S.bg3,color:S.t2,fontSize:11,cursor:'pointer',fontWeight:700}}>
+                        📷 Cargar imagen
+                        <input type="file" accept="image/*" onChange={handleFoto} style={{display:'none'}}/>
+                      </label>
+                      <div style={{fontSize:9,color:S.t3,marginTop:4}}>JPG/PNG hasta 2MB — se convierte a código automáticamente</div>
+                    </div>
+                  </div>
+
+                  {/* Campos */}
+                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12,marginBottom:16}}>
+                    {[
+                      {k:'nombre',      l:'Nombre completo *',    type:'text'},
+                      {k:'telefono',    l:'📱 Teléfono',          type:'tel'},
+                      {k:'email',       l:'Email',                 type:'email'},
+                      {k:'documento',   l:'Documento',             type:'text'},
+                      {k:'fecha_ingreso',l:'Fecha de ingreso',    type:'date'},
+                      {k:'salario_base', l:'Salario base',        type:'number'},
+                    ].map(f=>(
+                      <div key={f.k}>
+                        <div style={{fontSize:10,color:S.t3,marginBottom:4}}>{f.l}</div>
+                        <input type={f.type} value={(staffForm as any)[f.k]||''} onChange={e=>setStaffForm((p:any)=>({...p,[f.k]:e.target.value}))}
+                          style={{width:'100%',padding:'9px 12px',borderRadius:8,border:`1px solid ${S.border}`,background:'rgba(255,255,255,0.05)',color:S.t1,fontSize:13,outline:'none'}}/>
+                      </div>
+                    ))}
+                    <div>
+                      <div style={{fontSize:10,color:S.t3,marginBottom:4}}>Rol</div>
+                      <select value={staffForm.rol||'mesero'} onChange={e=>setStaffForm((p:any)=>({...p,rol:e.target.value}))}
+                        style={{width:'100%',padding:'9px 12px',borderRadius:8,border:`1px solid ${S.border}`,background:'rgba(255,255,255,0.05)',color:S.t1,fontSize:13,outline:'none'}}>
+                        {['mesero','bartender','cocinero','capitan','maitre','host','cajero','gerencia','admin','soporte'].map(r=><option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <div style={{fontSize:10,color:S.t3,marginBottom:4}}>Turno</div>
+                      <select value={staffForm.turno||'noche'} onChange={e=>setStaffForm((p:any)=>({...p,turno:e.target.value}))}
+                        style={{width:'100%',padding:'9px 12px',borderRadius:8,border:`1px solid ${S.border}`,background:'rgba(255,255,255,0.05)',color:S.t1,fontSize:13,outline:'none'}}>
+                        {['mediodia','noche','partido','abierto','especial'].map(t=><option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Turno partido */}
+                  <div style={{marginBottom:16,padding:'12px 16px',background:S.bg2,borderRadius:12,border:`1px solid ${S.border}`}}>
+                    <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+                      <input type="checkbox" checked={staffForm.turno_partido||false} onChange={e=>setStaffForm((p:any)=>({...p,turno_partido:e.target.checked}))}
+                        style={{width:16,height:16}}/>
+                      <div>
+                        <div style={{fontSize:13,fontWeight:700,color:S.purple}}>⏰ Horario especial / Turno partido</div>
+                        <div style={{fontSize:11,color:S.t3}}>El colaborador trabaja en dos franjas horarias en el día</div>
+                      </div>
+                    </label>
+                    {staffForm.turno_partido && (
+                      <div style={{marginTop:12,display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
+                        {['entrada_1','salida_1','entrada_2','salida_2'].map(k=>(
+                          <div key={k}>
+                            <div style={{fontSize:10,color:S.t3,marginBottom:3}}>{k.replace('_',' ').replace(/\w/g,l=>l.toUpperCase())}</div>
+                            <input type="time" value={(staffForm.turno_partido_info?.[k]||'')} onChange={e=>setStaffForm((p:any)=>({...p,turno_partido_info:{...(p.turno_partido_info||{}),[k]:e.target.value}}))}
+                              style={{width:'100%',padding:'7px 10px',borderRadius:8,border:`1px solid ${S.border}`,background:'rgba(255,255,255,0.05)',color:S.t1,fontSize:12,outline:'none'}}/>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Notas RRHH */}
+                  <div style={{marginBottom:20}}>
+                    <div style={{fontSize:10,color:S.t3,marginBottom:4}}>Notas RRHH</div>
+                    <textarea value={staffForm.notas_rrhh||''} onChange={e=>setStaffForm((p:any)=>({...p,notas_rrhh:e.target.value}))} rows={3}
+                      style={{width:'100%',padding:'9px 12px',borderRadius:8,border:`1px solid ${S.border}`,background:'rgba(255,255,255,0.05)',color:S.t1,fontSize:12,outline:'none',resize:'none'}}
+                      placeholder="Observaciones internas (solo visible para gerencia)"/>
+                  </div>
+
+                  <div style={{display:'flex',gap:10}}>
+                    <button onClick={()=>{ setEditingStaff(null); setStaffTab('activos'); setFotoPreview(''); setStaffForm({nombre:'',rol:'mesero',turno:'noche',restaurante_id:6,activo:true}); }}
+                      style={{flex:1,padding:12,borderRadius:10,border:`1px solid ${S.border}`,background:'transparent',color:S.t3,cursor:'pointer',fontSize:13}}>
+                      Cancelar
+                    </button>
+                    <button onClick={guardarStaff}
+                      style={{flex:2,padding:12,borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.gold},#d4943a)`,color:'#000',cursor:'pointer',fontSize:13,fontWeight:700}}>
+                      {editingStaff ? '✓ Actualizar colaborador' : '✓ Agregar colaborador'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
     </div>
   );
 }
