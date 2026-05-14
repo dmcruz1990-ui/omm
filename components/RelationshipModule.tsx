@@ -18,7 +18,7 @@ const inp: React.CSSProperties = {
 };
 
 type CTab = 'lista' | 'perfil' | 'nuevo' | 'analytics' | 'importar';
-type Segmento = 'todos' | 'vip' | 'recurrentes' | 'nuevos' | 'dormidos';
+type Segmento = 'todos' | 'ohyeah' | 'vip' | 'recurrentes' | 'nuevos' | 'dormidos';
 
 interface Customer {
   id:number; name:string; apellido?:string; phone?:string; email?:string;
@@ -36,6 +36,8 @@ const ALERGIAS_PRESET = ['Mariscos','Gluten','Lácteos','Nueces','Huevo','Soya',
 const PREFS_PRESET = ['Mesa ventana','Mesa esquinera','Mesa íntima','Zona VIP','Barra','Terraza','Música baja','Sillas altas','Luz tenue'];
 const CANALES = ['walk-in','web','whatsapp','instagram','telefono','oh_yeah','referido'];
 const OCASIONES_TIPOS = ['Cumpleaños','Aniversario','Negocio','Primera Cita','Celebración','Graduación','Despedida','Otro'];
+const NIVEL_COLORS: Record<string,string> = { INICIADO:'#a0a0a0', REGULAR:'#448AFF', VIP:'#B388FF', CONSAGRADO:'#FF6B00', ÉLITE:'#FFD700' };
+const NIVEL_EMOJI: Record<string,string>  = { INICIADO:'⭐', REGULAR:'🌟', VIP:'💎', CONSAGRADO:'🔥', ÉLITE:'👑' };
 
 const scoreColor = (s:number) => s>=80?S.green:s>=50?S.gold:s>=20?S.goldD:S.red;
 const scoreLabel = (s:number) => s>=80?'Embajador':s>=50?'Frecuente':s>=20?'Ocasional':'Nuevo';
@@ -57,26 +59,68 @@ export default function CustomersModule() {
   const [nuevaNota, setNuevaNota] = useState('');
   const [form, setForm]           = useState<Partial<Customer>>({ tipo_documento:'CC', origen_captacion:'walk-in', activo:true });
   // CSV
-  const [csvRows, setCsvRows]       = useState<any[]>([]);
-  const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
-  const [csvMapping, setCsvMapping] = useState<Record<string,string>>({});
+  const [csvRows, setCsvRows]           = useState<any[]>([]);
+  const [csvHeaders, setCsvHeaders]     = useState<string[]>([]);
+  const [csvMapping, setCsvMapping]     = useState<Record<string,string>>({});
   const [csvImporting, setCsvImporting] = useState(false);
-  const [csvPreview, setCsvPreview] = useState<any[]>([]);
-  const [csvStep, setCsvStep]     = useState<'upload'|'map'|'preview'|'done'>('upload');
+  const [csvPreview, setCsvPreview]     = useState<any[]>([]);
+  const [csvStep, setCsvStep]           = useState<'upload'|'map'|'preview'|'done'>('upload');
   const [csvResultado, setCsvResultado] = useState({ok:0,err:0});
   const fileRef = useRef<HTMLInputElement>(null);
 
   const showToast = useCallback((m:string)=>{ setToast(m); setTimeout(()=>setToast(''),3000); },[]);
   const setF = (k:string,v:any) => setForm(p=>({...p,[k]:v}));
 
-  const fetchClientes = async () => {
-    const { data } = await supabase.from('customers')
+  // ── Fetch clientes NEXUM + Oh Yeah mezclados ───────────────────────────
+  const fetchClientes = useCallback(async () => {
+    setLoading(true);
+    // Clientes NEXUM existentes
+    const { data: nexum } = await supabase.from('customers')
       .select('*').order(ordenar as any, {ascending:false});
-    if (data) setClientes(data as Customer[]);
-    setLoading(false);
-  };
 
-  useEffect(()=>{ fetchClientes(); },[ordenar]);
+    // Clientes Oh Yeah — se mapean al formato Customer
+    const { data: ohyeah } = await supabase
+      .from('nexum_clientes_ohyeah').select('*');
+
+    const ohyeahMapped: Customer[] = (ohyeah||[]).map((cl:any) => ({
+      id:               cl.id,
+      name:             (cl.nombre||'').split(' ')[0],
+      apellido:         (cl.nombre||'').split(' ').slice(1).join(' '),
+      email:            cl.email,
+      phone:            cl.telefono,
+      ciudad:           cl.ciudad,
+      total_visits:     cl.visitas || 0,
+      created_at:       cl.registro_at,
+      ultima_visita:    cl.ultima_reserva,
+      origen_captacion: 'oh_yeah',
+      vip_status:       ['ÉLITE','CONSAGRADO','VIP'].includes(cl.nivel||''),
+      score:            cl.nivel==='ÉLITE'?95:cl.nivel==='CONSAGRADO'?80:cl.nivel==='VIP'?65:cl.nivel==='REGULAR'?40:15,
+      tags:             cl.nivel ? [`${NIVEL_EMOJI[cl.nivel]||'⭐'} ${cl.nivel}`] : [],
+      notes:            cl.notas || '',
+      alergias:         cl.restricciones ? [cl.restricciones] : [],
+      preferencias:     cl.preferencias ? [cl.preferencias] : [],
+      activo:           true,
+      canal_preferido:  'oh_yeah',
+      puntos:           (cl.visitas||0) * 50,
+    }));
+
+    // No duplicar — si un email de Oh Yeah ya existe en NEXUM, omitir
+    const nexumEmails = new Set((nexum||[]).map((n:any) => n.email).filter(Boolean));
+    const ohyeahFiltrado = ohyeahMapped.filter(cl => !cl.email || !nexumEmails.has(cl.email));
+
+    setClientes([...(nexum||[]), ...ohyeahFiltrado] as Customer[]);
+    setLoading(false);
+  }, [ordenar]);
+
+  useEffect(()=>{
+    fetchClientes();
+    // Realtime — nuevo cliente de Oh Yeah aparece instantáneo en el CIM
+    const ch = supabase.channel('cim-ohyeah-nuevos')
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'ohyeah_clientes' },
+        () => { fetchClientes(); })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  },[fetchClientes]);
 
   // ── Segmentos ─────────────────────────────────────────────────────────
   const segmentar = (c:Customer) => {
@@ -88,7 +132,8 @@ export default function CustomersModule() {
   };
 
   const filtrados = clientes.filter(c => {
-    if (segmento !== 'todos' && segmentar(c) !== segmento) return false;
+    if (segmento === 'ohyeah' && c.origen_captacion !== 'oh_yeah') return false;
+    if (segmento !== 'todos' && segmento !== 'ohyeah' && segmentar(c) !== segmento) return false;
     if (busqueda) {
       const q = busqueda.toLowerCase();
       return (c.name+' '+(c.apellido||'')+' '+(c.phone||'')+' '+(c.email||'')).toLowerCase().includes(q);
@@ -98,10 +143,10 @@ export default function CustomersModule() {
 
   const kpis = [
     { l:'Total',       v:clientes.length,                                               c:S.blue   },
+    { l:'Oh Yeah',     v:clientes.filter(c=>c.origen_captacion==='oh_yeah').length,     c:'#FFE600'},
     { l:'VIP',         v:clientes.filter(c=>c.vip_status).length,                       c:S.gold   },
     { l:'Recurrentes', v:clientes.filter(c=>segmentar(c)==='recurrentes').length,        c:S.green  },
     { l:'Dormidos',    v:clientes.filter(c=>segmentar(c)==='dormidos').length,           c:S.red    },
-    { l:'Ticket prom', v:fmtMoney(clientes.reduce((a,c)=>a+(c.promedio_ticket||0),0)/Math.max(clientes.length,1)), c:S.purple },
   ];
 
   // ── Guardar cliente ───────────────────────────────────────────────────
@@ -128,12 +173,8 @@ export default function CustomersModule() {
     setSelected(p=>p?({...p,historial_notas:[...(p.historial_notas||[]),{fecha:hoy(),nota:nuevaNota,autor:'Staff'}]}):p);
   };
 
-  // ── Abrir perfil ──────────────────────────────────────────────────────
   const abrirPerfil = (c:Customer) => {
-    setSelected(c);
-    setForm(c);
-    setEditMode(false);
-    setCtab('perfil');
+    setSelected(c); setForm(c); setEditMode(false); setCtab('perfil');
   };
 
   // ── CSV import ────────────────────────────────────────────────────────
@@ -171,7 +212,6 @@ export default function CustomersModule() {
   return (
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:S.bg,color:S.t1,fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
 
-      {/* Toast */}
       {toast && <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:S.bg4,border:`1px solid ${S.pink}`,color:S.t1,padding:'10px 24px',borderRadius:50,fontSize:13,zIndex:9999,whiteSpace:'nowrap'}}>{toast}</div>}
 
       {/* Header */}
@@ -183,13 +223,11 @@ export default function CustomersModule() {
             <div style={{fontSize:10,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase' as const}}>CIM™ — Customer Intelligence</div>
           </div>
         </div>
-        {/* Buscar */}
         <div style={{position:'relative',flex:1,maxWidth:320}}>
-          <input placeholder="🔍 Buscar por nombre, teléfono, email..." value={busqueda} onChange={e=>setBusqueda(e.target.value)}
+          <input placeholder="🔍 Buscar nombre, teléfono, email..." value={busqueda} onChange={e=>setBusqueda(e.target.value)}
             style={{...inp,padding:'8px 14px',fontSize:12}} />
           {busqueda && <button onClick={()=>setBusqueda('')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:S.t3,cursor:'pointer'}}>✕</button>}
         </div>
-        {/* Ordenar */}
         <select value={ordenar} onChange={e=>setOrdenar(e.target.value)} style={{...inp,width:'auto',padding:'8px 12px',fontSize:12,cursor:'pointer'}}>
           <option value="total_visits">Por visitas</option>
           <option value="total_spent">Por gasto</option>
@@ -208,7 +246,8 @@ export default function CustomersModule() {
         {kpis.map((k,i)=>(
           <div key={k.l} style={{flex:1,padding:'10px 16px',borderRight:i<kpis.length-1?`1px solid ${S.border}`:'none',cursor:'pointer'}}
             onClick={()=>{
-              if(k.l==='VIP')setSegmento('vip');
+              if(k.l==='Oh Yeah')setSegmento('ohyeah');
+              else if(k.l==='VIP')setSegmento('vip');
               else if(k.l==='Recurrentes')setSegmento('recurrentes');
               else if(k.l==='Dormidos')setSegmento('dormidos');
               else setSegmento('todos');
@@ -235,16 +274,19 @@ export default function CustomersModule() {
         ))}
         {/* Segmento filtro */}
         <div style={{marginLeft:'auto',display:'flex',gap:6,alignItems:'center',paddingBottom:4}}>
-          {(['todos','vip','recurrentes','nuevos','dormidos'] as Segmento[]).map(s=>{
-            const lbl = {todos:'Todos',vip:'⭐ VIP',recurrentes:'🔄 Recurrentes',nuevos:'🆕 Nuevos',dormidos:'💤 Dormidos'}[s];
-            const col = {todos:S.t3,vip:S.gold,recurrentes:S.green,nuevos:S.blue,dormidos:S.red}[s];
-            return (
-              <button key={s} onClick={()=>setSegmento(s)}
-                style={{padding:'4px 12px',borderRadius:50,border:`1px solid ${segmento===s?col:S.border}`,background:segmento===s?`${col}15`:'transparent',color:segmento===s?col:S.t3,fontSize:10,fontWeight:700,cursor:'pointer',transition:'all .15s'}}>
-                {lbl}
-              </button>
-            );
-          })}
+          {([
+            {s:'todos',      l:'Todos',          c:S.t3},
+            {s:'ohyeah',     l:'🦉 Oh Yeah',     c:'#FFE600'},
+            {s:'vip',        l:'⭐ VIP',          c:S.gold},
+            {s:'recurrentes',l:'🔄 Recurrentes',  c:S.green},
+            {s:'nuevos',     l:'🆕 Nuevos',       c:S.blue},
+            {s:'dormidos',   l:'💤 Dormidos',     c:S.red},
+          ] as {s:Segmento,l:string,c:string}[]).map(({s,l,c})=>(
+            <button key={s} onClick={()=>setSegmento(s)}
+              style={{padding:'4px 12px',borderRadius:50,border:`1px solid ${segmento===s?c:S.border}`,background:segmento===s?`${c}15`:'transparent',color:segmento===s?c:S.t3,fontSize:10,fontWeight:700,cursor:'pointer',transition:'all .15s'}}>
+              {l}
+            </button>
+          ))}
         </div>
       </div>
 
@@ -279,31 +321,29 @@ export default function CustomersModule() {
                     const segLabel = {vip:'⭐ VIP',recurrentes:'🔄 Recurrente',nuevos:'🆕 Nuevo',dormidos:'💤 Dormido'}[seg]||seg;
                     const sc = cliente.score||0;
                     const diasInactivo = cliente.ultima_visita ? Math.floor((Date.now()-new Date(cliente.ultima_visita).getTime())/86400000) : null;
+                    const esOhYeah = cliente.origen_captacion === 'oh_yeah';
+                    const nivelTag = cliente.tags?.find(t=>Object.values(NIVEL_EMOJI).some(e=>t.includes(e)));
                     return (
                       <tr key={cliente.id}
                         style={{background:i%2===0?S.bg:S.bg2,borderBottom:`1px solid rgba(255,255,255,0.04)`,cursor:'pointer',transition:'background .15s'}}
                         onMouseEnter={e=>(e.currentTarget as HTMLTableRowElement).style.background=`${S.pink}08`}
                         onMouseLeave={e=>(e.currentTarget as HTMLTableRowElement).style.background=i%2===0?S.bg:S.bg2}>
 
-                        {/* Cliente — nombre + avatar */}
+                        {/* Cliente */}
                         <td style={{padding:'11px 14px'}}>
                           <div style={{display:'flex',alignItems:'center',gap:10}}>
                             <div style={{width:36,height:36,borderRadius:'50%',background:`linear-gradient(135deg,${S.pink}40,${S.purple}40)`,border:`2px solid ${cliente.vip_status?S.gold:S.border2}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:900,flexShrink:0}}>
                               {iniciales(cliente.name,cliente.apellido)}
                             </div>
                             <div>
-                              <div style={{fontSize:13,fontWeight:700,color:S.t1,display:'flex',alignItems:'center',gap:5}}>
+                              <div style={{fontSize:13,fontWeight:700,color:S.t1,display:'flex',alignItems:'center',gap:5,flexWrap:'wrap'}}>
                                 {cliente.name} {cliente.apellido||''}
                                 {cliente.vip_status && <span style={{fontSize:10}}>⭐</span>}
+                                {esOhYeah && <span style={{fontSize:9,background:'rgba(255,230,0,0.12)',color:'#FFE600',border:'1px solid rgba(255,230,0,0.3)',padding:'1px 6px',borderRadius:10,fontWeight:700}}>🦉 Oh Yeah</span>}
                                 {!cliente.activo && <span style={{fontSize:9,color:S.red,background:`${S.red}15`,padding:'1px 6px',borderRadius:10}}>Inactivo</span>}
                               </div>
                               {cliente.ciudad && <div style={{fontSize:10,color:S.t3}}>📍 {cliente.ciudad}</div>}
-                              {cliente.fecha_nacimiento && (() => {
-                                const hoy = new Date();
-                                const nac = new Date(cliente.fecha_nacimiento+'T00:00:00');
-                                const esCumple = nac.getDate()===hoy.getDate()&&nac.getMonth()===hoy.getMonth();
-                                return esCumple ? <div style={{fontSize:10,color:S.gold}}>🎂 ¡Cumpleaños hoy!</div> : null;
-                              })()}
+                              {nivelTag && esOhYeah && <div style={{fontSize:9,color:'#FFE600'}}>{nivelTag}</div>}
                             </div>
                           </div>
                         </td>
@@ -357,9 +397,7 @@ export default function CustomersModule() {
 
                         {/* Última visita */}
                         <td style={{padding:'11px 14px'}}>
-                          <div style={{fontSize:12,color:diasInactivo&&diasInactivo>60?S.red:S.t2}}>
-                            {formatFecha(cliente.ultima_visita)}
-                          </div>
+                          <div style={{fontSize:12,color:diasInactivo&&diasInactivo>60?S.red:S.t2}}>{formatFecha(cliente.ultima_visita)}</div>
                           {diasInactivo!==null && (
                             <div style={{fontSize:9,color:diasInactivo>60?S.red:diasInactivo>30?S.gold:S.green}}>
                               {diasInactivo===0?'Hoy':diasInactivo===1?'Ayer':`Hace ${diasInactivo}d`}
@@ -382,13 +420,9 @@ export default function CustomersModule() {
                             {cliente.preferencias?.slice(0,2).map(p=>(
                               <span key={p} style={{fontSize:9,background:`${S.green}10`,color:S.green,padding:'1px 6px',borderRadius:10}}>✓ {p}</span>
                             ))}
-                            {(cliente.alergias?.length||0)+(cliente.preferencias?.length||0)>4 && (
-                              <span style={{fontSize:9,color:S.t3}}>+{(cliente.alergias?.length||0)+(cliente.preferencias?.length||0)-4}</span>
-                            )}
                           </div>
-                          {/* Tags */}
                           <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:3}}>
-                            {cliente.tags?.slice(0,2).map(t=>(
+                            {cliente.tags?.filter(t=>!Object.values(NIVEL_EMOJI).some(e=>t.includes(e))).slice(0,2).map(t=>(
                               <span key={t} style={{fontSize:9,background:`${S.purple}10`,color:S.purple,padding:'1px 6px',borderRadius:10}}>#{t}</span>
                             ))}
                           </div>
@@ -396,9 +430,15 @@ export default function CustomersModule() {
 
                         {/* Origen */}
                         <td style={{padding:'11px 14px'}}>
-                          <span style={{fontSize:10,color:S.t2,background:S.bg3,padding:'3px 8px',borderRadius:8}}>
-                            {cliente.origen_captacion||'—'}
-                          </span>
+                          {esOhYeah ? (
+                            <span style={{fontSize:10,color:'#FFE600',background:'rgba(255,230,0,0.1)',border:'1px solid rgba(255,230,0,0.25)',padding:'3px 8px',borderRadius:8,fontWeight:700}}>
+                              🦉 Oh Yeah
+                            </span>
+                          ) : (
+                            <span style={{fontSize:10,color:S.t2,background:S.bg3,padding:'3px 8px',borderRadius:8}}>
+                              {cliente.origen_captacion||'—'}
+                            </span>
+                          )}
                         </td>
 
                         {/* Acciones */}
@@ -429,11 +469,7 @@ export default function CustomersModule() {
         {ctab==='perfil' && selected && (
           <div style={{height:'100%',overflowY:'auto',padding:24}}>
             <div style={{display:'grid',gridTemplateColumns:'340px 1fr',gap:20,alignItems:'start'}}>
-
-              {/* Columna izquierda */}
               <div style={{display:'flex',flexDirection:'column',gap:14}}>
-
-                {/* Card principal */}
                 <div style={{background:S.bg2,border:`1px solid ${S.border2}`,borderRadius:18,overflow:'hidden'}}>
                   <div style={{background:`linear-gradient(135deg,${S.pink}30,${S.purple}20)`,padding:'24px 20px',textAlign:'center'}}>
                     <div style={{width:72,height:72,borderRadius:'50%',background:`linear-gradient(135deg,${S.pink},${S.purple})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:900,margin:'0 auto 12px',border:`3px solid ${selected.vip_status?S.gold:S.border2}`}}>
@@ -443,8 +479,12 @@ export default function CustomersModule() {
                       {selected.name} {selected.apellido||''}
                       {selected.vip_status && <span style={{marginLeft:6}}>⭐</span>}
                     </div>
-                    <div style={{fontSize:12,color:S.t3,marginTop:4}}>{selected.ciudad||'Sin ciudad'} · {selected.origen_captacion||'—'}</div>
-                    {/* Score grande */}
+                    <div style={{fontSize:12,color:S.t3,marginTop:4}}>
+                      {selected.ciudad||'Sin ciudad'} ·{' '}
+                      {selected.origen_captacion==='oh_yeah'
+                        ? <span style={{color:'#FFE600',fontWeight:700}}>🦉 Oh Yeah</span>
+                        : selected.origen_captacion||'—'}
+                    </div>
                     <div style={{marginTop:14,display:'flex',alignItems:'center',justifyContent:'center',gap:12}}>
                       <div style={{textAlign:'center'}}>
                         <div style={{fontFamily:"'Syne',sans-serif",fontSize:32,fontWeight:900,color:scoreColor(selected.score||0)}}>{selected.score||0}</div>
@@ -476,15 +516,14 @@ export default function CustomersModule() {
                   </div>
                 </div>
 
-                {/* Stats financieros */}
                 <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
                   <div style={{fontSize:11,color:S.gold,fontWeight:700,marginBottom:12,textTransform:'uppercase' as const}}>💰 Financiero</div>
                   <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
                     {[
-                      {l:'Visitas',       v:selected.total_visits||0,         c:S.blue,   suf:''},
-                      {l:'Gasto total',   v:fmtMoney(selected.total_spent),   c:S.gold,   suf:''},
-                      {l:'Ticket prom.',  v:fmtMoney(selected.promedio_ticket),c:S.purple, suf:''},
-                      {l:'Última visita', v:formatFecha(selected.ultima_visita),c:S.t2,   suf:''},
+                      {l:'Visitas',      v:selected.total_visits||0,          c:S.blue},
+                      {l:'Gasto total',  v:fmtMoney(selected.total_spent),    c:S.gold},
+                      {l:'Ticket prom.', v:fmtMoney(selected.promedio_ticket), c:S.purple},
+                      {l:'Última visita',v:formatFecha(selected.ultima_visita),c:S.t2},
                     ].map(m=>(
                       <div key={m.l} style={{background:S.bg3,borderRadius:10,padding:'10px 12px'}}>
                         <div style={{fontSize:9,color:S.t3,marginBottom:3,textTransform:'uppercase' as const}}>{m.l}</div>
@@ -494,7 +533,6 @@ export default function CustomersModule() {
                   </div>
                 </div>
 
-                {/* Alergias */}
                 {(selected.alergias?.length||0)>0 && (
                   <div style={{background:`${S.red}08`,border:`1px solid ${S.red}30`,borderRadius:14,padding:14}}>
                     <div style={{fontSize:11,color:S.red,fontWeight:700,marginBottom:8}}>⚠️ ALERGIAS — Avisar a cocina</div>
@@ -506,7 +544,6 @@ export default function CustomersModule() {
                   </div>
                 )}
 
-                {/* Preferencias */}
                 {(selected.preferencias?.length||0)>0 && (
                   <div style={{background:`${S.green}08`,border:`1px solid ${S.green}20`,borderRadius:14,padding:14}}>
                     <div style={{fontSize:11,color:S.green,fontWeight:700,marginBottom:8}}>✓ Preferencias</div>
@@ -518,19 +555,6 @@ export default function CustomersModule() {
                   </div>
                 )}
 
-                {/* Tags */}
-                {(selected.tags?.length||0)>0 && (
-                  <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:14}}>
-                    <div style={{fontSize:11,color:S.purple,fontWeight:700,marginBottom:8}}># Tags CIM</div>
-                    <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
-                      {selected.tags!.map(t=>(
-                        <span key={t} style={{fontSize:11,background:`${S.purple}15`,color:S.purple,padding:'3px 10px',borderRadius:50}}>#{t}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Botones */}
                 <div style={{display:'flex',gap:8}}>
                   <button onClick={()=>{ setEditMode(true); setCtab('nuevo'); }}
                     style={{flex:1,padding:11,borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t2,cursor:'pointer',fontSize:12,fontWeight:700}}>
@@ -545,32 +569,11 @@ export default function CustomersModule() {
 
               {/* Columna derecha */}
               <div style={{display:'flex',flexDirection:'column',gap:14}}>
-
-                {/* Ocasiones especiales */}
-                {(selected.ocasiones_especiales?.length||0)>0 && (
-                  <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
-                    <div style={{fontSize:11,color:S.gold,fontWeight:700,marginBottom:12,textTransform:'uppercase' as const}}>🎉 Ocasiones especiales</div>
-                    <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                      {selected.ocasiones_especiales!.map((o:any,i)=>(
-                        <div key={i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:S.bg3,borderRadius:10}}>
-                          <span style={{fontSize:16}}>{o.tipo==='Cumpleaños'?'🎂':o.tipo==='Aniversario'?'💑':'🎉'}</span>
-                          <div>
-                            <div style={{fontSize:12,fontWeight:700}}>{o.tipo}</div>
-                            {o.fecha && <div style={{fontSize:11,color:S.t3}}>{formatFecha(o.fecha)}</div>}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Historial de notas */}
                 <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
                   <div style={{fontSize:11,color:S.t2,fontWeight:700,marginBottom:12,textTransform:'uppercase' as const}}>📝 Notas del equipo</div>
                   <div style={{display:'flex',gap:8,marginBottom:12}}>
                     <input value={nuevaNota} onChange={e=>setNuevaNota(e.target.value)}
-                      placeholder="Agregar nota..."
-                      onKeyDown={e=>e.key==='Enter'&&agregarNota()}
+                      placeholder="Agregar nota..." onKeyDown={e=>e.key==='Enter'&&agregarNota()}
                       style={{...inp,fontSize:12,padding:'8px 12px'}}/>
                     <button onClick={agregarNota}
                       style={{padding:'8px 16px',borderRadius:8,border:'none',background:S.pink,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
@@ -590,56 +593,33 @@ export default function CustomersModule() {
                   </div>
                 </div>
 
-                {/* Notas generales */}
-                {selected.notes && (
-                  <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
-                    <div style={{fontSize:11,color:S.t3,fontWeight:700,marginBottom:8}}>💬 Observaciones</div>
-                    <div style={{fontSize:13,color:S.t2,lineHeight:1.6}}>{selected.notes}</div>
-                  </div>
-                )}
-
-                {/* Insights IA */}
                 <div style={{background:`linear-gradient(135deg,${S.pink}08,${S.purple}05)`,border:`1px solid ${S.pink}20`,borderRadius:14,padding:16}}>
                   <div style={{fontSize:11,color:S.pink,fontWeight:700,marginBottom:12,display:'flex',alignItems:'center',gap:6}}>
                     <span>✦</span> Insights CIM™
                   </div>
                   <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                    {/* Insight automático por datos */}
                     {(selected.total_visits||0)>=10 && (
                       <div style={{fontSize:12,color:S.t2,background:S.bg3,borderRadius:8,padding:'8px 12px'}}>
-                        🏆 Cliente embajador con {selected.total_visits} visitas — prioridad máxima de atención.
-                      </div>
-                    )}
-                    {(selected.promedio_ticket||0)>150000 && (
-                      <div style={{fontSize:12,color:S.t2,background:S.bg3,borderRadius:8,padding:'8px 12px'}}>
-                        💰 Alto valor — ticket promedio {fmtMoney(selected.promedio_ticket)}. Ofrecer experiencias premium.
+                        🏆 Cliente embajador con {selected.total_visits} visitas — prioridad máxima.
                       </div>
                     )}
                     {(selected.alergias?.length||0)>0 && (
                       <div style={{fontSize:12,color:S.red,background:`${S.red}08`,border:`1px solid ${S.red}20`,borderRadius:8,padding:'8px 12px'}}>
-                        ⚠️ CRÍTICO: Tiene {selected.alergias!.length} alergia(s). Notificar cocina antes del servicio.
+                        ⚠️ CRÍTICO: {selected.alergias!.length} alergia(s). Notificar cocina antes del servicio.
                       </div>
                     )}
-                    {(() => {
-                      const dias = selected.ultima_visita ? Math.floor((Date.now()-new Date(selected.ultima_visita).getTime())/86400000) : null;
-                      if (dias!==null && dias>60) return (
-                        <div style={{fontSize:12,color:S.gold,background:`${S.gold}08`,borderRadius:8,padding:'8px 12px'}}>
-                          💤 Inactivo hace {dias} días. Considerar campaña de reactivación personalizada.
-                        </div>
-                      );
-                      return null;
-                    })()}
+                    {selected.origen_captacion==='oh_yeah' && (
+                      <div style={{fontSize:12,color:'#FFE600',background:'rgba(255,230,0,0.06)',border:'1px solid rgba(255,230,0,0.2)',borderRadius:8,padding:'8px 12px'}}>
+                        🦉 Cliente registrado desde Oh Yeah! — ya tiene historial en la app Gourmand Society.
+                      </div>
+                    )}
                     {(selected.puntos||0)>50 && (
                       <div style={{fontSize:12,color:S.purple,background:`${S.purple}08`,borderRadius:8,padding:'8px 12px'}}>
-                        ✦ Tiene {selected.puntos} puntos acumulados — candidato a canjear beneficio Oh Yeah.
+                        ✦ {selected.puntos} puntos acumulados — candidato a beneficio Oh Yeah.
                       </div>
-                    )}
-                    {!(selected.total_visits||0) && !(selected.promedio_ticket||0) && !(selected.alergias?.length) && (
-                      <div style={{fontSize:12,color:S.t3,textAlign:'center',padding:'8px 0'}}>Agrega visitas y datos para generar insights.</div>
                     )}
                   </div>
                 </div>
-
               </div>
             </div>
           </div>
@@ -675,19 +655,7 @@ export default function CustomersModule() {
                     {CANALES.map(c=><option key={c}>{c}</option>)}
                   </select>
                 </div>
-                <div>
-                  <div style={{fontSize:10,color:S.t3,marginBottom:4}}>Canal preferido</div>
-                  <select style={inp} value={form.canal_preferido||''} onChange={e=>setF('canal_preferido',e.target.value)}>
-                    <option value="">Sin preferencia</option>
-                    {CANALES.map(c=><option key={c}>{c}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <div style={{fontSize:10,color:S.t3,marginBottom:4}}>Fecha de nacimiento</div>
-                  <input type="date" style={inp} value={form.fecha_nacimiento||''} onChange={e=>setF('fecha_nacimiento',e.target.value)}/>
-                </div>
               </div>
-              {/* Alergias */}
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:10,color:S.red,fontWeight:700,marginBottom:8}}>⚠️ Alergias</div>
                 <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
@@ -698,7 +666,6 @@ export default function CustomersModule() {
                   })}
                 </div>
               </div>
-              {/* Preferencias */}
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:10,color:S.green,fontWeight:700,marginBottom:8}}>✓ Preferencias</div>
                 <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
@@ -709,18 +676,6 @@ export default function CustomersModule() {
                   })}
                 </div>
               </div>
-              {/* Tags */}
-              <div style={{marginBottom:16}}>
-                <div style={{fontSize:10,color:S.purple,fontWeight:700,marginBottom:8}}># Tags</div>
-                <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:8}}>
-                  {TAGS_PRESET.map(t=>{
-                    const sel=(form.tags||[]).includes(t);
-                    return <button key={t} onClick={()=>setF('tags',sel?(form.tags||[]).filter((x:string)=>x!==t):[...(form.tags||[]),t])}
-                      style={{padding:'5px 12px',borderRadius:50,border:`1px solid ${sel?S.purple:S.border}`,background:sel?`${S.purple}15`:'transparent',color:sel?S.purple:S.t3,fontSize:11,cursor:'pointer'}}>{t}</button>;
-                  })}
-                </div>
-              </div>
-              {/* VIP toggle */}
               <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:20,padding:'12px 16px',background:S.bg2,borderRadius:12,border:`1px solid ${S.border}`}}>
                 <input type="checkbox" checked={form.vip_status||false} onChange={e=>setF('vip_status',e.target.checked)} style={{width:16,height:16,cursor:'pointer'}}/>
                 <div>
@@ -742,12 +697,10 @@ export default function CustomersModule() {
         {ctab==='analytics' && (
           <div style={{height:'100%',overflowY:'auto',padding:24}}>
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16}}>
-              {/* Top spenders */}
               <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
                 <div style={{padding:'12px 16px',borderBottom:`1px solid ${S.border}`,fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900}}>🏆 Top por gasto</div>
                 {clientes.sort((a,b)=>(b.total_spent||0)-(a.total_spent||0)).slice(0,8).map((c,i)=>(
-                  <div key={c.id} style={{padding:'10px 16px',borderBottom:`1px solid rgba(255,255,255,0.03)`,display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}
-                    onClick={()=>abrirPerfil(c)}>
+                  <div key={c.id} style={{padding:'10px 16px',borderBottom:`1px solid rgba(255,255,255,0.03)`,display:'flex',alignItems:'center',gap:10,cursor:'pointer'}} onClick={()=>abrirPerfil(c)}>
                     <div style={{width:22,height:22,borderRadius:7,background:i===0?`${S.gold}20`:S.bg3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,color:i===0?S.gold:S.t3}}>{i+1}</div>
                     <div style={{flex:1}}>
                       <div style={{fontSize:12,fontWeight:700}}>{c.name} {c.apellido||''}</div>
@@ -757,7 +710,6 @@ export default function CustomersModule() {
                   </div>
                 ))}
               </div>
-              {/* Por segmento */}
               <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
                 <div style={{padding:'12px 16px',borderBottom:`1px solid ${S.border}`,fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900}}>📊 Por segmento</div>
                 <div style={{padding:16,display:'flex',flexDirection:'column',gap:10}}>
@@ -776,16 +728,31 @@ export default function CustomersModule() {
                       </div>
                     );
                   })}
+                  {/* Oh Yeah */}
+                  {(() => {
+                    const cnt = clientes.filter(c=>c.origen_captacion==='oh_yeah').length;
+                    const pct = clientes.length ? Math.round(cnt/clientes.length*100) : 0;
+                    return (
+                      <div>
+                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,fontSize:12}}>
+                          <span style={{color:'#FFE600'}}>🦉 Oh Yeah</span>
+                          <span style={{fontWeight:700}}>{cnt} ({pct}%)</span>
+                        </div>
+                        <div style={{height:6,background:S.bg4,borderRadius:3,overflow:'hidden'}}>
+                          <div style={{height:'100%',background:'#FFE600',width:`${pct}%`,borderRadius:3}}/>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               </div>
-              {/* Por origen */}
               <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
                 <div style={{padding:'12px 16px',borderBottom:`1px solid ${S.border}`,fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900}}>📡 Por origen</div>
                 <div style={{padding:16,display:'flex',flexDirection:'column',gap:8}}>
                   {Object.entries(clientes.reduce((acc:any,c)=>{ const k=c.origen_captacion||'desconocido'; acc[k]=(acc[k]||0)+1; return acc; },{})).sort(([,a]:any,[,b]:any)=>b-a).slice(0,6).map(([k,v]:any)=>(
                     <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 10px',background:S.bg3,borderRadius:8}}>
-                      <span style={{fontSize:11,color:S.t2}}>{k}</span>
-                      <span style={{fontSize:13,fontWeight:700,color:S.blue}}>{v}</span>
+                      <span style={{fontSize:11,color:k==='oh_yeah'?'#FFE600':S.t2}}>{k==='oh_yeah'?'🦉 Oh Yeah':k}</span>
+                      <span style={{fontSize:13,fontWeight:700,color:k==='oh_yeah'?'#FFE600':S.blue}}>{v}</span>
                     </div>
                   ))}
                 </div>
@@ -823,7 +790,6 @@ export default function CustomersModule() {
                     ))}
                   </div>
                   <button onClick={()=>{
-                    const prev=csvRows.slice(0,5).map(row=>{ const obj:any={}; Object.entries(csvMapping).forEach(([k,v])=>{ if(v)obj[v]=row[k]; }); return obj; });
                     setCsvPreview(csvRows.map(row=>{ const obj:any={}; Object.entries(csvMapping).forEach(([k,v])=>{ if(v)obj[v]=row[k]; }); return obj; }));
                     setCsvStep('preview');
                   }} style={{padding:'11px 32px',borderRadius:10,border:'none',background:S.pink,color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>
@@ -833,7 +799,7 @@ export default function CustomersModule() {
               )}
               {csvStep==='preview' && (
                 <div>
-                  <div style={{fontSize:13,color:S.t2,marginBottom:12}}>Vista previa — {csvPreview.length} clientes a importar</div>
+                  <div style={{fontSize:13,color:S.t2,marginBottom:12}}>Vista previa — {csvPreview.length} clientes</div>
                   <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,marginBottom:20}}>
                     <thead><tr>{Object.keys(csvPreview[0]||{}).map(k=><th key={k} style={{padding:'8px',textAlign:'left',color:S.t3,fontSize:10,borderBottom:`1px solid ${S.border}`}}>{k}</th>)}</tr></thead>
                     <tbody>{csvPreview.slice(0,5).map((r,i)=><tr key={i}>{Object.values(r).map((v:any,j)=><td key={j} style={{padding:'8px',color:S.t2,borderBottom:`1px solid rgba(255,255,255,0.03)`}}>{v}</td>)}</tr>)}</tbody>
