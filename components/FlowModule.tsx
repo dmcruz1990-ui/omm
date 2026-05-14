@@ -47,7 +47,7 @@ const MESA_COLORES: Record<number,{color:string;bg:string}> = {
 const getMC = (id:number|null) => id && MESA_COLORES[id] ? MESA_COLORES[id] : {color:'#606060',bg:'rgba(96,96,96,0.12)'};
 
 const getNombre  = (i:FlowItem) => i.nombre_plato ?? i.menu_name ?? i.notes ?? 'Sin nombre';
-const getStation = (i:FlowItem) => i.estacion || i.category || 'cocina_caliente';
+const getStation = (i:FlowItem) => i.estacion || (i as any).categoria || 'cocina_caliente';
 const tsec       = (iso:string) => Math.floor((Date.now()-new Date(iso).getTime())/1000);
 const fmtT = (s:number) => {
   if (!s || s <= 0) return '—';
@@ -74,8 +74,8 @@ export default function FlowModule() {
   // ── FETCH ─────────────────────────────────────────────────────────
   const fetchLive = useCallback(async () => {
     const { data } = await supabase
-      .from('order_items')
-      .select('id,order_id,status,quantity,notes,nombre_plato,created_at,updated_at,tiempo_inicio,table_id,menu_name,category,mesero,estacion,cocinero,duracion_seg,price_at_time')
+      .from('flow_order_items')
+      .select('*')
       .in('status', ['pending','preparing','ready'])
       .order('created_at');
     if (data) setItems(data as FlowItem[]);
@@ -85,8 +85,8 @@ export default function FlowModule() {
   const fetchDia = useCallback(async () => {
     const hoy = new Date().toISOString().split('T')[0];
     const { data } = await supabase
-      .from('order_items')
-      .select('id,order_id,status,quantity,notes,nombre_plato,created_at,updated_at,tiempo_inicio,table_id,menu_name,category,mesero,estacion,cocinero,duracion_seg,price_at_time')
+      .from('flow_order_items')
+      .select('*')
       .gte('created_at', hoy + 'T00:00:00')
       .order('created_at', { ascending: false });
     if (data) {
