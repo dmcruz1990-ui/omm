@@ -99,7 +99,7 @@ export default function ReserveModule() {
       ...(ohyeah.data||[]).map((r:any)=>({
         id:r.id, cliente_nombre:r.guest_name, cliente_email:r.guest_email,
         cliente_telefono:r.guest_phone, fecha:r.date, hora:r.time, pax:r.pax,
-        estado:r.status==='confirmed'?'confirmada':r.status,
+        estado:(['confirmed','confirmada'].includes(r.status))?'confirmada':r.status==='cancelled'||r.status==='cancelada'?'cancelada':r.status==='seated'||r.status==='sentada'?'sentada':'confirmada',
         ocasion:r.occasion, notas:r.observations, mesa_num:null, restaurante_id:6,
         gourmand_level:r.gourmand_level, is_first_visit:r.is_first_visit,
         visit_count:r.visit_count, mood:r.mood, nexum_brief:r.nexum_brief,
