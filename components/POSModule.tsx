@@ -2184,7 +2184,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [xcareMicro, setXcareMicro] = useState<string[]>([]);
   const [xcareComentario, setXcareComentario] = useState('');
 
-  const abrirModoCliente = (tableId: number) => {
+  const abrirModoCliente = async (tableId: number) => {
     setClienteTableId(tableId);
     setClientePaso('cuenta');
     setClientePropina(10);
@@ -2194,9 +2194,29 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setXcareTags([]); setXcarePlatos([]); setXcareMicro([]); setXcareComentario('');
     setJuegoPremio(null);
     setEditCuenta(false); setPinMaitreOk(false); setPinMaitre(''); setItemsEliminados([]);
-    setFacturaTipo('digital'); setFacturaCorreo(''); setPagoMixto(false);
+    setFacturaTipo('correo'); setFacturaCorreo(''); setPagoMixto(false);
     setClienteMode(true);
     closeModal();
+
+    // Pre-cargar email del cliente registrado en Oh Yeah para esta mesa
+    const mesa = displayTables.find(x => x.id === tableId);
+    const mesaNum = mesa?.num;
+    if (!mesaNum) return;
+    const hoy = new Date().toISOString().split('T')[0];
+    try {
+      const [{ data: rv }, { data: oy }] = await Promise.all([
+        supabase.from('reservations').select('cliente_email,cliente_nombre,cliente_telefono')
+          .eq('restaurante_id',6).eq('fecha',hoy).eq('mesa_num',mesaNum)
+          .in('estado',['sentada','confirmada']).limit(1),
+        supabase.from('ohyeah_reservas').select('guest_email,guest_name,guest_phone')
+          .eq('date',hoy).in('status',['seated','sentada','confirmed','confirmada'])
+          .limit(20),
+      ]);
+      const email = rv?.[0]?.cliente_email
+        || oy?.find((r:any)=> r.guest_name && mesa?.cliente && r.guest_name.toLowerCase().includes(String(mesa.cliente).toLowerCase().split(' ')[0]))?.guest_email
+        || '';
+      if (email) setFacturaCorreo(email);
+    } catch { /* sin email registrado, el campo queda vacío */ }
   };
 
   const abrirEncuesta = (tableId: number) => {
@@ -2443,8 +2463,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       {clientePaso === 'cuenta' && (
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           {/* Header con logo */}
-          <div style={{ padding: '24px 20px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-            <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fff', border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+          <div style={{ padding: '56px 20px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fff', border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
               <span style={{ fontWeight: 900, fontSize: 14, letterSpacing: -0.5, color: S.black }}>OMM</span>
             </div>
             <div style={{ fontSize: 13, color: S.text3, marginBottom: 2 }}>Mesa {mesaCliente.num}</div>
