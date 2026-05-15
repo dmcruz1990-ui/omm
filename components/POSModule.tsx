@@ -3657,21 +3657,22 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         </div>
 
         {/* BARRA INFERIOR COLAPSABLE */}
-        <div className="bg-[#0a0a0a] border-t border-[#2a2a2a] flex flex-col shrink-0 relative">
+        <div className="bg-[#0a0a0a] border-t border-[#2a2a2a] flex flex-col shrink-0">
 
-          {/* Toggle "pestaña" — sobresale del borde superior de la barra, centrado */}
-          <button
-            onClick={() => setBarraColapsada(p => !p)}
-            title={barraColapsada ? 'Mostrar barra (Ritual · Quick-add · IA)' : 'Ocultar barra inferior'}
-            className={`absolute z-20 flex items-center gap-1.5 px-3 h-7 rounded-t-lg border border-b-0 font-bold text-[11px] shadow-md transition-all ${
-              barraColapsada
-                ? 'bg-[#1c1c1c] border-[#4a8fd4]/60 text-[#4a8fd4] hover:bg-[#4a8fd4] hover:text-white'
-                : 'bg-[#4a8fd4] border-[#4a8fd4] text-white hover:bg-[#3d7fc4]'
-            }`}
-            style={{left: '50%', transform: 'translateX(-50%)', top: -27}}>
-            <span style={{fontSize: 11}}>{barraColapsada ? '▲' : '▼'}</span>
-            <span>{barraColapsada ? 'Mostrar barra' : 'Ocultar barra'}</span>
-          </button>
+          {/* Toggle strip — SIEMPRE visible (botón centrado y ancho) */}
+          <div className="flex items-center justify-center px-3 py-1.5 border-b border-[#1a1a1a]">
+            <button
+              onClick={() => setBarraColapsada(p => !p)}
+              title={barraColapsada ? 'Mostrar barra (Ritual · Quick-add · IA)' : 'Ocultar barra inferior'}
+              className={`flex items-center gap-1.5 px-4 h-7 rounded-full border font-bold text-[11px] shadow-sm transition-all ${
+                barraColapsada
+                  ? 'bg-[#1c1c1c] border-[#4a8fd4]/60 text-[#4a8fd4] hover:bg-[#4a8fd4] hover:text-white'
+                  : 'bg-[#4a8fd4] border-[#4a8fd4] text-white hover:bg-[#3d7fc4]'
+              }`}>
+              <span style={{fontSize: 11}}>{barraColapsada ? '▲' : '▼'}</span>
+              <span>{barraColapsada ? 'Mostrar barra (Ritual · Quick-add · IA)' : 'Ocultar barra inferior'}</span>
+            </button>
+          </div>
 
           {/* Contenido colapsable */}
           {!barraColapsada && (
