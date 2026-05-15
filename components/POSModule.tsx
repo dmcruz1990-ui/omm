@@ -2774,55 +2774,51 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             {showPropCustom ? (
               <Teclado sugeridos={[15,20,25]}
                 onCancel={()=>{ setShowPropCustom(false); }}
-                onConfirm={()=>{ setClientePropina(0); setShowPropCustom(false); }}/>
+                onConfirm={()=>{ setClientePropina(0); setShowPropCustom(false); setClientePaso('pago'); }}/>
             ) : (
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                {[
-                  { pct:10, label:'Mantener 10%',  emoji:'🙂', tone:S.black },
-                  { pct:15, label:'15% total',     emoji:'😊', tone:'#3dba6f' },
-                  { pct:20, label:'20% total',     emoji:'🔥', tone:'#d4943a' },
-                ].map(o=>{
-                  const sel = pctActual===o.pct && customPropina===0;
-                  return (
-                    <button key={o.pct} onClick={()=>{ setCustomPropina(0); setClientePropina(o.pct); }}
-                      style={{ padding:'18px 8px', borderRadius:18, border:`2px solid ${sel?o.tone:S.border}`, background:sel?'rgba(0,0,0,0.04)':'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'all 0.15s', gap:4 }}>
-                      <span style={{ fontSize:22 }}>{o.emoji}</span>
-                      <span style={{ fontSize:15, fontWeight:800, color:S.black }}>{o.label}</span>
-                      <span style={{ fontSize:11, color:S.text3 }}>${formatPrecio(Math.round(baseCliente*o.pct/100))}</span>
-                    </button>
-                  );
-                })}
-                <button onClick={()=>setShowPropCustom(true)}
-                  style={{ padding:'18px 8px', borderRadius:18, border:`2px dashed rgba(212,148,58,0.4)`, background:'rgba(212,148,58,0.04)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', gap:4 }}>
-                  <span style={{ fontSize:22 }}>✏️</span>
-                  <span style={{ fontSize:15, fontWeight:800, color:'#d4943a' }}>Otro valor</span>
-                  <span style={{ fontSize:11, color:S.text3 }}>Tú lo decides</span>
+              <>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                  {[
+                    { pct:10, label:'Mantener 10%',  emoji:'🙂', tone:S.black },
+                    { pct:15, label:'15% total',     emoji:'😊', tone:'#3dba6f' },
+                    { pct:20, label:'20% total',     emoji:'🔥', tone:'#d4943a' },
+                  ].map(o=>{
+                    const sel = pctActual===o.pct && customPropina===0;
+                    return (
+                      <button key={o.pct} onClick={()=>{ setCustomPropina(0); setClientePropina(o.pct); setClientePaso('pago'); }}
+                        style={{ padding:'18px 8px', borderRadius:18, border:`2px solid ${sel?o.tone:S.border}`, background:sel?'rgba(0,0,0,0.04)':'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'all 0.15s', gap:4, outline:'none' }}>
+                        <span style={{ fontSize:26 }}>{o.emoji}</span>
+                        <span style={{ fontSize:16, fontWeight:800, color:S.black }}>{o.label}</span>
+                        <span style={{ fontSize:12, fontWeight:600, color:o.tone }}>${formatPrecio(Math.round(baseCliente*o.pct/100))}</span>
+                      </button>
+                    );
+                  })}
+                  <button onClick={()=>setShowPropCustom(true)}
+                    style={{ padding:'18px 8px', borderRadius:18, border:`2px dashed rgba(212,148,58,0.4)`, background:'rgba(212,148,58,0.04)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', gap:4, outline:'none' }}>
+                    <span style={{ fontSize:26 }}>✏️</span>
+                    <span style={{ fontSize:16, fontWeight:800, color:'#d4943a' }}>Otro valor</span>
+                    <span style={{ fontSize:11, color:S.text3 }}>Tú lo decides</span>
+                  </button>
+                </div>
+
+                {/* Total en vivo */}
+                <div style={{ background: '#fff', borderRadius: 16, padding: '14px 18px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: S.text2, marginBottom: 4 }}>
+                    <span>Reconocimiento actual:</span>
+                    <span style={{ fontWeight: 600, color: S.text }}>${formatPrecio(propinaCliente)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: S.text2 }}>
+                    <span>Estás pagando:</span>
+                    <span style={{ fontWeight: 700, color: S.black, fontSize: 16 }}>${formatPrecio(totalCliente)}</span>
+                  </div>
+                </div>
+
+                <button onClick={()=>{ setShowPropCustom(false); setPropinaSubStep('legal'); }}
+                  style={{ padding:'14px', borderRadius:100, background:'transparent', color:S.text3, fontSize:13, fontWeight:600, border:`1px solid ${S.border}`, cursor:'pointer', marginTop:'auto' }}>
+                  ← Volver
                 </button>
-              </div>
+              </>
             )}
-
-            {/* Total en vivo */}
-            <div style={{ background: '#fff', borderRadius: 16, padding: '14px 18px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: S.text2, marginBottom: 4 }}>
-                <span>Reconocimiento:</span>
-                <span style={{ fontWeight: 600, color: S.text }}>${formatPrecio(propinaCliente)}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: S.text2 }}>
-                <span>Estás pagando:</span>
-                <span style={{ fontWeight: 700, color: S.black, fontSize: 16 }}>${formatPrecio(totalCliente)}</span>
-              </div>
-            </div>
-
-            <div style={{ display:'flex', gap:8, marginTop:'auto' }}>
-              <button onClick={()=>{ setShowPropCustom(false); setPropinaSubStep('legal'); }}
-                style={{ flex:1, padding:'14px', borderRadius:100, background:'transparent', color:S.text3, fontSize:13, fontWeight:600, border:`1px solid ${S.border}`, cursor:'pointer' }}>
-                ← Volver
-              </button>
-              <button onClick={() => setClientePaso('pago')}
-                style={{ flex:2, padding:'16px', borderRadius:100, background: S.black, color: '#fff', fontSize: 15, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
-                Confirmar y continuar
-              </button>
-            </div>
           </div>
         );
       })()}
