@@ -2953,7 +2953,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 32px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
           {/* Datafono con mesero */}
-          <button onClick={() => setClientePaso('encuesta')}
+          <button onClick={async()=>{
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:profile?.nombre_completo||'Mesero', total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Datafono', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
+              await guardarFactura('Datafono');
+              setClientePaso('encuesta');
+            }}
             style={{ width: '100%', padding: '18px 20px', borderRadius: 16, border: `1px solid ${S.border}`, background: '#fff', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <div style={{ width: 24, height: 24, borderRadius: '50%', border: `1.5px solid ${S.border}` }}></div>
             <div>
@@ -3100,7 +3104,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, color: S.text2 }}><span>Total</span><span>${formatPrecio(totalCliente)}</span></div>
           </div>
 
-          <button onClick={() => setClientePaso('encuesta')}
+          <button onClick={async()=>{
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:profile?.nombre_completo||'Mesero', total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Bono', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
+              await guardarFactura('Bono');
+              setClientePaso('encuesta');
+            }}
             style={{ width: '100%', padding: '18px', borderRadius: 100, background: '#9b72ff', color: '#fff', fontSize: 17, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
             ✓ Aplicar y continuar
           </button>
@@ -3146,7 +3154,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             Al pagar, aceptas nuestros <u>términos de uso</u> y <u>política de privacidad</u>.
           </p>
 
-          <button onClick={() => setClientePaso('encuesta')}
+          <button onClick={async()=>{
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:profile?.nombre_completo||'Mesero', total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Tarjeta', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
+              await guardarFactura('Tarjeta');
+              setClientePaso('encuesta');
+            }}
             style={{ width: '100%', padding: '18px', borderRadius: 100, background: S.black, color: '#fff', fontSize: 17, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
             Pagar ${formatPrecio(totalCliente)}
           </button>
