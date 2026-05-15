@@ -352,7 +352,7 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
   const premio = selected !== null ? PREMIOS_RULETA[selected] : null;
 
   return (
-    <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'24px 20px 32px', background: premio ? premio.bg : '#080810', transition:'background 1s', position:'relative', overflow:'hidden' }}>
+    <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'60px 20px 32px', background: premio ? premio.bg : '#080810', transition:'background 1s', position:'relative', overflow:'hidden' }}>
       <style>{`
         @keyframes roulettePulse{0%,100%{box-shadow:0 0 40px #FF2D78,0 0 80px #FF2D7840}50%{box-shadow:0 0 80px #FF2D78,0 0 160px #FF2D7860}}
         @keyframes confettiFloat{0%{transform:translate(0,0) rotate(0deg) scale(1);opacity:1}100%{transform:translate(var(--tx),var(--ty)) rotate(var(--r)) scale(0);opacity:0}}
@@ -494,15 +494,35 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
   );
 };
 
-// ── 6 CARTAS — pica una y sale tu premio ───────────────────
+// ── 6 CARTAS — mira los premios, se barajan, picas el tuyo ──
 const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: number }> = ({ onClose, mesaNum, rating }) => {
   const [cartas] = useState(() => [...PREMIOS_RULETA].sort(() => Math.random() - 0.5).slice(0, 6));
-  const [flipped, setFlipped] = useState<number|null>(null);
-  const [revealing, setRevealing] = useState(false);
+  // Fases: preview (premios visibles) → flip (voltear) → shuffle (barajar) → pick → done
+  const [phase, setPhase] = useState<'preview'|'flip'|'shuffle'|'pick'|'done'>('preview');
+  const [picked, setPicked] = useState<number|null>(null);
+  const [offsets, setOffsets] = useState(()=>cartas.map(()=>({x:0,y:0,r:0,z:0})));
   const [particles, setParticles] = useState<{x:number;y:number;c:string;id:number;angle:number;dist:number}[]>([]);
   const [correoEnvio, setCorreoEnvio] = useState('');
   const [premioEnviado, setPremioEnviado] = useState(false);
   const pidRef = useRef(0);
+
+  // Secuencia automática: ver premios → voltear → barajar → listo para picar
+  useEffect(() => {
+    const t: number[] = [];
+    t.push(window.setTimeout(()=>setPhase('flip'), 2800));
+    t.push(window.setTimeout(()=>setPhase('shuffle'), 3600));
+    // 4 tandas de barajado: las cartas se mueven a posiciones aleatorias y vuelven
+    [0,1,2,3].forEach(k=>{
+      t.push(window.setTimeout(()=>{
+        setOffsets(cartas.map(()=> k===3
+          ? {x:0,y:0,r:0,z:0}
+          : {x:(Math.random()-0.5)*150, y:(Math.random()-0.5)*70, r:(Math.random()-0.5)*40, z:Math.floor(Math.random()*6)}));
+      }, 3800 + k*430));
+    });
+    t.push(window.setTimeout(()=>setPhase('pick'), 3800 + 4*430));
+    return ()=>t.forEach(clearTimeout);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const spawnConfetti = () => {
     const colors = ['#FFB547','#FF2D78','#00E676','#448AFF','#B388FF','#FF5252','#FFD700','#fff'];
@@ -516,22 +536,36 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
   };
 
   const pickCard = (i: number) => {
-    if (flipped !== null) return;
-    setRevealing(true);
-    setFlipped(i);
-    setTimeout(() => { setRevealing(false); spawnConfetti(); }, 700);
+    if (phase !== 'pick') return;
+    setPicked(i);
+    setPhase('done');
+    setTimeout(spawnConfetti, 650);
   };
 
-  const premio = flipped !== null ? cartas[flipped] : null;
+  const premio = picked !== null ? cartas[picked] : null;
+  const headerTxt = {
+    preview: 'Estos son los premios',
+    flip:    'Memoriza bien...',
+    shuffle: '🔀 Barajando...',
+    pick:    'Pica tu carta',
+    done:    '¡Ganaste!',
+  }[phase];
+  const headerSub = {
+    preview: 'Míralos bien — en un momento se barajan',
+    flip:    'Volteando las cartas',
+    shuffle: 'Ya no sabes cuál es cuál...',
+    pick:    'Tu intuición elige tu premio',
+    done:    premio?.desc || '',
+  }[phase];
 
   return (
-    <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'24px 20px 32px', background: premio ? premio.bg : '#080810', transition:'background 1s', position:'relative', overflow:'hidden' }}>
+    <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'60px 20px 32px', background: premio ? premio.bg : '#080810', transition:'background 1s', position:'relative', overflow:'hidden' }}>
       <style>{`
-        @keyframes cardFlip{0%{transform:rotateY(0deg)}100%{transform:rotateY(180deg)}}
         @keyframes cardFloat{0%,100%{transform:translateY(0px)}50%{transform:translateY(-6px)}}
         @keyframes cardShine{0%{background-position:-200% 0}100%{background-position:200% 0}}
         @keyframes confettiFloat{0%{transform:translate(0,0) rotate(0deg) scale(1);opacity:1}100%{transform:translate(var(--tx),var(--ty)) rotate(var(--r)) scale(0);opacity:0}}
         @keyframes prizeReveal{0%{transform:scale(0) rotate(-10deg);opacity:0}60%{transform:scale(1.1) rotate(3deg)}100%{transform:scale(1) rotate(0deg);opacity:1}}
+        @keyframes cardPickPulse{0%,100%{box-shadow:0 6px 24px rgba(255,45,120,0.35)}50%{box-shadow:0 6px 34px rgba(255,45,120,0.7)}}
       `}</style>
 
       {particles.map(p=>(
@@ -550,10 +584,10 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
       <div style={{ textAlign:'center', marginBottom:20, zIndex:5 }}>
         <div style={{ fontSize:11, color:'#FF2D78', fontWeight:900, letterSpacing:'.15em', textTransform:'uppercase' as const, marginBottom:8 }}>✦ OMM REWARDS</div>
         <div style={{ fontFamily:"'Syne',sans-serif", fontSize:26, fontWeight:900, color: premio ? premio.color : '#fff', transition:'color .8s', lineHeight:1.2 }}>
-          {flipped === null ? 'Pica una carta' : '¡Ganaste!'}
+          {headerTxt}
         </div>
         <div style={{ fontSize:13, color:'rgba(255,255,255,.5)', marginTop:4 }}>
-          {flipped === null ? 'Tu intuición elige tu premio' : premio!.desc}
+          {headerSub}
         </div>
       </div>
 
@@ -568,26 +602,29 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
         zIndex:5,
       }}>
         {cartas.map((c, i) => {
-          const isFlipped = flipped === i;
-          const isOther = flipped !== null && flipped !== i;
+          // Premio visible si: estamos en preview, o esta carta es la elegida ya revelada
+          const showPrize = phase==='preview' || (phase==='done' && picked===i);
+          const isOther = phase==='done' && picked!==i;
+          const off = offsets[i] || {x:0,y:0,r:0,z:0};
           return (
             <div key={i}
               onClick={() => pickCard(i)}
               style={{
                 aspectRatio:'2/3',
                 perspective:'1000px',
-                cursor: flipped === null ? 'pointer' : 'default',
-                opacity: isOther ? 0.25 : 1,
-                transform: isOther ? 'scale(0.92)' : 'scale(1)',
-                transition: 'opacity .4s, transform .4s',
-                animation: flipped === null ? `cardFloat 3s ease-in-out ${i*0.2}s infinite` : 'none',
+                cursor: phase==='pick' ? 'pointer' : 'default',
+                opacity: isOther ? 0.2 : 1,
+                zIndex: off.z,
+                transform: `translate(${off.x}px,${off.y}px) rotate(${off.r}deg) scale(${isOther?0.9:1})`,
+                transition: phase==='shuffle' ? 'transform .4s cubic-bezier(.5,.05,.5,.95)' : 'transform .45s ease, opacity .4s',
+                animation: phase==='pick' ? `cardFloat 3s ease-in-out ${i*0.2}s infinite` : 'none',
               }}>
               <div style={{
                 position:'relative',
                 width:'100%', height:'100%',
                 transformStyle:'preserve-3d',
                 transition:'transform 0.7s cubic-bezier(.34,1.56,.64,1)',
-                transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+                transform: showPrize ? 'rotateY(180deg)' : 'rotateY(0deg)',
               }}>
                 {/* Dorso */}
                 <div style={{
@@ -599,6 +636,7 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
                   backfaceVisibility:'hidden',
                   display:'flex', alignItems:'center', justifyContent:'center',
                   overflow:'hidden',
+                  animation: phase==='pick' ? 'cardPickPulse 1.8s ease-in-out infinite' : 'none',
                 }}>
                   <div style={{
                     position:'absolute', inset:0,
@@ -612,7 +650,7 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
                     letterSpacing:'.02em', zIndex:2,
                   }}>✦</div>
                 </div>
-                {/* Anverso */}
+                {/* Anverso (premio) */}
                 <div style={{
                   position:'absolute', inset:0,
                   borderRadius:14,
@@ -634,7 +672,7 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
       </div>
 
       {/* Premio ganado */}
-      {premio && !revealing && (
+      {premio && phase==='done' && (
         <div style={{ background:`linear-gradient(135deg,${premio.color}20,${premio.color}08)`, border:`2px solid ${premio.color}60`, borderRadius:24, padding:'24px 32px', textAlign:'center', marginBottom:20, animation:'prizeReveal .6s cubic-bezier(.34,1.56,.64,1) forwards', boxShadow:`0 8px 40px ${premio.color}30`, zIndex:5 }}>
           <div style={{ fontSize:72, marginBottom:8, filter:`drop-shadow(0 0 20px ${premio.color})` }}>{premio.emoji}</div>
           <div style={{ fontFamily:"'Syne',sans-serif", fontSize:24, fontWeight:900, color:premio.color, marginBottom:6 }}>{premio.label}</div>
@@ -674,16 +712,16 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
       )}
 
       {/* Botones */}
-      {flipped !== null && !revealing ? (
+      {phase==='done' ? (
         <button onClick={onClose}
           style={{ padding:'16px 56px', borderRadius:50, background:`linear-gradient(135deg,${premio!.color},${premio!.color}cc)`, color:'#fff', fontSize:17, fontWeight:900, border:'none', cursor:'pointer', boxShadow:`0 6px 30px ${premio!.color}60`, fontFamily:"'Syne',sans-serif", zIndex:5, position:'relative' }}>
           🎉 ¡Genial! Cerrar
         </button>
-      ) : flipped === null ? (
+      ) : (
         <button onClick={onClose} style={{ background:'none', border:'none', fontSize:12, color:'rgba(255,255,255,.2)', cursor:'pointer', marginTop:6, zIndex:5, position:'relative' }}>
           Omitir premio
         </button>
-      ) : null}
+      )}
       {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
       <div style={{display:'none'}}>{rating}</div>
     </div>
@@ -692,7 +730,7 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
 
 // ── PICKER — elige entre ruleta o cartas ────────────────────
 const PremioPicker: React.FC<{ onPick: (juego:'ruleta'|'cartas')=>void; onSkip: ()=>void; rating: number }> = ({ onPick, onSkip, rating }) => (
-  <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', background:'#080810', position:'relative' }}>
+  <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'60px 24px 32px', background:'#080810', position:'relative' }}>
     <style>{`
       @keyframes pulseGlow{0%,100%{box-shadow:0 0 30px rgba(255,45,120,0.4)}50%{box-shadow:0 0 60px rgba(255,45,120,0.7)}}
       @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
@@ -2147,12 +2185,17 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [clientePropina, setClientePropina] = useState<number>(10);
   const [clienteRating, setClienteRating] = useState<number>(0);
   const [clienteRatings, setClienteRatings] = useState({ comida: 0, servicio: 0, ambiente: 0 });
-  // X-CARE estados
-  const [xcareStep, setXcareStep] = useState<'rating'|'tags'|'platos'|'microtags'|'redes'|'done'>('rating');
+  // X-CARE / NEXUM Feedback estados
+  const [xcareStep, setXcareStep] = useState<'sentiment'|'cat'|'sub'|'comentario'|'done'>('sentiment');
+  const [xcareSubIdx, setXcareSubIdx] = useState(0);
+  const [xcareSel, setXcareSel] = useState<Record<string,string[]>>({});
+  const encTimerRef = useRef<number|null>(null);
   const [feedbackMesa, setFeedbackMesa] = useState('');
   const [feedbackTipo, setFeedbackTipo] = useState<'nota'|'alerta'|'felicitacion'>('nota');
   const [showPropCustom, setShowPropCustom] = useState(false);
   const [customPropina, setCustomPropina] = useState(0);
+  const [propinaSubStep, setPropinaSubStep] = useState<'legal'|'reconocimiento'>('legal');
+  const [propinaIntent, setPropinaIntent] = useState<'aceptar'|'otro'>('aceptar');
   const [divClientePax, setDivClientePax] = useState(1);
   const [platosDia, setPlatosDia]         = useState<any[]>([]);
   const [reservasHoy, setReservasHoy] = useState<any[]>([]);
@@ -2184,19 +2227,41 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [xcareMicro, setXcareMicro] = useState<string[]>([]);
   const [xcareComentario, setXcareComentario] = useState('');
 
-  const abrirModoCliente = (tableId: number) => {
+  const abrirModoCliente = async (tableId: number) => {
     setClienteTableId(tableId);
     setClientePaso('cuenta');
     setClientePropina(10);
     setClienteRating(0);
     setClienteRatings({ comida: 0, servicio: 0, ambiente: 0 });
-    setXcareStep('rating');
+    setXcareStep('sentiment'); setXcareSubIdx(0); setXcareSel({});
     setXcareTags([]); setXcarePlatos([]); setXcareMicro([]); setXcareComentario('');
     setJuegoPremio(null);
     setEditCuenta(false); setPinMaitreOk(false); setPinMaitre(''); setItemsEliminados([]);
-    setFacturaTipo('digital'); setFacturaCorreo(''); setPagoMixto(false);
+    setFacturaTipo('correo'); setFacturaCorreo(''); setPagoMixto(false);
+    setPropinaSubStep('legal'); setCustomPropina(0); setShowPropCustom(false);
+    setPropinaIntent('aceptar'); setClientePropina(10);
     setClienteMode(true);
     closeModal();
+
+    // Pre-cargar email del cliente registrado en Oh Yeah para esta mesa
+    const mesa = displayTables.find(x => x.id === tableId);
+    const mesaNum = mesa?.num;
+    if (!mesaNum) return;
+    const hoy = new Date().toISOString().split('T')[0];
+    try {
+      const [{ data: rv }, { data: oy }] = await Promise.all([
+        supabase.from('reservations').select('cliente_email,cliente_nombre,cliente_telefono')
+          .eq('restaurante_id',6).eq('fecha',hoy).eq('mesa_num',mesaNum)
+          .in('estado',['sentada','confirmada']).limit(1),
+        supabase.from('ohyeah_reservas').select('guest_email,guest_name,guest_phone')
+          .eq('date',hoy).in('status',['seated','sentada','confirmed','confirmada'])
+          .limit(20),
+      ]);
+      const email = rv?.[0]?.cliente_email
+        || oy?.find((r:any)=> r.guest_name && mesa?.cliente && r.guest_name.toLowerCase().includes(String(mesa.cliente).toLowerCase().split(' ')[0]))?.guest_email
+        || '';
+      if (email) setFacturaCorreo(email);
+    } catch { /* sin email registrado, el campo queda vacío */ }
   };
 
   const abrirEncuesta = (tableId: number) => {
@@ -2443,8 +2508,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       {clientePaso === 'cuenta' && (
         <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column' }}>
           {/* Header con logo */}
-          <div style={{ padding: '24px 20px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
-            <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fff', border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16 }}>
+          <div style={{ padding: '56px 20px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 }}>
+            <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#fff', border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 16, boxShadow: '0 2px 12px rgba(0,0,0,0.06)' }}>
               <span style={{ fontWeight: 900, fontSize: 14, letterSpacing: -0.5, color: S.black }}>OMM</span>
             </div>
             <div style={{ fontSize: 13, color: S.text3, marginBottom: 2 }}>Mesa {mesaCliente.num}</div>
@@ -2637,124 +2702,303 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         </div>
       )}
 
-      {/* ═══ PASO 2: PROPINA ═══ */}
-      {clientePaso === 'propina' && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '32px 24px 32px' }}>
-          {/* Título */}
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.2, color: S.black, marginBottom: 4 }}>
-              ¿Deseas dejar propina<br/>a <span style={{ fontWeight: 900 }}>{nombreMesero}</span>?
+      {/* ═══ PASO 2: PROPINA — diseño Nexum, 2 pantallas (legal + reconocimiento) ═══ */}
+      {clientePaso === 'propina' && (() => {
+        // Paleta Nexum
+        const N = {
+          bg:'#FFFFFF', ink:'#1A1A2E', ink2:'#4A4A5E', ink3:'#8A8AA0',
+          violet:'#7C3AED', violetD:'#5B21B6', violetL:'#F3EEFE',
+          violetXL:'#FAF7FF', border:'#EDE9F6',
+          yellow:'#FFF6E8', yellowI:'#F59E0B',
+          green:'#E8F8EE', greenI:'#10B981',
+          blue:'#EEF2FE', blueI:'#3B82F6',
+        };
+        const baseDiez = Math.round(baseCliente * 0.10);
+        const pctActual = customPropina>0 && clientePropina===0
+          ? Math.round((customPropina / Math.max(baseCliente,1)) * 100)
+          : clientePropina;
+
+        // ── Mascota Nexum (SVG inline) ───────────────────────────────
+        const NexumMascot = () => (
+          <svg width="118" height="118" viewBox="0 0 118 118" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Sparkles */}
+            <g fill={N.violet}>
+              <path d="M22 32 l1.5 4 l4 1.5 l-4 1.5 l-1.5 4 l-1.5 -4 l-4 -1.5 l4 -1.5 z" opacity="0.9"/>
+              <path d="M96 56 l1.2 3.2 l3.2 1.2 l-3.2 1.2 l-1.2 3.2 l-1.2 -3.2 l-3.2 -1.2 l3.2 -1.2 z" opacity="0.7"/>
+              <circle cx="32" cy="62" r="2" opacity="0.5"/>
+              <circle cx="89" cy="86" r="1.8" opacity="0.6"/>
+              <circle cx="26" cy="84" r="1.5" opacity="0.4"/>
+            </g>
+            {/* Leaf */}
+            <path d="M76 22 Q86 18 89 28 Q83 30 76 22 Z" fill={N.violet} opacity="0.9"/>
+            <path d="M82 24 Q84 22 86 26" stroke="#fff" strokeWidth="0.8" fill="none" opacity="0.7"/>
+            {/* Heart */}
+            <path d="M95 26 c-2 -3 -6 -3 -7 0 c-1 -3 -5 -3 -7 0 c-2 4 7 10 7 10 s9 -6 7 -10 z" fill={N.violet}/>
+            {/* Face — rounded square */}
+            <rect x="30" y="36" width="58" height="58" rx="16" stroke={N.ink} strokeWidth="3.2" fill="#fff"/>
+            {/* Cheeks tint */}
+            <circle cx="46" cy="74" r="4" fill={N.violet} opacity="0.18"/>
+            <circle cx="72" cy="74" r="4" fill={N.violet} opacity="0.18"/>
+            {/* Eyes */}
+            <circle cx="48" cy="60" r="2.6" fill={N.ink}/>
+            <circle cx="70" cy="60" r="2.6" fill={N.ink}/>
+            {/* Smile */}
+            <path d="M48 76 Q59 84 70 76" stroke={N.ink} strokeWidth="3" fill="none" strokeLinecap="round"/>
+          </svg>
+        );
+
+        // ── Header común (logo NEXUM + back) ─────────────────────────
+        const HeaderNexum = ({ onBack }: { onBack: ()=>void }) => (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 6px 6px', minHeight:40 }}>
+            <button onClick={onBack} style={{ background:'transparent', border:'none', cursor:'pointer', padding:8, color:N.ink, display:'flex', alignItems:'center', justifyContent:'center', width:36, height:36 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 6 L9 12 L15 18" stroke={N.ink} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:900, color:N.ink, letterSpacing:'-0.01em', display:'flex', alignItems:'center', gap:1 }}>
+              NE<span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:22, height:22 }}>
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M3 4 L11 11 L3 18 M19 4 L11 11 L19 18" stroke={N.violet} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </span>UM
             </div>
-            <div style={{ fontSize:12, color:S.text3, marginBottom:8, lineHeight:1.5 }}>
-              Propina <strong style={{color:S.text2}}>100% voluntaria</strong> · El 100% va al equipo de servicio
+            <div style={{ width:36 }}/>
+          </div>
+        );
+
+        // ── Card opción (radio list-style) ───────────────────────────
+        const OpcionCard = ({ icon, iconBg, iconColor, title, subtitle, badge, badgeColor, selected, onClick }: {
+          icon: React.ReactNode; iconBg: string; iconColor: string; title: string; subtitle: string;
+          badge?: string; badgeColor?: string; selected: boolean; onClick: ()=>void;
+        }) => (
+          <button onClick={onClick}
+            style={{
+              width:'100%', display:'flex', alignItems:'center', gap:14,
+              padding:'16px 18px', borderRadius:18,
+              border:`2px solid ${selected?N.violet:N.border}`,
+              background: selected? N.violetL : N.bg,
+              cursor:'pointer', textAlign:'left', transition:'all 0.18s', outline:'none',
+            }}>
+            <div style={{ width:48, height:48, borderRadius:'50%', background:iconBg, display:'flex', alignItems:'center', justifyContent:'center', color:iconColor, fontSize:22, flexShrink:0 }}>
+              {icon}
             </div>
-            {/* Badge legal Colombia */}
-            <div style={{ display:'inline-flex', alignItems:'center', gap:5, background:'rgba(61,186,111,0.08)', border:'1px solid rgba(61,186,111,0.25)', borderRadius:20, padding:'4px 14px', fontSize:10, color:'#3dba6f', marginBottom:4 }}>
-              ✓ Ley 1393 de 2010 · Art. 22 — Voluntaria en Colombia
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:2 }}>
+                <span style={{ fontFamily:"'Syne',sans-serif", fontSize:17, fontWeight:800, color:N.ink, letterSpacing:'-0.01em' }}>{title}</span>
+                {badge && <span style={{ fontSize:10, fontWeight:700, color:'#fff', background:badgeColor||N.violet, padding:'3px 9px', borderRadius:20, letterSpacing:'.02em' }}>{badge}</span>}
+              </div>
+              <div style={{ fontSize:12, color:N.ink3, lineHeight:1.4 }}>{subtitle}</div>
+            </div>
+            <div style={{ width:22, height:22, borderRadius:'50%', border:`2px solid ${selected?N.violet:'#D5D2E0'}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, background:N.bg }}>
+              {selected && <div style={{ width:12, height:12, borderRadius:'50%', background:N.violet }}/>}
+            </div>
+          </button>
+        );
+
+        // ── Banner informativo distribución de propina ───────────────
+        const InfoCadena = () => (
+          <div style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 16px', background:N.violetL, borderRadius:14, border:`1px solid ${N.border}` }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{flexShrink:0}}>
+              <path d="M12 3 L20 7 V12 C20 16.5 16.5 20.5 12 22 C7.5 20.5 4 16.5 4 12 V7 Z" stroke={N.violet} strokeWidth="1.8" fill="none"/>
+              <text x="12" y="15" fill={N.violet} fontSize="11" fontWeight="900" textAnchor="middle">i</text>
+            </svg>
+            <span style={{ fontSize:11.5, color:N.ink2, lineHeight:1.5, flex:1 }}>
+              La propina se distribuye entre las personas que hacen parte de la cadena de servicio.
+            </span>
+            <svg width="34" height="22" viewBox="0 0 40 24" fill="none" style={{flexShrink:0}}>
+              <circle cx="12" cy="9" r="4" stroke={N.violet} strokeWidth="1.6"/>
+              <path d="M4 22 c0 -5 4 -8 8 -8 s8 3 8 8" stroke={N.violet} strokeWidth="1.6" fill="none"/>
+              <circle cx="28" cy="9" r="4" stroke={N.violet} strokeWidth="1.6"/>
+              <path d="M20 22 c0 -5 4 -8 8 -8 s8 3 8 8" stroke={N.violet} strokeWidth="1.6" fill="none"/>
+              <path d="M28 4 l1.2 2 l2 .5 l-1.6 1.5 l.4 2.2 l-2 -1 l-2 1 l.4 -2.2 l-1.6 -1.5 l2 -.5 z" fill={N.violet}/>
+            </svg>
+          </div>
+        );
+
+        // ── Teclado numérico (estilo Nexum) ──────────────────────────
+        const Teclado = ({ onConfirm, onCancel, sugeridos, title }: { onConfirm: ()=>void; onCancel: ()=>void; sugeridos: number[]; title:string }) => (
+          <div style={{ background: N.violetXL, borderRadius: 18, padding: '18px', border: `1px solid ${N.border}` }}>
+            <div style={{ fontSize: 11, color: N.ink3, marginBottom: 6, fontWeight: 700, textTransform:'uppercase', letterSpacing:'.06em' }}>{title}</div>
+            <div style={{ textAlign:'center', fontSize:34, fontWeight:900, color:N.ink, marginBottom:14, minHeight:44, letterSpacing:'-0.02em', fontFamily:"'Syne',sans-serif" }}>
+              {customPropina > 0 ? `$${customPropina.toLocaleString('es-CO')}` : '$ —'}
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:10 }}>
+              {['1','2','3','4','5','6','7','8','9','000','0','⌫'].map(k=>(
+                <button key={k} onClick={()=>{
+                  if (k==='⌫') { setCustomPropina(p=>Math.floor(p/10)); return; }
+                  setCustomPropina(p=>{ const n=p*(k==='000'?1000:10)+(k==='000'?0:parseInt(k)); return n<=9999999?n:p; });
+                }}
+                  style={{ padding:'16px 8px', borderRadius:12, border:`1px solid ${k==='⌫'?'rgba(239,68,68,0.3)':N.border}`, background:k==='⌫'?'rgba(239,68,68,0.06)':'#fff', fontSize:k==='⌫'?18:18, fontWeight:800, cursor:'pointer', color:k==='⌫'?'#ef4444':N.ink, outline:'none' }}>
+                  {k}
+                </button>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:6, marginBottom:12 }}>
+              {sugeridos.map(p=>(
+                <button key={p} onClick={()=>setCustomPropina(Math.round(baseCliente*p/100))}
+                  style={{ flex:1, padding:'8px', borderRadius:10, border:`1px solid ${N.violet}30`, background:N.violetL, fontSize:10, fontWeight:700, color:N.violet, cursor:'pointer', outline:'none' }}>
+                  {p}% · ${Math.round(baseCliente*p/100).toLocaleString('es-CO')}
+                </button>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={onCancel}
+                style={{ flex:1, padding:'13px', borderRadius:14, border:`1px solid ${N.border}`, background:'#fff', fontSize:13, fontWeight:700, color:N.ink2, cursor:'pointer', outline:'none' }}>
+                Cancelar
+              </button>
+              <button onClick={onConfirm}
+                disabled={customPropina<=0}
+                style={{ flex:2, padding:'13px', borderRadius:14, border:'none', background:customPropina>0?N.violet:'#D5D2E0', color:'#fff', fontSize:14, fontWeight:800, cursor:customPropina>0?'pointer':'not-allowed', outline:'none', fontFamily:"'Syne',sans-serif" }}>
+                Confirmar ${(customPropina||0).toLocaleString('es-CO')}
+              </button>
             </div>
           </div>
+        );
 
-          {/* Botones de propina */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
-            {[
-              { pct: 0,  emoji: '😐', label:'Sin propina',  desc:'' },
-              { pct: 10, emoji: '🙂', label:'10% Legal',    desc:'Sugerido', badge:'✓ Ley 1393' },
-              { pct: 20, emoji: '🔥', label:'20% Popular',  desc:'Generoso',  popular: true },
-              { pct: 30, emoji: '🤩', label:'30% Wow',      desc:'Increíble' },
-            ].map(({ pct, emoji, label, popular, badge }) => (
-              <div key={pct} style={{ position: 'relative' }}>
-                {popular && <div style={{ position: 'absolute', top:-10, left:'50%', transform:'translateX(-50%)', background:S.black, color:'#fff', fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap', zIndex:1 }}>POPULAR</div>}
-                {badge && <div style={{ position: 'absolute', top:-10, left:'50%', transform:'translateX(-50%)', background:'#3dba6f', color:'#fff', fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap', zIndex:1 }}>{badge}</div>}
-                <button onClick={() => setClientePropina(pct)}
-                  style={{ width:'100%', aspectRatio:'1', borderRadius:20, border:`2px solid ${clientePropina===pct?S.black:S.border}`, background:clientePropina===pct?S.bg2:'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'all 0.15s', gap:2 }}>
-                  {clientePropina===pct&&<span style={{ fontSize:12, fontWeight:700, color:S.black }}>✓</span>}
-                  <span style={{ fontSize:22, fontWeight:900, color:S.black }}>{pct}%</span>
-                  <span style={{ fontSize:16 }}>{emoji}</span>
-                  <span style={{ fontSize:9, color:S.text3 }}>{label}</span>
+        // ╔═══════════════════════════════════════════════════════════╗
+        // ║  PANTALLA 1 — Legal                                       ║
+        // ╚═══════════════════════════════════════════════════════════╝
+        if (propinaSubStep === 'legal') {
+          const selAceptar = propinaIntent === 'aceptar';
+          const selOtro    = propinaIntent === 'otro';
+          return (
+            <div style={{ flex:1, overflowY:'auto', background:N.bg, display:'flex', flexDirection:'column', padding:'8px 18px 24px' }}>
+              <HeaderNexum onBack={()=>setClientePaso('cuenta')}/>
+
+              <div style={{ display:'flex', justifyContent:'center', marginTop:8, marginBottom:14 }}>
+                <NexumMascot/>
+              </div>
+
+              <div style={{ textAlign:'center', marginBottom:18 }}>
+                <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:26, fontWeight:900, color:N.ink, lineHeight:1.1, margin:'0 0 12px', letterSpacing:'-0.02em' }}>
+                  ¿Deseas incluir la<br/>propina sugerida?
+                </h1>
+                <p style={{ fontSize:13, color:N.ink2, lineHeight:1.55, margin:'0 auto', maxWidth:340 }}>
+                  La propina es voluntaria según la Ley 1935 de 2018.<br/>
+                  Este establecimiento sugiere el 10% del valor del servicio.<br/>
+                  Puedes aceptarla, elegir otra cuantía o no incluirla libremente.
+                </p>
+              </div>
+
+              {showPropCustom ? (
+                <Teclado sugeridos={[10,15,20]} title="Propina personalizada"
+                  onCancel={()=>{ setCustomPropina(0); setShowPropCustom(false); }}
+                  onConfirm={()=>{ setClientePropina(0); setShowPropCustom(false); setPropinaIntent('otro'); setPropinaSubStep('reconocimiento'); }}/>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:18 }}>
+                  <OpcionCard
+                    icon={<span>🙂</span>} iconBg={N.violetL} iconColor={N.violet}
+                    title="Aceptar 10%" subtitle="Incluir 10% de propina voluntaria"
+                    badge="Sugerida" badgeColor={N.violet}
+                    selected={selAceptar}
+                    onClick={()=>{ setPropinaIntent('aceptar'); setCustomPropina(0); setClientePropina(10); }}/>
+                  <OpcionCard
+                    icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M14 4 l6 6 l-10 10 H4 v-6 l10 -10 z" stroke={N.violet} strokeWidth="2" strokeLinejoin="round"/></svg>}
+                    iconBg={N.violetL} iconColor={N.violet}
+                    title="Elegir otro valor" subtitle="Selecciona una cuantía diferente"
+                    selected={selOtro}
+                    onClick={()=>{ setPropinaIntent('otro'); }}/>
+                </div>
+              )}
+
+              {!showPropCustom && <InfoCadena/>}
+
+              {!showPropCustom && (
+                <div style={{ marginTop:'auto', paddingTop:24, display:'flex', flexDirection:'column', gap:6 }}>
+                  <button onClick={()=>{
+                    if (propinaIntent === 'otro') { setShowPropCustom(true); setClientePropina(0); return; }
+                    setCustomPropina(0); setClientePropina(10); setPropinaSubStep('reconocimiento');
+                  }}
+                    style={{ width:'100%', padding:'18px', borderRadius:50, border:'none', background:N.violet, color:'#fff', fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:800, cursor:'pointer', boxShadow:'0 8px 24px rgba(124,58,237,0.25)', outline:'none' }}>
+                    Continuar
+                  </button>
+                  <button onClick={()=>{ setCustomPropina(0); setClientePropina(0); setClientePaso('pago'); }}
+                    style={{ width:'100%', padding:'12px', background:'transparent', border:'none', color:N.violet, fontWeight:700, fontSize:14, cursor:'pointer', outline:'none' }}>
+                    No incluir
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        }
+
+        // ╔═══════════════════════════════════════════════════════════╗
+        // ║  PANTALLA 2 — Reconocimiento adicional                    ║
+        // ╚═══════════════════════════════════════════════════════════╝
+        const isCustom = customPropina>0 && clientePropina===0;
+        return (
+          <div style={{ flex:1, overflowY:'auto', background:N.bg, display:'flex', flexDirection:'column', padding:'8px 18px 24px' }}>
+            <HeaderNexum onBack={()=>{ setShowPropCustom(false); setPropinaSubStep('legal'); }}/>
+
+            <div style={{ display:'flex', justifyContent:'center', marginTop:8, marginBottom:14 }}>
+              <NexumMascot/>
+            </div>
+
+            <div style={{ textAlign:'center', marginBottom:18 }}>
+              <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:24, fontWeight:900, color:N.ink, lineHeight:1.15, margin:'0 0 12px', letterSpacing:'-0.02em' }}>
+                ¿Deseas dejar un<br/>reconocimiento adicional<br/>al equipo?
+              </h1>
+              <p style={{ fontSize:13, color:N.ink2, lineHeight:1.55, margin:'0 auto', maxWidth:360 }}>
+                Si lo deseas, puedes aumentar voluntariamente el valor total de tu propina. Tú decides el porcentaje final como una muestra adicional de agradecimiento.
+              </p>
+            </div>
+
+            {showPropCustom ? (
+              <Teclado sugeridos={[15,20,25]} title="Porcentaje personalizado"
+                onCancel={()=>{ setShowPropCustom(false); }}
+                onConfirm={()=>{ setClientePropina(0); setShowPropCustom(false); }}/>
+            ) : (
+              <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:18 }}>
+                <OpcionCard
+                  icon={<span>🙂</span>} iconBg={N.violetL} iconColor={N.violet}
+                  title={pctActual && pctActual!==15 && pctActual!==20 ? `Mantener ${pctActual}%` : 'Mantener 10%'}
+                  subtitle="Continuar con la propina ya seleccionada"
+                  badge="Actual" badgeColor={N.violet}
+                  selected={!isCustom && (pctActual===10 || (pctActual!==15 && pctActual!==20 && pctActual!==25))}
+                  onClick={()=>{ setCustomPropina(0); setClientePropina(pctActual||10); }}/>
+                <OpcionCard
+                  icon={<span>😍</span>} iconBg={N.yellow} iconColor={N.yellowI}
+                  title="15% total" subtitle="Un reconocimiento adicional al equipo"
+                  selected={!isCustom && pctActual===15}
+                  onClick={()=>{ setCustomPropina(0); setClientePropina(15); }}/>
+                <OpcionCard
+                  icon={<span>🤩</span>} iconBg={N.green} iconColor={N.greenI}
+                  title="20% total" subtitle="Para una experiencia excepcional"
+                  selected={!isCustom && pctActual===20}
+                  onClick={()=>{ setCustomPropina(0); setClientePropina(20); }}/>
+                <OpcionCard
+                  icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M14 4 l6 6 l-10 10 H4 v-6 l10 -10 z" stroke={N.blueI} strokeWidth="2" strokeLinejoin="round"/></svg>}
+                  iconBg={N.blue} iconColor={N.blueI}
+                  title="Otro valor" subtitle="Ingresa el porcentaje total que deseas dejar"
+                  selected={isCustom}
+                  onClick={()=>setShowPropCustom(true)}/>
+              </div>
+            )}
+
+            {!showPropCustom && <InfoCadena/>}
+
+            {!showPropCustom && (
+              <div style={{ marginTop:'auto', paddingTop:24, display:'flex', flexDirection:'column', gap:6 }}>
+                <button onClick={()=>setClientePaso('pago')}
+                  style={{ width:'100%', padding:'18px', borderRadius:50, border:'none', background:N.violet, color:'#fff', fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:800, cursor:'pointer', boxShadow:'0 8px 24px rgba(124,58,237,0.25)', outline:'none' }}>
+                  Confirmar propina
+                </button>
+                <button onClick={()=>{ setShowPropCustom(false); setPropinaSubStep('legal'); }}
+                  style={{ width:'100%', padding:'12px', background:'transparent', border:'none', color:N.violet, fontWeight:700, fontSize:14, cursor:'pointer', outline:'none' }}>
+                  Volver
                 </button>
               </div>
-            ))}
-          </div>
-          {/* Botón modificar propina */}
-          <button onClick={() => setShowPropCustom(true)}
-            style={{ width:'100%', padding:'11px', borderRadius:50, border:'2px dashed rgba(212,148,58,0.4)', background:'rgba(212,148,58,0.04)', color:'#d4943a', fontSize:13, fontWeight:700, cursor:'pointer' }}>
-            ✏️ Deseo modificar mi propina
-          </button>
-
-          {/* Total en vivo */}
-          <div style={{ background: '#fff', borderRadius: 16, padding: '16px 20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, color: S.text2, marginBottom: 4 }}>
-              <span>Importe de la propina:</span>
-              <span style={{ fontWeight: 600, color: S.text }}>${formatPrecio(propinaCliente)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, color: S.text2 }}>
-              <span>Estás pagando:</span>
-              <span style={{ fontWeight: 700, color: S.black, fontSize: 17 }}>${formatPrecio(totalCliente)}</span>
-            </div>
-          </div>
-
-          <button onClick={() => setClientePaso('pago')}
-            style={{ width: '100%', padding: '18px', borderRadius: 100, background: S.black, color: '#fff', fontSize: 17, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
-            Confirmar
-          </button>
-
-          {/* Propina personalizada — teclado numérico */}
-          <div style={{ marginTop: 4 }}>
-            {showPropCustom ? (
-              <div style={{ background: '#f5f0e8', borderRadius: 16, padding: '16px', border: '1px solid #e8d8b0' }}>
-                <div style={{ fontSize: 11, color: '#999', marginBottom: 6, fontWeight: 700, textTransform:'uppercase' }}>Propina personalizada</div>
-                {/* Display monto */}
-                <div style={{ textAlign:'center', fontSize:30, fontWeight:900, color:'#1a1a1a', marginBottom:12, minHeight:40, letterSpacing:'-0.02em' }}>
-                  {customPropina > 0 ? `$${customPropina.toLocaleString('es-CO')}` : '$ —'}
-                </div>
-                {/* Teclado */}
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6, marginBottom:10 }}>
-                  {['1','2','3','4','5','6','7','8','9','000','0','⌫'].map(k=>(
-                    <button key={k} onClick={()=>{
-                      if (k==='⌫') { setCustomPropina(p=>Math.floor(p/10)); return; }
-                      setCustomPropina(p=>{ const n=p*(k==='000'?1000:10)+(k==='000'?0:parseInt(k)); return n<=9999999?n:p; });
-                    }}
-                      style={{ padding:'14px 8px', borderRadius:10, border:`1px solid ${k==='⌫'?'rgba(255,82,82,0.3)':'rgba(212,148,58,0.25)'}`, background:k==='⌫'?'rgba(255,82,82,0.08)':'white', fontSize:k==='⌫'?18:17, fontWeight:700, cursor:'pointer', color:k==='⌫'?'#e05050':'#1a1a1a' }}>
-                      {k}
-                    </button>
-                  ))}
-                </div>
-                {/* Accesos rápidos % */}
-                <div style={{ display:'flex', gap:5, marginBottom:10 }}>
-                  {[10,15,20].map(p=>(
-                    <button key={p} onClick={()=>setCustomPropina(Math.round(baseCliente*p/100))}
-                      style={{ flex:1, padding:'7px', borderRadius:8, border:'1px solid rgba(212,148,58,0.3)', background:'rgba(212,148,58,0.08)', fontSize:10, fontWeight:700, color:'#d4943a', cursor:'pointer' }}>
-                      {p}% · ${Math.round(baseCliente*p/100).toLocaleString('es-CO')}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ display:'flex', gap:8 }}>
-                  <button onClick={()=>{ setCustomPropina(0); setShowPropCustom(false); }}
-                    style={{ flex:1, padding:'10px', borderRadius:10, border:'1px solid #ddd', background:'white', fontSize:12, color:'#888', cursor:'pointer' }}>
-                    Cancelar
-                  </button>
-                  <button onClick={()=>{ setShowPropCustom(false); setClientePropina(0); }}
-                    style={{ flex:2, padding:'10px', borderRadius:10, border:'none', background:'#1a1a1a', color:'white', fontSize:13, fontWeight:700, cursor:'pointer' }}>
-                    ✓ Confirmar ${(customPropina||0).toLocaleString('es-CO')}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button onClick={() => setShowPropCustom(true)}
-                style={{ width: '100%', padding: '12px', borderRadius: 12, border: '1px solid #e0d8cc', background: 'transparent', color: S.text3, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                🔢 Personalizar monto de propina
-              </button>
             )}
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ═══ PASO 3: MÉTODO DE PAGO ═══ */}
       {clientePaso === 'pago' && (
         <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px 32px', display: 'flex', flexDirection: 'column', gap: 12 }}>
 
           {/* Datafono con mesero */}
-          <button onClick={() => setClientePaso('encuesta')}
+          <button onClick={async()=>{
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:profile?.nombre_completo||'Mesero', total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Datafono', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
+              await guardarFactura('Datafono');
+              setClientePaso('encuesta');
+            }}
             style={{ width: '100%', padding: '18px 20px', borderRadius: 16, border: `1px solid ${S.border}`, background: '#fff', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
             <div style={{ width: 24, height: 24, borderRadius: '50%', border: `1.5px solid ${S.border}` }}></div>
             <div>
@@ -2901,7 +3145,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, color: S.text2 }}><span>Total</span><span>${formatPrecio(totalCliente)}</span></div>
           </div>
 
-          <button onClick={() => setClientePaso('encuesta')}
+          <button onClick={async()=>{
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:profile?.nombre_completo||'Mesero', total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Bono', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
+              await guardarFactura('Bono');
+              setClientePaso('encuesta');
+            }}
             style={{ width: '100%', padding: '18px', borderRadius: 100, background: '#9b72ff', color: '#fff', fontSize: 17, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
             ✓ Aplicar y continuar
           </button>
@@ -2947,320 +3195,374 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             Al pagar, aceptas nuestros <u>términos de uso</u> y <u>política de privacidad</u>.
           </p>
 
-          <button onClick={() => setClientePaso('encuesta')}
+          <button onClick={async()=>{
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:profile?.nombre_completo||'Mesero', total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Tarjeta', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
+              await guardarFactura('Tarjeta');
+              setClientePaso('encuesta');
+            }}
             style={{ width: '100%', padding: '18px', borderRadius: 100, background: S.black, color: '#fff', fontSize: 17, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
             Pagar ${formatPrecio(totalCliente)}
           </button>
         </div>
       )}
 
-      {/* ═══ PASO 4: X-CARE™ ENCUESTA INTELIGENTE ═══ */}
+      {/* ═══ PASO 4: NEXUM FEEDBACK — emociones operativas en tiempo real ═══ */}
       {clientePaso === 'encuesta' && (() => {
         const XC = {
-          bg:'#06060f', bg2:'#0d0d1a', bg3:'#141425',
+          bg:'#06060f', bg2:'#0d0d1a', card:'rgba(255,255,255,0.045)',
+          cardSel:'rgba(255,255,255,0.10)', line:'rgba(255,255,255,0.09)',
           pink:'#FF2D78', gold:'#FFB547', green:'#00E676',
-          blue:'#448AFF', purple:'#B388FF', red:'#FF5252',
-          t1:'#FFFFFF', t2:'#A0A0C0', t3:'#50507A',
+          blue:'#448AFF', purple:'#B388FF', red:'#FF6B5B',
+          t1:'#FFFFFF', t2:'#A8A8C0', t3:'#5A5A78',
         };
-        const starColors = ['','#FF5252','#FF7043','#FFB547','#69F0AE','#00E676'];
-        const starLabels = ['','Muy mala','Mala','Regular','Muy buena','¡Increíble!'];
-        const TAGS5 = [{icon:'🍽️',l:'Comida'},{icon:'🍸',l:'Cócteles'},{icon:'🤵',l:'Servicio'},{icon:'👨‍🍳',l:'Chef'},{icon:'🎶',l:'Ambiente'},{icon:'🕯️',l:'Experiencia'}];
-        const TAGS4 = [{icon:'⏱️',l:'Tiempo'},{icon:'🌡️',l:'Temperatura'},{icon:'🍽️',l:'Sabor'},{icon:'🍸',l:'Balance'},{icon:'🤵',l:'Atención'},{icon:'🎶',l:'Ambiente'}];
-        const TAGS_NEG = [{icon:'🌡️',l:'Frío'},{icon:'⏱️',l:'Demora'},{icon:'🧂',l:'Sabor'},{icon:'🍸',l:'Muy dulce'},{icon:'🍸',l:'Muy fuerte'},{icon:'🤵',l:'Atención'},{icon:'🎶',l:'Ruido'},{icon:'💬',l:'Otro'}];
-        const RESP_IA: Record<number,string> = {
-          3:`Hola ${mesaCliente?.cliente?.split(' ')[0]||'amigo'},\n\nGracias por confiar en nosotros hoy. Hemos revisado tu experiencia y ya estamos ajustando los detalles.\n\nTu próxima visita será atendida con especial cuidado.`,
-          2:`Hola ${mesaCliente?.cliente?.split(' ')[0]||'amigo'},\n\nTu experiencia es importante. Nuestro equipo ya trabaja para que no vuelva a ocurrir.\n\nSerá un honor recibirte nuevamente.`,
-          1:`Hola ${mesaCliente?.cliente?.split(' ')[0]||'amigo'},\n\nLo que nos compartiste merece toda nuestra atención. Ya tomamos acciones concretas.\n\nNos gustaría recibirte para ofrecerte una experiencia completamente distinta.`,
-        };
-        // Separar platos y bebidas del pedido real usando el catálogo
-        const todosItems = order.filter(o=>o.mesa===mesaCliente?.num);
-        const platosOrden  = Array.from(new Set(todosItems.filter(o=>clasificarItem(o.nombre)==='comida').map(o=>o.nombre)));
-        const bebidasOrden = Array.from(new Set(todosItems.filter(o=>clasificarItem(o.nombre)==='bebida').map(o=>o.nombre)));
-        const todosItemsNombres = todosItems.map(o=>o.nombre);
-        const toggleT = (arr: string[], set: React.Dispatch<React.SetStateAction<string[]>>, v: string) => set(p=>p.includes(v)?p.filter(x=>x!==v):[...p,v]);
-        const isPos = clienteRating===5, isMed = clienteRating===4, isNeg = clienteRating<=3&&clienteRating>0;
-        // Para 3 estrellas o menos, mostramos las categorías amplias (TAGS5) — el cliente elige qué falló (Comida, Cócteles, Servicio, Chef, Ambiente, Experiencia) y luego el sistema se vuelve quirúrgico.
-        const tags = isPos||isMed ? TAGS5 : (isNeg ? TAGS5 : TAGS4);
-        // Para negativos: ¿el cliente tagueó algo de comida/bebida que requiera drill-down?
-        const negTagComida  = isNeg && (xcareTags.includes('Comida') || xcareTags.includes('Chef'));
-        const negTagBebida  = isNeg && xcareTags.includes('Cócteles');
-        const negTagNoConsumo = isNeg && !negTagComida && !negTagBebida;
-        // Items a mostrar en el step "platos": solo los relevantes a lo que se quejó
-        const itemsAMostrar: { nombre: string; tipo: 'comida'|'bebida' }[] = [
-          ...(negTagComida ? platosOrden.map(n=>({nombre:n, tipo:'comida' as const})) : []),
-          ...(negTagBebida ? bebidasOrden.map(n=>({nombre:n, tipo:'bebida' as const})) : []),
-          // Si no marcó ninguna categoría específica pero hay items, mostrar todo para que pueda señalar algo
-          ...(negTagNoConsumo ? [
-            ...platosOrden.map(n=>({nombre:n, tipo:'comida' as const})),
-            ...bebidasOrden.map(n=>({nombre:n, tipo:'bebida' as const})),
-          ] : []),
-        ];
-        const sc = starColors[clienteRating]||XC.gold;
+        const nombreReal = (() => {
+          const c = String(mesaCliente?.cliente || '').trim();
+          if (!c || ['mesa','cliente','invitado'].includes(c.toLowerCase())) return '';
+          return c.split(' ')[0];
+        })();
 
-        const guardarXCare = async () => {
+        // ── Sentimiento (sin números visibles — internamente 1-5) ──
+        const CARITAS = [
+          {n:1, emoji:'😡', label:'Muy mala',   color:'#FF5252'},
+          {n:2, emoji:'😕', label:'Mala',       color:'#FF7043'},
+          {n:3, emoji:'😐', label:'Regular',    color:'#FFB547'},
+          {n:4, emoji:'😊', label:'Muy buena',  color:'#69F0AE'},
+          {n:5, emoji:'🤩', label:'Increíble',  color:'#00E676'},
+        ];
+        const isPositive = clienteRating >= 4;
+        const accent = clienteRating>=4 ? XC.green : clienteRating>0 ? XC.red : XC.pink;
+
+        // ── Categorías ──
+        const POS_CATS = [
+          {e:'🍽️',l:'Comida'},{e:'🍸',l:'Bebidas'},{e:'💁',l:'Servicio'},
+          {e:'🎵',l:'Ambiente'},{e:'⚡',l:'Rapidez'},
+        ];
+        const NEG_CATS = [
+          {e:'🍽️',l:'Comida'},{e:'🍸',l:'Bebidas'},{e:'💁',l:'Servicio'},{e:'⏳',l:'Tiempo'},
+        ];
+        const cats = isPositive ? POS_CATS : NEG_CATS;
+        const maxSel = isPositive ? 2 : 4;
+
+        // ── Platos y bebidas consumidos (desde el POS) ──
+        const todosItems = order.filter(o=>o.mesa===mesaCliente?.num);
+        const platosOrden  = Array.from(new Set(todosItems.filter(o=>clasificarItem(o.nombre)==='comida').map(o=>o.nombre))).slice(0,6);
+        const bebidasOrden = Array.from(new Set(todosItems.filter(o=>clasificarItem(o.nombre)==='bebida').map(o=>o.nombre))).slice(0,6);
+
+        // ── Cola de sub-pantallas según categorías elegidas ──
+        const buildQueue = (tags:string[]):string[] => {
+          const q:string[] = [];
+          tags.forEach(c=>{
+            if (isPositive) {
+              if (c==='Comida' && platosOrden.length>0)  q.push('pos-comida');
+              else if (c==='Bebidas' && bebidasOrden.length>0) q.push('pos-bebida');
+              else if (c==='Ambiente') q.push('pos-ambiente');
+              else if (c==='Rapidez')  q.push('pos-rapidez');
+              // Servicio: 1 mesero principal → asociación automática, sin pantalla
+            } else {
+              if (c==='Comida')  { q.push('neg-comida-que'); if(platosOrden.length>0) q.push('neg-comida-item'); }
+              else if (c==='Bebidas') { q.push('neg-bebida-que'); if(bebidasOrden.length>0) q.push('neg-bebida-item'); }
+              else if (c==='Servicio') q.push('neg-servicio-que'); // ¿quién? → auto-asociado
+              else if (c==='Tiempo')   q.push('neg-tiempo');
+            }
+          });
+          return q;
+        };
+        const queue = buildQueue(xcareTags);
+        const subScreen = queue[xcareSubIdx];
+
+        // ── Definición de cada sub-pantalla ──
+        const SUBS: Record<string,{titulo:string;sub:string;opciones:{e?:string;l:string}[]}> = {
+          'pos-comida':   {titulo:'¿Qué plato te encantó?', sub:'Toca tu favorito', opciones:platosOrden.map(p=>({e:'🍽️',l:p}))},
+          'pos-bebida':   {titulo:'¿Qué bebida te gustó más?', sub:'Toca tu favorita', opciones:bebidasOrden.map(b=>({e:'🍸',l:b}))},
+          'pos-ambiente': {titulo:'¿Qué fue lo que más te gustó?', sub:'Del ambiente', opciones:[{e:'🎵',l:'Música'},{e:'🛋️',l:'Decoración'},{e:'✨',l:'Energía'},{e:'🎭',l:'Shows'},{e:'💡',l:'Iluminación'}]},
+          'pos-rapidez':  {titulo:'¿Qué estuvo más ágil?', sub:'Lo que más te sorprendió', opciones:[{e:'🤝',l:'Atención inicial'},{e:'🍸',l:'Bebidas'},{e:'🍽️',l:'Cocina'},{e:'💳',l:'La cuenta'}]},
+          'neg-comida-que':  {titulo:'¿Qué pasó con la comida?', sub:'Ayúdanos a entender', opciones:[{e:'🥩',l:'Sabor'},{e:'🔥',l:'Temperatura'},{e:'🍽️',l:'Calidad'},{e:'❌',l:'Otro'}]},
+          'neg-comida-item': {titulo:'¿Con cuál plato?', sub:'Toca el plato', opciones:platosOrden.map(p=>({e:'🍽️',l:p}))},
+          'neg-bebida-que':  {titulo:'¿Qué pasó con la bebida?', sub:'Ayúdanos a entender', opciones:[{e:'🍬',l:'Muy dulce'},{e:'🥃',l:'Muy fuerte'},{e:'❄️',l:'Temperatura'},{e:'❌',l:'Otro'}]},
+          'neg-bebida-item': {titulo:'¿Cuál bebida fue?', sub:'Toca la bebida', opciones:bebidasOrden.map(b=>({e:'🍸',l:b}))},
+          'neg-servicio-que':{titulo:'¿Qué pasó con el servicio?', sub:'Tu respuesta es confidencial', opciones:[{e:'😐',l:'Empatía'},{e:'🧠',l:'Capacitación'},{e:'⏳',l:'Demoras'},{e:'❌',l:'Otro'}]},
+          'neg-tiempo':      {titulo:'¿Dónde hubo demora?', sub:'Lo que más te hizo esperar', opciones:[{e:'🍽️',l:'Cocina'},{e:'🍸',l:'Bebidas'},{e:'🪑',l:'En la mesa'},{e:'💳',l:'La cuenta'}]},
+        };
+
+        // ── Guardado ──
+        const guardarNexum = async () => {
+          const items:string[] = [];
+          const detalles:string[] = [];
+          Object.entries(xcareSel).forEach(([sid,vals])=>{
+            if (/item|pos-comida|pos-bebida/.test(sid)) items.push(...vals);
+            else detalles.push(...vals);
+          });
           await supabase.from('xcare_encuestas').insert({
             restaurante_id:6, mesa_numero:mesaCliente?.num, nombre_cliente:mesaCliente?.cliente||null,
-            estrellas:clienteRating, tags_positivos:isPos||isMed?xcareTags:null,
-            tags_negativos:isNeg?[...xcareTags,...xcareMicro]:null,
-            platos_problema:isNeg?xcarePlatos:null,
+            estrellas:clienteRating,
+            tags_positivos:isPositive?xcareTags:null,
+            tags_negativos:!isPositive?[...xcareTags,...detalles]:null,
+            platos_problema:items.length?items:null,
             comentario:xcareComentario||null,
             nps_score:clienteRating===5?10:clienteRating===4?8:clienteRating===3?6:clienteRating===2?3:1,
-            alerta_gerente:clienteRating<=3,
-          });
-          if (clienteRating<=3) {
+            alerta_gerente:!isPositive,
+          }).then(()=>{}).catch(()=>{});
+          if (!isPositive) {
             await supabase.from('xcare_alertas').insert({
-              restaurante_id:6, mesa_numero:mesaCliente?.num, tipo:'encuesta_negativa',
-              descripcion:`${mesaCliente?.cliente||'Cliente'} — ${clienteRating}★ — ${xcareTags.join(', ')||'Sin tags'}`, activa:true,
-            });
+              restaurante_id:6, mesa_numero:mesaCliente?.num, tipo:'experiencia_negativa',
+              descripcion:`${mesaCliente?.cliente||'Cliente'} — ${CARITAS[clienteRating-1]?.label||''} — ${xcareTags.join(', ')||'Sin categoría'}${detalles.length?` · ${detalles.join(', ')}`:''}${items.length?` · ${items.join(', ')}`:''}${xcareComentario?` — "${xcareComentario}"`:''}`,
+              activa:true,
+            }).then(()=>{}).catch(()=>{});
           }
         };
 
+        // ── Navegación ──
+        const finalizar = (tags:string[]) => {
+          if (clienteRating>=4) { guardarNexum(); setXcareStep('done'); }
+          else { setXcareStep('comentario'); }
+        };
+        const irADetalle = (tags:string[]) => {
+          const q = buildQueue(tags);
+          if (q.length===0) { finalizar(tags); return; }
+          setXcareSubIdx(0); setXcareStep('sub');
+        };
+        const siguienteSub = () => {
+          if (xcareSubIdx+1 < queue.length) setXcareSubIdx(xcareSubIdx+1);
+          else finalizar(xcareTags);
+        };
+
+        // ── Interacción ──
+        const elegirSentimiento = (n:number) => {
+          setClienteRating(n);
+          if (encTimerRef.current) clearTimeout(encTimerRef.current);
+          encTimerRef.current = window.setTimeout(()=>setXcareStep('cat'), 340);
+        };
+        const tapCat = (cat:string) => {
+          const has = xcareTags.includes(cat);
+          const next = has ? xcareTags.filter(x=>x!==cat)
+                           : (xcareTags.length<maxSel ? [...xcareTags,cat] : xcareTags);
+          setXcareTags(next);
+          if (encTimerRef.current) clearTimeout(encTimerRef.current);
+          if (isPositive) {
+            if (next.length===0) return;
+            const delay = next.length>=maxSel ? 420 : 1500;
+            encTimerRef.current = window.setTimeout(()=>irADetalle(next), delay);
+          }
+        };
+        const tapSub = (value:string) => {
+          setXcareSel(prev=>({...prev,[subScreen]:[value]}));
+          if (encTimerRef.current) clearTimeout(encTimerRef.current);
+          encTimerRef.current = window.setTimeout(siguienteSub, 380);
+        };
+
+        const omitir = () => {
+          if (encTimerRef.current) clearTimeout(encTimerRef.current);
+          setClienteMode(false);
+          setOrder(prev=>prev.filter(o=>o.mesa!==mesaCliente?.num));
+          showToast(`Mesa ${mesaCliente?.num} cerrada`);
+        };
+
         return (
-          <div style={{flex:1,overflowY:'auto',background:XC.bg,display:'flex',flexDirection:'column',alignItems:'center',padding:'28px 24px 32px',position:'relative',minHeight:'100%'}}>
+          <div style={{flex:1,overflowY:'auto',background:`radial-gradient(ellipse at 50% 0%,${XC.bg2} 0%,${XC.bg} 60%)`,display:'flex',flexDirection:'column',alignItems:'center',padding:'70px 24px 36px',position:'relative',minHeight:'100%'}}>
             <style>{`
-              @keyframes xcFadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-              @keyframes xcBounce{0%{transform:scale(0)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
-              @keyframes xcPulse{0%,100%{opacity:1}50%{opacity:.6}}
+              @keyframes nxFade{from{opacity:0;transform:translateY(18px)}to{opacity:1;transform:translateY(0)}}
+              @keyframes nxPop{0%{transform:scale(.6)}55%{transform:scale(1.18)}100%{transform:scale(1)}}
+              @keyframes nxGlow{0%,100%{opacity:.4}50%{opacity:.85}}
             `}</style>
 
-            {/* Header X-CARE */}
-            <div style={{textAlign:'center',marginBottom:28,animation:'xcFadeUp .4s ease',width:'100%'}}>
-              <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginBottom:12}}>
-                <div style={{width:30,height:30,borderRadius:9,background:`linear-gradient(135deg,${XC.pink},${XC.purple})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,boxShadow:`0 0 14px rgba(255,45,120,0.4)`}}>✦</div>
-                <span style={{fontSize:10,fontWeight:900,color:XC.pink,letterSpacing:'.18em',textTransform:'uppercase' as const}}>X-CARE™</span>
-              </div>
-
-              {/* PASO RATING */}
-              {xcareStep==='rating' && (
-                <div>
-                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:XC.t1,marginBottom:6,lineHeight:1.2}}>
-                    {mesaCliente?.cliente?`¿Cómo estuvo tu experiencia
-${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
-                  </div>
-                  <div style={{fontSize:12,color:XC.t3}}>Tu opinión transforma nuestro servicio</div>
-                </div>
-              )}
-
-              {/* PASO TAGS */}
-              {xcareStep==='tags' && (
-                <div>
-                  {clienteRating>=4
-                    ? <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:XC.t1,lineHeight:1.3}}>{clienteRating===5?'🔥 Nos encanta saberlo.':'✨ Gracias.'}</div>
-                    : <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:XC.t1,lineHeight:1.3}}>🙏 Queremos hacerlo mejor.</div>
-                  }
-                  <div style={{fontSize:12,color:XC.t3,marginTop:4}}>
-                    {clienteRating===5?'¿Qué fue lo que más destacarías?':clienteRating===4?'¿Qué faltó para que fuera perfecta?':'Ayúdanos a entender qué pasó.'}
-                  </div>
-                </div>
-              )}
-
-              {xcareStep==='platos' && (
-                <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:XC.t1}}>
-                  {negTagComida && negTagBebida ? '🍽️🍸 ¿Con qué tuviste el problema?'
-                    : negTagBebida ? '🍸 ¿Con qué bebida tuviste el problema?'
-                    : negTagComida ? '🍽️ ¿Con qué plato tuviste el problema?'
-                    : '¿Qué fue lo problemático?'}
-                </div>
-              )}
-              {xcareStep==='microtags' && <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:XC.t1}}>¿Qué tipo de problema fue?</div>}
-              {xcareStep==='redes' && <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:XC.t1}}>🌟 Tu experiencia puede inspirar a otros.</div>}
-              {xcareStep==='done' && <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:XC.t1}}>{clienteRating>=4?'¡Hasta pronto!':clienteRating===3?'Gracias por tu honestidad.':'Gracias por contarnos.'}</div>}
+            {/* Marca NEXUM */}
+            <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:30,animation:'nxFade .4s ease'}}>
+              <div style={{width:28,height:28,borderRadius:8,background:`linear-gradient(135deg,${XC.pink},${XC.purple})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,boxShadow:`0 0 16px rgba(255,45,120,0.45)`}}>✦</div>
+              <span style={{fontSize:10,fontWeight:900,color:XC.t2,letterSpacing:'.22em',textTransform:'uppercase'}}>NEXUM Feedback</span>
             </div>
 
-            {/* RATING — Estrellas */}
-            {xcareStep==='rating' && (
-              <div style={{width:'100%',textAlign:'center',animation:'xcFadeUp .4s ease'}}>
-                <div style={{display:'flex',justifyContent:'center',gap:10,marginBottom:14}}>
-                  {[1,2,3,4,5].map(n=>(
-                    <button key={n} onClick={()=>setClienteRating(n)}
-                      style={{fontSize:clienteRating>=n?56:44,opacity:clienteRating>=n?1:0.2,transition:'all .2s cubic-bezier(.34,1.56,.64,1)',background:'none',border:'none',cursor:'pointer',transform:clienteRating>=n?'scale(1.1)':'scale(0.95)',filter:clienteRating>=n?`drop-shadow(0 0 10px ${starColors[n]})`:'none'}}>⭐</button>
-                  ))}
+            {/* ── PANTALLA 1 · SENTIMIENTO ── */}
+            {xcareStep==='sentiment' && (
+              <div style={{width:'100%',flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',animation:'nxFade .4s ease',paddingBottom:30}}>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:27,fontWeight:900,color:XC.t1,lineHeight:1.18,letterSpacing:'-0.02em',marginBottom:10}}>
+                  {nombreReal ? `${nombreReal}, ¿cómo estuvo\ntu experiencia hoy?` : '¿Cómo estuvo tu\nexperiencia hoy?'}
                 </div>
-                <div style={{height:28,fontSize:15,fontWeight:900,fontFamily:"'Syne',sans-serif",color:clienteRating?starColors[clienteRating]:XC.t3,transition:'all .3s'}}>
-                  {clienteRating?starLabels[clienteRating]:'Toca para calificar'}
-                </div>
-                {clienteRating>0&&(
-                  <button onClick={()=>setXcareStep('tags')} style={{marginTop:20,padding:'13px 44px',borderRadius:50,border:'none',background:`linear-gradient(135deg,${XC.pink},#cc2260)`,color:'#fff',fontSize:15,fontWeight:900,cursor:'pointer',fontFamily:"'Syne',sans-serif",boxShadow:`0 6px 24px rgba(255,45,120,0.4)`}}>
-                    Continuar →
-                  </button>
-                )}
-              </div>
-            )}
+                <div style={{fontSize:13,color:XC.t2,marginBottom:48}}>Tu opinión mejora la experiencia ✨</div>
 
-            {/* TAGS */}
-            {xcareStep==='tags' && (
-              <div style={{width:'100%',animation:'xcFadeUp .3s ease'}}>
-                <div style={{display:'flex',gap:6,marginBottom:6,justifyContent:'center'}}>
-                  {[1,2,3,4,5].map(n=><span key={n} style={{fontSize:16,opacity:n<=clienteRating?1:0.2,filter:n<=clienteRating?`drop-shadow(0 0 4px ${sc})`:'none'}}>⭐</span>)}
-                </div>
-                <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8,marginBottom:14}}>
-                  {tags.map(t=>{
-                    const sel=xcareTags.includes(t.l);
-                    return(
-                      <button key={t.l} onClick={()=>toggleT(xcareTags,setXcareTags,t.l)}
-                        style={{padding:'12px 8px',borderRadius:14,border:`2px solid ${sel?XC.pink:'rgba(255,255,255,0.08)'}`,background:sel?`rgba(255,45,120,0.12)`:'rgba(255,255,255,0.04)',color:sel?XC.pink:XC.t2,cursor:'pointer',textAlign:'center' as const,transition:'all .2s'}}>
-                        <div style={{fontSize:26,marginBottom:4}}>{t.icon}</div>
-                        <div style={{fontSize:11,fontWeight:700}}>{t.l}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-                <textarea style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'10px 14px',color:XC.t1,fontSize:13,outline:'none',width:'100%',minHeight:64,resize:'none' as const,marginBottom:12,fontFamily:"'DM Sans',sans-serif"}}
-                  placeholder="Comentario opcional..." value={xcareComentario} onChange={e=>setXcareComentario(e.target.value)} />
-                <button onClick={async()=>{
-                  // Drill-down sólo si tagueó Comida/Chef o Cócteles y hay items
-                  const requiereDrillComida = isNeg && (xcareTags.includes('Comida')||xcareTags.includes('Chef')) && platosOrden.length>0;
-                  const requiereDrillBebida = isNeg && xcareTags.includes('Cócteles') && bebidasOrden.length>0;
-                  if (requiereDrillComida || requiereDrillBebida) { setXcareStep('platos'); return; }
-                  // Si es negativo pero sólo quejas de servicio/ambiente, saltar a microtags directo
-                  if (isNeg) { setXcareStep('microtags'); return; }
-                  await guardarXCare();
-                  if(clienteRating===5){setXcareStep('redes');}else{setXcareStep('done');}
-                }} disabled={xcareTags.length===0}
-                  style={{width:'100%',padding:'13px',borderRadius:14,border:'none',background:xcareTags.length?`linear-gradient(135deg,${XC.pink},#cc2260)`:'rgba(255,255,255,0.05)',color:'#fff',fontSize:14,fontWeight:900,cursor:xcareTags.length?'pointer':'not-allowed',fontFamily:"'Syne',sans-serif"}}>
-                  {isNeg?'Siguiente →':'Enviar ✓'}
-                </button>
-                <button onClick={()=>setXcareStep('rating')} style={{background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12,marginTop:8,width:'100%'}}>← Volver</button>
-              </div>
-            )}
-
-            {/* PLATOS Y BEBIDAS PROBLEMA — adaptativo según lo que el cliente tagueó */}
-            {xcareStep==='platos' && (() => {
-              const platosFiltrados = itemsAMostrar.filter(i=>i.tipo==='comida').map(i=>i.nombre);
-              const bebidasFiltradas = itemsAMostrar.filter(i=>i.tipo==='bebida').map(i=>i.nombre);
-              return (
-                <div style={{width:'100%',animation:'xcFadeUp .3s ease'}}>
-                  {platosFiltrados.length>0 && (
-                    <div style={{marginBottom:14}}>
-                      <div style={{fontSize:10,color:XC.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>🍽️ Comida</div>
-                      <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                        {platosFiltrados.map(item=>{
-                          const sel=xcarePlatos.includes(item);
-                          return(
-                            <button key={item} onClick={()=>toggleT(xcarePlatos,setXcarePlatos,item)}
-                              style={{padding:'12px 16px',borderRadius:12,border:`2px solid ${sel?XC.red:'rgba(255,255,255,0.08)'}`,background:sel?'rgba(255,82,82,0.12)':'rgba(255,255,255,0.04)',color:sel?XC.red:XC.t2,cursor:'pointer',textAlign:'left',fontSize:13,fontWeight:sel?700:400,transition:'all .2s',display:'flex',alignItems:'center',gap:8}}>
-                              <span style={{fontSize:18}}>🍽️</span>{sel?'✕ ':''}{item}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  {bebidasFiltradas.length>0 && (
-                    <div style={{marginBottom:14}}>
-                      <div style={{fontSize:10,color:XC.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>🍸 Bebidas</div>
-                      <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                        {bebidasFiltradas.map(item=>{
-                          const sel=xcarePlatos.includes(item);
-                          return(
-                            <button key={item} onClick={()=>toggleT(xcarePlatos,setXcarePlatos,item)}
-                              style={{padding:'12px 16px',borderRadius:12,border:`2px solid ${sel?XC.red:'rgba(255,255,255,0.08)'}`,background:sel?'rgba(255,82,82,0.12)':'rgba(255,255,255,0.04)',color:sel?XC.red:XC.t2,cursor:'pointer',textAlign:'left',fontSize:13,fontWeight:sel?700:400,transition:'all .2s',display:'flex',alignItems:'center',gap:8}}>
-                              <span style={{fontSize:18}}>🍸</span>{sel?'✕ ':''}{item}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                  {platosFiltrados.length===0 && bebidasFiltradas.length===0 && (
-                    <div style={{color:XC.t3,fontSize:13,textAlign:'center',padding:'20px 0'}}>
-                      {todosItemsNombres.length===0 ? 'No hay items registrados en esta mesa' : 'Saltando al detalle del problema...'}
-                    </div>
-                  )}
-                  <button onClick={()=>setXcareStep('microtags')} disabled={(platosFiltrados.length>0||bebidasFiltradas.length>0) && xcarePlatos.length===0}
-                    style={{width:'100%',padding:'13px',borderRadius:14,border:'none',background:(platosFiltrados.length===0&&bebidasFiltradas.length===0)||xcarePlatos.length>0?`linear-gradient(135deg,${XC.pink},#cc2260)`:'rgba(255,255,255,0.05)',color:'#fff',fontSize:14,fontWeight:900,cursor:((platosFiltrados.length===0&&bebidasFiltradas.length===0)||xcarePlatos.length>0)?'pointer':'not-allowed',fontFamily:"'Syne',sans-serif"}}>
-                    Siguiente →
-                  </button>
-                  <button onClick={()=>setXcareStep('tags')} style={{background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12,marginTop:8,width:'100%'}}>← Volver</button>
-                </div>
-              );
-            })()}
-
-            {/* MICRO TAGS */}
-            {xcareStep==='microtags' && (
-              <div style={{width:'100%',animation:'xcFadeUp .3s ease'}}>
-                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
-                  {[{icon:'🌡️',l:'Frío'},{icon:'⏱️',l:'Demora'},{icon:'🧂',l:'Sabor'},{icon:'🍸',l:'Muy dulce'},{icon:'🍸',l:'Muy fuerte'},{icon:'🤵',l:'Atención'},{icon:'🎶',l:'Ruido'},{icon:'💬',l:'Otro'}].map(t=>{
-                    const sel=xcareMicro.includes(t.l);
-                    return(
-                      <button key={t.l} onClick={()=>toggleT(xcareMicro,setXcareMicro,t.l)}
-                        style={{padding:'12px',borderRadius:12,border:`2px solid ${sel?XC.red:'rgba(255,255,255,0.08)'}`,background:sel?'rgba(255,82,82,0.12)':'rgba(255,255,255,0.04)',color:sel?XC.red:XC.t2,cursor:'pointer',display:'flex',alignItems:'center',gap:8,fontSize:13,fontWeight:sel?700:400,transition:'all .2s'}}>
-                        <span style={{fontSize:20}}>{t.icon}</span>{t.l}
-                      </button>
-                    );
-                  })}
-                </div>
-                <textarea style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'10px 14px',color:XC.t1,fontSize:13,outline:'none',width:'100%',minHeight:64,resize:'none' as const,marginBottom:12,fontFamily:"'DM Sans',sans-serif"}}
-                  placeholder="Cuéntanos un poco más..." value={xcareComentario} onChange={e=>setXcareComentario(e.target.value)} />
-                {RESP_IA[clienteRating]&&(
-                  <div style={{background:'rgba(179,136,255,0.08)',border:'1px solid rgba(179,136,255,0.2)',borderRadius:12,padding:'12px 14px',marginBottom:12,fontSize:12,color:XC.purple,lineHeight:1.6}}>
-                    {RESP_IA[clienteRating].split('\n').map((l,i)=><div key={i}>{l||' '}</div>)}
-                  </div>
-                )}
-                <button onClick={async()=>{ await guardarXCare(); setXcareStep('done'); }}
-                  style={{width:'100%',padding:'13px',borderRadius:14,border:'none',background:`linear-gradient(135deg,${XC.pink},#cc2260)`,color:'#fff',fontSize:14,fontWeight:900,cursor:'pointer',fontFamily:"'Syne',sans-serif"}}>
-                  Enviar ✓
-                </button>
-                <button onClick={()=>setXcareStep('platos')} style={{background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12,marginTop:8,width:'100%'}}>← Volver</button>
-              </div>
-            )}
-
-            {/* REDES (5 estrellas) */}
-            {xcareStep==='redes' && (
-              <div style={{width:'100%',textAlign:'center',animation:'xcFadeUp .4s ease'}}>
-                <div style={{fontSize:13,color:XC.t2,marginBottom:24,lineHeight:1.6}}>Tu opinión ayuda a que más personas vivan momentos memorables en OMM.</div>
-                <div style={{display:'flex',flexDirection:'column',gap:10,marginBottom:20}}>
-                  <a href="https://g.page/r/review" target="_blank" style={{display:'block',padding:'14px',borderRadius:14,background:'linear-gradient(135deg,#4285F4,#0F9D58)',color:'#fff',fontSize:14,fontWeight:800,textDecoration:'none',fontFamily:"'Syne',sans-serif"}}>⭐ Opinar en Google</a>
-                  <a href="https://tripadvisor.com" target="_blank" style={{display:'block',padding:'14px',borderRadius:14,background:'linear-gradient(135deg,#00AA6C,#007A4D)',color:'#fff',fontSize:14,fontWeight:800,textDecoration:'none',fontFamily:"'Syne',sans-serif"}}>🦉 Opinar en TripAdvisor</a>
-                </div>
-                <button onClick={()=>{ setClientePaso('premio'); }} style={{background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:13,textDecoration:'underline'}}>Omitir por ahora →</button>
-              </div>
-            )}
-
-            {/* ── FEEDBACK INTERNO DEL MESERO ── */}
-            {xcareStep==='done' && (
-              <div style={{background:'rgba(255,255,255,0.03)',borderRadius:16,padding:'16px',marginTop:12,border:'1px solid rgba(255,255,255,0.08)'}}>
-                <div style={{fontSize:12,fontWeight:700,color:'#a0a0a0',marginBottom:8}}>📝 Nota interna del mesero (no visible al cliente)</div>
-                <div style={{display:'flex',gap:6,marginBottom:8}}>
-                  {[{id:'nota',l:'📝 Nota'},{id:'alerta',l:'⚠️ Alerta'},{id:'felicitacion',l:'🌟 Éxito'}].map(t=>(
-                    <button key={t.id} onClick={()=>setFeedbackTipo(t.id as any)}
-                      style={{flex:1,padding:'6px',borderRadius:8,border:`1px solid ${feedbackTipo===t.id?S.black:'rgba(0,0,0,0.1)'}`,background:feedbackTipo===t.id?S.black:'transparent',color:feedbackTipo===t.id?'#fff':S.text3,fontSize:10,fontWeight:700,cursor:'pointer'}}>
-                      {t.l}
+                <div style={{display:'flex',justifyContent:'center',gap:6,width:'100%',maxWidth:380}}>
+                  {CARITAS.map((c,i)=>(
+                    <button key={c.n} onClick={()=>elegirSentimiento(c.n)}
+                      style={{flex:1,background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:8,padding:'8px 2px',
+                        transition:'transform .2s cubic-bezier(.34,1.56,.64,1)',
+                        transform: clienteRating===c.n?'scale(1.12)':'scale(1)',
+                        opacity: clienteRating && clienteRating!==c.n ? 0.45 : 1,
+                        animation:`nxFade .4s ease ${i*0.06}s both`}}>
+                      <span style={{fontSize:46,lineHeight:1,filter:clienteRating===c.n?`drop-shadow(0 4px 16px ${c.color}cc)`:'none'}}>{c.emoji}</span>
+                      <span style={{fontSize:10.5,fontWeight:700,color:clienteRating===c.n?c.color:XC.t3,transition:'color .2s'}}>{c.label}</span>
                     </button>
                   ))}
                 </div>
-                <textarea value={feedbackMesa} onChange={e=>setFeedbackMesa(e.target.value)}
-                  placeholder="Ej: Mesa difícil, solicitaron postre especial, cliente VIP primera visita..."
-                  style={{width:'100%',padding:'10px',borderRadius:8,border:'1px solid rgba(0,0,0,0.15)',background:'rgba(0,0,0,0.04)',fontSize:12,outline:'none',resize:'vertical',minHeight:60}}/>
-                {feedbackMesa && (
-                  <button onClick={guardarFeedback}
-                    style={{marginTop:8,padding:'8px 20px',borderRadius:8,border:'none',background:S.black,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>
-                    ✓ Guardar nota
-                  </button>
-                )}
-              </div>
-            )}
 
-            {/* DONE */}
-            {xcareStep==='done' && (
-              <div style={{textAlign:'center',animation:'xcFadeUp .4s ease'}}>
-                <div style={{fontSize:72,marginBottom:16,animation:'xcBounce .6s ease',filter:`drop-shadow(0 0 24px ${clienteRating>=4?XC.green:XC.gold})`}}>{clienteRating>=4?'🎉':clienteRating===3?'🙏':'💎'}</div>
-                <div style={{fontSize:14,color:XC.t2,lineHeight:1.6,maxWidth:280,margin:'0 auto',marginBottom:28}}>
-                  {clienteRating>=4?'Fue un placer tenerte aquí. ¡Hasta pronto!':clienteRating===3?'Ya estamos trabajando en mejorarlo.':'Tu voz genera cambios reales en nuestro equipo.'}
-                </div>
-                <button onClick={()=>{ setClienteRating(clienteRating); setClientePaso('premio'); }}
-                  style={{padding:'13px 44px',borderRadius:50,border:'none',background:`linear-gradient(135deg,${XC.pink},#cc2260)`,color:'#fff',fontSize:15,fontWeight:900,cursor:'pointer',fontFamily:"'Syne',sans-serif",boxShadow:`0 6px 24px rgba(255,45,120,0.4)`}}>
-                  🎰 Ver mi premio →
+                <button onClick={omitir} style={{marginTop:54,background:'none',border:'none',fontSize:11.5,color:XC.t3,cursor:'pointer'}}>
+                  Omitir
                 </button>
               </div>
             )}
 
-            {/* Skip siempre visible */}
-            {xcareStep==='rating' && (
-              <button onClick={()=>{ setClienteMode(false); setOrder(prev=>prev.filter(o=>o.mesa!==mesaCliente?.num)); showToast(`Mesa ${mesaCliente?.num} cerrada`); }}
-                style={{position:'absolute',bottom:16,background:'none',border:'none',fontSize:11,color:'rgba(255,255,255,0.15)',cursor:'pointer'}}>
-                Omitir encuesta
-              </button>
+            {/* ── PANTALLA 2 · CATEGORÍAS ── */}
+            {xcareStep==='cat' && (
+              <div style={{width:'100%',flex:1,display:'flex',flexDirection:'column',animation:'nxFade .35s ease',maxWidth:420,margin:'0 auto'}}>
+                <div style={{textAlign:'center',marginBottom:28}}>
+                  <div style={{fontSize:38,marginBottom:10}}>{CARITAS[clienteRating-1]?.emoji}</div>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:23,fontWeight:900,color:XC.t1,lineHeight:1.2,letterSpacing:'-0.01em',marginBottom:6}}>
+                    {isPositive ? '¿Qué fue lo mejor de tu experiencia?' : 'Queremos mejorar tu experiencia'}
+                  </div>
+                  <div style={{fontSize:12.5,color:XC.t2}}>
+                    {isPositive ? 'Selecciona máximo 2 ✨' : '¿Qué salió mal? Toca lo que aplique'}
+                  </div>
+                </div>
+
+                <div style={{display:'flex',flexDirection:'column',gap:11}}>
+                  {cats.map((c,i)=>{
+                    const sel = xcareTags.includes(c.l);
+                    const blocked = !sel && xcareTags.length>=maxSel;
+                    return (
+                      <button key={c.l} disabled={blocked} onClick={()=>tapCat(c.l)}
+                        style={{display:'flex',alignItems:'center',gap:15,padding:'17px 20px',borderRadius:18,
+                          border:`2px solid ${sel?accent:XC.line}`,
+                          background:sel?XC.cardSel:XC.card,
+                          cursor:blocked?'not-allowed':'pointer',opacity:blocked?0.35:1,
+                          transition:'all .18s',textAlign:'left',outline:'none',
+                          animation:`nxFade .3s ease ${i*0.05}s both`}}>
+                        <span style={{fontSize:30}}>{c.e}</span>
+                        <span style={{flex:1,fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:800,color:XC.t1}}>{c.l}</span>
+                        <span style={{width:24,height:24,borderRadius:8,border:`2px solid ${sel?accent:XC.t3}`,background:sel?accent:'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,color:'#000',fontWeight:900}}>
+                          {sel?'✓':''}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Positivo: auto-avance. Negativo: botón continuar */}
+                {!isPositive && (
+                  <button onClick={()=>irADetalle(xcareTags)} disabled={xcareTags.length===0}
+                    style={{marginTop:'auto',width:'100%',padding:'17px',borderRadius:50,border:'none',
+                      background:xcareTags.length?`linear-gradient(135deg,${XC.red},#d4493b)`:'rgba(255,255,255,0.06)',
+                      color:'#fff',fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,
+                      cursor:xcareTags.length?'pointer':'not-allowed'}}>
+                    Continuar →
+                  </button>
+                )}
+                {isPositive && xcareTags.length>0 && (
+                  <div style={{marginTop:18,textAlign:'center',fontSize:11.5,color:XC.t3,animation:'nxGlow 1.8s ease-in-out infinite'}}>
+                    {xcareTags.length>=maxSel ? 'Perfecto, continuando…' : 'Toca otra opción o espera…'}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── SUB-PANTALLAS · drill-down ── */}
+            {xcareStep==='sub' && subScreen && SUBS[subScreen] && (
+              <div style={{width:'100%',flex:1,display:'flex',flexDirection:'column',animation:'nxFade .3s ease',maxWidth:420,margin:'0 auto'}}>
+                <div style={{textAlign:'center',marginBottom:24}}>
+                  <div style={{fontSize:11,color:XC.t3,fontWeight:700,letterSpacing:'.06em',marginBottom:8}}>
+                    PASO {xcareSubIdx+1} DE {queue.length}
+                  </div>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:XC.t1,lineHeight:1.2,letterSpacing:'-0.01em',marginBottom:6}}>
+                    {SUBS[subScreen].titulo}
+                  </div>
+                  <div style={{fontSize:12.5,color:XC.t2}}>{SUBS[subScreen].sub}</div>
+                </div>
+
+                <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                  {SUBS[subScreen].opciones.map((op,i)=>{
+                    const sel = (xcareSel[subScreen]||[]).includes(op.l);
+                    return (
+                      <button key={op.l} onClick={()=>tapSub(op.l)}
+                        style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',borderRadius:16,
+                          border:`2px solid ${sel?accent:XC.line}`,background:sel?XC.cardSel:XC.card,
+                          cursor:'pointer',transition:'all .16s',textAlign:'left',outline:'none',
+                          animation:`nxFade .28s ease ${i*0.04}s both`}}>
+                        {op.e && <span style={{fontSize:24}}>{op.e}</span>}
+                        <span style={{flex:1,fontFamily:"'Syne',sans-serif",fontSize:15.5,fontWeight:800,color:XC.t1}}>{op.l}</span>
+                        {sel && <span style={{color:accent,fontSize:18,fontWeight:900}}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <button onClick={()=>{ if(xcareSubIdx>0) setXcareSubIdx(xcareSubIdx-1); else setXcareStep('cat'); }}
+                  style={{marginTop:20,background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12,alignSelf:'center'}}>
+                  ← Volver
+                </button>
+              </div>
+            )}
+
+            {/* ── COMENTARIO LIBRE (flujo negativo) ── */}
+            {xcareStep==='comentario' && (
+              <div style={{width:'100%',flex:1,display:'flex',flexDirection:'column',animation:'nxFade .35s ease',maxWidth:420,margin:'0 auto'}}>
+                <div style={{textAlign:'center',marginBottom:24}}>
+                  <div style={{fontSize:36,marginBottom:10}}>💬</div>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:XC.t1,lineHeight:1.2,marginBottom:6}}>
+                    ¿Quieres contarnos algo más?
+                  </div>
+                  <div style={{fontSize:12.5,color:XC.t2}}>Opcional · nos ayuda a entender mejor</div>
+                </div>
+                <textarea autoFocus value={xcareComentario} onChange={e=>setXcareComentario(e.target.value)}
+                  placeholder="Cuéntanos qué pasó…"
+                  style={{width:'100%',minHeight:130,background:XC.card,border:`1px solid ${XC.line}`,borderRadius:16,padding:'16px',color:XC.t1,fontSize:14,outline:'none',resize:'none',fontFamily:"'DM Sans',sans-serif",lineHeight:1.5}}/>
+                <button onClick={()=>{ guardarNexum(); setXcareStep('done'); }}
+                  style={{marginTop:'auto',width:'100%',padding:'17px',borderRadius:50,border:'none',background:`linear-gradient(135deg,${XC.red},#d4493b)`,color:'#fff',fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,cursor:'pointer'}}>
+                  Enviar
+                </button>
+                <button onClick={()=>{ guardarNexum(); setXcareStep('done'); }}
+                  style={{marginTop:8,background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12.5,alignSelf:'center'}}>
+                  Omitir comentario
+                </button>
+              </div>
+            )}
+
+            {/* ── PANTALLA FINAL ── */}
+            {xcareStep==='done' && (
+              <div style={{width:'100%',flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',animation:'nxFade .4s ease',paddingBottom:20}}>
+                <div style={{fontSize:74,marginBottom:18,animation:'nxPop .55s ease',filter:`drop-shadow(0 6px 26px ${accent}aa)`}}>
+                  {isPositive?'🎉':'🤝'}
+                </div>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:24,fontWeight:900,color:XC.t1,lineHeight:1.2,marginBottom:10}}>
+                  {isPositive?'¡Gracias por tu visita!':'Gracias por ayudarnos a mejorar'}
+                </div>
+                <div style={{fontSize:13.5,color:XC.t2,lineHeight:1.6,maxWidth:300,marginBottom:30}}>
+                  {isPositive
+                    ? 'Nos encanta saber que la pasaste bien. ¡Te esperamos pronto!'
+                    : 'Nuestro equipo revisará personalmente tu experiencia. Gracias por tu confianza.'}
+                </div>
+
+                {/* Reseña pública SOLO en flujo positivo */}
+                {isPositive && (
+                  <a href="https://g.page/r/review" target="_blank" rel="noreferrer"
+                    style={{display:'block',width:'100%',maxWidth:320,padding:'14px',borderRadius:14,background:'rgba(255,255,255,0.06)',border:`1px solid ${XC.line}`,color:XC.t1,fontSize:13,fontWeight:800,textDecoration:'none',fontFamily:"'Syne',sans-serif",marginBottom:14}}>
+                    ⭐ Compartir mi experiencia en Google
+                  </a>
+                )}
+
+                <button onClick={()=>setClientePaso('premio')}
+                  style={{padding:'15px 50px',borderRadius:50,border:'none',background:`linear-gradient(135deg,${XC.pink},#cc2260)`,color:'#fff',fontSize:15,fontWeight:900,cursor:'pointer',fontFamily:"'Syne',sans-serif",boxShadow:`0 8px 28px rgba(255,45,120,0.45)`}}>
+                  🎁 Ver mi premio →
+                </button>
+
+                {/* Nota interna del mesero (no visible al cliente en producción) */}
+                <div style={{width:'100%',maxWidth:360,background:XC.card,borderRadius:16,padding:'14px',marginTop:26,border:`1px solid ${XC.line}`,textAlign:'left'}}>
+                  <div style={{fontSize:11,fontWeight:700,color:XC.t3,marginBottom:8}}>📝 Nota interna del mesero</div>
+                  <div style={{display:'flex',gap:6,marginBottom:8}}>
+                    {[{id:'nota',l:'📝 Nota'},{id:'alerta',l:'⚠️ Alerta'},{id:'felicitacion',l:'🌟 Éxito'}].map(t=>(
+                      <button key={t.id} onClick={()=>setFeedbackTipo(t.id as any)}
+                        style={{flex:1,padding:'6px',borderRadius:8,border:`1px solid ${feedbackTipo===t.id?accent:XC.line}`,background:feedbackTipo===t.id?`${accent}22`:'transparent',color:feedbackTipo===t.id?accent:XC.t3,fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                        {t.l}
+                      </button>
+                    ))}
+                  </div>
+                  <textarea value={feedbackMesa} onChange={e=>setFeedbackMesa(e.target.value)}
+                    placeholder="Ej: cliente VIP primera visita, solicitó postre especial…"
+                    style={{width:'100%',padding:'10px',borderRadius:8,border:`1px solid ${XC.line}`,background:'rgba(255,255,255,0.03)',color:XC.t1,fontSize:12,outline:'none',resize:'vertical',minHeight:54,fontFamily:"'DM Sans',sans-serif"}}/>
+                  {feedbackMesa && (
+                    <button onClick={guardarFeedback}
+                      style={{marginTop:8,padding:'8px 20px',borderRadius:8,border:'none',background:accent,color:'#000',fontSize:12,fontWeight:800,cursor:'pointer'}}>
+                      ✓ Guardar nota
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         );
@@ -3272,7 +3574,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           setClienteMode(false);
           setOrder(prev => prev.filter(o => o.mesa !== mesaCliente?.num));
           setClientePaso('cuenta');
-          setXcareStep('rating');
+          setXcareStep('sentiment');
           setJuegoPremio(null);
           showToast(`✓ Mesa ${mesaCliente?.num} cerrada — ¡Gracias!`);
         };
