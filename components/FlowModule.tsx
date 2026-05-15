@@ -57,6 +57,7 @@ export default function FlowModule() {
   const [filtroEst,  setFiltroEst]  = useState<string>('all');
   const [statsHoy,   setStatsHoy]   = useState<any>(null);
   const [careMetrics,setCareMetrics] = useState<any>(null);
+  const [careByMesa, setCareByMesa] = useState<Record<number,{stars:number; tags_negativos:string[]; platos_problema:string[]; created_at:string}>>({});
   const [tick,       setTick]       = useState(0);
 
   useEffect(() => {
@@ -117,16 +118,41 @@ export default function FlowModule() {
     if (data && data.length > 0) setCareMetrics(data[0]);
   }, []);
 
-  useEffect(() => { fetchLive(); fetchDia(); fetchCareMetrics(); }, [fetchLive, fetchDia, fetchCareMetrics]);
+  // Ratings X-CARE por mesa (último de hoy) — se pinta en cada tarjeta del live
+  const fetchCareByMesa = useCallback(async () => {
+    const hoy = new Date().toISOString().split('T')[0];
+    const { data } = await supabase
+      .from('xcare_encuestas')
+      .select('mesa_numero,estrellas,tags_negativos,platos_problema,created_at')
+      .gte('created_at', hoy+'T00:00:00')
+      .order('created_at', {ascending:false});
+    if (!data) return;
+    const map: Record<number,{stars:number; tags_negativos:string[]; platos_problema:string[]; created_at:string}> = {};
+    data.forEach((d:any) => {
+      if (d.mesa_numero == null) return;
+      if (!map[d.mesa_numero]) {
+        map[d.mesa_numero] = {
+          stars: d.estrellas || 0,
+          tags_negativos: d.tags_negativos || [],
+          platos_problema: d.platos_problema || [],
+          created_at: d.created_at,
+        };
+      }
+    });
+    setCareByMesa(map);
+  }, []);
+
+  useEffect(() => { fetchLive(); fetchDia(); fetchCareMetrics(); fetchCareByMesa(); }, [fetchLive, fetchDia, fetchCareMetrics, fetchCareByMesa]);
   useEffect(() => { const t = setInterval(fetchLive, 15000); return () => clearInterval(t); }, [fetchLive]);
 
   useEffect(() => {
     const ch = supabase.channel('flow-kds')
       .on('postgres_changes',{event:'*',schema:'public',table:'order_items'},()=>{fetchLive();fetchDia();})
       .on('postgres_changes',{event:'*',schema:'public',table:'orders'},()=>{fetchLive();fetchDia();})
+      .on('postgres_changes',{event:'*',schema:'public',table:'xcare_encuestas'},()=>{fetchCareByMesa();fetchCareMetrics();})
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, [fetchLive, fetchDia]);
+  }, [fetchLive, fetchDia, fetchCareByMesa, fetchCareMetrics]);
 
   // ── UPDATE STATUS ─────────────────────────────────────────────────
   const updateStatus = async (id:string, status:FlowItem['status']) => {
@@ -260,8 +286,8 @@ export default function FlowModule() {
               )}
             </div>
 
-            {/* Cards por pedido (orden de llegada) */}
-            <div style={{flex:1,overflowY:'auto',padding:12,display:'flex',flexDirection:'column',gap:8}}>
+            {/* Cards CUADRADAS por pedido, orden de llegada FIFO — grid responsive */}
+            <div style={{flex:1,overflowY:'auto',padding:12}}>
               {loading && <div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando...</div>}
               {!loading && pedidosOrdenados.length===0 && (
                 <div style={{textAlign:'center',padding:60,color:S.t3}}>
@@ -269,29 +295,40 @@ export default function FlowModule() {
                   <div style={{fontSize:14,fontWeight:700}}>Cocina al día</div>
                 </div>
               )}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(290px,1fr))',gap:10}}>
               {pedidosOrdenados.map((pedido:any) => {
                 const mc = getMC(pedido.table_id);
+                const careRating = pedido.table_id != null ? careByMesa[pedido.table_id] : null;
+                const platosQuejados = new Set(careRating?.platos_problema || []);
+                const careColor = careRating ? (careRating.stars>=4?S.green:careRating.stars>=3?S.gold:S.red) : null;
                 return (
-                  <div key={pedido.order_id} style={{background:S.bg2,border:`1px solid ${mc.color}25`,borderLeft:`4px solid ${mc.color}`,borderRadius:14,overflow:'hidden'}}>
+                  <div key={pedido.order_id} style={{background:S.bg2,border:`1px solid ${mc.color}25`,borderLeft:`4px solid ${mc.color}`,borderRadius:14,overflow:'hidden',display:'flex',flexDirection:'column',minHeight:300}}>
                     {/* Header pedido */}
-                    <div style={{padding:'6px 12px',background:`${mc.color}08`,display:'flex',alignItems:'center',gap:8,borderBottom:`1px solid ${mc.color}15`}}>
+                    <div style={{padding:'6px 10px',background:`${mc.color}08`,display:'flex',alignItems:'center',gap:6,borderBottom:`1px solid ${mc.color}15`,flexWrap:'wrap'}}>
                       <span style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,color:mc.color}}>
                         M{pedido.table_id||'?'}
                       </span>
-                      <span style={{fontSize:10,color:S.t3}}>{pedido.items.length} item{pedido.items.length>1?'s':''}</span>
-                      <span style={{fontSize:9,color:S.t3,marginLeft:4}}>🕐 {fmtHora(pedido.created_at)}</span>
+                      <span style={{fontSize:9,color:S.t3}}>{pedido.items.length} it.</span>
+                      <span style={{fontSize:9,color:S.t3}}>🕐 {fmtHora(pedido.created_at)}</span>
                       {pedido.mesero && <span style={{fontSize:9,color:S.t3}}>👤 {pedido.mesero.split(' ')[0]}</span>}
+                      {/* Rating Care */}
+                      {careRating && careColor && (
+                        <span title={`X-CARE: ${careRating.stars}★${careRating.tags_negativos?.length?` · ${careRating.tags_negativos.join(', ')}`:''}`}
+                          style={{fontSize:9,color:careColor,background:`${careColor}15`,border:`1px solid ${careColor}40`,padding:'1px 6px',borderRadius:10,fontWeight:800,display:'flex',alignItems:'center',gap:2}}>
+                          {'★'.repeat(careRating.stars)}{'☆'.repeat(Math.max(0,5-careRating.stars))}
+                        </span>
+                      )}
                       {/* Badges de estado */}
-                      <div style={{marginLeft:'auto',display:'flex',gap:4}}>
+                      <div style={{marginLeft:'auto',display:'flex',gap:3}}>
                         {(['pending','preparing','ready'] as const).map(s=>{
                           const n = pedido.items.filter((i:FlowItem)=>i.status===s).length;
                           const colors:any={pending:S.t3,preparing:'#FFB547',ready:S.green};
-                          return n>0?<span key={s} style={{fontSize:9,color:colors[s],background:`${colors[s]}15`,padding:'1px 6px',borderRadius:10,fontWeight:700}}>{n} {s}</span>:null;
+                          return n>0?<span key={s} style={{fontSize:8,color:colors[s],background:`${colors[s]}15`,padding:'1px 5px',borderRadius:10,fontWeight:700}}>{n}</span>:null;
                         })}
                       </div>
                     </div>
-                    {/* Items del pedido */}
-                    <div style={{padding:'8px 10px',display:'flex',flexDirection:'column',gap:6}}>
+                    {/* Items del pedido — scroll interno si hay muchos */}
+                    <div style={{padding:'8px 10px',display:'flex',flexDirection:'column',gap:6,flex:1,overflowY:'auto'}}>
                       {pedido.items.map((item:FlowItem) => {
                         const est   = ESTACIONES[getStation(item)]||ESTACIONES.cocina_caliente;
                         const tp    = tsec(item.created_at);
@@ -314,6 +351,7 @@ export default function FlowModule() {
                                   {item.cocinero && <span style={{fontSize:9,color:S.t3}}>👨‍🍳 {item.cocinero.split(' ').slice(-1)[0]}</span>}
                                   {isReady && <span style={{fontSize:9,background:'rgba(0,230,118,0.15)',color:S.green,padding:'1px 5px',borderRadius:8,fontWeight:700}}>✅ LISTO</span>}
                                   {esRetrasado && <span style={{fontSize:11}}>🔥</span>}
+                                  {platosQuejados.has(getNombre(item)) && <span title="Plato con queja Care en esta mesa" style={{fontSize:9,color:S.red,background:`${S.red}15`,border:`1px solid ${S.red}40`,padding:'1px 5px',borderRadius:8,fontWeight:700}}>⚠ Care</span>}
                                 </div>
                                 {item.notes && item.notes!==getNombre(item) && <div style={{fontSize:9,color:'#FFB547',marginTop:2,fontStyle:'italic'}}>📝 {item.notes}</div>}
                               </div>
@@ -359,6 +397,7 @@ export default function FlowModule() {
                   </div>
                 );
               })}
+              </div>
             </div>
           </div>
         )}
