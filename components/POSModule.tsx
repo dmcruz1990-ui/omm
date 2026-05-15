@@ -494,15 +494,35 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
   );
 };
 
-// ── 6 CARTAS — pica una y sale tu premio ───────────────────
+// ── 6 CARTAS — mira los premios, se barajan, picas el tuyo ──
 const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: number }> = ({ onClose, mesaNum, rating }) => {
   const [cartas] = useState(() => [...PREMIOS_RULETA].sort(() => Math.random() - 0.5).slice(0, 6));
-  const [flipped, setFlipped] = useState<number|null>(null);
-  const [revealing, setRevealing] = useState(false);
+  // Fases: preview (premios visibles) → flip (voltear) → shuffle (barajar) → pick → done
+  const [phase, setPhase] = useState<'preview'|'flip'|'shuffle'|'pick'|'done'>('preview');
+  const [picked, setPicked] = useState<number|null>(null);
+  const [offsets, setOffsets] = useState(()=>cartas.map(()=>({x:0,y:0,r:0,z:0})));
   const [particles, setParticles] = useState<{x:number;y:number;c:string;id:number;angle:number;dist:number}[]>([]);
   const [correoEnvio, setCorreoEnvio] = useState('');
   const [premioEnviado, setPremioEnviado] = useState(false);
   const pidRef = useRef(0);
+
+  // Secuencia automática: ver premios → voltear → barajar → listo para picar
+  useEffect(() => {
+    const t: number[] = [];
+    t.push(window.setTimeout(()=>setPhase('flip'), 2800));
+    t.push(window.setTimeout(()=>setPhase('shuffle'), 3600));
+    // 4 tandas de barajado: las cartas se mueven a posiciones aleatorias y vuelven
+    [0,1,2,3].forEach(k=>{
+      t.push(window.setTimeout(()=>{
+        setOffsets(cartas.map(()=> k===3
+          ? {x:0,y:0,r:0,z:0}
+          : {x:(Math.random()-0.5)*150, y:(Math.random()-0.5)*70, r:(Math.random()-0.5)*40, z:Math.floor(Math.random()*6)}));
+      }, 3800 + k*430));
+    });
+    t.push(window.setTimeout(()=>setPhase('pick'), 3800 + 4*430));
+    return ()=>t.forEach(clearTimeout);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const spawnConfetti = () => {
     const colors = ['#FFB547','#FF2D78','#00E676','#448AFF','#B388FF','#FF5252','#FFD700','#fff'];
@@ -516,22 +536,36 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
   };
 
   const pickCard = (i: number) => {
-    if (flipped !== null) return;
-    setRevealing(true);
-    setFlipped(i);
-    setTimeout(() => { setRevealing(false); spawnConfetti(); }, 700);
+    if (phase !== 'pick') return;
+    setPicked(i);
+    setPhase('done');
+    setTimeout(spawnConfetti, 650);
   };
 
-  const premio = flipped !== null ? cartas[flipped] : null;
+  const premio = picked !== null ? cartas[picked] : null;
+  const headerTxt = {
+    preview: 'Estos son los premios',
+    flip:    'Memoriza bien...',
+    shuffle: '🔀 Barajando...',
+    pick:    'Pica tu carta',
+    done:    '¡Ganaste!',
+  }[phase];
+  const headerSub = {
+    preview: 'Míralos bien — en un momento se barajan',
+    flip:    'Volteando las cartas',
+    shuffle: 'Ya no sabes cuál es cuál...',
+    pick:    'Tu intuición elige tu premio',
+    done:    premio?.desc || '',
+  }[phase];
 
   return (
     <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'60px 20px 32px', background: premio ? premio.bg : '#080810', transition:'background 1s', position:'relative', overflow:'hidden' }}>
       <style>{`
-        @keyframes cardFlip{0%{transform:rotateY(0deg)}100%{transform:rotateY(180deg)}}
         @keyframes cardFloat{0%,100%{transform:translateY(0px)}50%{transform:translateY(-6px)}}
         @keyframes cardShine{0%{background-position:-200% 0}100%{background-position:200% 0}}
         @keyframes confettiFloat{0%{transform:translate(0,0) rotate(0deg) scale(1);opacity:1}100%{transform:translate(var(--tx),var(--ty)) rotate(var(--r)) scale(0);opacity:0}}
         @keyframes prizeReveal{0%{transform:scale(0) rotate(-10deg);opacity:0}60%{transform:scale(1.1) rotate(3deg)}100%{transform:scale(1) rotate(0deg);opacity:1}}
+        @keyframes cardPickPulse{0%,100%{box-shadow:0 6px 24px rgba(255,45,120,0.35)}50%{box-shadow:0 6px 34px rgba(255,45,120,0.7)}}
       `}</style>
 
       {particles.map(p=>(
@@ -550,10 +584,10 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
       <div style={{ textAlign:'center', marginBottom:20, zIndex:5 }}>
         <div style={{ fontSize:11, color:'#FF2D78', fontWeight:900, letterSpacing:'.15em', textTransform:'uppercase' as const, marginBottom:8 }}>✦ OMM REWARDS</div>
         <div style={{ fontFamily:"'Syne',sans-serif", fontSize:26, fontWeight:900, color: premio ? premio.color : '#fff', transition:'color .8s', lineHeight:1.2 }}>
-          {flipped === null ? 'Pica una carta' : '¡Ganaste!'}
+          {headerTxt}
         </div>
         <div style={{ fontSize:13, color:'rgba(255,255,255,.5)', marginTop:4 }}>
-          {flipped === null ? 'Tu intuición elige tu premio' : premio!.desc}
+          {headerSub}
         </div>
       </div>
 
@@ -568,26 +602,29 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
         zIndex:5,
       }}>
         {cartas.map((c, i) => {
-          const isFlipped = flipped === i;
-          const isOther = flipped !== null && flipped !== i;
+          // Premio visible si: estamos en preview, o esta carta es la elegida ya revelada
+          const showPrize = phase==='preview' || (phase==='done' && picked===i);
+          const isOther = phase==='done' && picked!==i;
+          const off = offsets[i] || {x:0,y:0,r:0,z:0};
           return (
             <div key={i}
               onClick={() => pickCard(i)}
               style={{
                 aspectRatio:'2/3',
                 perspective:'1000px',
-                cursor: flipped === null ? 'pointer' : 'default',
-                opacity: isOther ? 0.25 : 1,
-                transform: isOther ? 'scale(0.92)' : 'scale(1)',
-                transition: 'opacity .4s, transform .4s',
-                animation: flipped === null ? `cardFloat 3s ease-in-out ${i*0.2}s infinite` : 'none',
+                cursor: phase==='pick' ? 'pointer' : 'default',
+                opacity: isOther ? 0.2 : 1,
+                zIndex: off.z,
+                transform: `translate(${off.x}px,${off.y}px) rotate(${off.r}deg) scale(${isOther?0.9:1})`,
+                transition: phase==='shuffle' ? 'transform .4s cubic-bezier(.5,.05,.5,.95)' : 'transform .45s ease, opacity .4s',
+                animation: phase==='pick' ? `cardFloat 3s ease-in-out ${i*0.2}s infinite` : 'none',
               }}>
               <div style={{
                 position:'relative',
                 width:'100%', height:'100%',
                 transformStyle:'preserve-3d',
                 transition:'transform 0.7s cubic-bezier(.34,1.56,.64,1)',
-                transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+                transform: showPrize ? 'rotateY(180deg)' : 'rotateY(0deg)',
               }}>
                 {/* Dorso */}
                 <div style={{
@@ -599,6 +636,7 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
                   backfaceVisibility:'hidden',
                   display:'flex', alignItems:'center', justifyContent:'center',
                   overflow:'hidden',
+                  animation: phase==='pick' ? 'cardPickPulse 1.8s ease-in-out infinite' : 'none',
                 }}>
                   <div style={{
                     position:'absolute', inset:0,
@@ -612,7 +650,7 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
                     letterSpacing:'.02em', zIndex:2,
                   }}>✦</div>
                 </div>
-                {/* Anverso */}
+                {/* Anverso (premio) */}
                 <div style={{
                   position:'absolute', inset:0,
                   borderRadius:14,
@@ -634,7 +672,7 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
       </div>
 
       {/* Premio ganado */}
-      {premio && !revealing && (
+      {premio && phase==='done' && (
         <div style={{ background:`linear-gradient(135deg,${premio.color}20,${premio.color}08)`, border:`2px solid ${premio.color}60`, borderRadius:24, padding:'24px 32px', textAlign:'center', marginBottom:20, animation:'prizeReveal .6s cubic-bezier(.34,1.56,.64,1) forwards', boxShadow:`0 8px 40px ${premio.color}30`, zIndex:5 }}>
           <div style={{ fontSize:72, marginBottom:8, filter:`drop-shadow(0 0 20px ${premio.color})` }}>{premio.emoji}</div>
           <div style={{ fontFamily:"'Syne',sans-serif", fontSize:24, fontWeight:900, color:premio.color, marginBottom:6 }}>{premio.label}</div>
@@ -674,16 +712,16 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
       )}
 
       {/* Botones */}
-      {flipped !== null && !revealing ? (
+      {phase==='done' ? (
         <button onClick={onClose}
           style={{ padding:'16px 56px', borderRadius:50, background:`linear-gradient(135deg,${premio!.color},${premio!.color}cc)`, color:'#fff', fontSize:17, fontWeight:900, border:'none', cursor:'pointer', boxShadow:`0 6px 30px ${premio!.color}60`, fontFamily:"'Syne',sans-serif", zIndex:5, position:'relative' }}>
           🎉 ¡Genial! Cerrar
         </button>
-      ) : flipped === null ? (
+      ) : (
         <button onClick={onClose} style={{ background:'none', border:'none', fontSize:12, color:'rgba(255,255,255,.2)', cursor:'pointer', marginTop:6, zIndex:5, position:'relative' }}>
           Omitir premio
         </button>
-      ) : null}
+      )}
       {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
       <div style={{display:'none'}}>{rating}</div>
     </div>
