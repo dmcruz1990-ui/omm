@@ -352,7 +352,7 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
   const premio = selected !== null ? PREMIOS_RULETA[selected] : null;
 
   return (
-    <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'24px 20px 32px', background: premio ? premio.bg : '#080810', transition:'background 1s', position:'relative', overflow:'hidden' }}>
+    <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'60px 20px 32px', background: premio ? premio.bg : '#080810', transition:'background 1s', position:'relative', overflow:'hidden' }}>
       <style>{`
         @keyframes roulettePulse{0%,100%{box-shadow:0 0 40px #FF2D78,0 0 80px #FF2D7840}50%{box-shadow:0 0 80px #FF2D78,0 0 160px #FF2D7860}}
         @keyframes confettiFloat{0%{transform:translate(0,0) rotate(0deg) scale(1);opacity:1}100%{transform:translate(var(--tx),var(--ty)) rotate(var(--r)) scale(0);opacity:0}}
@@ -525,7 +525,7 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
   const premio = flipped !== null ? cartas[flipped] : null;
 
   return (
-    <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'24px 20px 32px', background: premio ? premio.bg : '#080810', transition:'background 1s', position:'relative', overflow:'hidden' }}>
+    <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'60px 20px 32px', background: premio ? premio.bg : '#080810', transition:'background 1s', position:'relative', overflow:'hidden' }}>
       <style>{`
         @keyframes cardFlip{0%{transform:rotateY(0deg)}100%{transform:rotateY(180deg)}}
         @keyframes cardFloat{0%,100%{transform:translateY(0px)}50%{transform:translateY(-6px)}}
@@ -692,7 +692,7 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
 
 // ── PICKER — elige entre ruleta o cartas ────────────────────
 const PremioPicker: React.FC<{ onPick: (juego:'ruleta'|'cartas')=>void; onSkip: ()=>void; rating: number }> = ({ onPick, onSkip, rating }) => (
-  <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', background:'#080810', position:'relative' }}>
+  <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'60px 24px 32px', background:'#080810', position:'relative' }}>
     <style>{`
       @keyframes pulseGlow{0%,100%{box-shadow:0 0 30px rgba(255,45,120,0.4)}50%{box-shadow:0 0 60px rgba(255,45,120,0.7)}}
       @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
@@ -3090,7 +3090,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         };
 
         return (
-          <div style={{flex:1,overflowY:'auto',background:XC.bg,display:'flex',flexDirection:'column',alignItems:'center',padding:'28px 24px 32px',position:'relative',minHeight:'100%'}}>
+          <div style={{flex:1,overflowY:'auto',background:XC.bg,display:'flex',flexDirection:'column',alignItems:'center',padding:'64px 24px 32px',position:'relative',minHeight:'100%'}}>
             <style>{`
               @keyframes xcFadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
               @keyframes xcBounce{0%{transform:scale(0)}60%{transform:scale(1.2)}100%{transform:scale(1)}}
