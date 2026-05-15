@@ -2153,6 +2153,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [feedbackTipo, setFeedbackTipo] = useState<'nota'|'alerta'|'felicitacion'>('nota');
   const [showPropCustom, setShowPropCustom] = useState(false);
   const [customPropina, setCustomPropina] = useState(0);
+  const [propinaSubStep, setPropinaSubStep] = useState<'legal'|'reconocimiento'>('legal');
   const [divClientePax, setDivClientePax] = useState(1);
   const [platosDia, setPlatosDia]         = useState<any[]>([]);
   const [reservasHoy, setReservasHoy] = useState<any[]>([]);
@@ -2195,6 +2196,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setJuegoPremio(null);
     setEditCuenta(false); setPinMaitreOk(false); setPinMaitre(''); setItemsEliminados([]);
     setFacturaTipo('correo'); setFacturaCorreo(''); setPagoMixto(false);
+    setPropinaSubStep('legal'); setCustomPropina(0); setShowPropCustom(false);
     setClienteMode(true);
     closeModal();
 
@@ -2657,117 +2659,173 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         </div>
       )}
 
-      {/* ═══ PASO 2: PROPINA ═══ */}
-      {clientePaso === 'propina' && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-between', padding: '32px 24px 32px' }}>
-          {/* Título */}
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontSize: 28, fontWeight: 800, lineHeight: 1.2, color: S.black, marginBottom: 4 }}>
-              ¿Deseas dejar propina<br/>a <span style={{ fontWeight: 900 }}>{nombreMesero}</span>?
+      {/* ═══ PASO 2: PROPINA — flujo en dos pantallas (legal + reconocimiento) ═══ */}
+      {clientePaso === 'propina' && (() => {
+        const baseDiez = Math.round(baseCliente * 0.10);
+        const pctActual = customPropina>0 && clientePropina===0
+          ? Math.round((customPropina / Math.max(baseCliente,1)) * 100)
+          : clientePropina;
+
+        // ── Teclado numérico reutilizable ────────────────────────────
+        const Teclado = ({ onConfirm, onCancel, sugeridos }: { onConfirm: ()=>void; onCancel: ()=>void; sugeridos: number[] }) => (
+          <div style={{ background: '#f5f0e8', borderRadius: 16, padding: '16px', border: '1px solid #e8d8b0' }}>
+            <div style={{ fontSize: 11, color: '#999', marginBottom: 6, fontWeight: 700, textTransform:'uppercase' }}>Propina personalizada</div>
+            <div style={{ textAlign:'center', fontSize:30, fontWeight:900, color:'#1a1a1a', marginBottom:12, minHeight:40, letterSpacing:'-0.02em' }}>
+              {customPropina > 0 ? `$${customPropina.toLocaleString('es-CO')}` : '$ —'}
             </div>
-            <div style={{ fontSize:12, color:S.text3, marginBottom:8, lineHeight:1.5 }}>
-              Propina <strong style={{color:S.text2}}>100% voluntaria</strong> · El 100% va al equipo de servicio
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6, marginBottom:10 }}>
+              {['1','2','3','4','5','6','7','8','9','000','0','⌫'].map(k=>(
+                <button key={k} onClick={()=>{
+                  if (k==='⌫') { setCustomPropina(p=>Math.floor(p/10)); return; }
+                  setCustomPropina(p=>{ const n=p*(k==='000'?1000:10)+(k==='000'?0:parseInt(k)); return n<=9999999?n:p; });
+                }}
+                  style={{ padding:'14px 8px', borderRadius:10, border:`1px solid ${k==='⌫'?'rgba(255,82,82,0.3)':'rgba(212,148,58,0.25)'}`, background:k==='⌫'?'rgba(255,82,82,0.08)':'white', fontSize:k==='⌫'?18:17, fontWeight:700, cursor:'pointer', color:k==='⌫'?'#e05050':'#1a1a1a' }}>
+                  {k}
+                </button>
+              ))}
             </div>
-            {/* Badge legal Colombia */}
-            <div style={{ display:'inline-flex', alignItems:'center', gap:5, background:'rgba(61,186,111,0.08)', border:'1px solid rgba(61,186,111,0.25)', borderRadius:20, padding:'4px 14px', fontSize:10, color:'#3dba6f', marginBottom:4 }}>
-              ✓ Ley 1393 de 2010 · Art. 22 — Voluntaria en Colombia
+            <div style={{ display:'flex', gap:5, marginBottom:10 }}>
+              {sugeridos.map(p=>(
+                <button key={p} onClick={()=>setCustomPropina(Math.round(baseCliente*p/100))}
+                  style={{ flex:1, padding:'7px', borderRadius:8, border:'1px solid rgba(212,148,58,0.3)', background:'rgba(212,148,58,0.08)', fontSize:10, fontWeight:700, color:'#d4943a', cursor:'pointer' }}>
+                  {p}% total · ${Math.round(baseCliente*p/100).toLocaleString('es-CO')}
+                </button>
+              ))}
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <button onClick={onCancel}
+                style={{ flex:1, padding:'10px', borderRadius:10, border:'1px solid #ddd', background:'white', fontSize:12, color:'#888', cursor:'pointer' }}>
+                Cancelar
+              </button>
+              <button onClick={onConfirm}
+                disabled={customPropina<=0}
+                style={{ flex:2, padding:'10px', borderRadius:10, border:'none', background:customPropina>0?'#1a1a1a':'#ccc', color:'white', fontSize:13, fontWeight:700, cursor:customPropina>0?'pointer':'not-allowed' }}>
+                ✓ Confirmar ${(customPropina||0).toLocaleString('es-CO')}
+              </button>
             </div>
           </div>
+        );
 
-          {/* Botones de propina */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: 10 }}>
-            {[
-              { pct: 0,  emoji: '😐', label:'Sin propina',  desc:'' },
-              { pct: 10, emoji: '🙂', label:'10% Legal',    desc:'Sugerido', badge:'✓ Ley 1393' },
-              { pct: 20, emoji: '🔥', label:'20% Popular',  desc:'Generoso',  popular: true },
-              { pct: 30, emoji: '🤩', label:'30% Wow',      desc:'Increíble' },
-            ].map(({ pct, emoji, label, popular, badge }) => (
-              <div key={pct} style={{ position: 'relative' }}>
-                {popular && <div style={{ position: 'absolute', top:-10, left:'50%', transform:'translateX(-50%)', background:S.black, color:'#fff', fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap', zIndex:1 }}>POPULAR</div>}
-                {badge && <div style={{ position: 'absolute', top:-10, left:'50%', transform:'translateX(-50%)', background:'#3dba6f', color:'#fff', fontSize:9, fontWeight:700, padding:'2px 8px', borderRadius:20, whiteSpace:'nowrap', zIndex:1 }}>{badge}</div>}
-                <button onClick={() => setClientePropina(pct)}
-                  style={{ width:'100%', aspectRatio:'1', borderRadius:20, border:`2px solid ${clientePropina===pct?S.black:S.border}`, background:clientePropina===pct?S.bg2:'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'all 0.15s', gap:2 }}>
-                  {clientePropina===pct&&<span style={{ fontSize:12, fontWeight:700, color:S.black }}>✓</span>}
-                  <span style={{ fontSize:22, fontWeight:900, color:S.black }}>{pct}%</span>
-                  <span style={{ fontSize:16 }}>{emoji}</span>
-                  <span style={{ fontSize:9, color:S.text3 }}>{label}</span>
+        // ── Pantalla 1: legal/obligatoria ───────────────────────────
+        if (propinaSubStep === 'legal') {
+          return (
+            <div style={{ flex: 1, overflowY:'auto', display: 'flex', flexDirection: 'column', padding: '40px 24px 24px', gap: 16 }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.2, color: S.black, marginBottom: 10 }}>
+                  ¿Deseas incluir la propina sugerida?
+                </div>
+                <div style={{ fontSize:12, color:S.text3, lineHeight:1.6, maxWidth:360, margin:'0 auto', marginBottom:10 }}>
+                  La propina es <strong style={{color:S.text2}}>voluntaria</strong> según la Ley 1935 de 2018. Este establecimiento sugiere el <strong>10%</strong> del valor del servicio. Puedes aceptarla, modificarla o no incluirla libremente.
+                </div>
+                <div style={{ display:'inline-flex', alignItems:'center', gap:5, background:'rgba(61,186,111,0.08)', border:'1px solid rgba(61,186,111,0.25)', borderRadius:20, padding:'4px 14px', fontSize:10, color:'#3dba6f' }}>
+                  ✓ 100% va al equipo de servicio
+                </div>
+              </div>
+
+              {showPropCustom ? (
+                <Teclado sugeridos={[10,15,20]}
+                  onCancel={()=>{ setCustomPropina(0); setShowPropCustom(false); }}
+                  onConfirm={()=>{ setClientePropina(0); setShowPropCustom(false); setPropinaSubStep('reconocimiento'); }}/>
+              ) : (
+                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                  <button onClick={()=>{ setCustomPropina(0); setClientePropina(10); setPropinaSubStep('reconocimiento'); }}
+                    style={{ width:'100%', padding:'18px', borderRadius:16, border:'none', background:S.black, color:'#fff', fontSize:16, fontWeight:800, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
+                    <span>Aceptar 10%</span>
+                    <span style={{fontSize:11, fontWeight:500, opacity:.7}}>≈ ${formatPrecio(baseDiez)} sugerido</span>
+                  </button>
+                  <button onClick={()=>{ setShowPropCustom(true); setClientePropina(0); }}
+                    style={{ width:'100%', padding:'16px', borderRadius:16, border:`2px solid ${S.border}`, background:'#fff', color:S.black, fontSize:15, fontWeight:700, cursor:'pointer' }}>
+                    Elegir otro valor
+                  </button>
+                  <button onClick={()=>{ setCustomPropina(0); setClientePropina(0); setClientePaso('pago'); }}
+                    style={{ width:'100%', padding:'14px', borderRadius:16, border:'1px solid rgba(0,0,0,0.08)', background:'transparent', color:S.text3, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                    No incluir
+                  </button>
+                </div>
+              )}
+
+              {/* Total en vivo */}
+              <div style={{ background: '#fff', borderRadius: 16, padding: '14px 18px', marginTop:'auto' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: S.text2, marginBottom: 4 }}>
+                  <span>Subtotal:</span>
+                  <span style={{ fontWeight: 600, color: S.text }}>${formatPrecio(baseCliente)}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: S.text2 }}>
+                  <span>Total estimado:</span>
+                  <span style={{ fontWeight: 700, color: S.black, fontSize: 16 }}>${formatPrecio(baseCliente + baseDiez)}</span>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // ── Pantalla 2: reconocimiento adicional (sólo si aceptó 10% o entró a otro valor) ───
+        return (
+          <div style={{ flex: 1, overflowY:'auto', display: 'flex', flexDirection: 'column', padding: '40px 24px 24px', gap: 14 }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 23, fontWeight: 800, lineHeight: 1.2, color: S.black, marginBottom: 10 }}>
+                ¿Deseas dejar un reconocimiento adicional al equipo?
+              </div>
+              <div style={{ fontSize:12, color:S.text3, lineHeight:1.6, maxWidth:360, margin:'0 auto' }}>
+                Si lo deseas, puedes aumentar voluntariamente el valor final de tu propina como una muestra adicional de agradecimiento. <strong style={{color:S.text2}}>Tú decides el valor total.</strong>
+              </div>
+            </div>
+
+            {showPropCustom ? (
+              <Teclado sugeridos={[15,20,25]}
+                onCancel={()=>{ setShowPropCustom(false); }}
+                onConfirm={()=>{ setClientePropina(0); setShowPropCustom(false); }}/>
+            ) : (
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                {[
+                  { pct:10, label:'Mantener 10%',  emoji:'🙂', tone:S.black },
+                  { pct:15, label:'15% total',     emoji:'😊', tone:'#3dba6f' },
+                  { pct:20, label:'20% total',     emoji:'🔥', tone:'#d4943a' },
+                ].map(o=>{
+                  const sel = pctActual===o.pct && customPropina===0;
+                  return (
+                    <button key={o.pct} onClick={()=>{ setCustomPropina(0); setClientePropina(o.pct); }}
+                      style={{ padding:'18px 8px', borderRadius:18, border:`2px solid ${sel?o.tone:S.border}`, background:sel?'rgba(0,0,0,0.04)':'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'all 0.15s', gap:4 }}>
+                      <span style={{ fontSize:22 }}>{o.emoji}</span>
+                      <span style={{ fontSize:15, fontWeight:800, color:S.black }}>{o.label}</span>
+                      <span style={{ fontSize:11, color:S.text3 }}>${formatPrecio(Math.round(baseCliente*o.pct/100))}</span>
+                    </button>
+                  );
+                })}
+                <button onClick={()=>setShowPropCustom(true)}
+                  style={{ padding:'18px 8px', borderRadius:18, border:`2px dashed rgba(212,148,58,0.4)`, background:'rgba(212,148,58,0.04)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', gap:4 }}>
+                  <span style={{ fontSize:22 }}>✏️</span>
+                  <span style={{ fontSize:15, fontWeight:800, color:'#d4943a' }}>Otro valor</span>
+                  <span style={{ fontSize:11, color:S.text3 }}>Tú lo decides</span>
                 </button>
               </div>
-            ))}
-          </div>
-          {/* Botón modificar propina */}
-          <button onClick={() => setShowPropCustom(true)}
-            style={{ width:'100%', padding:'11px', borderRadius:50, border:'2px dashed rgba(212,148,58,0.4)', background:'rgba(212,148,58,0.04)', color:'#d4943a', fontSize:13, fontWeight:700, cursor:'pointer' }}>
-            ✏️ Deseo modificar mi propina
-          </button>
-
-          {/* Total en vivo */}
-          <div style={{ background: '#fff', borderRadius: 16, padding: '16px 20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, color: S.text2, marginBottom: 4 }}>
-              <span>Importe de la propina:</span>
-              <span style={{ fontWeight: 600, color: S.text }}>${formatPrecio(propinaCliente)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, color: S.text2 }}>
-              <span>Estás pagando:</span>
-              <span style={{ fontWeight: 700, color: S.black, fontSize: 17 }}>${formatPrecio(totalCliente)}</span>
-            </div>
-          </div>
-
-          <button onClick={() => setClientePaso('pago')}
-            style={{ width: '100%', padding: '18px', borderRadius: 100, background: S.black, color: '#fff', fontSize: 17, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
-            Confirmar
-          </button>
-
-          {/* Propina personalizada — teclado numérico */}
-          <div style={{ marginTop: 4 }}>
-            {showPropCustom ? (
-              <div style={{ background: '#f5f0e8', borderRadius: 16, padding: '16px', border: '1px solid #e8d8b0' }}>
-                <div style={{ fontSize: 11, color: '#999', marginBottom: 6, fontWeight: 700, textTransform:'uppercase' }}>Propina personalizada</div>
-                {/* Display monto */}
-                <div style={{ textAlign:'center', fontSize:30, fontWeight:900, color:'#1a1a1a', marginBottom:12, minHeight:40, letterSpacing:'-0.02em' }}>
-                  {customPropina > 0 ? `$${customPropina.toLocaleString('es-CO')}` : '$ —'}
-                </div>
-                {/* Teclado */}
-                <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6, marginBottom:10 }}>
-                  {['1','2','3','4','5','6','7','8','9','000','0','⌫'].map(k=>(
-                    <button key={k} onClick={()=>{
-                      if (k==='⌫') { setCustomPropina(p=>Math.floor(p/10)); return; }
-                      setCustomPropina(p=>{ const n=p*(k==='000'?1000:10)+(k==='000'?0:parseInt(k)); return n<=9999999?n:p; });
-                    }}
-                      style={{ padding:'14px 8px', borderRadius:10, border:`1px solid ${k==='⌫'?'rgba(255,82,82,0.3)':'rgba(212,148,58,0.25)'}`, background:k==='⌫'?'rgba(255,82,82,0.08)':'white', fontSize:k==='⌫'?18:17, fontWeight:700, cursor:'pointer', color:k==='⌫'?'#e05050':'#1a1a1a' }}>
-                      {k}
-                    </button>
-                  ))}
-                </div>
-                {/* Accesos rápidos % */}
-                <div style={{ display:'flex', gap:5, marginBottom:10 }}>
-                  {[10,15,20].map(p=>(
-                    <button key={p} onClick={()=>setCustomPropina(Math.round(baseCliente*p/100))}
-                      style={{ flex:1, padding:'7px', borderRadius:8, border:'1px solid rgba(212,148,58,0.3)', background:'rgba(212,148,58,0.08)', fontSize:10, fontWeight:700, color:'#d4943a', cursor:'pointer' }}>
-                      {p}% · ${Math.round(baseCliente*p/100).toLocaleString('es-CO')}
-                    </button>
-                  ))}
-                </div>
-                <div style={{ display:'flex', gap:8 }}>
-                  <button onClick={()=>{ setCustomPropina(0); setShowPropCustom(false); }}
-                    style={{ flex:1, padding:'10px', borderRadius:10, border:'1px solid #ddd', background:'white', fontSize:12, color:'#888', cursor:'pointer' }}>
-                    Cancelar
-                  </button>
-                  <button onClick={()=>{ setShowPropCustom(false); setClientePropina(0); }}
-                    style={{ flex:2, padding:'10px', borderRadius:10, border:'none', background:'#1a1a1a', color:'white', fontSize:13, fontWeight:700, cursor:'pointer' }}>
-                    ✓ Confirmar ${(customPropina||0).toLocaleString('es-CO')}
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <button onClick={() => setShowPropCustom(true)}
-                style={{ width: '100%', padding: '12px', borderRadius: 12, border: '1px solid #e0d8cc', background: 'transparent', color: S.text3, fontSize: 13, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                🔢 Personalizar monto de propina
-              </button>
             )}
+
+            {/* Total en vivo */}
+            <div style={{ background: '#fff', borderRadius: 16, padding: '14px 18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: S.text2, marginBottom: 4 }}>
+                <span>Reconocimiento:</span>
+                <span style={{ fontWeight: 600, color: S.text }}>${formatPrecio(propinaCliente)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: S.text2 }}>
+                <span>Estás pagando:</span>
+                <span style={{ fontWeight: 700, color: S.black, fontSize: 16 }}>${formatPrecio(totalCliente)}</span>
+              </div>
+            </div>
+
+            <div style={{ display:'flex', gap:8, marginTop:'auto' }}>
+              <button onClick={()=>{ setShowPropCustom(false); setPropinaSubStep('legal'); }}
+                style={{ flex:1, padding:'14px', borderRadius:100, background:'transparent', color:S.text3, fontSize:13, fontWeight:600, border:`1px solid ${S.border}`, cursor:'pointer' }}>
+                ← Volver
+              </button>
+              <button onClick={() => setClientePaso('pago')}
+                style={{ flex:2, padding:'16px', borderRadius:100, background: S.black, color: '#fff', fontSize: 15, fontWeight: 700, border: 'none', cursor: 'pointer' }}>
+                Confirmar y continuar
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ═══ PASO 3: MÉTODO DE PAGO ═══ */}
       {clientePaso === 'pago' && (
