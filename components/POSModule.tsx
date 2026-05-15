@@ -3005,11 +3005,11 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
   const mesaSubtotal = ticketBase + mesaOrderItems.reduce((s:number, o:any) => s + parsePrecio(o.precio), 0);
 
   return (
-    <div ref={wrapperRef} className="flex bg-[#0a0a0a] text-[#f0f0f0]" style={{ 
+    <div ref={wrapperRef} className="flex bg-[#0a0a0a] text-[#f0f0f0]" style={{
       fontFamily: "'DM Sans', sans-serif",
       width: '100%',
       height: '100%',
-      minHeight: '100vh',
+      maxHeight: '100%',
       overflow: 'hidden'
     }}>
 
