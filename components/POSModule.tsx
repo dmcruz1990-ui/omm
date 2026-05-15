@@ -2154,6 +2154,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [showPropCustom, setShowPropCustom] = useState(false);
   const [customPropina, setCustomPropina] = useState(0);
   const [propinaSubStep, setPropinaSubStep] = useState<'legal'|'reconocimiento'>('legal');
+  const [propinaIntent, setPropinaIntent] = useState<'aceptar'|'otro'>('aceptar');
   const [divClientePax, setDivClientePax] = useState(1);
   const [platosDia, setPlatosDia]         = useState<any[]>([]);
   const [reservasHoy, setReservasHoy] = useState<any[]>([]);
@@ -2197,6 +2198,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setEditCuenta(false); setPinMaitreOk(false); setPinMaitre(''); setItemsEliminados([]);
     setFacturaTipo('correo'); setFacturaCorreo(''); setPagoMixto(false);
     setPropinaSubStep('legal'); setCustomPropina(0); setShowPropCustom(false);
+    setPropinaIntent('aceptar'); setClientePropina(10);
     setClienteMode(true);
     closeModal();
 
@@ -2659,165 +2661,288 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         </div>
       )}
 
-      {/* ═══ PASO 2: PROPINA — flujo en dos pantallas (legal + reconocimiento) ═══ */}
+      {/* ═══ PASO 2: PROPINA — diseño Nexum, 2 pantallas (legal + reconocimiento) ═══ */}
       {clientePaso === 'propina' && (() => {
+        // Paleta Nexum
+        const N = {
+          bg:'#FFFFFF', ink:'#1A1A2E', ink2:'#4A4A5E', ink3:'#8A8AA0',
+          violet:'#7C3AED', violetD:'#5B21B6', violetL:'#F3EEFE',
+          violetXL:'#FAF7FF', border:'#EDE9F6',
+          yellow:'#FFF6E8', yellowI:'#F59E0B',
+          green:'#E8F8EE', greenI:'#10B981',
+          blue:'#EEF2FE', blueI:'#3B82F6',
+        };
         const baseDiez = Math.round(baseCliente * 0.10);
         const pctActual = customPropina>0 && clientePropina===0
           ? Math.round((customPropina / Math.max(baseCliente,1)) * 100)
           : clientePropina;
 
-        // ── Teclado numérico reutilizable ────────────────────────────
-        const Teclado = ({ onConfirm, onCancel, sugeridos }: { onConfirm: ()=>void; onCancel: ()=>void; sugeridos: number[] }) => (
-          <div style={{ background: '#f5f0e8', borderRadius: 16, padding: '16px', border: '1px solid #e8d8b0' }}>
-            <div style={{ fontSize: 11, color: '#999', marginBottom: 6, fontWeight: 700, textTransform:'uppercase' }}>Propina personalizada</div>
-            <div style={{ textAlign:'center', fontSize:30, fontWeight:900, color:'#1a1a1a', marginBottom:12, minHeight:40, letterSpacing:'-0.02em' }}>
+        // ── Mascota Nexum (SVG inline) ───────────────────────────────
+        const NexumMascot = () => (
+          <svg width="118" height="118" viewBox="0 0 118 118" fill="none" xmlns="http://www.w3.org/2000/svg">
+            {/* Sparkles */}
+            <g fill={N.violet}>
+              <path d="M22 32 l1.5 4 l4 1.5 l-4 1.5 l-1.5 4 l-1.5 -4 l-4 -1.5 l4 -1.5 z" opacity="0.9"/>
+              <path d="M96 56 l1.2 3.2 l3.2 1.2 l-3.2 1.2 l-1.2 3.2 l-1.2 -3.2 l-3.2 -1.2 l3.2 -1.2 z" opacity="0.7"/>
+              <circle cx="32" cy="62" r="2" opacity="0.5"/>
+              <circle cx="89" cy="86" r="1.8" opacity="0.6"/>
+              <circle cx="26" cy="84" r="1.5" opacity="0.4"/>
+            </g>
+            {/* Leaf */}
+            <path d="M76 22 Q86 18 89 28 Q83 30 76 22 Z" fill={N.violet} opacity="0.9"/>
+            <path d="M82 24 Q84 22 86 26" stroke="#fff" strokeWidth="0.8" fill="none" opacity="0.7"/>
+            {/* Heart */}
+            <path d="M95 26 c-2 -3 -6 -3 -7 0 c-1 -3 -5 -3 -7 0 c-2 4 7 10 7 10 s9 -6 7 -10 z" fill={N.violet}/>
+            {/* Face — rounded square */}
+            <rect x="30" y="36" width="58" height="58" rx="16" stroke={N.ink} strokeWidth="3.2" fill="#fff"/>
+            {/* Cheeks tint */}
+            <circle cx="46" cy="74" r="4" fill={N.violet} opacity="0.18"/>
+            <circle cx="72" cy="74" r="4" fill={N.violet} opacity="0.18"/>
+            {/* Eyes */}
+            <circle cx="48" cy="60" r="2.6" fill={N.ink}/>
+            <circle cx="70" cy="60" r="2.6" fill={N.ink}/>
+            {/* Smile */}
+            <path d="M48 76 Q59 84 70 76" stroke={N.ink} strokeWidth="3" fill="none" strokeLinecap="round"/>
+          </svg>
+        );
+
+        // ── Header común (logo NEXUM + back) ─────────────────────────
+        const HeaderNexum = ({ onBack }: { onBack: ()=>void }) => (
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'12px 6px 6px', minHeight:40 }}>
+            <button onClick={onBack} style={{ background:'transparent', border:'none', cursor:'pointer', padding:8, color:N.ink, display:'flex', alignItems:'center', justifyContent:'center', width:36, height:36 }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M15 6 L9 12 L15 18" stroke={N.ink} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+            </button>
+            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:900, color:N.ink, letterSpacing:'-0.01em', display:'flex', alignItems:'center', gap:1 }}>
+              NE<span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:22, height:22 }}>
+                <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M3 4 L11 11 L3 18 M19 4 L11 11 L19 18" stroke={N.violet} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </span>UM
+            </div>
+            <div style={{ width:36 }}/>
+          </div>
+        );
+
+        // ── Card opción (radio list-style) ───────────────────────────
+        const OpcionCard = ({ icon, iconBg, iconColor, title, subtitle, badge, badgeColor, selected, onClick }: {
+          icon: React.ReactNode; iconBg: string; iconColor: string; title: string; subtitle: string;
+          badge?: string; badgeColor?: string; selected: boolean; onClick: ()=>void;
+        }) => (
+          <button onClick={onClick}
+            style={{
+              width:'100%', display:'flex', alignItems:'center', gap:14,
+              padding:'16px 18px', borderRadius:18,
+              border:`2px solid ${selected?N.violet:N.border}`,
+              background: selected? N.violetL : N.bg,
+              cursor:'pointer', textAlign:'left', transition:'all 0.18s', outline:'none',
+            }}>
+            <div style={{ width:48, height:48, borderRadius:'50%', background:iconBg, display:'flex', alignItems:'center', justifyContent:'center', color:iconColor, fontSize:22, flexShrink:0 }}>
+              {icon}
+            </div>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:2 }}>
+                <span style={{ fontFamily:"'Syne',sans-serif", fontSize:17, fontWeight:800, color:N.ink, letterSpacing:'-0.01em' }}>{title}</span>
+                {badge && <span style={{ fontSize:10, fontWeight:700, color:'#fff', background:badgeColor||N.violet, padding:'3px 9px', borderRadius:20, letterSpacing:'.02em' }}>{badge}</span>}
+              </div>
+              <div style={{ fontSize:12, color:N.ink3, lineHeight:1.4 }}>{subtitle}</div>
+            </div>
+            <div style={{ width:22, height:22, borderRadius:'50%', border:`2px solid ${selected?N.violet:'#D5D2E0'}`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, background:N.bg }}>
+              {selected && <div style={{ width:12, height:12, borderRadius:'50%', background:N.violet }}/>}
+            </div>
+          </button>
+        );
+
+        // ── Banner informativo distribución de propina ───────────────
+        const InfoCadena = () => (
+          <div style={{ display:'flex', alignItems:'center', gap:12, padding:'14px 16px', background:N.violetL, borderRadius:14, border:`1px solid ${N.border}` }}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" style={{flexShrink:0}}>
+              <path d="M12 3 L20 7 V12 C20 16.5 16.5 20.5 12 22 C7.5 20.5 4 16.5 4 12 V7 Z" stroke={N.violet} strokeWidth="1.8" fill="none"/>
+              <text x="12" y="15" fill={N.violet} fontSize="11" fontWeight="900" textAnchor="middle">i</text>
+            </svg>
+            <span style={{ fontSize:11.5, color:N.ink2, lineHeight:1.5, flex:1 }}>
+              La propina se distribuye entre las personas que hacen parte de la cadena de servicio.
+            </span>
+            <svg width="34" height="22" viewBox="0 0 40 24" fill="none" style={{flexShrink:0}}>
+              <circle cx="12" cy="9" r="4" stroke={N.violet} strokeWidth="1.6"/>
+              <path d="M4 22 c0 -5 4 -8 8 -8 s8 3 8 8" stroke={N.violet} strokeWidth="1.6" fill="none"/>
+              <circle cx="28" cy="9" r="4" stroke={N.violet} strokeWidth="1.6"/>
+              <path d="M20 22 c0 -5 4 -8 8 -8 s8 3 8 8" stroke={N.violet} strokeWidth="1.6" fill="none"/>
+              <path d="M28 4 l1.2 2 l2 .5 l-1.6 1.5 l.4 2.2 l-2 -1 l-2 1 l.4 -2.2 l-1.6 -1.5 l2 -.5 z" fill={N.violet}/>
+            </svg>
+          </div>
+        );
+
+        // ── Teclado numérico (estilo Nexum) ──────────────────────────
+        const Teclado = ({ onConfirm, onCancel, sugeridos, title }: { onConfirm: ()=>void; onCancel: ()=>void; sugeridos: number[]; title:string }) => (
+          <div style={{ background: N.violetXL, borderRadius: 18, padding: '18px', border: `1px solid ${N.border}` }}>
+            <div style={{ fontSize: 11, color: N.ink3, marginBottom: 6, fontWeight: 700, textTransform:'uppercase', letterSpacing:'.06em' }}>{title}</div>
+            <div style={{ textAlign:'center', fontSize:34, fontWeight:900, color:N.ink, marginBottom:14, minHeight:44, letterSpacing:'-0.02em', fontFamily:"'Syne',sans-serif" }}>
               {customPropina > 0 ? `$${customPropina.toLocaleString('es-CO')}` : '$ —'}
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6, marginBottom:10 }}>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:10 }}>
               {['1','2','3','4','5','6','7','8','9','000','0','⌫'].map(k=>(
                 <button key={k} onClick={()=>{
                   if (k==='⌫') { setCustomPropina(p=>Math.floor(p/10)); return; }
                   setCustomPropina(p=>{ const n=p*(k==='000'?1000:10)+(k==='000'?0:parseInt(k)); return n<=9999999?n:p; });
                 }}
-                  style={{ padding:'14px 8px', borderRadius:10, border:`1px solid ${k==='⌫'?'rgba(255,82,82,0.3)':'rgba(212,148,58,0.25)'}`, background:k==='⌫'?'rgba(255,82,82,0.08)':'white', fontSize:k==='⌫'?18:17, fontWeight:700, cursor:'pointer', color:k==='⌫'?'#e05050':'#1a1a1a' }}>
+                  style={{ padding:'16px 8px', borderRadius:12, border:`1px solid ${k==='⌫'?'rgba(239,68,68,0.3)':N.border}`, background:k==='⌫'?'rgba(239,68,68,0.06)':'#fff', fontSize:k==='⌫'?18:18, fontWeight:800, cursor:'pointer', color:k==='⌫'?'#ef4444':N.ink, outline:'none' }}>
                   {k}
                 </button>
               ))}
             </div>
-            <div style={{ display:'flex', gap:5, marginBottom:10 }}>
+            <div style={{ display:'flex', gap:6, marginBottom:12 }}>
               {sugeridos.map(p=>(
                 <button key={p} onClick={()=>setCustomPropina(Math.round(baseCliente*p/100))}
-                  style={{ flex:1, padding:'7px', borderRadius:8, border:'1px solid rgba(212,148,58,0.3)', background:'rgba(212,148,58,0.08)', fontSize:10, fontWeight:700, color:'#d4943a', cursor:'pointer' }}>
-                  {p}% total · ${Math.round(baseCliente*p/100).toLocaleString('es-CO')}
+                  style={{ flex:1, padding:'8px', borderRadius:10, border:`1px solid ${N.violet}30`, background:N.violetL, fontSize:10, fontWeight:700, color:N.violet, cursor:'pointer', outline:'none' }}>
+                  {p}% · ${Math.round(baseCliente*p/100).toLocaleString('es-CO')}
                 </button>
               ))}
             </div>
             <div style={{ display:'flex', gap:8 }}>
               <button onClick={onCancel}
-                style={{ flex:1, padding:'10px', borderRadius:10, border:'1px solid #ddd', background:'white', fontSize:12, color:'#888', cursor:'pointer' }}>
+                style={{ flex:1, padding:'13px', borderRadius:14, border:`1px solid ${N.border}`, background:'#fff', fontSize:13, fontWeight:700, color:N.ink2, cursor:'pointer', outline:'none' }}>
                 Cancelar
               </button>
               <button onClick={onConfirm}
                 disabled={customPropina<=0}
-                style={{ flex:2, padding:'10px', borderRadius:10, border:'none', background:customPropina>0?'#1a1a1a':'#ccc', color:'white', fontSize:13, fontWeight:700, cursor:customPropina>0?'pointer':'not-allowed' }}>
-                ✓ Confirmar ${(customPropina||0).toLocaleString('es-CO')}
+                style={{ flex:2, padding:'13px', borderRadius:14, border:'none', background:customPropina>0?N.violet:'#D5D2E0', color:'#fff', fontSize:14, fontWeight:800, cursor:customPropina>0?'pointer':'not-allowed', outline:'none', fontFamily:"'Syne',sans-serif" }}>
+                Confirmar ${(customPropina||0).toLocaleString('es-CO')}
               </button>
             </div>
           </div>
         );
 
-        // ── Pantalla 1: legal/obligatoria ───────────────────────────
+        // ╔═══════════════════════════════════════════════════════════╗
+        // ║  PANTALLA 1 — Legal                                       ║
+        // ╚═══════════════════════════════════════════════════════════╝
         if (propinaSubStep === 'legal') {
+          const selAceptar = propinaIntent === 'aceptar';
+          const selOtro    = propinaIntent === 'otro';
           return (
-            <div style={{ flex: 1, overflowY:'auto', display: 'flex', flexDirection: 'column', padding: '40px 24px 24px', gap: 16 }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 24, fontWeight: 800, lineHeight: 1.2, color: S.black, marginBottom: 10 }}>
-                  ¿Deseas incluir la propina sugerida?
-                </div>
-                <div style={{ fontSize:12, color:S.text3, lineHeight:1.6, maxWidth:360, margin:'0 auto', marginBottom:10 }}>
-                  La propina es <strong style={{color:S.text2}}>voluntaria</strong> según la Ley 1935 de 2018. Este establecimiento sugiere el <strong>10%</strong> del valor del servicio. Puedes aceptarla, modificarla o no incluirla libremente.
-                </div>
-                <div style={{ display:'inline-flex', alignItems:'center', gap:5, background:'rgba(61,186,111,0.08)', border:'1px solid rgba(61,186,111,0.25)', borderRadius:20, padding:'4px 14px', fontSize:10, color:'#3dba6f' }}>
-                  ✓ 100% va al equipo de servicio
-                </div>
+            <div style={{ flex:1, overflowY:'auto', background:N.bg, display:'flex', flexDirection:'column', padding:'8px 18px 24px' }}>
+              <HeaderNexum onBack={()=>setClientePaso('cuenta')}/>
+
+              <div style={{ display:'flex', justifyContent:'center', marginTop:8, marginBottom:14 }}>
+                <NexumMascot/>
+              </div>
+
+              <div style={{ textAlign:'center', marginBottom:18 }}>
+                <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:26, fontWeight:900, color:N.ink, lineHeight:1.1, margin:'0 0 12px', letterSpacing:'-0.02em' }}>
+                  ¿Deseas incluir la<br/>propina sugerida?
+                </h1>
+                <p style={{ fontSize:13, color:N.ink2, lineHeight:1.55, margin:'0 auto', maxWidth:340 }}>
+                  La propina es voluntaria según la Ley 1935 de 2018.<br/>
+                  Este establecimiento sugiere el 10% del valor del servicio.<br/>
+                  Puedes aceptarla, elegir otra cuantía o no incluirla libremente.
+                </p>
               </div>
 
               {showPropCustom ? (
-                <Teclado sugeridos={[10,15,20]}
+                <Teclado sugeridos={[10,15,20]} title="Propina personalizada"
                   onCancel={()=>{ setCustomPropina(0); setShowPropCustom(false); }}
-                  onConfirm={()=>{ setClientePropina(0); setShowPropCustom(false); setPropinaSubStep('reconocimiento'); }}/>
+                  onConfirm={()=>{ setClientePropina(0); setShowPropCustom(false); setPropinaIntent('otro'); setPropinaSubStep('reconocimiento'); }}/>
               ) : (
-                <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                  <button onClick={()=>{ setCustomPropina(0); setClientePropina(10); setPropinaSubStep('reconocimiento'); }}
-                    style={{ width:'100%', padding:'18px', borderRadius:16, border:'none', background:S.black, color:'#fff', fontSize:16, fontWeight:800, cursor:'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:2 }}>
-                    <span>Aceptar 10%</span>
-                    <span style={{fontSize:11, fontWeight:500, opacity:.7}}>≈ ${formatPrecio(baseDiez)} sugerido</span>
-                  </button>
-                  <button onClick={()=>{ setShowPropCustom(true); setClientePropina(0); }}
-                    style={{ width:'100%', padding:'16px', borderRadius:16, border:`2px solid ${S.border}`, background:'#fff', color:S.black, fontSize:15, fontWeight:700, cursor:'pointer' }}>
-                    Elegir otro valor
+                <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:18 }}>
+                  <OpcionCard
+                    icon={<span>🙂</span>} iconBg={N.violetL} iconColor={N.violet}
+                    title="Aceptar 10%" subtitle="Incluir 10% de propina voluntaria"
+                    badge="Sugerida" badgeColor={N.violet}
+                    selected={selAceptar}
+                    onClick={()=>{ setPropinaIntent('aceptar'); setCustomPropina(0); setClientePropina(10); }}/>
+                  <OpcionCard
+                    icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M14 4 l6 6 l-10 10 H4 v-6 l10 -10 z" stroke={N.violet} strokeWidth="2" strokeLinejoin="round"/></svg>}
+                    iconBg={N.violetL} iconColor={N.violet}
+                    title="Elegir otro valor" subtitle="Selecciona una cuantía diferente"
+                    selected={selOtro}
+                    onClick={()=>{ setPropinaIntent('otro'); }}/>
+                </div>
+              )}
+
+              {!showPropCustom && <InfoCadena/>}
+
+              {!showPropCustom && (
+                <div style={{ marginTop:'auto', paddingTop:24, display:'flex', flexDirection:'column', gap:6 }}>
+                  <button onClick={()=>{
+                    if (propinaIntent === 'otro') { setShowPropCustom(true); setClientePropina(0); return; }
+                    setCustomPropina(0); setClientePropina(10); setPropinaSubStep('reconocimiento');
+                  }}
+                    style={{ width:'100%', padding:'18px', borderRadius:50, border:'none', background:N.violet, color:'#fff', fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:800, cursor:'pointer', boxShadow:'0 8px 24px rgba(124,58,237,0.25)', outline:'none' }}>
+                    Continuar
                   </button>
                   <button onClick={()=>{ setCustomPropina(0); setClientePropina(0); setClientePaso('pago'); }}
-                    style={{ width:'100%', padding:'14px', borderRadius:16, border:'1px solid rgba(0,0,0,0.08)', background:'transparent', color:S.text3, fontSize:13, fontWeight:600, cursor:'pointer' }}>
+                    style={{ width:'100%', padding:'12px', background:'transparent', border:'none', color:N.violet, fontWeight:700, fontSize:14, cursor:'pointer', outline:'none' }}>
                     No incluir
                   </button>
                 </div>
               )}
-
-              {/* Total en vivo */}
-              <div style={{ background: '#fff', borderRadius: 16, padding: '14px 18px', marginTop:'auto' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: S.text2, marginBottom: 4 }}>
-                  <span>Subtotal:</span>
-                  <span style={{ fontWeight: 600, color: S.text }}>${formatPrecio(baseCliente)}</span>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: S.text2 }}>
-                  <span>Total estimado:</span>
-                  <span style={{ fontWeight: 700, color: S.black, fontSize: 16 }}>${formatPrecio(baseCliente + baseDiez)}</span>
-                </div>
-              </div>
             </div>
           );
         }
 
-        // ── Pantalla 2: reconocimiento adicional (sólo si aceptó 10% o entró a otro valor) ───
+        // ╔═══════════════════════════════════════════════════════════╗
+        // ║  PANTALLA 2 — Reconocimiento adicional                    ║
+        // ╚═══════════════════════════════════════════════════════════╝
+        const isCustom = customPropina>0 && clientePropina===0;
         return (
-          <div style={{ flex: 1, overflowY:'auto', display: 'flex', flexDirection: 'column', padding: '40px 24px 24px', gap: 14 }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 23, fontWeight: 800, lineHeight: 1.2, color: S.black, marginBottom: 10 }}>
-                ¿Deseas dejar un reconocimiento adicional al equipo?
-              </div>
-              <div style={{ fontSize:12, color:S.text3, lineHeight:1.6, maxWidth:360, margin:'0 auto' }}>
-                Si lo deseas, puedes aumentar voluntariamente el valor final de tu propina como una muestra adicional de agradecimiento. <strong style={{color:S.text2}}>Tú decides el valor total.</strong>
-              </div>
+          <div style={{ flex:1, overflowY:'auto', background:N.bg, display:'flex', flexDirection:'column', padding:'8px 18px 24px' }}>
+            <HeaderNexum onBack={()=>{ setShowPropCustom(false); setPropinaSubStep('legal'); }}/>
+
+            <div style={{ display:'flex', justifyContent:'center', marginTop:8, marginBottom:14 }}>
+              <NexumMascot/>
+            </div>
+
+            <div style={{ textAlign:'center', marginBottom:18 }}>
+              <h1 style={{ fontFamily:"'Syne',sans-serif", fontSize:24, fontWeight:900, color:N.ink, lineHeight:1.15, margin:'0 0 12px', letterSpacing:'-0.02em' }}>
+                ¿Deseas dejar un<br/>reconocimiento adicional<br/>al equipo?
+              </h1>
+              <p style={{ fontSize:13, color:N.ink2, lineHeight:1.55, margin:'0 auto', maxWidth:360 }}>
+                Si lo deseas, puedes aumentar voluntariamente el valor total de tu propina. Tú decides el porcentaje final como una muestra adicional de agradecimiento.
+              </p>
             </div>
 
             {showPropCustom ? (
-              <Teclado sugeridos={[15,20,25]}
+              <Teclado sugeridos={[15,20,25]} title="Porcentaje personalizado"
                 onCancel={()=>{ setShowPropCustom(false); }}
-                onConfirm={()=>{ setClientePropina(0); setShowPropCustom(false); setClientePaso('pago'); }}/>
+                onConfirm={()=>{ setClientePropina(0); setShowPropCustom(false); }}/>
             ) : (
-              <>
-                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
-                  {[
-                    { pct:10, label:'Mantener 10%',  emoji:'🙂', tone:S.black },
-                    { pct:15, label:'15% total',     emoji:'😊', tone:'#3dba6f' },
-                    { pct:20, label:'20% total',     emoji:'🔥', tone:'#d4943a' },
-                  ].map(o=>{
-                    const sel = pctActual===o.pct && customPropina===0;
-                    return (
-                      <button key={o.pct} onClick={()=>{ setCustomPropina(0); setClientePropina(o.pct); setClientePaso('pago'); }}
-                        style={{ padding:'18px 8px', borderRadius:18, border:`2px solid ${sel?o.tone:S.border}`, background:sel?'rgba(0,0,0,0.04)':'#fff', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', transition:'all 0.15s', gap:4, outline:'none' }}>
-                        <span style={{ fontSize:26 }}>{o.emoji}</span>
-                        <span style={{ fontSize:16, fontWeight:800, color:S.black }}>{o.label}</span>
-                        <span style={{ fontSize:12, fontWeight:600, color:o.tone }}>${formatPrecio(Math.round(baseCliente*o.pct/100))}</span>
-                      </button>
-                    );
-                  })}
-                  <button onClick={()=>setShowPropCustom(true)}
-                    style={{ padding:'18px 8px', borderRadius:18, border:`2px dashed rgba(212,148,58,0.4)`, background:'rgba(212,148,58,0.04)', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', cursor:'pointer', gap:4, outline:'none' }}>
-                    <span style={{ fontSize:26 }}>✏️</span>
-                    <span style={{ fontSize:16, fontWeight:800, color:'#d4943a' }}>Otro valor</span>
-                    <span style={{ fontSize:11, color:S.text3 }}>Tú lo decides</span>
-                  </button>
-                </div>
+              <div style={{ display:'flex', flexDirection:'column', gap:12, marginBottom:18 }}>
+                <OpcionCard
+                  icon={<span>🙂</span>} iconBg={N.violetL} iconColor={N.violet}
+                  title={pctActual && pctActual!==15 && pctActual!==20 ? `Mantener ${pctActual}%` : 'Mantener 10%'}
+                  subtitle="Continuar con la propina ya seleccionada"
+                  badge="Actual" badgeColor={N.violet}
+                  selected={!isCustom && (pctActual===10 || (pctActual!==15 && pctActual!==20 && pctActual!==25))}
+                  onClick={()=>{ setCustomPropina(0); setClientePropina(pctActual||10); }}/>
+                <OpcionCard
+                  icon={<span>😍</span>} iconBg={N.yellow} iconColor={N.yellowI}
+                  title="15% total" subtitle="Un reconocimiento adicional al equipo"
+                  selected={!isCustom && pctActual===15}
+                  onClick={()=>{ setCustomPropina(0); setClientePropina(15); }}/>
+                <OpcionCard
+                  icon={<span>🤩</span>} iconBg={N.green} iconColor={N.greenI}
+                  title="20% total" subtitle="Para una experiencia excepcional"
+                  selected={!isCustom && pctActual===20}
+                  onClick={()=>{ setCustomPropina(0); setClientePropina(20); }}/>
+                <OpcionCard
+                  icon={<svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M14 4 l6 6 l-10 10 H4 v-6 l10 -10 z" stroke={N.blueI} strokeWidth="2" strokeLinejoin="round"/></svg>}
+                  iconBg={N.blue} iconColor={N.blueI}
+                  title="Otro valor" subtitle="Ingresa el porcentaje total que deseas dejar"
+                  selected={isCustom}
+                  onClick={()=>setShowPropCustom(true)}/>
+              </div>
+            )}
 
-                {/* Total en vivo */}
-                <div style={{ background: '#fff', borderRadius: 16, padding: '14px 18px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: S.text2, marginBottom: 4 }}>
-                    <span>Reconocimiento actual:</span>
-                    <span style={{ fontWeight: 600, color: S.text }}>${formatPrecio(propinaCliente)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, color: S.text2 }}>
-                    <span>Estás pagando:</span>
-                    <span style={{ fontWeight: 700, color: S.black, fontSize: 16 }}>${formatPrecio(totalCliente)}</span>
-                  </div>
-                </div>
+            {!showPropCustom && <InfoCadena/>}
 
-                <button onClick={()=>{ setShowPropCustom(false); setPropinaSubStep('legal'); }}
-                  style={{ padding:'14px', borderRadius:100, background:'transparent', color:S.text3, fontSize:13, fontWeight:600, border:`1px solid ${S.border}`, cursor:'pointer', marginTop:'auto' }}>
-                  ← Volver
+            {!showPropCustom && (
+              <div style={{ marginTop:'auto', paddingTop:24, display:'flex', flexDirection:'column', gap:6 }}>
+                <button onClick={()=>setClientePaso('pago')}
+                  style={{ width:'100%', padding:'18px', borderRadius:50, border:'none', background:N.violet, color:'#fff', fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:800, cursor:'pointer', boxShadow:'0 8px 24px rgba(124,58,237,0.25)', outline:'none' }}>
+                  Confirmar propina
                 </button>
-              </>
+                <button onClick={()=>{ setShowPropCustom(false); setPropinaSubStep('legal'); }}
+                  style={{ width:'100%', padding:'12px', background:'transparent', border:'none', color:N.violet, fontWeight:700, fontSize:14, cursor:'pointer', outline:'none' }}>
+                  Volver
+                </button>
+              </div>
             )}
           </div>
         );
