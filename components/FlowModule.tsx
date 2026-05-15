@@ -13,7 +13,7 @@ const ESTACIONES: Record<string,{color:string;emoji:string;objetivo:number}> = {
 
 interface FlowItem {
   id:string; order_id:string;
-  status:'pending'|'preparing'|'ready'|'served';
+  status:'pending'|'preparing'|'almost'|'ready'|'served';
   quantity:number; notes:string|null; nombre_plato?:string|null;
   created_at:string; updated_at:string; tiempo_inicio?:string|null;
   table_id:number|null; mesero?:string|null; estacion?:string|null;
@@ -70,7 +70,7 @@ export default function FlowModule() {
     const { data } = await supabase
       .from('flow_order_items')
       .select('*')
-      .in('status', ['pending','preparing','ready'])
+      .in('status', ['pending','preparing','almost','ready'])
       .order('created_at');
     if (data) setItems(data as FlowItem[]);
     setLoading(false);
@@ -345,7 +345,7 @@ export default function FlowModule() {
                         const tp    = tsec(item.created_at);
                         const pp    = item.tiempo_inicio?tsec(item.tiempo_inicio):0;
                         const isPending   = item.status==='pending';
-                        const isPreparing = item.status==='preparing';
+                        const isPreparing = item.status==='preparing' || item.status==='almost';
                         const isReady     = item.status==='ready';
                         const pct = isPreparing?Math.min(100,Math.round(pp/est.objetivo*100)):isPending?Math.min(100,Math.round(tp/(est.objetivo*1.5)*100)):100;
                         const esRetrasado = (isPending&&tp>est.objetivo*1.5)||(isPreparing&&pp>est.objetivo);
@@ -444,7 +444,7 @@ export default function FlowModule() {
                 {diasItems.map((i,idx)=>{
                   const est = ESTACIONES[getStation(i)]||ESTACIONES.cocina_caliente;
                   const mc  = getMC(i.table_id);
-                  const statusColors:any={pending:S.t3,preparing:'#FFB547',ready:S.green,served:'#404060'};
+                  const statusColors:any={pending:S.t3,preparing:'#FFB547',almost:'#eab308',ready:S.green,served:'#404060'};
                   // Detectar retrasado
                   const durTotal = i.duracion_seg||0;
                   const esRetrasado = i.status==='served' && durTotal > est.objetivo * 1.5;
