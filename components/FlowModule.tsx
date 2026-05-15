@@ -295,40 +295,51 @@ export default function FlowModule() {
                   <div style={{fontSize:14,fontWeight:700}}>Cocina al día</div>
                 </div>
               )}
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(290px,1fr))',gap:10}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(340px,1fr))',gap:12}}>
               {pedidosOrdenados.map((pedido:any) => {
                 const mc = getMC(pedido.table_id);
                 const careRating = pedido.table_id != null ? careByMesa[pedido.table_id] : null;
                 const platosQuejados = new Set(careRating?.platos_problema || []);
                 const careColor = careRating ? (careRating.stars>=4?S.green:careRating.stars>=3?S.gold:S.red) : null;
                 return (
-                  <div key={pedido.order_id} style={{background:S.bg2,border:`1px solid ${mc.color}25`,borderLeft:`4px solid ${mc.color}`,borderRadius:14,overflow:'hidden',display:'flex',flexDirection:'column',minHeight:300}}>
-                    {/* Header pedido */}
-                    <div style={{padding:'6px 10px',background:`${mc.color}08`,display:'flex',alignItems:'center',gap:6,borderBottom:`1px solid ${mc.color}15`,flexWrap:'wrap'}}>
-                      <span style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,color:mc.color}}>
+                  <div key={pedido.order_id} style={{background:S.bg2,border:`1px solid ${mc.color}30`,borderLeft:`5px solid ${mc.color}`,borderRadius:14,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+                    {/* Header pedido — letras grandes */}
+                    <div style={{padding:'10px 14px',background:`${mc.color}10`,display:'flex',alignItems:'center',gap:10,borderBottom:`1px solid ${mc.color}20`,flexWrap:'wrap'}}>
+                      <span style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:mc.color,lineHeight:1}}>
                         M{pedido.table_id||'?'}
                       </span>
-                      <span style={{fontSize:9,color:S.t3}}>{pedido.items.length} it.</span>
-                      <span style={{fontSize:9,color:S.t3}}>🕐 {fmtHora(pedido.created_at)}</span>
-                      {pedido.mesero && <span style={{fontSize:9,color:S.t3}}>👤 {pedido.mesero.split(' ')[0]}</span>}
-                      {/* Rating Care */}
-                      {careRating && careColor && (
-                        <span title={`X-CARE: ${careRating.stars}★${careRating.tags_negativos?.length?` · ${careRating.tags_negativos.join(', ')}`:''}`}
-                          style={{fontSize:9,color:careColor,background:`${careColor}15`,border:`1px solid ${careColor}40`,padding:'1px 6px',borderRadius:10,fontWeight:800,display:'flex',alignItems:'center',gap:2}}>
-                          {'★'.repeat(careRating.stars)}{'☆'.repeat(Math.max(0,5-careRating.stars))}
-                        </span>
-                      )}
+                      <div style={{display:'flex',flexDirection:'column',gap:2,minWidth:0,flex:1}}>
+                        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                          <span style={{fontSize:12,color:S.t2,fontWeight:700}}>{pedido.items.length} item{pedido.items.length>1?'s':''}</span>
+                          <span style={{fontSize:11,color:S.t3}}>🕐 {fmtHora(pedido.created_at)}</span>
+                        </div>
+                        {pedido.mesero && <span style={{fontSize:11,color:S.t3}}>👤 {pedido.mesero.split(' ')[0]}</span>}
+                      </div>
                       {/* Badges de estado */}
-                      <div style={{marginLeft:'auto',display:'flex',gap:3}}>
+                      <div style={{display:'flex',gap:4}}>
                         {(['pending','preparing','ready'] as const).map(s=>{
                           const n = pedido.items.filter((i:FlowItem)=>i.status===s).length;
                           const colors:any={pending:S.t3,preparing:'#FFB547',ready:S.green};
-                          return n>0?<span key={s} style={{fontSize:8,color:colors[s],background:`${colors[s]}15`,padding:'1px 5px',borderRadius:10,fontWeight:700}}>{n}</span>:null;
+                          const labels:any={pending:'esp',preparing:'prep',ready:'lst'};
+                          return n>0?<span key={s} style={{fontSize:10,color:colors[s],background:`${colors[s]}15`,padding:'2px 7px',borderRadius:10,fontWeight:800}}>{n} {labels[s]}</span>:null;
                         })}
                       </div>
                     </div>
-                    {/* Items del pedido — scroll interno si hay muchos */}
-                    <div style={{padding:'8px 10px',display:'flex',flexDirection:'column',gap:6,flex:1,overflowY:'auto'}}>
+
+                    {/* Rating X-CARE — SIEMPRE visible (placeholder si no hay encuesta) */}
+                    <div style={{padding:'8px 14px',display:'flex',alignItems:'center',gap:10,borderBottom:`1px solid ${S.border}`,background:careRating ? `${careColor}08` : 'rgba(255,255,255,0.02)'}}
+                      title={careRating?`X-CARE: ${careRating.stars}★${careRating.tags_negativos?.length?` · ${careRating.tags_negativos.join(', ')}`:''}`:'Sin encuesta X-CARE aún'}>
+                      <span style={{fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em'}}>X-Care</span>
+                      <span style={{fontSize:16,letterSpacing:1,color: careRating?(careColor||S.gold):S.t3,fontWeight:900}}>
+                        {careRating ? `${'★'.repeat(careRating.stars)}${'☆'.repeat(Math.max(0,5-careRating.stars))}` : '☆☆☆☆☆'}
+                      </span>
+                      <span style={{fontSize:11,color:careRating?(careColor||S.t2):S.t3,marginLeft:'auto',fontWeight:700}}>
+                        {careRating ? `${careRating.stars}/5` : 'Sin encuesta'}
+                      </span>
+                    </div>
+
+                    {/* Items del pedido */}
+                    <div style={{padding:'10px 12px',display:'flex',flexDirection:'column',gap:8,flex:1,overflowY:'auto'}}>
                       {pedido.items.map((item:FlowItem) => {
                         const est   = ESTACIONES[getStation(item)]||ESTACIONES.cocina_caliente;
                         const tp    = tsec(item.created_at);
@@ -341,51 +352,51 @@ export default function FlowModule() {
                         const esAmarillo  = !esRetrasado&&((isPending&&tp>est.objetivo*0.8)||(isPreparing&&pp>est.objetivo*0.7)||mesasConRetraso.has(item.table_id));
                         const sColor = esRetrasado?S.red:esAmarillo?'#FFB547':S.green;
                         return (
-                          <div key={item.id} style={{background:esRetrasado?'rgba(255,82,82,0.06)':esAmarillo?'rgba(255,181,71,0.04)':'rgba(255,255,255,0.02)',border:`1px solid ${esRetrasado?'rgba(255,82,82,0.3)':esAmarillo?'rgba(255,181,71,0.2)':'rgba(255,255,255,0.06)'}`,borderLeft:`3px solid ${sColor}`,borderRadius:8,padding:'8px 10px'}}>
-                            <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:isPending||isPreparing?6:0}}>
-                              <span style={{fontSize:16}}>{est.emoji}</span>
-                              <div style={{flex:1}}>
-                                <div style={{fontSize:12,fontWeight:700,color:S.t1}}>{item.quantity>1?`${item.quantity}× `:''}{getNombre(item)}</div>
-                                <div style={{display:'flex',gap:6,marginTop:2,flexWrap:'wrap',alignItems:'center'}}>
-                                  <span style={{fontSize:9,color:est.color}}>{est.emoji} {getStation(item).replace('_',' ')}</span>
-                                  {item.cocinero && <span style={{fontSize:9,color:S.t3}}>👨‍🍳 {item.cocinero.split(' ').slice(-1)[0]}</span>}
-                                  {isReady && <span style={{fontSize:9,background:'rgba(0,230,118,0.15)',color:S.green,padding:'1px 5px',borderRadius:8,fontWeight:700}}>✅ LISTO</span>}
-                                  {esRetrasado && <span style={{fontSize:11}}>🔥</span>}
-                                  {platosQuejados.has(getNombre(item)) && <span title="Plato con queja Care en esta mesa" style={{fontSize:9,color:S.red,background:`${S.red}15`,border:`1px solid ${S.red}40`,padding:'1px 5px',borderRadius:8,fontWeight:700}}>⚠ Care</span>}
+                          <div key={item.id} style={{background:esRetrasado?'rgba(255,82,82,0.07)':esAmarillo?'rgba(255,181,71,0.05)':'rgba(255,255,255,0.03)',border:`1px solid ${esRetrasado?'rgba(255,82,82,0.35)':esAmarillo?'rgba(255,181,71,0.25)':'rgba(255,255,255,0.07)'}`,borderLeft:`4px solid ${sColor}`,borderRadius:10,padding:'10px 12px'}}>
+                            <div style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:isPending||isPreparing?8:0}}>
+                              <span style={{fontSize:22,lineHeight:1}}>{est.emoji}</span>
+                              <div style={{flex:1,minWidth:0}}>
+                                <div style={{fontSize:15,fontWeight:800,color:S.t1,lineHeight:1.2}}>{item.quantity>1?`${item.quantity}× `:''}{getNombre(item)}</div>
+                                <div style={{display:'flex',gap:6,marginTop:4,flexWrap:'wrap',alignItems:'center'}}>
+                                  <span style={{fontSize:11,color:est.color,fontWeight:600}}>{getStation(item).replace('_',' ')}</span>
+                                  {item.cocinero && <span style={{fontSize:11,color:S.t3}}>👨‍🍳 {item.cocinero.split(' ').slice(-1)[0]}</span>}
+                                  {isReady && <span style={{fontSize:10,background:'rgba(0,230,118,0.15)',color:S.green,padding:'2px 6px',borderRadius:8,fontWeight:800}}>✅ LISTO</span>}
+                                  {esRetrasado && <span style={{fontSize:14}}>🔥</span>}
+                                  {platosQuejados.has(getNombre(item)) && <span title="Plato con queja Care en esta mesa" style={{fontSize:10,color:S.red,background:`${S.red}15`,border:`1px solid ${S.red}40`,padding:'2px 6px',borderRadius:8,fontWeight:800}}>⚠ Care</span>}
                                 </div>
-                                {item.notes && item.notes!==getNombre(item) && <div style={{fontSize:9,color:'#FFB547',marginTop:2,fontStyle:'italic'}}>📝 {item.notes}</div>}
+                                {item.notes && item.notes!==getNombre(item) && <div style={{fontSize:11,color:'#FFB547',marginTop:4,fontStyle:'italic'}}>📝 {item.notes}</div>}
                               </div>
-                              {/* Tiempo */}
+                              {/* Tiempo grande */}
                               <div style={{textAlign:'right',flexShrink:0}}>
-                                <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,color:sColor}}>
+                                <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:sColor,lineHeight:1}}>
                                   {isPreparing?fmtT(pp):isPending?fmtT(tp):fmtT(item.duracion_seg||0)}
                                 </div>
-                                <div style={{fontSize:8,color:S.t3}}>{isPreparing?'prod.':isPending?'espera':'total'}</div>
+                                <div style={{fontSize:10,color:S.t3,marginTop:2,fontWeight:600}}>{isPreparing?'producción':isPending?'en espera':'total'}</div>
                               </div>
                             </div>
                             {/* Barra progreso */}
                             {(isPending||isPreparing) && (
-                              <div style={{height:2,background:'rgba(255,255,255,0.06)',borderRadius:2,overflow:'hidden',marginBottom:6}}>
+                              <div style={{height:4,background:'rgba(255,255,255,0.06)',borderRadius:2,overflow:'hidden',marginBottom:8}}>
                                 <div style={{height:'100%',width:`${pct}%`,background:`linear-gradient(90deg,${est.color},${sColor})`,borderRadius:2,transition:'width 1s'}}/>
                               </div>
                             )}
-                            {/* ── 3 BOTONES DE FLUJO ── */}
-                            <div style={{display:'flex',gap:5}}>
+                            {/* ── 3 BOTONES DE FLUJO — más grandes ── */}
+                            <div style={{display:'flex',gap:6}}>
                               {isPending && (
                                 <button onClick={()=>updateStatus(item.id,'preparing')}
-                                  style={{flex:1,padding:'7px 6px',borderRadius:8,border:`1px solid ${est.color}60`,background:`${est.color}15`,color:est.color,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                                  style={{flex:1,padding:'10px 8px',borderRadius:10,border:`1px solid ${est.color}70`,background:`${est.color}20`,color:est.color,fontSize:13,fontWeight:800,cursor:'pointer'}}>
                                   🍳 Comenzar preparación
                                 </button>
                               )}
                               {isPreparing && (
                                 <button onClick={()=>updateStatus(item.id,'ready')}
-                                  style={{flex:1,padding:'7px 6px',borderRadius:8,border:'1px solid rgba(255,181,71,0.5)',background:'rgba(255,181,71,0.1)',color:'#FFB547',fontSize:11,fontWeight:700,cursor:'pointer'}}>
-                                  ⏰ Prepárate para venir — casi listo (2 min)
+                                  style={{flex:1,padding:'10px 8px',borderRadius:10,border:'1px solid rgba(255,181,71,0.6)',background:'rgba(255,181,71,0.15)',color:'#FFB547',fontSize:13,fontWeight:800,cursor:'pointer'}}>
+                                  ⏰ Casi listo (2 min)
                                 </button>
                               )}
                               {isReady && (
                                 <button onClick={()=>updateStatus(item.id,'served')}
-                                  style={{flex:1,padding:'7px 6px',borderRadius:8,border:`1px solid ${S.green}60`,background:`${S.green}10`,color:S.green,fontSize:12,fontWeight:900,cursor:'pointer',boxShadow:`0 0 8px ${S.green}20`}}>
+                                  style={{flex:1,padding:'10px 8px',borderRadius:10,border:`1px solid ${S.green}70`,background:`${S.green}15`,color:S.green,fontSize:14,fontWeight:900,cursor:'pointer',boxShadow:`0 0 10px ${S.green}25`}}>
                                   ✅ Listo para entrega
                                 </button>
                               )}
