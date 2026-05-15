@@ -3193,25 +3193,6 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         }
       </button>
 
-      {/* BOTÓN FLOTANTE BARRA INFERIOR — siempre visible, sube/baja Ritual+Quick-add+IA */}
-      <button
-        onClick={() => setBarraColapsada(p => !p)}
-        title={barraColapsada ? 'Mostrar barra (Ritual · Quick-add · IA)' : 'Ocultar barra inferior'}
-        className={`fixed bottom-3 z-[9000] flex items-center gap-1.5 px-3 h-9 rounded-full border font-bold shadow-lg transition-all ${
-          barraColapsada
-            ? 'bg-[#1c1c1c] border-[#4a8fd4]/60 text-[#4a8fd4] hover:bg-[#4a8fd4] hover:text-white'
-            : 'bg-[#4a8fd4] border-[#4a8fd4] text-white hover:bg-[#3d7fc4]'
-        }`}
-        style={{left: '50%', transform: 'translateX(-50%)'}}>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-          {barraColapsada
-            ? <path d="M18 15l-6-6-6 6"/>
-            : <path d="M6 9l6 6 6-6"/>
-          }
-        </svg>
-        <span className="text-[11px]">{barraColapsada ? 'Mostrar barra' : 'Ocultar barra'}</span>
-      </button>
-
       {/* LEFT PANEL */}
       <div className="bg-[#141414] border-r border-[#2a2a2a] flex flex-col shrink-0" style={{ width: 200 }}>
         <div className="p-2 px-3 pb-2 flex items-center gap-2 border-b border-[#2a2a2a] shrink-0 relative">
@@ -3676,15 +3657,21 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         </div>
 
         {/* BARRA INFERIOR COLAPSABLE */}
-        <div className="bg-[#0a0a0a] border-t border-[#2a2a2a] flex flex-col shrink-0">
+        <div className="bg-[#0a0a0a] border-t border-[#2a2a2a] flex flex-col shrink-0 relative">
 
-          {/* Toggle bar — siempre visible */}
-          <div className="flex items-center justify-end px-3 py-1.5 border-b border-[#1a1a1a]">
-            <button onClick={() => setBarraColapsada(p => !p)}
-              className="shrink-0 flex items-center gap-1 px-2.5 py-1 rounded-md border border-[#2a2a2a] text-[10px] font-bold text-[#606060] hover:border-[#d4943a] hover:text-[#d4943a] transition-all">
-              {barraColapsada ? '▲ Ver barra' : '▼ Ocultar'}
-            </button>
-          </div>
+          {/* Toggle "pestaña" — sobresale del borde superior de la barra, centrado */}
+          <button
+            onClick={() => setBarraColapsada(p => !p)}
+            title={barraColapsada ? 'Mostrar barra (Ritual · Quick-add · IA)' : 'Ocultar barra inferior'}
+            className={`absolute z-20 flex items-center gap-1.5 px-3 h-7 rounded-t-lg border border-b-0 font-bold text-[11px] shadow-md transition-all ${
+              barraColapsada
+                ? 'bg-[#1c1c1c] border-[#4a8fd4]/60 text-[#4a8fd4] hover:bg-[#4a8fd4] hover:text-white'
+                : 'bg-[#4a8fd4] border-[#4a8fd4] text-white hover:bg-[#3d7fc4]'
+            }`}
+            style={{left: '50%', transform: 'translateX(-50%)', top: -27}}>
+            <span style={{fontSize: 11}}>{barraColapsada ? '▲' : '▼'}</span>
+            <span>{barraColapsada ? 'Mostrar barra' : 'Ocultar barra'}</span>
+          </button>
 
           {/* Contenido colapsable */}
           {!barraColapsada && (
