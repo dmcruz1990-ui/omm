@@ -287,6 +287,24 @@ function getBadgeLabel(b: string): string {
   return { recomendado: 'Recomendado', gold: 'Alta rentable', orange: 'Mover Hoy', red: 'Urgente' }[b] || b;
 }
 
+// ── Clasificador comida vs bebida usando el menú real ───────────
+const CATEGORIAS_BEBIDA = ['Cocteles','Sin Alcohol','Jugos','Café','Cervezas','Sakes'];
+const _ITEM_INDEX: Record<string, 'comida'|'bebida'> = (() => {
+  const idx: Record<string, 'comida'|'bebida'> = {};
+  Object.entries(productos).forEach(([cat, items]) => {
+    const tipo: 'comida'|'bebida' = CATEGORIAS_BEBIDA.includes(cat) ? 'bebida' : 'comida';
+    (items as any[]).forEach(p => { idx[p.nombre.toLowerCase()] = tipo; });
+  });
+  return idx;
+})();
+const clasificarItem = (nombre: string): 'comida'|'bebida' => {
+  const k = nombre.toLowerCase();
+  if (_ITEM_INDEX[k]) return _ITEM_INDEX[k];
+  // Fallback heurístico cuando el plato no está en el menú base
+  const bebidaHints = ['cóctel','coctel','vino','copa','sake','cerveza','heineken','corona','stella','club colombia','café','espresso','americano','capuccino','latte','té ','limonada','jugo','agua','gin','whisky','old fashion','infinito','samhain','mojito','yin peng','moscow mule','flor de sakura','raito','haku'];
+  return bebidaHints.some(h => k.includes(h)) ? 'bebida' : 'comida';
+};
+
 // ── Componente independiente para la ruleta ───────────────
 const PREMIOS_RULETA = [
   { emoji:'☕', label:'Café gratis',   color:'#cd853f', bg:'#3d2a1a', desc:'Un espresso en tu próxima visita' },
@@ -475,6 +493,263 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
     </div>
   );
 };
+
+// ── 6 CARTAS — pica una y sale tu premio ───────────────────
+const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: number }> = ({ onClose, mesaNum, rating }) => {
+  const [cartas] = useState(() => [...PREMIOS_RULETA].sort(() => Math.random() - 0.5).slice(0, 6));
+  const [flipped, setFlipped] = useState<number|null>(null);
+  const [revealing, setRevealing] = useState(false);
+  const [particles, setParticles] = useState<{x:number;y:number;c:string;id:number;angle:number;dist:number}[]>([]);
+  const [correoEnvio, setCorreoEnvio] = useState('');
+  const [premioEnviado, setPremioEnviado] = useState(false);
+  const pidRef = useRef(0);
+
+  const spawnConfetti = () => {
+    const colors = ['#FFB547','#FF2D78','#00E676','#448AFF','#B388FF','#FF5252','#FFD700','#fff'];
+    const ps = Array.from({length:50},(_,i)=>({
+      x:50+(Math.random()-0.5)*30, y:45+(Math.random()-0.5)*20,
+      c:colors[i%colors.length], id:pidRef.current++,
+      angle:Math.random()*360, dist:80+Math.random()*120,
+    }));
+    setParticles(ps);
+    setTimeout(()=>setParticles([]),2000);
+  };
+
+  const pickCard = (i: number) => {
+    if (flipped !== null) return;
+    setRevealing(true);
+    setFlipped(i);
+    setTimeout(() => { setRevealing(false); spawnConfetti(); }, 700);
+  };
+
+  const premio = flipped !== null ? cartas[flipped] : null;
+
+  return (
+    <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', padding:'24px 20px 32px', background: premio ? premio.bg : '#080810', transition:'background 1s', position:'relative', overflow:'hidden' }}>
+      <style>{`
+        @keyframes cardFlip{0%{transform:rotateY(0deg)}100%{transform:rotateY(180deg)}}
+        @keyframes cardFloat{0%,100%{transform:translateY(0px)}50%{transform:translateY(-6px)}}
+        @keyframes cardShine{0%{background-position:-200% 0}100%{background-position:200% 0}}
+        @keyframes confettiFloat{0%{transform:translate(0,0) rotate(0deg) scale(1);opacity:1}100%{transform:translate(var(--tx),var(--ty)) rotate(var(--r)) scale(0);opacity:0}}
+        @keyframes prizeReveal{0%{transform:scale(0) rotate(-10deg);opacity:0}60%{transform:scale(1.1) rotate(3deg)}100%{transform:scale(1) rotate(0deg);opacity:1}}
+      `}</style>
+
+      {particles.map(p=>(
+        <div key={p.id} style={{
+          position:'absolute', left:`${p.x}%`, top:`${p.y}%`,
+          width:8, height:8, borderRadius:p.id%3===0?'50%':2,
+          background:p.c, pointerEvents:'none', zIndex:20,
+          animation:`confettiFloat 2s ease-out forwards`,
+          '--tx':`${Math.cos(p.angle*Math.PI/180)*p.dist}px`,
+          '--ty':`${Math.sin(p.angle*Math.PI/180)*p.dist}px`,
+          '--r':`${p.angle*3}deg`,
+        } as any}/>
+      ))}
+
+      {/* Header */}
+      <div style={{ textAlign:'center', marginBottom:20, zIndex:5 }}>
+        <div style={{ fontSize:11, color:'#FF2D78', fontWeight:900, letterSpacing:'.15em', textTransform:'uppercase' as const, marginBottom:8 }}>✦ OMM REWARDS</div>
+        <div style={{ fontFamily:"'Syne',sans-serif", fontSize:26, fontWeight:900, color: premio ? premio.color : '#fff', transition:'color .8s', lineHeight:1.2 }}>
+          {flipped === null ? 'Pica una carta' : '¡Ganaste!'}
+        </div>
+        <div style={{ fontSize:13, color:'rgba(255,255,255,.5)', marginTop:4 }}>
+          {flipped === null ? 'Tu intuición elige tu premio' : premio!.desc}
+        </div>
+      </div>
+
+      {/* Grid 6 cartas */}
+      <div style={{
+        display:'grid',
+        gridTemplateColumns:'repeat(3,1fr)',
+        gap:14,
+        width:'100%',
+        maxWidth:340,
+        marginBottom:24,
+        zIndex:5,
+      }}>
+        {cartas.map((c, i) => {
+          const isFlipped = flipped === i;
+          const isOther = flipped !== null && flipped !== i;
+          return (
+            <div key={i}
+              onClick={() => pickCard(i)}
+              style={{
+                aspectRatio:'2/3',
+                perspective:'1000px',
+                cursor: flipped === null ? 'pointer' : 'default',
+                opacity: isOther ? 0.25 : 1,
+                transform: isOther ? 'scale(0.92)' : 'scale(1)',
+                transition: 'opacity .4s, transform .4s',
+                animation: flipped === null ? `cardFloat 3s ease-in-out ${i*0.2}s infinite` : 'none',
+              }}>
+              <div style={{
+                position:'relative',
+                width:'100%', height:'100%',
+                transformStyle:'preserve-3d',
+                transition:'transform 0.7s cubic-bezier(.34,1.56,.64,1)',
+                transform: isFlipped ? 'rotateY(180deg)' : 'rotateY(0deg)',
+              }}>
+                {/* Dorso */}
+                <div style={{
+                  position:'absolute', inset:0,
+                  borderRadius:14,
+                  background:'linear-gradient(135deg,#FF2D78 0%,#B388FF 100%)',
+                  border:'2px solid rgba(255,255,255,0.2)',
+                  boxShadow:'0 6px 24px rgba(255,45,120,0.35), inset 0 0 30px rgba(255,255,255,0.08)',
+                  backfaceVisibility:'hidden',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  overflow:'hidden',
+                }}>
+                  <div style={{
+                    position:'absolute', inset:0,
+                    background:'linear-gradient(110deg,transparent 35%,rgba(255,255,255,0.35) 50%,transparent 65%)',
+                    backgroundSize:'200% 100%',
+                    animation:'cardShine 2.5s linear infinite',
+                  }}/>
+                  <div style={{
+                    fontFamily:"'Syne',sans-serif", fontSize:32, fontWeight:900,
+                    color:'#fff', textShadow:'0 2px 12px rgba(0,0,0,0.4)',
+                    letterSpacing:'.02em', zIndex:2,
+                  }}>✦</div>
+                </div>
+                {/* Anverso */}
+                <div style={{
+                  position:'absolute', inset:0,
+                  borderRadius:14,
+                  background:`linear-gradient(135deg,${c.color}40 0%,${c.color}15 100%)`,
+                  border:`2px solid ${c.color}`,
+                  boxShadow:`0 6px 24px ${c.color}50`,
+                  backfaceVisibility:'hidden',
+                  transform:'rotateY(180deg)',
+                  display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                  padding:6,
+                }}>
+                  <div style={{fontSize:42, filter:`drop-shadow(0 0 12px ${c.color})`, marginBottom:4}}>{c.emoji}</div>
+                  <div style={{fontFamily:"'Syne',sans-serif", fontSize:12, fontWeight:900, color:c.color, textAlign:'center', lineHeight:1.1}}>{c.label}</div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Premio ganado */}
+      {premio && !revealing && (
+        <div style={{ background:`linear-gradient(135deg,${premio.color}20,${premio.color}08)`, border:`2px solid ${premio.color}60`, borderRadius:24, padding:'24px 32px', textAlign:'center', marginBottom:20, animation:'prizeReveal .6s cubic-bezier(.34,1.56,.64,1) forwards', boxShadow:`0 8px 40px ${premio.color}30`, zIndex:5 }}>
+          <div style={{ fontSize:72, marginBottom:8, filter:`drop-shadow(0 0 20px ${premio.color})` }}>{premio.emoji}</div>
+          <div style={{ fontFamily:"'Syne',sans-serif", fontSize:24, fontWeight:900, color:premio.color, marginBottom:6 }}>{premio.label}</div>
+          <div style={{ fontSize:14, color:'rgba(255,255,255,.7)', marginBottom:10 }}>{premio.desc}</div>
+          <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', background:'rgba(255,255,255,.05)', borderRadius:8, padding:'6px 12px', marginBottom:10 }}>Muéstrale esta pantalla a tu mesero · Válido 30 días</div>
+          {/* Card para mesero */}
+          <div style={{background:`linear-gradient(135deg,${premio.color}30,${premio.color}10)`,border:`2px dashed ${premio.color}60`,borderRadius:14,padding:'14px 16px',marginBottom:12,textAlign:'center'}}>
+            <div style={{fontSize:10,color:'rgba(255,255,255,.5)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:6}}>📲 Premio para el mesero</div>
+            <div style={{fontSize:15,fontWeight:900,color:premio.color}}>{premio.emoji} {premio.label}</div>
+            <div style={{fontSize:11,color:'rgba(255,255,255,.6)',marginTop:4}}>{premio.desc}</div>
+          </div>
+          {!premioEnviado ? (
+            <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,padding:'12px 14px',marginBottom:8}}>
+              <div style={{fontSize:11,color:'rgba(255,255,255,.5)',marginBottom:8}}>📧 Recibe tu premio en Oh Yeah</div>
+              <div style={{display:'flex',gap:8}}>
+                <input value={correoEnvio} onChange={e=>setCorreoEnvio(e.target.value)}
+                  placeholder="tu@correo.com"
+                  style={{flex:1,background:'rgba(255,255,255,0.06)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:9,padding:'9px 12px',color:'#fff',fontSize:12,outline:'none',fontFamily:"'DM Sans',sans-serif"}}/>
+                <button onClick={async()=>{
+                  if(!correoEnvio.includes('@')){return;}
+                  await supabase.from('xcare_encuestas').update({
+                    enviado_google:true,
+                    respuesta_ia:`PREMIO:${premio.label}|EMAIL:${correoEnvio}|JUEGO:cartas`
+                  }).eq('mesa_numero',mesaNum).order('created_at',{ascending:false}).limit(1);
+                  setPremioEnviado(true);
+                }} style={{padding:'9px 14px',borderRadius:9,border:'none',background:`linear-gradient(135deg,${premio.color},${premio.color}cc)`,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                  Enviar →
+                </button>
+              </div>
+            </div>
+          ):(
+            <div style={{background:'rgba(0,230,118,0.1)',border:'1px solid rgba(0,230,118,0.3)',borderRadius:12,padding:'10px 14px',marginBottom:8,textAlign:'center',fontSize:13,color:'#00E676'}}>
+              ✓ Premio enviado a {correoEnvio} — revisa tu Oh Yeah
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Botones */}
+      {flipped !== null && !revealing ? (
+        <button onClick={onClose}
+          style={{ padding:'16px 56px', borderRadius:50, background:`linear-gradient(135deg,${premio!.color},${premio!.color}cc)`, color:'#fff', fontSize:17, fontWeight:900, border:'none', cursor:'pointer', boxShadow:`0 6px 30px ${premio!.color}60`, fontFamily:"'Syne',sans-serif", zIndex:5, position:'relative' }}>
+          🎉 ¡Genial! Cerrar
+        </button>
+      ) : flipped === null ? (
+        <button onClick={onClose} style={{ background:'none', border:'none', fontSize:12, color:'rgba(255,255,255,.2)', cursor:'pointer', marginTop:6, zIndex:5, position:'relative' }}>
+          Omitir premio
+        </button>
+      ) : null}
+      {/* eslint-disable-next-line @typescript-eslint/no-unused-vars */}
+      <div style={{display:'none'}}>{rating}</div>
+    </div>
+  );
+};
+
+// ── PICKER — elige entre ruleta o cartas ────────────────────
+const PremioPicker: React.FC<{ onPick: (juego:'ruleta'|'cartas')=>void; onSkip: ()=>void; rating: number }> = ({ onPick, onSkip, rating }) => (
+  <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'32px 24px', background:'#080810', position:'relative' }}>
+    <style>{`
+      @keyframes pulseGlow{0%,100%{box-shadow:0 0 30px rgba(255,45,120,0.4)}50%{box-shadow:0 0 60px rgba(255,45,120,0.7)}}
+      @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    `}</style>
+    <div style={{textAlign:'center', marginBottom:36, animation:'fadeUp .4s ease'}}>
+      <div style={{fontSize:64, marginBottom:12, filter:'drop-shadow(0 0 24px rgba(255,45,120,0.6))'}}>🎁</div>
+      <div style={{fontSize:11, color:'#FF2D78', fontWeight:900, letterSpacing:'.18em', textTransform:'uppercase', marginBottom:8}}>✦ OMM REWARDS</div>
+      <div style={{fontFamily:"'Syne',sans-serif", fontSize:26, fontWeight:900, color:'#fff', marginBottom:6, lineHeight:1.2}}>
+        {rating >= 4 ? '¡Gracias por tu visita!' : 'Un detalle por tu honestidad'}
+      </div>
+      <div style={{fontSize:13, color:'rgba(255,255,255,.55)', maxWidth:300, margin:'0 auto'}}>
+        Elige cómo quieres descubrir tu premio
+      </div>
+    </div>
+    <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:14, width:'100%', maxWidth:380, marginBottom:24, animation:'fadeUp .5s ease .1s both'}}>
+      <button onClick={()=>onPick('ruleta')}
+        style={{
+          padding:'24px 16px',
+          borderRadius:20,
+          border:'2px solid rgba(255,45,120,0.4)',
+          background:'linear-gradient(135deg,rgba(255,45,120,0.15) 0%,rgba(179,136,255,0.1) 100%)',
+          color:'#fff',
+          cursor:'pointer',
+          textAlign:'center',
+          animation:'pulseGlow 2.4s ease-in-out infinite',
+          transition:'transform .2s',
+        }}
+        onMouseDown={e=>e.currentTarget.style.transform='scale(0.96)'}
+        onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}>
+        <div style={{fontSize:54, marginBottom:8}}>🎰</div>
+        <div style={{fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:900, color:'#fff', marginBottom:4}}>Ruleta</div>
+        <div style={{fontSize:11, color:'rgba(255,255,255,.55)'}}>Gira y descubre</div>
+      </button>
+      <button onClick={()=>onPick('cartas')}
+        style={{
+          padding:'24px 16px',
+          borderRadius:20,
+          border:'2px solid rgba(68,138,255,0.4)',
+          background:'linear-gradient(135deg,rgba(68,138,255,0.15) 0%,rgba(179,136,255,0.1) 100%)',
+          color:'#fff',
+          cursor:'pointer',
+          textAlign:'center',
+          animation:'pulseGlow 2.4s ease-in-out infinite .3s',
+          transition:'transform .2s',
+        }}
+        onMouseDown={e=>e.currentTarget.style.transform='scale(0.96)'}
+        onMouseUp={e=>e.currentTarget.style.transform='scale(1)'}>
+        <div style={{fontSize:54, marginBottom:8}}>🃏</div>
+        <div style={{fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:900, color:'#fff', marginBottom:4}}>6 Cartas</div>
+        <div style={{fontSize:11, color:'rgba(255,255,255,.55)'}}>Pica tu suerte</div>
+      </button>
+    </div>
+    <button onClick={onSkip} style={{background:'none', border:'none', fontSize:12, color:'rgba(255,255,255,.25)', cursor:'pointer', textDecoration:'underline'}}>
+      Omitir premio
+    </button>
+  </div>
+);
 
 
 const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisionAI }) => {
@@ -1493,27 +1768,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         showToast(`🔔 Mesa ${mesa.num} cerrada — notificando a ${mesa.mesero || 'mesero'}`);
       }
       setPantallaConfirmacion({ activa: true, monto, metodo, facMsg, tableId: tid });
-  // Lanzar encuesta X-CARE después de 2 segundos (mientras el mesero trae el datáfono)
-  const mesaActual = displayTables.find(x => x.id === tid);
-  const clienteCRM = mesaActual ? (clienteData as any)[mesaActual.id] : null;
-  setTimeout(() => {
-    setXcareData({
-      mesaNum:          mesaActual?.num || tid,
-      meseroNombre:     mesaActual?.mesero || profile?.full_name || null,
-      itemsConsumidos:  order.filter(i => i.mesa === (mesaActual?.num ?? tid)).map(i => ({
-        nombre_plato: i.nombre, emoji: i.emoji || '🍽️',
-        estacion: 'cocina_caliente', quantity: 1,
-      })),
-      totalCuenta:      monto,
-      propinaPct:       10,
-      propinaMonto:     Math.round(monto * 0.1),
-      clienteNombre:    clienteCRM?.nombreCompleto || mesaActual?.cliente || '',
-      clienteEmail:     clienteCRM?.email || '',
-      clienteTelefono:  clienteCRM?.phone || '',
-      facturaId:        `FAC-${tid}-${Date.now()}`,
-    });
-    setShowXCare(true);
-  }, 2000);
+      // La encuesta X-CARE se dispara desde "Pasar tablet al cliente" (cliente mode).
+      // No abrimos el modal legacy para evitar dos encuestas simultáneas.
     };
 
     // ── BONO / TARJETA REGALO ──
@@ -1886,6 +2142,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // ========================
   const [clienteMode, setClienteMode] = useState(false);
   const [clientePaso, setClientePaso] = useState<'cuenta'|'propina'|'pago'|'encuesta'|'premio'|'bono'|'tarjeta'>('cuenta');
+  const [juegoPremio, setJuegoPremio] = useState<'ruleta'|'cartas'|null>(null);
   const [clienteTableId, setClienteTableId] = useState<number>(1);
   const [clientePropina, setClientePropina] = useState<number>(10);
   const [clienteRating, setClienteRating] = useState<number>(0);
@@ -1935,6 +2192,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setClienteRatings({ comida: 0, servicio: 0, ambiente: 0 });
     setXcareStep('rating');
     setXcareTags([]); setXcarePlatos([]); setXcareMicro([]); setXcareComentario('');
+    setJuegoPremio(null);
     setEditCuenta(false); setPinMaitreOk(false); setPinMaitre(''); setItemsEliminados([]);
     setFacturaTipo('digital'); setFacturaCorreo(''); setPagoMixto(false);
     setClienteMode(true);
@@ -2714,16 +2972,29 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           2:`Hola ${mesaCliente?.cliente?.split(' ')[0]||'amigo'},\n\nTu experiencia es importante. Nuestro equipo ya trabaja para que no vuelva a ocurrir.\n\nSerá un honor recibirte nuevamente.`,
           1:`Hola ${mesaCliente?.cliente?.split(' ')[0]||'amigo'},\n\nLo que nos compartiste merece toda nuestra atención. Ya tomamos acciones concretas.\n\nNos gustaría recibirte para ofrecerte una experiencia completamente distinta.`,
         };
-        // Separar platos y bebidas del pedido real
-        const CATS_BEBIDA = ['Cocteles','Vinos','Sakes','Cervezas','Aguas','Café/Té'];
-        const CATS_COMIDA  = ['Para Compartir','Robata/Wok','Sushi Frío','Ensaladas','Postres','Especiales'];
+        // Separar platos y bebidas del pedido real usando el catálogo
         const todosItems = order.filter(o=>o.mesa===mesaCliente?.num);
-        const platosOrden   = todosItems.filter(o=>!CATS_BEBIDA.some(cb=>o.nombre.toLowerCase().includes(cb.toLowerCase()))).map(o=>o.nombre);
-        const bebidasOrden  = todosItems.filter(o=>CATS_BEBIDA.some(cb=>o.nombre.toLowerCase().includes(cb.toLowerCase()))||['Gas','Espresso','Americano','Té','Sake','Heineken','Old','Malbec','Rosé','Blanco','Yin','Infinito','Gin'].some(k=>o.nombre.includes(k))).map(o=>o.nombre);
+        const platosOrden  = Array.from(new Set(todosItems.filter(o=>clasificarItem(o.nombre)==='comida').map(o=>o.nombre)));
+        const bebidasOrden = Array.from(new Set(todosItems.filter(o=>clasificarItem(o.nombre)==='bebida').map(o=>o.nombre)));
         const todosItemsNombres = todosItems.map(o=>o.nombre);
         const toggleT = (arr: string[], set: React.Dispatch<React.SetStateAction<string[]>>, v: string) => set(p=>p.includes(v)?p.filter(x=>x!==v):[...p,v]);
         const isPos = clienteRating===5, isMed = clienteRating===4, isNeg = clienteRating<=3&&clienteRating>0;
-        const tags = isPos||isMed ? TAGS5 : TAGS4;
+        // Para 3 estrellas o menos, mostramos las categorías amplias (TAGS5) — el cliente elige qué falló (Comida, Cócteles, Servicio, Chef, Ambiente, Experiencia) y luego el sistema se vuelve quirúrgico.
+        const tags = isPos||isMed ? TAGS5 : (isNeg ? TAGS5 : TAGS4);
+        // Para negativos: ¿el cliente tagueó algo de comida/bebida que requiera drill-down?
+        const negTagComida  = isNeg && (xcareTags.includes('Comida') || xcareTags.includes('Chef'));
+        const negTagBebida  = isNeg && xcareTags.includes('Cócteles');
+        const negTagNoConsumo = isNeg && !negTagComida && !negTagBebida;
+        // Items a mostrar en el step "platos": solo los relevantes a lo que se quejó
+        const itemsAMostrar: { nombre: string; tipo: 'comida'|'bebida' }[] = [
+          ...(negTagComida ? platosOrden.map(n=>({nombre:n, tipo:'comida' as const})) : []),
+          ...(negTagBebida ? bebidasOrden.map(n=>({nombre:n, tipo:'bebida' as const})) : []),
+          // Si no marcó ninguna categoría específica pero hay items, mostrar todo para que pueda señalar algo
+          ...(negTagNoConsumo ? [
+            ...platosOrden.map(n=>({nombre:n, tipo:'comida' as const})),
+            ...bebidasOrden.map(n=>({nombre:n, tipo:'bebida' as const})),
+          ] : []),
+        ];
         const sc = starColors[clienteRating]||XC.gold;
 
         const guardarXCare = async () => {
@@ -2783,7 +3054,14 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 </div>
               )}
 
-              {xcareStep==='platos' && <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:XC.t1}}>🍽️ ¿Con qué plato tuviste el problema?</div>}
+              {xcareStep==='platos' && (
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:XC.t1}}>
+                  {negTagComida && negTagBebida ? '🍽️🍸 ¿Con qué tuviste el problema?'
+                    : negTagBebida ? '🍸 ¿Con qué bebida tuviste el problema?'
+                    : negTagComida ? '🍽️ ¿Con qué plato tuviste el problema?'
+                    : '¿Qué fue lo problemático?'}
+                </div>
+              )}
               {xcareStep==='microtags' && <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:900,color:XC.t1}}>¿Qué tipo de problema fue?</div>}
               {xcareStep==='redes' && <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:XC.t1}}>🌟 Tu experiencia puede inspirar a otros.</div>}
               {xcareStep==='done' && <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:XC.t1}}>{clienteRating>=4?'¡Hasta pronto!':clienteRating===3?'Gracias por tu honestidad.':'Gracias por contarnos.'}</div>}
@@ -2830,62 +3108,73 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                 <textarea style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'10px 14px',color:XC.t1,fontSize:13,outline:'none',width:'100%',minHeight:64,resize:'none' as const,marginBottom:12,fontFamily:"'DM Sans',sans-serif"}}
                   placeholder="Comentario opcional..." value={xcareComentario} onChange={e=>setXcareComentario(e.target.value)} />
                 <button onClick={async()=>{
-                  if(isNeg&&platosOrden.length>0){ setXcareStep('platos'); return; }
+                  // Drill-down sólo si tagueó Comida/Chef o Cócteles y hay items
+                  const requiereDrillComida = isNeg && (xcareTags.includes('Comida')||xcareTags.includes('Chef')) && platosOrden.length>0;
+                  const requiereDrillBebida = isNeg && xcareTags.includes('Cócteles') && bebidasOrden.length>0;
+                  if (requiereDrillComida || requiereDrillBebida) { setXcareStep('platos'); return; }
+                  // Si es negativo pero sólo quejas de servicio/ambiente, saltar a microtags directo
+                  if (isNeg) { setXcareStep('microtags'); return; }
                   await guardarXCare();
                   if(clienteRating===5){setXcareStep('redes');}else{setXcareStep('done');}
                 }} disabled={xcareTags.length===0}
                   style={{width:'100%',padding:'13px',borderRadius:14,border:'none',background:xcareTags.length?`linear-gradient(135deg,${XC.pink},#cc2260)`:'rgba(255,255,255,0.05)',color:'#fff',fontSize:14,fontWeight:900,cursor:xcareTags.length?'pointer':'not-allowed',fontFamily:"'Syne',sans-serif"}}>
-                  {isNeg&&platosOrden.length>0?'Siguiente →':'Enviar ✓'}
+                  {isNeg?'Siguiente →':'Enviar ✓'}
                 </button>
                 <button onClick={()=>setXcareStep('rating')} style={{background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12,marginTop:8,width:'100%'}}>← Volver</button>
               </div>
             )}
 
-            {/* PLATOS Y BEBIDAS PROBLEMA */}
-            {xcareStep==='platos' && (
-              <div style={{width:'100%',animation:'xcFadeUp .3s ease'}}>
-                {platosOrden.length>0&&(
-                  <div style={{marginBottom:14}}>
-                    <div style={{fontSize:10,color:XC.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>🍽️ Comida</div>
-                    <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                      {platosOrden.map(item=>{
-                        const sel=xcarePlatos.includes(item);
-                        return(
-                          <button key={item} onClick={()=>toggleT(xcarePlatos,setXcarePlatos,item)}
-                            style={{padding:'12px 16px',borderRadius:12,border:`2px solid ${sel?XC.red:'rgba(255,255,255,0.08)'}`,background:sel?'rgba(255,82,82,0.12)':'rgba(255,255,255,0.04)',color:sel?XC.red:XC.t2,cursor:'pointer',textAlign:'left',fontSize:13,fontWeight:sel?700:400,transition:'all .2s',display:'flex',alignItems:'center',gap:8}}>
-                            <span style={{fontSize:18}}>🍽️</span>{sel?'✕ ':''}{item}
-                          </button>
-                        );
-                      })}
+            {/* PLATOS Y BEBIDAS PROBLEMA — adaptativo según lo que el cliente tagueó */}
+            {xcareStep==='platos' && (() => {
+              const platosFiltrados = itemsAMostrar.filter(i=>i.tipo==='comida').map(i=>i.nombre);
+              const bebidasFiltradas = itemsAMostrar.filter(i=>i.tipo==='bebida').map(i=>i.nombre);
+              return (
+                <div style={{width:'100%',animation:'xcFadeUp .3s ease'}}>
+                  {platosFiltrados.length>0 && (
+                    <div style={{marginBottom:14}}>
+                      <div style={{fontSize:10,color:XC.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>🍽️ Comida</div>
+                      <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                        {platosFiltrados.map(item=>{
+                          const sel=xcarePlatos.includes(item);
+                          return(
+                            <button key={item} onClick={()=>toggleT(xcarePlatos,setXcarePlatos,item)}
+                              style={{padding:'12px 16px',borderRadius:12,border:`2px solid ${sel?XC.red:'rgba(255,255,255,0.08)'}`,background:sel?'rgba(255,82,82,0.12)':'rgba(255,255,255,0.04)',color:sel?XC.red:XC.t2,cursor:'pointer',textAlign:'left',fontSize:13,fontWeight:sel?700:400,transition:'all .2s',display:'flex',alignItems:'center',gap:8}}>
+                              <span style={{fontSize:18}}>🍽️</span>{sel?'✕ ':''}{item}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
-                {bebidasOrden.length>0&&(
-                  <div style={{marginBottom:14}}>
-                    <div style={{fontSize:10,color:XC.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>🍸 Bebidas</div>
-                    <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                      {bebidasOrden.map(item=>{
-                        const sel=xcarePlatos.includes(item);
-                        return(
-                          <button key={item} onClick={()=>toggleT(xcarePlatos,setXcarePlatos,item)}
-                            style={{padding:'12px 16px',borderRadius:12,border:`2px solid ${sel?XC.red:'rgba(255,255,255,0.08)'}`,background:sel?'rgba(255,82,82,0.12)':'rgba(255,255,255,0.04)',color:sel?XC.red:XC.t2,cursor:'pointer',textAlign:'left',fontSize:13,fontWeight:sel?700:400,transition:'all .2s',display:'flex',alignItems:'center',gap:8}}>
-                            <span style={{fontSize:18}}>🍸</span>{sel?'✕ ':''}{item}
-                          </button>
-                        );
-                      })}
+                  )}
+                  {bebidasFiltradas.length>0 && (
+                    <div style={{marginBottom:14}}>
+                      <div style={{fontSize:10,color:XC.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>🍸 Bebidas</div>
+                      <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                        {bebidasFiltradas.map(item=>{
+                          const sel=xcarePlatos.includes(item);
+                          return(
+                            <button key={item} onClick={()=>toggleT(xcarePlatos,setXcarePlatos,item)}
+                              style={{padding:'12px 16px',borderRadius:12,border:`2px solid ${sel?XC.red:'rgba(255,255,255,0.08)'}`,background:sel?'rgba(255,82,82,0.12)':'rgba(255,255,255,0.04)',color:sel?XC.red:XC.t2,cursor:'pointer',textAlign:'left',fontSize:13,fontWeight:sel?700:400,transition:'all .2s',display:'flex',alignItems:'center',gap:8}}>
+                              <span style={{fontSize:18}}>🍸</span>{sel?'✕ ':''}{item}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
-                {todosItemsNombres.length===0&&(
-                  <div style={{color:XC.t3,fontSize:13,textAlign:'center',padding:'20px 0'}}>No hay items registrados en esta mesa</div>
-                )}
-                <button onClick={()=>{if(xcarePlatos.length)setXcareStep('microtags');}} disabled={xcarePlatos.length===0}
-                  style={{width:'100%',padding:'13px',borderRadius:14,border:'none',background:xcarePlatos.length?`linear-gradient(135deg,${XC.pink},#cc2260)`:'rgba(255,255,255,0.05)',color:'#fff',fontSize:14,fontWeight:900,cursor:xcarePlatos.length?'pointer':'not-allowed',fontFamily:"'Syne',sans-serif"}}>
-                  Siguiente →
-                </button>
-                <button onClick={()=>setXcareStep('tags')} style={{background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12,marginTop:8,width:'100%'}}>← Volver</button>
-              </div>
-            )}
+                  )}
+                  {platosFiltrados.length===0 && bebidasFiltradas.length===0 && (
+                    <div style={{color:XC.t3,fontSize:13,textAlign:'center',padding:'20px 0'}}>
+                      {todosItemsNombres.length===0 ? 'No hay items registrados en esta mesa' : 'Saltando al detalle del problema...'}
+                    </div>
+                  )}
+                  <button onClick={()=>setXcareStep('microtags')} disabled={(platosFiltrados.length>0||bebidasFiltradas.length>0) && xcarePlatos.length===0}
+                    style={{width:'100%',padding:'13px',borderRadius:14,border:'none',background:(platosFiltrados.length===0&&bebidasFiltradas.length===0)||xcarePlatos.length>0?`linear-gradient(135deg,${XC.pink},#cc2260)`:'rgba(255,255,255,0.05)',color:'#fff',fontSize:14,fontWeight:900,cursor:((platosFiltrados.length===0&&bebidasFiltradas.length===0)||xcarePlatos.length>0)?'pointer':'not-allowed',fontFamily:"'Syne',sans-serif"}}>
+                    Siguiente →
+                  </button>
+                  <button onClick={()=>setXcareStep('tags')} style={{background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12,marginTop:8,width:'100%'}}>← Volver</button>
+                </div>
+              );
+            })()}
 
             {/* MICRO TAGS */}
             {xcareStep==='microtags' && (
@@ -2977,20 +3266,24 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         );
       })()}
 
-      {/* ═══ PASO 5: RULETA DE PREMIOS ═══ */}
-      {clientePaso === 'premio' && (
-        <RuletaPremios
-          onClose={() => { 
-            setClienteMode(false); 
-            setOrder(prev => prev.filter(o => o.mesa !== mesaCliente?.num)); 
-            setClientePaso('cuenta');
-            setXcareStep('rating');
-            showToast(`✓ Mesa ${mesaCliente?.num} cerrada — ¡Gracias!`); 
-          }}
-          mesaNum={mesaCliente?.num ?? 0}
-          rating={clienteRating}
-        />
-      )}
+      {/* ═══ PASO 5: PREMIO — picker entre Ruleta y 6 Cartas ═══ */}
+      {clientePaso === 'premio' && (() => {
+        const cerrarMesa = () => {
+          setClienteMode(false);
+          setOrder(prev => prev.filter(o => o.mesa !== mesaCliente?.num));
+          setClientePaso('cuenta');
+          setXcareStep('rating');
+          setJuegoPremio(null);
+          showToast(`✓ Mesa ${mesaCliente?.num} cerrada — ¡Gracias!`);
+        };
+        if (juegoPremio === null) {
+          return <PremioPicker rating={clienteRating} onPick={setJuegoPremio} onSkip={cerrarMesa} />;
+        }
+        if (juegoPremio === 'ruleta') {
+          return <RuletaPremios onClose={cerrarMesa} mesaNum={mesaCliente?.num ?? 0} rating={clienteRating} />;
+        }
+        return <CartasPremios onClose={cerrarMesa} mesaNum={mesaCliente?.num ?? 0} rating={clienteRating} />;
+      })()}
     </div>
     </>
   );
