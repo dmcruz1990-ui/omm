@@ -333,13 +333,8 @@ const Dashboard: React.FC = () => {
 
       <main className="flex-1 flex flex-col overflow-hidden relative bg-[#0f1115]">
         <header className="h-10 border-b border-white/5 flex items-center justify-between px-4 z-40 bg-[#0a0a0c] shrink-0">
-          {/* Izquierda: toggle sidebar + nombre */}
-          <div className="flex items-center gap-2">
-            <button onClick={() => setSidebarOpen(p=>!p)}
-              className="w-7 h-7 rounded-lg bg-[#1a1d24] border border-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:border-blue-500/40 transition-all"
-              title={sidebarOpen ? 'Ocultar menú' : 'Mostrar menú'}>
-              <LayoutPanelLeft size={13} />
-            </button>
+          {/* Izquierda: nombre (botón sidebar movido a flotante arriba del header) */}
+          <div className="flex items-center gap-2 ml-10">
             <div className="flex items-center gap-2 px-3 py-1 rounded-lg bg-white/5 border border-white/5">
               <div className="w-5 h-5 rounded-full bg-blue-900/40 border border-blue-500/40 flex items-center justify-center text-blue-400 text-[9px] font-black">
                 {(profile?.nombre_completo || profile?.full_name || 'U').charAt(0).toUpperCase()}

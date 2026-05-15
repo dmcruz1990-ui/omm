@@ -3515,7 +3515,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         </div>
 
         {/* Products grid */}
-        <div className="flex-1 p-2 overflow-y-auto">
+        <div className="flex-1 p-2 overflow-y-auto min-h-0">
           <div className="flex items-center gap-2 text-[10px] text-[#606060] font-semibold uppercase tracking-[0.8px] mb-2">
             <div className="flex-1 h-px bg-[#2a2a2a]"></div>
             <span>{currentCat}</span>
@@ -3657,19 +3657,19 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
         </div>
 
         {/* BARRA INFERIOR COLAPSABLE */}
-        <div className="bg-[#0a0a0a] border-t border-[#2a2a2a] flex flex-col shrink-0">
+        <div className="bg-[#141414] border-t-2 border-[#4a8fd4]/30 flex flex-col shrink-0">
 
-          {/* Toggle strip — SIEMPRE visible (botón centrado y ancho) */}
-          <div className="flex items-center justify-center px-3 py-1.5 border-b border-[#1a1a1a]">
+          {/* Toggle strip — SIEMPRE visible (altura fija + botón pill centrado) */}
+          <div className="flex items-center justify-center px-3 border-b border-[#2a2a2a] bg-[#141414]" style={{height: 36}}>
             <button
               onClick={() => setBarraColapsada(p => !p)}
               title={barraColapsada ? 'Mostrar barra (Ritual · Quick-add · IA)' : 'Ocultar barra inferior'}
-              className={`flex items-center gap-1.5 px-4 h-7 rounded-full border font-bold text-[11px] shadow-sm transition-all ${
+              className={`flex items-center gap-1.5 px-5 h-8 rounded-full border-2 font-bold text-[12px] shadow-md transition-all ${
                 barraColapsada
-                  ? 'bg-[#1c1c1c] border-[#4a8fd4]/60 text-[#4a8fd4] hover:bg-[#4a8fd4] hover:text-white'
+                  ? 'bg-[#1c1c1c] border-[#4a8fd4] text-[#4a8fd4] hover:bg-[#4a8fd4] hover:text-white'
                   : 'bg-[#4a8fd4] border-[#4a8fd4] text-white hover:bg-[#3d7fc4]'
               }`}>
-              <span style={{fontSize: 11}}>{barraColapsada ? '▲' : '▼'}</span>
+              <span style={{fontSize: 12}}>{barraColapsada ? '▲' : '▼'}</span>
               <span>{barraColapsada ? 'Mostrar barra (Ritual · Quick-add · IA)' : 'Ocultar barra inferior'}</span>
             </button>
           </div>
