@@ -5,36 +5,44 @@ import { BellRing, Settings, MonitorPlay, MessageSquare, Sparkles, Receipt, X, S
 import { useAuth } from '../contexts/AuthContext';
 
 // ══ PLANTA OMM — constantes globales del mapa de mesas ══════════════
+// ── PLANO OMM — layout fiel al plano arquitectónico ──────────────────────
+// 15 mesas reales distribuidas en: Barra Sushi · Salón · Ventanal · Torre Bar
 const PLANTA_OMM: Record<string,{num:number;zona:string;shape:'round'|'rect';cap:number;x:number;y:number;w:number;h:number}> = {
-  T1:{num:1,zona:'Terraza',shape:'round',cap:2,x:5,y:4,w:8,h:8},
-  T2:{num:2,zona:'Terraza',shape:'round',cap:2,x:15,y:4,w:8,h:8},
-  T3:{num:3,zona:'Terraza',shape:'rect',cap:4,x:5,y:15,w:12,h:8},
-  T4:{num:4,zona:'Terraza',shape:'rect',cap:6,x:20,y:15,w:14,h:8},
-  S5:{num:5,zona:'Salón',shape:'round',cap:4,x:40,y:5,w:10,h:10},
-  S6:{num:6,zona:'Salón',shape:'round',cap:4,x:53,y:5,w:10,h:10},
-  S7:{num:7,zona:'Salón',shape:'round',cap:4,x:66,y:5,w:10,h:10},
-  S8:{num:8,zona:'Salón',shape:'rect',cap:6,x:40,y:20,w:13,h:9},
-  S9:{num:9,zona:'Salón',shape:'rect',cap:6,x:56,y:20,w:13,h:9},
-  S10:{num:10,zona:'Salón',shape:'round',cap:2,x:72,y:20,w:8,h:8},
-  S11:{num:11,zona:'Salón',shape:'rect',cap:8,x:40,y:33,w:18,h:9},
-  S12:{num:12,zona:'Salón',shape:'round',cap:4,x:62,y:33,w:10,h:10},
-  P13:{num:13,zona:'Privado',shape:'rect',cap:8,x:76,y:33,w:17,h:9},
-  P14:{num:14,zona:'Privado',shape:'rect',cap:6,x:76,y:46,w:17,h:9},
-  B15:{num:15,zona:'Barra',shape:'rect',cap:2,x:5,y:56,w:25,h:6},
-  B16:{num:16,zona:'Barra',shape:'rect',cap:2,x:5,y:64,w:25,h:6},
+  // Barra Sushi — el counter, 2 tramos
+  BS1:{num:1, zona:'Barra Sushi', shape:'rect', cap:7, x:35,y:27,w:15,h:7.5},
+  BS2:{num:2, zona:'Barra Sushi', shape:'rect', cap:7, x:51,y:27,w:15,h:7.5},
+  // Salón — cluster de redondas zona lounge
+  S3:{num:3, zona:'Salón', shape:'round', cap:4, x:15,y:49,w:9,h:13},
+  S4:{num:4, zona:'Salón', shape:'round', cap:4, x:26,y:49,w:9,h:13},
+  S5:{num:5, zona:'Salón', shape:'round', cap:4, x:15,y:65,w:9,h:13},
+  S6:{num:6, zona:'Salón', shape:'round', cap:2, x:27,y:66,w:8,h:11},
+  // Salón centro
+  S7:{num:7, zona:'Salón', shape:'round', cap:4, x:40,y:47,w:9.5,h:13},
+  S8:{num:8, zona:'Salón', shape:'round', cap:4, x:52,y:47,w:9.5,h:13},
+  // Mesa comunal — la mesa larga central
+  C9:{num:9, zona:'Salón', shape:'rect', cap:12, x:40,y:63,w:22,h:14},
+  S10:{num:10,zona:'Salón', shape:'round', cap:4, x:64,y:49,w:9.5,h:13},
+  // Ventanal — 2-tops sobre el ventanal
+  V11:{num:11,zona:'Ventanal', shape:'round', cap:2, x:40,y:84,w:7.5,h:11},
+  V12:{num:12,zona:'Ventanal', shape:'round', cap:2, x:50,y:84,w:7.5,h:11},
+  V13:{num:13,zona:'Ventanal', shape:'round', cap:2, x:60,y:84,w:7.5,h:11},
+  // Torre Bar — lounge bar, 2 tramos
+  TB14:{num:14,zona:'Torre Bar', shape:'rect', cap:6, x:74,y:61,w:11,h:11},
+  TB15:{num:15,zona:'Torre Bar', shape:'rect', cap:6, x:74,y:74,w:11,h:11},
 };
 const ZONA_AREAS_OMM: Record<string,{x:number;y:number;w:number;h:number}> = {
-  Terraza:{x:2,y:1,w:36,h:28},
-  Salón:  {x:38,y:1,w:40,h:46},
-  Privado:{x:74,y:30,w:22,h:29},
-  Barra:  {x:2,y:52,w:34,h:22},
+  'Barra Sushi':{x:33,y:22,w:35,h:17},
+  'Salón':      {x:11,y:43,w:64,h:38},
+  'Ventanal':   {x:36,y:81,w:37,h:16},
+  'Torre Bar':  {x:71,y:54,w:26,h:39},
 };
-const ZONA_COLS_OMM: Record<string,{bg:string;border:string}> = {
-  Terraza:{bg:'rgba(34,211,238,0.04)',border:'rgba(34,211,238,0.15)'},
-  Salón:  {bg:'rgba(255,255,255,0.02)',border:'rgba(255,255,255,0.07)'},
-  Privado:{bg:'rgba(179,136,255,0.04)',border:'rgba(179,136,255,0.15)'},
-  Barra:  {bg:'rgba(68,139,255,0.04)',border:'rgba(68,139,255,0.15)'},
+const ZONA_COLS_OMM: Record<string,{bg:string;border:string;icon:string}> = {
+  'Barra Sushi':{bg:'rgba(68,139,255,0.05)',border:'rgba(68,139,255,0.20)',icon:'🍣'},
+  'Salón':      {bg:'rgba(255,255,255,0.02)',border:'rgba(255,255,255,0.07)',icon:'🪑'},
+  'Ventanal':   {bg:'rgba(34,211,238,0.05)',border:'rgba(34,211,238,0.18)',icon:'🌅'},
+  'Torre Bar':  {bg:'rgba(155,114,255,0.06)',border:'rgba(155,114,255,0.22)',icon:'🍸'},
 };
+
 
 interface POSProps {
   tables: any[];
@@ -5159,39 +5167,66 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
                   {/* Zonas de fondo */}
                   {Object.entries(ZONA_AREAS_OMM).map(([zona,area])=>(
-                    <div key={zona} style={{position:'absolute',left:`${area.x}%`,top:`${area.y}%`,width:`${area.w}%`,height:`${area.h}%`,background:ZONA_COLS_OMM[zona]?.bg||'transparent',border:`1px solid ${ZONA_COLS_OMM[zona]?.border||'transparent'}`,borderRadius:12}}>
-                      <div style={{position:'absolute',top:5,left:8,fontSize:8,color:'rgba(255,255,255,0.2)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em'}}>
-                        {zona==='Terraza'?'🌿':zona==='Privado'?'🔒':zona==='Barra'?'🍸':'🪑'} {zona}
+                    <div key={zona} style={{position:'absolute',left:`${area.x}%`,top:`${area.y}%`,width:`${area.w}%`,height:`${area.h}%`,background:ZONA_COLS_OMM[zona]?.bg||'transparent',border:`1px solid ${ZONA_COLS_OMM[zona]?.border||'transparent'}`,borderRadius:12,zIndex:0}}>
+                      <div style={{position:'absolute',top:5,left:8,fontSize:8,color:'rgba(255,255,255,0.25)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em'}}>
+                        {ZONA_COLS_OMM[zona]?.icon} {zona}
                       </div>
                     </div>
                   ))}
 
-                  {/* COCINA */}
-                  <div style={{position:'absolute',left:'73%',top:'54%',width:'25%',height:'43%',background:'linear-gradient(135deg,rgba(255,82,82,0.08),rgba(255,82,82,0.03))',border:'1.5px solid rgba(255,82,82,0.3)',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3}}>
-                    <div style={{fontSize:'clamp(12px,2vw,22px)'}}>🔥</div>
-                    <div style={{fontSize:'clamp(6px,0.9vw,10px)',color:'rgba(255,82,82,0.8)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.1em'}}>Cocina</div>
-                    <div style={{position:'absolute',top:'-5%',left:'10%',width:'80%',height:'7%',background:'rgba(255,82,82,0.25)',borderRadius:'3px 3px 0 0',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                      <div style={{fontSize:'clamp(4px,0.6vw,7px)',color:'rgba(255,82,82,0.7)',fontWeight:700}}>DESPACHO</div>
+                  {/* COCINA — arriba derecha */}
+                  <div style={{position:'absolute',left:'69%',top:'7%',width:'29%',height:'33%',background:'linear-gradient(135deg,rgba(255,82,82,0.09),rgba(255,82,82,0.03))',border:'1.5px solid rgba(255,82,82,0.3)',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,zIndex:0}}>
+                    <div style={{fontSize:'clamp(11px,1.8vw,20px)'}}>🔥</div>
+                    <div style={{fontSize:'clamp(6px,0.9vw,10px)',color:'rgba(255,82,82,0.85)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.12em'}}>Cocina</div>
+                    <div style={{position:'absolute',bottom:'-4%',left:'15%',width:'70%',height:'7%',background:'rgba(255,82,82,0.22)',borderRadius:'0 0 3px 3px',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                      <div style={{fontSize:'clamp(4px,0.6vw,7px)',color:'rgba(255,82,82,0.75)',fontWeight:700,letterSpacing:'.1em'}}>DESPACHO</div>
                     </div>
                   </div>
 
-                  {/* BARRA */}
-                  <div style={{position:'absolute',left:'2%',top:'76%',width:'68%',height:'12%',background:'linear-gradient(90deg,rgba(68,139,255,0.08),rgba(68,139,255,0.04))',border:'1.5px solid rgba(68,139,255,0.3)',borderRadius:10,display:'flex',alignItems:'center',padding:'0 2%',gap:'1.2%',overflow:'hidden'}}>
-                    {[0,1,2,3,4,5,6,7,8].map(i=><div key={i} style={{width:'clamp(4px,1.1vw,13px)',height:'clamp(4px,1.1vw,13px)',borderRadius:'50%',background:'rgba(68,139,255,0.2)',border:'1px solid rgba(68,139,255,0.4)',flexShrink:0}}/>)}
-                    <div style={{flex:1}}/><div style={{fontSize:'clamp(7px,1.1vw,13px)'}}>🍸</div>
-                    <div style={{fontSize:'clamp(6px,0.85vw,10px)',color:'rgba(68,139,255,0.8)',fontWeight:900,textTransform:'uppercase',marginRight:4}}>Barra</div>
+                  {/* HOST — podio de entrada */}
+                  <div style={{position:'absolute',left:'17%',top:'8%',width:'18%',height:'7%',background:'rgba(255,181,71,0.10)',border:'1.5px solid rgba(255,181,71,0.35)',borderRadius:'40px',display:'flex',alignItems:'center',justifyContent:'center',gap:4,zIndex:0}}>
+                    <span style={{fontSize:'clamp(7px,1vw,12px)'}}>🛎️</span>
+                    <span style={{fontSize:'clamp(6px,0.8vw,9px)',color:'rgba(255,181,71,0.85)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.12em'}}>Host</span>
                   </div>
 
-                  {/* CAVA */}
-                  <div style={{position:'absolute',left:'36%',top:'76%',width:'33%',height:'10%',background:'rgba(255,181,71,0.06)',border:'1.5px solid rgba(255,181,71,0.25)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
-                    <div style={{fontSize:'clamp(7px,1.1vw,13px)'}}>🍷</div>
-                    <div style={{fontSize:'clamp(6px,0.75vw,9px)',color:'rgba(255,181,71,0.7)',fontWeight:700,textTransform:'uppercase'}}>Cava</div>
+                  {/* SAKE EXP — vitrina vertical izquierda */}
+                  <div style={{position:'absolute',left:'2%',top:'10%',width:'6%',height:'27%',background:'rgba(179,136,255,0.06)',border:'1.5px solid rgba(179,136,255,0.22)',borderRadius:8,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'space-around',padding:'8px 0',zIndex:0}}>
+                    {[0,1,2,3,4].map(i=><div key={i} style={{width:'clamp(4px,0.9vw,10px)',height:'clamp(4px,0.9vw,10px)',borderRadius:'50%',background:'rgba(179,136,255,0.25)',border:'1px solid rgba(179,136,255,0.4)'}}/>)}
+                    <div style={{fontSize:'clamp(4px,0.55vw,7px)',color:'rgba(179,136,255,0.7)',fontWeight:800,writingMode:'vertical-rl',letterSpacing:'.1em'}}>SAKE EXP</div>
                   </div>
+
+                  {/* CAVA — izquierda */}
+                  <div style={{position:'absolute',left:'2%',top:'39%',width:'9%',height:'9%',background:'rgba(255,181,71,0.06)',border:'1.5px solid rgba(255,181,71,0.25)',borderRadius:8,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:1,zIndex:0}}>
+                    <div style={{fontSize:'clamp(7px,1vw,13px)'}}>🍷</div>
+                    <div style={{fontSize:'clamp(5px,0.7vw,9px)',color:'rgba(255,181,71,0.75)',fontWeight:800,textTransform:'uppercase'}}>Cava</div>
+                  </div>
+
+                  {/* MESA APOYO */}
+                  <div style={{position:'absolute',left:'27%',top:'44%',width:'10%',height:'4.5%',background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.18)',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',zIndex:0}}>
+                    <div style={{fontSize:'clamp(4px,0.6vw,8px)',color:'rgba(255,255,255,0.35)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em'}}>Mesa apoyo</div>
+                  </div>
+
+                  {/* BARRA SUSHI — counter con asientos numerados */}
+                  <div style={{position:'absolute',left:'34%',top:'24.5%',width:'33%',height:'2.4%',display:'flex',gap:'1.4%',alignItems:'center',justifyContent:'center',zIndex:0}}>
+                    {[1,2,3,4,5,6,7,8,9,10].map(n=>(
+                      <div key={n} style={{flex:1,aspectRatio:'1',maxWidth:14,borderRadius:'50%',background:'rgba(68,139,255,0.18)',border:'1px solid rgba(68,139,255,0.45)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'clamp(3px,0.55vw,7px)',color:'rgba(120,170,255,0.9)',fontWeight:900}}>{n}</div>
+                    ))}
+                  </div>
+
+                  {/* TORRE BAR — torre central + banquetas */}
+                  <div style={{position:'absolute',left:'80%',top:'70%',width:'8%',height:'14%',background:'linear-gradient(135deg,rgba(155,114,255,0.18),rgba(155,114,255,0.06))',border:'1.5px solid rgba(155,114,255,0.45)',borderRadius:8,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:0}}>
+                    <div style={{fontSize:'clamp(8px,1.3vw,16px)'}}>🍸</div>
+                    <div style={{fontSize:'clamp(4px,0.55vw,7px)',color:'rgba(155,114,255,0.9)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.08em'}}>Torre</div>
+                  </div>
+
+                  {/* VENTANAL — línea de ventana inferior */}
+                  <div style={{position:'absolute',left:'2%',bottom:'2.2%',width:'96%',height:2,background:'repeating-linear-gradient(90deg,rgba(34,211,238,0.3) 0 14px,transparent 14px 22px)',zIndex:0}}/>
+                  <div style={{position:'absolute',left:'4%',bottom:'3%',fontSize:'clamp(4px,0.6vw,8px)',color:'rgba(34,211,238,0.35)',fontWeight:700,letterSpacing:'.1em'}}>VENTANAL</div>
 
                   {/* ENTRADA */}
-                  <div style={{position:'absolute',bottom:'1%',left:'40%',display:'flex',alignItems:'center',gap:3}}>
+                  <div style={{position:'absolute',top:'1%',left:'40%',display:'flex',alignItems:'center',gap:3,zIndex:0}}>
                     <div style={{width:'clamp(16px,2.5vw,32px)',height:1,background:'rgba(255,255,255,0.12)'}}/>
-                    <div style={{fontSize:'clamp(5px,0.65vw,8px)',color:'rgba(255,255,255,0.15)',fontWeight:700}}>↑ ENTRADA</div>
+                    <div style={{fontSize:'clamp(5px,0.65vw,8px)',color:'rgba(255,255,255,0.2)',fontWeight:700}}>↑ ACCESO</div>
                     <div style={{width:'clamp(16px,2.5vw,32px)',height:1,background:'rgba(255,255,255,0.12)'}}/>
                   </div>
 

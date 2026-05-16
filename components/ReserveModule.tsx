@@ -2,36 +2,35 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../contexts/AuthContext';
 
-// ══ CONSTANTES DEL PLANO — globales para todos los componentes ══
+// ══ PLANO OMM — fiel al plano arquitectónico (mismo layout que el POS) ══
 const PLANTA: Record<string,{num:number;zona:string;shape:'round'|'rect';cap:number;x:number;y:number;w:number;h:number}> = {
-  T1:{num:1,zona:'Terraza',shape:'round',cap:2,x:5,y:4,w:8,h:8},
-  T2:{num:2,zona:'Terraza',shape:'round',cap:2,x:15,y:4,w:8,h:8},
-  T3:{num:3,zona:'Terraza',shape:'rect',cap:4,x:5,y:15,w:12,h:8},
-  T4:{num:4,zona:'Terraza',shape:'rect',cap:6,x:20,y:15,w:14,h:8},
-  S5:{num:5,zona:'Salón',shape:'round',cap:4,x:40,y:5,w:10,h:10},
-  S6:{num:6,zona:'Salón',shape:'round',cap:4,x:53,y:5,w:10,h:10},
-  S7:{num:7,zona:'Salón',shape:'round',cap:4,x:66,y:5,w:10,h:10},
-  S8:{num:8,zona:'Salón',shape:'rect',cap:6,x:40,y:20,w:13,h:9},
-  S9:{num:9,zona:'Salón',shape:'rect',cap:6,x:56,y:20,w:13,h:9},
-  S10:{num:10,zona:'Salón',shape:'round',cap:2,x:72,y:20,w:8,h:8},
-  S11:{num:11,zona:'Salón',shape:'rect',cap:8,x:40,y:33,w:18,h:9},
-  S12:{num:12,zona:'Salón',shape:'round',cap:4,x:62,y:33,w:10,h:10},
-  P13:{num:13,zona:'Privado',shape:'rect',cap:8,x:76,y:33,w:17,h:9},
-  P14:{num:14,zona:'Privado',shape:'rect',cap:6,x:76,y:46,w:17,h:9},
-  B15:{num:15,zona:'Barra',shape:'rect',cap:2,x:5,y:56,w:25,h:6},
-  B16:{num:16,zona:'Barra',shape:'rect',cap:2,x:5,y:64,w:25,h:6},
+  BS1:{num:1, zona:'Barra Sushi', shape:'rect', cap:7, x:35,y:27,w:15,h:7.5},
+  BS2:{num:2, zona:'Barra Sushi', shape:'rect', cap:7, x:51,y:27,w:15,h:7.5},
+  S3:{num:3, zona:'Salón', shape:'round', cap:4, x:15,y:49,w:9,h:13},
+  S4:{num:4, zona:'Salón', shape:'round', cap:4, x:26,y:49,w:9,h:13},
+  S5:{num:5, zona:'Salón', shape:'round', cap:4, x:15,y:65,w:9,h:13},
+  S6:{num:6, zona:'Salón', shape:'round', cap:2, x:27,y:66,w:8,h:11},
+  S7:{num:7, zona:'Salón', shape:'round', cap:4, x:40,y:47,w:9.5,h:13},
+  S8:{num:8, zona:'Salón', shape:'round', cap:4, x:52,y:47,w:9.5,h:13},
+  C9:{num:9, zona:'Salón', shape:'rect', cap:12, x:40,y:63,w:22,h:14},
+  S10:{num:10,zona:'Salón', shape:'round', cap:4, x:64,y:49,w:9.5,h:13},
+  V11:{num:11,zona:'Ventanal', shape:'round', cap:2, x:40,y:84,w:7.5,h:11},
+  V12:{num:12,zona:'Ventanal', shape:'round', cap:2, x:50,y:84,w:7.5,h:11},
+  V13:{num:13,zona:'Ventanal', shape:'round', cap:2, x:60,y:84,w:7.5,h:11},
+  TB14:{num:14,zona:'Torre Bar', shape:'rect', cap:6, x:74,y:61,w:11,h:11},
+  TB15:{num:15,zona:'Torre Bar', shape:'rect', cap:6, x:74,y:74,w:11,h:11},
 };
 const ZONA_COLORES: Record<string,{bg:string;border:string;label:string}> = {
-  Terraza:{bg:'rgba(34,211,238,0.04)',border:'rgba(34,211,238,0.15)',label:'🌿 Terraza'},
-  Salón:  {bg:'rgba(255,255,255,0.02)',border:'rgba(255,255,255,0.07)',label:'🪑 Salón'},
-  Privado:{bg:'rgba(179,136,255,0.04)',border:'rgba(179,136,255,0.15)',label:'🔒 Privado'},
-  Barra:  {bg:'rgba(68,139,255,0.04)',border:'rgba(68,139,255,0.15)',label:'🍸 Barra'},
+  'Barra Sushi':{bg:'rgba(68,139,255,0.05)',border:'rgba(68,139,255,0.20)',label:'🍣 Barra Sushi'},
+  'Salón':      {bg:'rgba(255,255,255,0.02)',border:'rgba(255,255,255,0.07)',label:'🪑 Salón'},
+  'Ventanal':   {bg:'rgba(34,211,238,0.05)',border:'rgba(34,211,238,0.18)',label:'🌅 Ventanal'},
+  'Torre Bar':  {bg:'rgba(155,114,255,0.06)',border:'rgba(155,114,255,0.22)',label:'🍸 Torre Bar'},
 };
 const ZONA_AREAS: Record<string,{x:number;y:number;w:number;h:number}> = {
-  Terraza:{x:2,y:1,w:36,h:28},
-  Salón:  {x:38,y:1,w:40,h:46},
-  Privado:{x:74,y:30,w:22,h:29},
-  Barra:  {x:2,y:52,w:34,h:22},
+  'Barra Sushi':{x:33,y:22,w:35,h:17},
+  'Salón':      {x:11,y:43,w:64,h:38},
+  'Ventanal':   {x:36,y:81,w:37,h:16},
+  'Torre Bar':  {x:71,y:54,w:26,h:39},
 };
 
 const S = {
