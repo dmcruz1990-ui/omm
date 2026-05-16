@@ -289,7 +289,7 @@ function EncuestaXCare({
 
 
 // ── TIPOS ─────────────────────────────────────────────────────────────
-type Tab = 'live' | 'encuestas' | 'cim' | 'ohyeah' | 'dashboard';
+type Tab = 'live' | 'encuestas' | 'diario' | 'cim' | 'ohyeah' | 'dashboard';
 
 interface XCareEncuesta {
   id: string; created_at: string; restaurante_id: number;
@@ -370,11 +370,22 @@ export default function CareModule() {
   const fetchData = useCallback(async () => {
     setLoading(true);
     const [enc, alt, dash] = await Promise.all([
-      supabase.from('xcare_encuestas').select('*').eq('restaurante_id',6).order('created_at',{ascending:false}).limit(50),
+      supabase.from('xcare_encuestas').select('*').eq('restaurante_id',6).order('created_at',{ascending:false}).limit(300),
       supabase.from('xcare_alertas').select('*').eq('restaurante_id',6).eq('resuelta',false).order('created_at',{ascending:false}).limit(20),
       supabase.from('xcare_dashboard').select('*').eq('restaurante_id',6).maybeSingle(),
     ]);
-    if (enc.data)  setEncuestas(enc.data as XCareEncuesta[]);
+    if (enc.data) {
+      // Normaliza columnas duplicadas: la encuesta del POS escribe
+      // mesa_numero/nombre_cliente/alerta_gerente; Care leía mesa_num/etc.
+      const norm = (enc.data as any[]).map(e => ({
+        ...e,
+        mesa_num:          e.mesa_num ?? e.mesa_numero ?? null,
+        cliente_nombre:    e.cliente_nombre || e.nombre_cliente || null,
+        alerta_preventiva: e.alerta_preventiva ?? e.alerta_gerente ?? false,
+        estado:            e.estado || 'pendiente',
+      }));
+      setEncuestas(norm as XCareEncuesta[]);
+    }
     if (alt.data)  setAlertas(alt.data as XCareAlerta[]);
     if (dash.data) setDashboard(dash.data);
     setLoading(false);
@@ -418,6 +429,11 @@ export default function CareModule() {
   };
 
   const hoy = new Date().toISOString().split('T')[0];
+  // Promedio del día calculado en vivo de las encuestas reales
+  const encuestasHoy = encuestas.filter(e=>String(e.created_at||'').startsWith(hoy));
+  const promedioHoy = encuestasHoy.length
+    ? (encuestasHoy.reduce((s,e)=>s+(e.estrellas||0),0)/encuestasHoy.length)
+    : 0;
   const pendientesUrgentes = alertas.filter(a=>!a.resuelta&&(a.nivel_riesgo==='critico'||a.nivel_riesgo==='alto'));
 
   return (
@@ -437,8 +453,8 @@ export default function CareModule() {
         <div className="flex gap-3 ml-auto flex-wrap">
           {[
             {l:'Alertas urgentes', v:pendientesUrgentes.length,          c:'#FF5252'},
-            {l:'Encuestas hoy',    v:encuestas.filter(e=>e.created_at?.startsWith(hoy)).length, c:'#FFB547'},
-            {l:'Promedio',         v:dashboard?.promedio_estrellas ? `${dashboard.promedio_estrellas}★` : '—', c:'#00E676'},
+            {l:'Encuestas hoy',    v:encuestasHoy.length, c:'#FFB547'},
+            {l:'Promedio hoy',     v:promedioHoy ? `${promedioHoy.toFixed(1)}★` : '—', c:'#00E676'},
             {l:'Clientes',         v:ohyeahClientes.length,              c:'#FFD700'},
           ].map(k=>(
             <div key={k.l} className="text-center px-3 py-1.5 rounded-xl border" style={{borderColor:`${k.c}20`}}>
@@ -454,6 +470,7 @@ export default function CareModule() {
         {([
           {id:'live',      l:'🚨 Alertas en vivo'},
           {id:'encuestas', l:'⭐ Encuestas'},
+          {id:'diario',    l:'📔 Diario'},
           {id:'cim',       l:'🧠 CIM™'},
           {id:'ohyeah',    l:'🦉 Oh Yeah!'},
           {id:'dashboard', l:'📊 Dashboard'},
@@ -581,6 +598,95 @@ export default function CareModule() {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* ── DIARIO — historial día por día ── */}
+      {activeTab==='diario' && (
+        <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <div className="font-['Syne'] text-[15px] font-black">📔 Diario de experiencias</div>
+            <button onClick={fetchData} className="text-[#50506A] hover:text-white flex items-center gap-1 text-[11px]">
+              <RefreshCw size={12}/> Actualizar
+            </button>
+          </div>
+          {loading && <div className="text-center py-10 text-[#50506A]">Cargando...</div>}
+          {!loading && encuestas.length===0 && (
+            <div className="text-center py-16 text-[#50506A]">
+              <div className="text-[48px] mb-3">📔</div>
+              <div className="text-[14px] font-bold">Sin encuestas registradas</div>
+              <div className="text-[12px] mt-1">El diario se llena al cerrar cada mesa</div>
+            </div>
+          )}
+          {(() => {
+            const porDia = encuestas.reduce((acc:Record<string,XCareEncuesta[]>, e) => {
+              const d = String(e.created_at||'').slice(0,10) || 'sin-fecha';
+              (acc[d] = acc[d] || []).push(e);
+              return acc;
+            }, {});
+            return Object.keys(porDia).sort((a,b)=>b.localeCompare(a)).map(dia => {
+              const list = porDia[dia];
+              const prom = list.length ? (list.reduce((s,e)=>s+(e.estrellas||0),0)/list.length) : 0;
+              const positivas = list.filter(e=>e.estrellas>=4).length;
+              const alertasDia = list.filter(e=>e.estrellas>0&&e.estrellas<=3).length;
+              const conComentario = list.filter(e=>e.comentario).length;
+              let label = dia;
+              try { label = new Date(dia+'T12:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'}); } catch { /* fecha inválida */ }
+              return (
+                <div key={dia} className="bg-[#0f0f1a] border border-white/7 rounded-2xl overflow-hidden">
+                  {/* Cabecera del día */}
+                  <div className="px-4 py-3 flex items-center justify-between flex-wrap gap-3 bg-white/[0.02] border-b border-white/5">
+                    <div>
+                      <div className="text-[13px] font-black capitalize">{label}</div>
+                      <div className="text-[10px] text-[#50506A]">{list.length} encuesta{list.length===1?'':'s'} · {conComentario} con comentario</div>
+                    </div>
+                    <div className="flex gap-2">
+                      {[
+                        {l:'Promedio', v:`${prom.toFixed(1)}★`, c:starC(Math.round(prom))},
+                        {l:'Positivas', v:positivas, c:'#00E676'},
+                        {l:'Alertas',  v:alertasDia, c:'#FF5252'},
+                      ].map(s=>(
+                        <div key={s.l} className="text-center px-3 py-1 rounded-lg border" style={{borderColor:`${s.c}25`}}>
+                          <div className="text-[8px] text-[#50506A] uppercase">{s.l}</div>
+                          <div className="font-['Syne'] text-[15px] font-black" style={{color:s.c}}>{s.v}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {/* Filas del día */}
+                  <div>
+                    {list.map(enc=>{
+                      const c = starC(enc.estrellas);
+                      const hora = (()=>{ try { return new Date(enc.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}); } catch { return ''; } })();
+                      return (
+                        <div key={enc.id} onClick={()=>setEncSel(enc)}
+                          className="flex items-center gap-3 px-4 py-2.5 border-t border-white/5 hover:bg-white/[0.03] cursor-pointer transition-all">
+                          <span className="text-[10px] text-[#50506A] font-mono w-10 shrink-0">{hora}</span>
+                          <div className="w-7 h-7 rounded-full flex items-center justify-center font-black text-[12px] shrink-0"
+                            style={{background:`${c}20`,color:c}}>{enc.cliente_nombre?.charAt(0)||'?'}</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-[12px] font-bold truncate">{enc.cliente_nombre||'Cliente'}</span>
+                              {enc.mesa_num && <span className="text-[9px] text-[#50506A]">Mesa {enc.mesa_num}</span>}
+                            </div>
+                            {enc.comentario && <div className="text-[10px] text-[#50506A] italic truncate">"{enc.comentario}"</div>}
+                          </div>
+                          <div className="flex gap-0.5 shrink-0">
+                            {Array.from({length:5},(_,i)=><span key={i} style={{color:i<enc.estrellas?c:'#2a2a3a',fontSize:11}}>★</span>)}
+                          </div>
+                          {enc.alerta_preventiva && <span className="text-[9px] shrink-0">🚨</span>}
+                          <span className="text-[8px] px-2 py-0.5 rounded-full font-bold shrink-0"
+                            style={{background:enc.estado==='respondida'?'rgba(0,230,118,0.1)':'rgba(255,181,71,0.1)',color:enc.estado==='respondida'?'#00E676':'#FFB547'}}>
+                            {enc.estado}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            });
+          })()}
         </div>
       )}
 
