@@ -896,6 +896,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [showNotifications, setShowNotifications] = useState(false);
   const [showOrderPanel, setShowOrderPanel] = useState(false);
   const [mostrarTraspaso, setMostrarTraspaso] = useState(false);
+  const [mostrarCompartir, setMostrarCompartir] = useState(false);
   const [showXCare,      setShowXCare]      = useState(false);
   const [xcareData,      setXcareData]      = useState<any>(null);
   const [meserosTodas,   setMeserosTodas]   = useState<any[]>([]);
@@ -1145,7 +1146,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     // Estado real de las mesas en tiempo real
     const fetchMesasEstado = async () => {
       const { data } = await supabase.from('tables')
-        .select('id,name,seats,zona,estado,mesero_nombre,abierta_en,pax_actual,cliente_nombre,order_id_activo,capacidad')
+        .select('id,name,seats,zona,estado,mesero_nombre,abierta_en,pax_actual,cliente_nombre,order_id_activo,capacidad,meseros_compartidos')
         .order('name');
       if (data) setMesasEstado(data);
     };
@@ -1366,6 +1367,16 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     if (mesaEnDisplay) setSelectedTableId(mesaEnDisplay.id);
     setShowMapaMesas(false);
     showToast(`✓ Tomaste la mesa ${mesa.num}${est?.cliente_nombre?` — ${est.cliente_nombre}`:''}`);
+  };
+
+  // ── COMPARTIR MESA con otro mesero ───────────────────────────────────
+  const compartirMesaCon = async (mesaNum: number, meseroNombre: string) => {
+    const est = mesasEstado.find((m:any)=>String(m.name)===String(mesaNum));
+    const actuales: string[] = Array.isArray(est?.meseros_compartidos) ? est.meseros_compartidos : [];
+    const yaEsta = actuales.includes(meseroNombre);
+    const next = yaEsta ? actuales.filter(x=>x!==meseroNombre) : [...actuales, meseroNombre];
+    await supabase.from('tables').update({ meseros_compartidos: next }).eq('name', String(mesaNum));
+    showToast(yaEsta ? `Mesa ${mesaNum} ya no compartida con ${meseroNombre}` : `✓ Mesa ${mesaNum} compartida con ${meseroNombre}`);
   };
 
   // ── CERRAR MESA ──────────────────────────────────────────────────────
@@ -4049,6 +4060,50 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   )}
                 </div>
 
+                {/* COMPARTIR MESA — habilita a otro mesero a entrar */}
+                {(() => {
+                  const estMesa = mesasEstado.find((mm:any)=>String(mm.name)===String(m.num));
+                  const compartidos: string[] = Array.isArray(estMesa?.meseros_compartidos) ? estMesa.meseros_compartidos : [];
+                  const owner = estMesa?.mesero_nombre || profile?.nombre_completo || 'Mesero';
+                  return (
+                    <div className="mt-3 pt-3 border-t border-[#2a2a2a]">
+                      <button onClick={() => setMostrarCompartir(p => !p)}
+                        className="w-full flex items-center justify-between text-[10px] font-bold text-[#606060] uppercase tracking-wider hover:text-[#3dba6f] transition-all">
+                        <span className="flex items-center gap-1.5">👥 Compartir mesa{compartidos.length>0?` · ${compartidos.length}`:''}</span>
+                        <span>{mostrarCompartir ? '▲' : '▼'}</span>
+                      </button>
+                      {mostrarCompartir && (
+                        <div className="mt-2 flex flex-col gap-2">
+                          <div className="text-[9px] text-[#606060]">
+                            Mesa de <span className="text-[#d4943a] font-bold">{owner}</span>. Toca un mesero para darle acceso.
+                          </div>
+                          <div className="flex flex-wrap gap-1">
+                            {meserosTodas.filter((ms:any)=>(ms.nombre_completo||ms.nombre)!==owner).map((ms:any)=>{
+                              const nombre = ms.nombre_completo || ms.nombre || '—';
+                              const activo = compartidos.includes(nombre);
+                              return (
+                                <button key={ms.id||nombre} onClick={()=>compartirMesaCon(m.num, nombre)}
+                                  style={{ borderColor: activo ? '#3dba6f' : '#2a2a2a', background: activo ? '#3dba6f18' : '#1a1a1a', color: activo ? '#3dba6f' : '#a0a0a0' }}
+                                  className="px-2 py-1 rounded-lg border text-[10px] font-bold transition-all">
+                                  {activo?'✓ ':''}{nombre.split(' ')[0]}
+                                </button>
+                              );
+                            })}
+                            {meserosTodas.length===0 && (
+                              <div className="text-[9px] text-[#606060]">No hay otros meseros activos</div>
+                            )}
+                          </div>
+                          {compartidos.length>0 && (
+                            <div className="text-[9px] text-[#3dba6f] bg-[#3dba6f]/10 border border-[#3dba6f]/20 rounded-lg px-2 py-1.5">
+                              Comparten esta mesa: {compartidos.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* ORDEN PENDIENTE — confirmación prominente */}
                 {pendingOrder.filter(o => o.mesa === selectedTable.num).length > 0 && (
                   <div className="mt-3 pt-3 border-t border-[#d4943a]/40">
@@ -5127,8 +5182,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                       const ocupada   = estado==='ocupada';
                       const bloqueada = estado==='bloqueada';
                       const enDisplay = displayTables.find((t:any)=>String(t.num)===String(mesa.num));
-                      // ¿la mesa ocupada es de este mesero?
-                      const esMia = ocupada && (!est?.mesero_nombre || est.mesero_nombre===meseroActual);
+                      // ¿la mesa ocupada es de este mesero, o se la compartieron?
+                      const compartida = Array.isArray(est?.meseros_compartidos) && est.meseros_compartidos.includes(meseroActual);
+                      const esMia = ocupada && (!est?.mesero_nombre || est.mesero_nombre===meseroActual || compartida);
                       const puedeEntrar = esMia || privilegiado;
                       // color: verde=asignada · gris=libre · dorado=mía · rojo=de otro mesero · gris oscuro=bloqueada
                       const col = asignada ? '#3dba6f'
