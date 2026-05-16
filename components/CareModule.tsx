@@ -509,7 +509,7 @@ export default function CareModule() {
                     <span className="font-bold text-[13px] text-white">Mesa {a.mesa_num||'—'}</span>
                     <span className="text-[9px] px-2 py-0.5 rounded-full font-bold"
                       style={{background:a.nivel_riesgo==='critico'?'rgba(255,82,82,0.2)':'rgba(255,181,71,0.2)',color:a.nivel_riesgo==='critico'?'#FF5252':'#FFB547'}}>
-                      {a.nivel_riesgo.toUpperCase()}
+                      {(a.nivel_riesgo||'media').toUpperCase()}
                     </span>
                   </div>
                   <div className="text-[11px] text-[#a0a0a0] mb-2">{a.descripcion||'Experiencia negativa detectada'}</div>
@@ -773,7 +773,7 @@ export default function CareModule() {
                     <div className="flex items-start gap-3">
                       <div className="w-10 h-10 rounded-full flex items-center justify-center font-black text-[16px] shrink-0"
                         style={{background:`${nc}20`,border:`2px solid ${nc}40`,color:nc}}>
-                        {cl.nombre?.charAt(0).toUpperCase()}
+                        {(cl.nombre||'?').charAt(0).toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
