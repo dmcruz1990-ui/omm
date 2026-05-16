@@ -81,6 +81,7 @@ export default function ReserveModule() {
     fecha:new Date().toISOString().split('T')[0],hora:'20:00',
     pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0,
   });
+  const [walkin, setWalkin] = useState<{nombre:string;pax:number;mesa:number}|null>(null);
 
   const show = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
   const setF = (k:string,v:any) => setForm(p=>({...p,[k]:v}));
@@ -170,6 +171,29 @@ const cambiarEstado = async (id:any, estado:string, esOhYeah:boolean=false) => {
   fetchData();
 };
 
+// ── WALK-IN — sentar cliente sin reserva previa ──────────────────
+const sentarWalkin = async () => {
+  if (!walkin) return;
+  if (!walkin.nombre.trim()) { show('⚠️ Nombre requerido'); return; }
+  if (!walkin.mesa) { show('⚠️ Selecciona una mesa'); return; }
+  const ahora = new Date();
+  const hh = ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
+  // Registro de la visita walk-in
+  await supabase.from('reservations').insert({
+    restaurante_id:6, cliente_nombre:walkin.nombre, cliente_email:'', cliente_telefono:'',
+    fecha:hoy, hora:hh, pax:walkin.pax, ocasion:'Walk-in', notas:'Walk-in — sentado en sala',
+    estado:'sentada', mesa_num:walkin.mesa,
+  }).then(()=>{}).catch(()=>{});
+  // La mesa queda VERDE (asignada) en el mapa del POS
+  await supabase.from('tables').update({
+    estado:'asignada', cliente_nombre:walkin.nombre, pax_actual:walkin.pax,
+    mesero_nombre:null, meseros_compartidos:[], abierta_en:new Date().toISOString(),
+  }).eq('name', String(walkin.mesa));
+  show(`✓ Walk-in sentado en mesa ${walkin.mesa} — visible en POS`);
+  setWalkin(null);
+  fetchData();
+};
+
 const asignarMesa = async (reservaId:any, mesaNum:number) => {
   const esOhYeah = typeof reservaId === 'string' && reservaId.includes('-');
   const reserva = reservas.find((r:any)=>String(r.id)===String(reservaId));
@@ -201,6 +225,47 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:S.bg,color:S.t1,fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
       {toast&&<div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:'#1e1e2e',border:`1px solid ${S.pink}`,color:'#fff',padding:'10px 28px',borderRadius:50,fontSize:13,fontWeight:700,zIndex:9999}}>{toast}</div>}
 
+      {/* ── MODAL WALK-IN ── */}
+      {walkin && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>setWalkin(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:20,width:'100%',maxWidth:400,padding:24}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,marginBottom:3}}>🚶 Sentar Walk-in</div>
+            <div style={{fontSize:11,color:S.t3,marginBottom:18}}>Cliente sin reserva — se sienta directo y la mesa queda verde en el POS.</div>
+
+            <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Nombre del cliente</div>
+            <input value={walkin.nombre} onChange={e=>setWalkin(w=>w?{...w,nombre:e.target.value}:w)} autoFocus
+              placeholder="Ej: Sr. Pérez, Familia López..."
+              style={{width:'100%',padding:'10px 14px',borderRadius:10,border:`1px solid ${S.border2}`,background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',marginBottom:14}}/>
+
+            <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Personas</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:6,marginBottom:14}}>
+              {[1,2,3,4,5,6,7,8,10,12].map(n=>(
+                <button key={n} onClick={()=>setWalkin(w=>w?{...w,pax:n}:w)}
+                  style={{padding:'8px 0',borderRadius:8,border:`1px solid ${walkin.pax===n?S.purple:S.border2}`,background:walkin.pax===n?`${S.purple}22`:'transparent',color:walkin.pax===n?S.purple:S.t3,fontSize:12,fontWeight:700,cursor:'pointer'}}>{n}</button>
+              ))}
+            </div>
+
+            <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Mesa libre</div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:18,maxHeight:120,overflowY:'auto'}}>
+              {mesas.filter((m:any)=>!m.estado||m.estado==='libre').sort((a:any,b:any)=>Number(a.name)-Number(b.name)).map((m:any)=>(
+                <button key={m.id} onClick={()=>setWalkin(w=>w?{...w,mesa:Number(m.name)}:w)}
+                  style={{padding:'7px 12px',borderRadius:8,border:`1px solid ${walkin.mesa===Number(m.name)?S.green:S.border2}`,background:walkin.mesa===Number(m.name)?`${S.green}22`:'transparent',color:walkin.mesa===Number(m.name)?S.green:S.t2,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                  M{m.name}
+                </button>
+              ))}
+              {mesas.filter((m:any)=>!m.estado||m.estado==='libre').length===0 && (
+                <div style={{fontSize:11,color:S.t3}}>No hay mesas libres</div>
+              )}
+            </div>
+
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>setWalkin(null)} style={{flex:1,padding:'11px',borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t3,cursor:'pointer',fontSize:13}}>Cancelar</button>
+              <button onClick={sentarWalkin} style={{flex:2,padding:'11px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.green},#2a9d5a)`,color:'#fff',fontWeight:700,cursor:'pointer',fontSize:13}}>✓ Sentar walk-in</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{padding:'14px 24px',borderBottom:`1px solid ${S.border}`,background:S.bg2,display:'flex',alignItems:'center',gap:14,flexShrink:0,flexWrap:'wrap'}}>
         <div style={{display:'flex',alignItems:'center',gap:12}}>
@@ -224,6 +289,10 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
         <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center'}}>
           <input type="date" value={fechaFiltro} onChange={e=>setFechaFiltro(e.target.value)}
             style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:8,padding:'7px 12px',color:'#fff',fontSize:12,outline:'none'}}/>
+          <button onClick={()=>setWalkin({nombre:'',pax:2,mesa:0})}
+            style={{padding:'8px 16px',borderRadius:10,border:`1px solid ${S.green}`,background:`${S.green}18`,color:S.green,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+            🚶 Walk-in
+          </button>
           <button onClick={()=>{setSelected(null);setForm({cliente_nombre:'',cliente_email:'',cliente_telefono:'',fecha:hoy,hora:'20:00',pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0});setTab('nueva');}}
             style={{padding:'8px 20px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.purple},${S.blue})`,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>
             + Nueva reserva
