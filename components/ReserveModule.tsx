@@ -224,7 +224,9 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
 };
 
   const hoy = new Date().toISOString().split('T')[0];
-  const reservasHoy = reservas.filter(r=>r.fecha===hoy);
+  // reservas ya viene filtrado por la fecha seleccionada (fechaFiltro).
+  // No re-filtrar por "hoy" — eso vaciaba la pestaña al cambiar de día.
+  const reservasHoy = reservas;
   const ocupacion = mesas.length?Math.round(reservasHoy.filter(r=>r.estado==='sentada').length/mesas.length*100):0;
 
   return (
