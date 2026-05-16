@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase.ts';
-import { EncuestaXCare } from './CareModule';
 import { Table, RitualTask } from '../types.ts';
 import { BellRing, Settings, MonitorPlay, MessageSquare, Sparkles, Receipt, X, ShoppingCart, Lock, Zap, BarChart3, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -858,8 +857,6 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [showOrderPanel, setShowOrderPanel] = useState(false);
   const [mostrarTraspaso, setMostrarTraspaso] = useState(false);
   const [mostrarCompartir, setMostrarCompartir] = useState(false);
-  const [showXCare,      setShowXCare]      = useState(false);
-  const [xcareData,      setXcareData]      = useState<any>(null);
   const [meserosTodas,   setMeserosTodas]   = useState<any[]>([]);
   const [mesaDestino, setMesaDestino] = useState<number | null>(null);
   const [tipoTraspaso, setTipoTraspaso] = useState<'mesa'|'barra'|'barra-a-mesa'>('mesa');
@@ -962,12 +959,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   };
 
   // ── Mesas dinámicas — enriquecidas con platos locales en tiempo real ──
-  const displayTables = (tables && tables.length > 0 ? tables : [
-    { id: 1, num: 12, cliente: 'López',     pax: 3, time: '00:45', ticket: 65,  meta: 120, status: 'activa', vip: false, bday: false, alert: false },
-    { id: 2, num: 8,  cliente: 'Sra. García',pax: 2, time: '01:10', ticket: 140, meta: 100, status: 'activa', vip: true,  bday: false, alert: false },
-    { id: 3, num: 5,  cliente: 'Cumpleaños', pax: 6, time: '00:50', ticket: 40,  meta: 80,  status: 'activa', vip: false, bday: true,  alert: false },
-    { id: 4, num: 4,  cliente: 'Martínez',   pax: 4, time: '00:55', ticket: 95,  meta: 150, status: 'activa', vip: false, bday: false, alert: true  },
-  ]).map((m: any) => {
+  // Fallback: si aún no llegan las mesas reales, se usa el plano OMM en
+  // estado libre (sin clientes falsos), no datos de prueba.
+  const displayTables = (tables && tables.length > 0 ? tables :
+    Object.values(PLANTA_OMM).map((p:any) => ({
+      id: p.num, num: p.num, cliente: '', pax: 0, time: '00:00',
+      ticket: 0, meta: 120, status: 'libre', vip: false, bday: false, alert: false,
+    }))
+  ).map((m: any) => {
     const mesaNum = m.num ?? m.numero ?? m.id;
     const platosLocales = [...pendingOrder, ...order].filter(o => o.mesa === mesaNum);
     const ticketLocal = platosLocales.reduce((s: number, o: any) => s + parsePrecio(o.precio), 0);
@@ -2472,7 +2471,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     showToast(`✓ ${step} marcado`);
   };
 
-  const useRec = (txt: string) => {
+  const anotarRecomendacion = (txt: string) => {
     setNotasMesero(prev => {
       const notes = prev[selectedTable.id] || [];
       if (notes.includes(txt)) { showToast('Ya anotado anteriormente'); return prev; }
@@ -4671,7 +4670,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   const tagColor = esBebida ? '#4a8fd4' : esPostre ? '#9b72ff' : '#d4943a';
                   const tagLabel = esBebida ? '🍷 Bebida' : esPostre ? '🍮 Postre' : '🍽️ Plato';
                   return (
-                    <div key={i} onClick={() => useRec(r.txt)}
+                    <div key={i} onClick={() => anotarRecomendacion(r.txt)}
                       className={`flex items-start gap-2.5 p-2 px-2.5 rounded-lg border cursor-pointer transition-all active:bg-[#3dba6f]/20 ${anotado ? 'bg-[#3dba6f]/5 border-[#3dba6f]/25' : 'bg-[#1c1c1c] border-[#2a2a2a] hover:border-[#d4943a]/30 hover:bg-[#d4943a]/5'}`}>
                       <span className="text-[15px] shrink-0 mt-px">{r.icon}</span>
                       <div className="flex-1 min-w-0">
@@ -5315,27 +5314,6 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <button onClick={()=>{setMesaDesbloquear(null);setPinDesbloqueo('');}} style={{width:'100%',padding:'10px',borderRadius:10,border:'1px solid #2a2a2a',background:'transparent',color:'#606060',cursor:'pointer',fontSize:13}}>Cancelar</button>
           </div>
         </div>
-      )}
-
-      {showXCare && xcareData && (
-        <EncuestaXCare
-          mesaNum={xcareData.mesaNum}
-          meseroNombre={xcareData.meseroNombre}
-          itemsConsumidos={xcareData.itemsConsumidos}
-          totalCuenta={xcareData.totalCuenta}
-          propinaPct={xcareData.propinaPct}
-          propinaMonto={xcareData.propinaMonto}
-          clienteNombre={xcareData.clienteNombre}
-          clienteEmail={xcareData.clienteEmail}
-          clienteTelefono={xcareData.clienteTelefono}
-          facturaId={xcareData.facturaId}
-          onClose={()=>{ setShowXCare(false); setXcareData(null); }}
-          onGuardar={(data:any)=>{
-            setShowXCare(false);
-            setXcareData(null);
-            showToast(`✅ Encuesta X-CARE guardada — ${data.estrellas}★`);
-          }}
-        />
       )}
 
     </div>
