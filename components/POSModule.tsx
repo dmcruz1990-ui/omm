@@ -185,48 +185,7 @@ const prodDescs: Record<string, { desc: string; salsas: string; cross: string[];
   'Cheesecake Wagashi':      { desc: 'Torta de queso japonesa · Textura suflé · Helado de temporada · Coulis de frutos', salsas: 'Coulis de mora · Frambuesa · Miel de lavanda', cross: ['Espresso','Copa Rosé'], chef: 'Favorito de los clientes recurrentes' },
 };
 
-const clienteData: Record<number, any> = {
-  1: {
-    nombre: 'Sr. López', nombreCompleto: 'Andrés López',
-    desc: 'Regular · Amante del Malbec', avatar: 'AL',
-    ocasion: null,
-    reserva: { origen: 'Reserve', hora: '8:00 PM', pax: 3, nota: 'Mesa preferida zona sur' },
-    visitas: 7, ultimaVisita: 'Hace 12 días',
-    tags: ['Sin mariscos', 'Prefiere vinos secos', 'No muy demandante ✓'],
-    suggest: 'Ofrece un vino blanco mineral', alert: '',
-    recs: [{ icon: '🐟', txt: 'Recomiéndale el Ceviche de Camarón como entrada ligera' }, { icon: '🍷', txt: 'Sugiérale un Malbec como vino premium' }, { icon: '🍫', txt: 'Promueva el "Volcán de Chocolate" para el postre' }]
-  },
-  2: {
-    nombre: 'Sra. García', nombreCompleto: 'Patricia García',
-    desc: 'VIP · Cliente frecuente', avatar: 'PG',
-    ocasion: null,
-    reserva: { origen: 'Reserve', hora: '7:30 PM', pax: 2, nota: 'Alérgica a frutos secos — avisar cocina' },
-    visitas: 14, ultimaVisita: 'Hace 5 días',
-    tags: ['Alérgica a nuez 🚨', 'Prefiere mesa tranquila', 'Le encanta el Rosé'],
-    suggest: 'Evita nueces en todo su pedido', alert: 'Alergia a nuez — informar a cocina',
-    recs: [{ icon: '🥗', txt: 'Recomienda la ensalada sin aderezo de nueces' }, { icon: '🍾', txt: 'Tiene su botella de Rosé favorita guardada' }, { icon: '🍰', txt: 'El cheesecake es su postre preferido' }]
-  },
-  3: {
-    nombre: 'Cumpleaños', nombreCompleto: 'Carlos Mendoza',
-    desc: 'Celebración especial · 6 personas', avatar: '🎂',
-    ocasion: 'cumpleanos',
-    reserva: { origen: 'Reserve', hora: '8:30 PM', pax: 6, nota: 'Sorpresa — no mencionar delante del homenajeado' },
-    visitas: 1, ultimaVisita: 'Primera visita',
-    tags: ['Grupo grande', 'Ocasión especial 🎂', 'Coordinar con cocina'],
-    suggest: 'Preparar postre sorpresa con vela', alert: '',
-    recs: [{ icon: '🎂', txt: 'Coordinar con cocina el postre especial de cumpleaños' }, { icon: '🥂', txt: 'Sugerir botella de champaña para el brindis' }, { icon: '📸', txt: 'Ofrecer foto del grupo como recuerdo' }]
-  },
-  4: {
-    nombre: 'Sr. Martínez', nombreCompleto: 'Roberto Martínez',
-    desc: 'Aniversario empresa · Clientes VIP', avatar: 'RM',
-    ocasion: 'aniversario',
-    reserva: { origen: 'Reserve', hora: '9:00 PM', pax: 4, nota: 'Aniversario corporativo — máxima atención' },
-    visitas: 2, ultimaVisita: 'Hace 45 días',
-    tags: ['Reunión de negocios', 'Aniversario empresa 🏆', 'Atención especial'],
-    suggest: 'Menú degustación para impresionar', alert: '⚠️ Clientes corporativos — servicio impecable',
-    recs: [{ icon: '🥃', txt: 'Recomendar whisky premium como aperitivo' }, { icon: '🍽️', txt: 'Sugerir menú degustación del chef' }, { icon: '🏆', txt: 'Ofrecer tabla de quesos como cierre' }]
-  },
-};
+// clienteData mock eliminado — el POS usa datos reales de la reserva (clientesPorMesa)
 
 const iaRecsByCat: Record<string, any[]> = {
   Compartir: [{ emoji: '🦀', name: 'Otosan de Kani x2', reason: 'el más pedido', precio: '$33.600', pct: 93, top: true }, { emoji: '🐟', name: 'Ceviche a la Roca', reason: 'alta rentabilidad', precio: '$65.200', pct: 88, top: true }, { emoji: '🥟', name: 'Dumplings de Cerdo x2', reason: 'ideal para grupos', precio: '$27.400', pct: 76, top: false }],
@@ -880,6 +839,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
   const [selectedTableId, setSelectedTableId] = useState<number>(1);
   const [currentCat, setCurrentCat] = useState('Compartir');
+  // Datos reales del cliente sentado, por número de mesa (desde las reservas)
+  const [clientesPorMesa, setClientesPorMesa] = useState<Record<number, any>>({});
   const [rightTab, setRightTab] = useState<'IA' | 'Cuenta' | 'Chat' | 'Intel'>('IA');
   // Ticket del día y cuentas por cobrar
   const [ticketDia, setTicketDia] = useState<any>({ ventas:0, ordenes:0, pendientes:0, porCobrar:0, propinaTotal:0, total_ventas:0, total_ordenes:0, total_items:0, mesas_atendidas:0 });
@@ -1026,8 +987,22 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   });
 
   const selectedTable = displayTables.find((t: any) => t.id === selectedTableId) ?? displayTables[0];
-  const c = clienteData[selectedTable.id] || clienteData[1];
   const recs = iaRecsByCat[currentCat] || iaRecsByCat['Compartir'];
+  // Datos del cliente REAL sentado en la mesa seleccionada (de la reserva).
+  // Si la mesa no tiene reserva asociada, se arma un perfil mínimo.
+  const recsCliente = (iaRecsByCat[currentCat] || iaRecsByCat['Compartir'] || []).slice(0,3)
+    .map((x:any)=>({icon:x.emoji, txt:`${x.name} — ${x.reason}`}));
+  const c = clientesPorMesa[selectedTable?.num] || {
+    nombre: selectedTable?.cliente && !['mesa','cliente'].includes(String(selectedTable.cliente).toLowerCase()) ? selectedTable.cliente : 'Mesa sin reserva',
+    nombreCompleto: selectedTable?.cliente || 'Cliente',
+    desc: 'Walk-in — sin reserva registrada',
+    avatar: (selectedTable?.cliente || '?').charAt(0).toUpperCase(),
+    ocasion: null,
+    reserva: { origen: 'Walk-in', hora: '—', pax: selectedTable?.pax || 2, nota: 'Sin notas de reserva' },
+    visitas: 0, ultimaVisita: 'Sin historial',
+    tags: [], alert: '', suggest: 'Atención de bienvenida',
+    recs: recsCliente,
+  };
 
   // Cargar datos de inteligencia al montar
   useEffect(() => {
@@ -1152,11 +1127,62 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     };
     fetchMesasEstado();
 
+    // Cliente real sentado por mesa — datos de la reserva + perfil CRM
+    const fetchClientesMesas = async () => {
+      const hoy = new Date().toISOString().split('T')[0];
+      const [rv, oy, perfiles] = await Promise.all([
+        supabase.from('reservations').select('*').eq('fecha',hoy).not('mesa_num','is',null),
+        supabase.from('ohyeah_reservas').select('*').eq('date',hoy).not('mesa_num','is',null),
+        supabase.from('nexum_clientes_ohyeah').select('*'),
+      ]);
+      const perfilDe = (email?:string, nombre?:string) => (perfiles.data||[]).find((p:any)=>
+        (email && p.email && p.email.toLowerCase()===String(email).toLowerCase()) ||
+        (nombre && p.nombre && p.nombre.toLowerCase()===String(nombre).toLowerCase()));
+      const map: Record<number,any> = {};
+      const armar = (mesa:number, nombre:string, email:string, _tel:string, pax:number, ocasion:string, nota:string, origen:string, extra:any={}) => {
+        if (!mesa) return;
+        const perfil = perfilDe(email, nombre);
+        const restricciones = String(perfil?.restricciones||extra.restricciones||'').split(/[,;]/).map((s:string)=>s.trim()).filter(Boolean);
+        const oc = (ocasion||'').toLowerCase();
+        const visitas = perfil?.visitas || extra.visitCount || 0;
+        const nivel = perfil?.nivel || '';
+        map[mesa] = {
+          nombre, nombreCompleto: nombre,
+          desc: nivel ? `${nivel} · ${visitas} visita${visitas===1?'':'s'}` : (extra.primera ? 'Primera visita ★' : 'Cliente'),
+          avatar: (nombre||'?').charAt(0).toUpperCase(),
+          ocasion: oc.includes('cumple') ? 'cumpleanos' : oc.includes('aniversar') ? 'aniversario' : null,
+          reserva: { origen, hora: extra.hora||'—', pax: pax||2, nota: nota||'Sin notas' },
+          visitas,
+          ultimaVisita: perfil?.ultima_reserva ? new Date(perfil.ultima_reserva).toLocaleDateString('es-CO',{day:'numeric',month:'short'}) : (extra.primera?'Primera visita':'—'),
+          tags: [
+            ...restricciones.map((r:string)=>`⚠️ ${r}`),
+            ...(perfil?.notas ? [perfil.notas] : []),
+            ...(extra.gourmand ? [extra.gourmand] : []),
+            ...(extra.mood && extra.mood!=='Sin motivo especial' ? [`✨ ${extra.mood}`] : []),
+          ],
+          alert: restricciones.length ? `Restricción: ${restricciones.join(', ')} — informar a cocina` : '',
+          suggest: extra.primera ? 'Primera visita — dale una bienvenida especial'
+            : (nivel==='VIP'||nivel==='ÉLITE'||nivel==='CONSAGRADO') ? `Cliente ${nivel} — servicio preferencial`
+            : 'Atención atenta y cercana',
+        };
+      };
+      (rv.data||[]).forEach((r:any)=>armar(r.mesa_num, r.cliente_nombre, r.cliente_email, r.cliente_telefono, r.pax, r.ocasion, r.notas, r.origen==='ohyeah'?'Oh Yeah':'Reserve', {hora:r.hora}));
+      (oy.data||[]).forEach((r:any)=>armar(r.mesa_num, r.guest_name, r.guest_email, r.guest_phone, r.pax, r.occasion, r.observations, 'Oh Yeah', {
+        hora:r.time, gourmand:r.gourmand_level, primera:r.is_first_visit, visitCount:r.visit_count, mood:r.mood,
+      }));
+      setClientesPorMesa(map);
+    };
+    fetchClientesMesas();
+
     // Suscribir cambios de mesas en tiempo real
     const chMesas = supabase.channel('mesas-estado')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => {
         fetchMesasEstado();
-      }).subscribe();
+        fetchClientesMesas();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reservations' }, () => { fetchClientesMesas(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ohyeah_reservas' }, () => { fetchClientesMesas(); })
+      .subscribe();
 
     // Reservas Oh Yeah del día → badge en el POS
     // Platos del día desde Supabase (actualizados desde Flow)
@@ -2467,7 +2493,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     ? customPropina
     : Math.round(baseCliente * (clientePropina / 100));
   const totalCliente = baseCliente + propinaCliente;
-  const nombreMesero = mesaCliente?.id && (clienteData as any)[mesaCliente.id]?.nombre?.split(' ')[1] || profile?.nombre_completo?.split(' ')[0] || 'tu mesero';
+  const nombreMesero = profile?.nombre_completo?.split(' ')[0] || 'tu mesero';
 
   // Colores Sunday: fondo beige cálido
   const S = {
@@ -4638,7 +4664,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
               {/* Sugerencias IA — cross-selling visual */}
               <div className="flex flex-col gap-1.5">
-                {c.recs.map((r: any, i: number) => {
+                {recsCliente.map((r: any, i: number) => {
                   const anotado = (notasMesero[selectedTable.id] || []).includes(r.txt);
                   const esBebida = r.txt.toLowerCase().includes('vino') || r.txt.toLowerCase().includes('coctel') || r.txt.toLowerCase().includes('sake') || r.txt.toLowerCase().includes('malbec');
                   const esPostre = r.txt.toLowerCase().includes('postre') || r.txt.toLowerCase().includes('volcán') || r.txt.toLowerCase().includes('chocolate');
