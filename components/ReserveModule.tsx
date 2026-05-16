@@ -799,37 +799,61 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, 
       <div style={{flex:1,overflow:'hidden',display:'flex'}}>
         {/* Canvas */}
         <div style={{flex:1,overflow:'auto',padding:16}}>
-          <div style={{position:'relative',width:'100%',paddingBottom:'75%',background:'#0a0a12',borderRadius:16,border:'1px solid rgba(255,255,255,0.06)',overflow:'hidden'}}>
+          <div style={{position:'relative',width:'100%',paddingBottom:'70%',background:'#0a0a12',borderRadius:18,border:'1px solid rgba(255,255,255,0.07)',overflow:'hidden',boxShadow:'inset 0 0 80px rgba(0,0,0,0.6)'}}>
+            {/* grid digital de fondo */}
+            <div style={{position:'absolute',inset:0,backgroundImage:'linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px)',backgroundSize:'5% 7%',pointerEvents:'none'}}/>
             <div style={{position:'absolute',inset:0}}>
               {/* Zonas de fondo */}
               {Object.entries(ZONA_AREAS).filter(([z])=>!vistaZona||z===vistaZona).map(([zona,area])=>(
-                <div key={zona} style={{position:'absolute',left:`${area.x}%`,top:`${area.y}%`,width:`${area.w}%`,height:`${area.h}%`,background:ZONA_COLORES[zona]?.bg,border:`1px solid ${ZONA_COLORES[zona]?.border}`,borderRadius:12}}>
-                  <div style={{position:'absolute',top:5,left:8,fontSize:8,color:'rgba(255,255,255,0.2)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em'}}>{ZONA_COLORES[zona]?.label}</div>
+                <div key={zona} style={{position:'absolute',left:`${area.x}%`,top:`${area.y}%`,width:`${area.w}%`,height:`${area.h}%`,background:ZONA_COLORES[zona]?.bg,border:`1px solid ${ZONA_COLORES[zona]?.border}`,borderRadius:14,zIndex:0}}>
+                  <div style={{position:'absolute',top:6,left:9,fontSize:8,color:'rgba(255,255,255,0.28)',fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em'}}>{ZONA_COLORES[zona]?.label}</div>
                 </div>
               ))}
-              {/* COCINA */}
-              <div style={{position:'absolute',left:'73%',top:'54%',width:'25%',height:'43%',background:'rgba(255,82,82,0.08)',border:'1.5px solid rgba(255,82,82,0.3)',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:3}}>
-                <div style={{fontSize:'clamp(14px,2vw,22px)'}}>🔥</div>
-                <div style={{fontSize:'clamp(6px,0.9vw,10px)',color:'rgba(255,82,82,0.8)',fontWeight:900,textTransform:'uppercase'}}>Cocina</div>
-                <div style={{position:'absolute',top:'-5%',left:'10%',width:'80%',height:'7%',background:'rgba(255,82,82,0.25)',borderRadius:'3px 3px 0 0',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                  <div style={{fontSize:'clamp(4px,0.6vw,7px)',color:'rgba(255,82,82,0.7)',fontWeight:700}}>DESPACHO</div>
+              {/* COCINA — arriba derecha */}
+              <div style={{position:'absolute',left:'69%',top:'7%',width:'29%',height:'33%',background:'linear-gradient(135deg,rgba(255,82,82,0.09),rgba(255,82,82,0.03))',border:'1.5px solid rgba(255,82,82,0.3)',borderRadius:12,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,zIndex:0}}>
+                <div style={{fontSize:'clamp(11px,1.8vw,20px)'}}>🔥</div>
+                <div style={{fontSize:'clamp(6px,0.9vw,10px)',color:'rgba(255,82,82,0.85)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.12em'}}>Cocina</div>
+                <div style={{position:'absolute',bottom:'-4%',left:'15%',width:'70%',height:'7%',background:'rgba(255,82,82,0.22)',borderRadius:'0 0 4px 4px',display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <div style={{fontSize:'clamp(4px,0.6vw,7px)',color:'rgba(255,82,82,0.75)',fontWeight:700,letterSpacing:'.1em'}}>DESPACHO</div>
                 </div>
               </div>
-              {/* BARRA */}
-              <div style={{position:'absolute',left:'2%',top:'76%',width:'68%',height:'12%',background:'rgba(68,139,255,0.08)',border:'1.5px solid rgba(68,139,255,0.3)',borderRadius:10,display:'flex',alignItems:'center',padding:'0 2%',gap:'1.2%',overflow:'hidden'}}>
-                {[0,1,2,3,4,5,6,7,8].map(i=><div key={i} style={{width:'clamp(4px,1.1vw,13px)',height:'clamp(4px,1.1vw,13px)',borderRadius:'50%',background:'rgba(68,139,255,0.2)',border:'1px solid rgba(68,139,255,0.4)',flexShrink:0}}/>)}
-                <div style={{flex:1}}/><div style={{fontSize:'clamp(7px,1.1vw,13px)'}}>🍸</div>
-                <div style={{fontSize:'clamp(6px,0.85vw,10px)',color:'rgba(68,139,255,0.8)',fontWeight:900,textTransform:'uppercase',marginRight:4}}>Barra</div>
+              {/* HOST — podio */}
+              <div style={{position:'absolute',left:'17%',top:'8%',width:'18%',height:'7%',background:'rgba(255,181,71,0.10)',border:'1.5px solid rgba(255,181,71,0.35)',borderRadius:40,display:'flex',alignItems:'center',justifyContent:'center',gap:4,zIndex:0}}>
+                <span style={{fontSize:'clamp(7px,1vw,12px)'}}>🛎️</span>
+                <span style={{fontSize:'clamp(6px,0.8vw,9px)',color:'rgba(255,181,71,0.85)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.12em'}}>Host</span>
+              </div>
+              {/* SAKE EXP — vitrina vertical */}
+              <div style={{position:'absolute',left:'2%',top:'10%',width:'6%',height:'27%',background:'rgba(179,136,255,0.06)',border:'1.5px solid rgba(179,136,255,0.22)',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'space-around',padding:'8px 0',zIndex:0}}>
+                {[0,1,2,3,4].map(i=><div key={i} style={{width:'clamp(4px,0.9vw,10px)',height:'clamp(4px,0.9vw,10px)',borderRadius:'50%',background:'rgba(179,136,255,0.25)',border:'1px solid rgba(179,136,255,0.4)'}}/>)}
+                <div style={{fontSize:'clamp(4px,0.55vw,7px)',color:'rgba(179,136,255,0.7)',fontWeight:800,writingMode:'vertical-rl',letterSpacing:'.1em'}}>SAKE EXP</div>
               </div>
               {/* CAVA */}
-              <div style={{position:'absolute',left:'36%',top:'76%',width:'33%',height:'10%',background:'rgba(255,181,71,0.06)',border:'1.5px solid rgba(255,181,71,0.25)',borderRadius:8,display:'flex',alignItems:'center',justifyContent:'center',gap:5}}>
-                <div style={{fontSize:'clamp(7px,1.1vw,13px)'}}>🍷</div>
-                <div style={{fontSize:'clamp(6px,0.75vw,9px)',color:'rgba(255,181,71,0.7)',fontWeight:700,textTransform:'uppercase'}}>Cava</div>
+              <div style={{position:'absolute',left:'2%',top:'39%',width:'9%',height:'9%',background:'rgba(255,181,71,0.06)',border:'1.5px solid rgba(255,181,71,0.25)',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:1,zIndex:0}}>
+                <div style={{fontSize:'clamp(7px,1vw,13px)'}}>🍷</div>
+                <div style={{fontSize:'clamp(5px,0.7vw,9px)',color:'rgba(255,181,71,0.75)',fontWeight:800,textTransform:'uppercase'}}>Cava</div>
               </div>
-              {/* ENTRADA */}
-              <div style={{position:'absolute',bottom:'1%',left:'40%',display:'flex',alignItems:'center',gap:3}}>
+              {/* MESA APOYO */}
+              <div style={{position:'absolute',left:'27%',top:'44%',width:'10%',height:'4.5%',background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.18)',borderRadius:7,display:'flex',alignItems:'center',justifyContent:'center',zIndex:0}}>
+                <div style={{fontSize:'clamp(4px,0.6vw,8px)',color:'rgba(255,255,255,0.35)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em'}}>Mesa apoyo</div>
+              </div>
+              {/* BARRA SUSHI — asientos numerados */}
+              <div style={{position:'absolute',left:'34%',top:'24.5%',width:'33%',height:'2.4%',display:'flex',gap:'1.4%',alignItems:'center',justifyContent:'center',zIndex:0}}>
+                {[1,2,3,4,5,6,7,8,9,10].map(n=>(
+                  <div key={n} style={{flex:1,aspectRatio:'1',maxWidth:14,borderRadius:'50%',background:'rgba(68,139,255,0.18)',border:'1px solid rgba(68,139,255,0.45)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'clamp(3px,0.55vw,7px)',color:'rgba(120,170,255,0.9)',fontWeight:900}}>{n}</div>
+                ))}
+              </div>
+              {/* TORRE BAR — torre central */}
+              <div style={{position:'absolute',left:'80%',top:'70%',width:'8%',height:'14%',background:'linear-gradient(135deg,rgba(155,114,255,0.18),rgba(155,114,255,0.06))',border:'1.5px solid rgba(155,114,255,0.45)',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:0}}>
+                <div style={{fontSize:'clamp(8px,1.3vw,16px)'}}>🍸</div>
+                <div style={{fontSize:'clamp(4px,0.55vw,7px)',color:'rgba(155,114,255,0.9)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.08em'}}>Torre</div>
+              </div>
+              {/* VENTANAL */}
+              <div style={{position:'absolute',left:'2%',bottom:'2.2%',width:'96%',height:2,background:'repeating-linear-gradient(90deg,rgba(34,211,238,0.3) 0 14px,transparent 14px 22px)',zIndex:0}}/>
+              <div style={{position:'absolute',left:'4%',bottom:'3%',fontSize:'clamp(4px,0.6vw,8px)',color:'rgba(34,211,238,0.35)',fontWeight:700,letterSpacing:'.1em'}}>VENTANAL</div>
+              {/* ACCESO */}
+              <div style={{position:'absolute',top:'1%',left:'40%',display:'flex',alignItems:'center',gap:3,zIndex:0}}>
                 <div style={{width:'clamp(16px,2.5vw,32px)',height:1,background:'rgba(255,255,255,0.12)'}}/>
-                <div style={{fontSize:'clamp(5px,0.65vw,8px)',color:'rgba(255,255,255,0.15)',fontWeight:700}}>↑ ENTRADA</div>
+                <div style={{fontSize:'clamp(5px,0.65vw,8px)',color:'rgba(255,255,255,0.2)',fontWeight:700}}>↑ ACCESO</div>
                 <div style={{width:'clamp(16px,2.5vw,32px)',height:1,background:'rgba(255,255,255,0.12)'}}/>
               </div>
               {/* Mesas */}
@@ -842,11 +866,21 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, 
                 const mesaColor = enAlerta ? '#FF5252' : color;
                 return (
                   <div key={key}
-                    style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w}%`,height:`${mesa.h}%`,borderRadius:mesa.shape==='round'?'50%':10,background:`${mesaColor}${isSelected?'35':'15'}`,border:`2px solid ${mesaColor}${isSelected?'':'60'}`,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',transition:'all .18s',boxShadow:enAlerta?`0 0 12px ${mesaColor}80`:isSelected?`0 0 16px ${mesaColor}60`:'none',zIndex:isSelected?2:1}}
+                    style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w}%`,height:`${mesa.h}%`,
+                      borderRadius:mesa.shape==='round'?'50%':12,
+                      background:`radial-gradient(circle at 50% 35%, ${mesaColor}${isSelected?'40':'22'}, ${mesaColor}0d)`,
+                      border:`2px solid ${mesaColor}${isSelected?'':'70'}`,
+                      cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                      transition:'all .18s cubic-bezier(.34,1.4,.64,1)',
+                      boxShadow:enAlerta?`0 0 16px ${mesaColor}90, inset 0 0 12px ${mesaColor}30`
+                        :isSelected?`0 0 20px ${mesaColor}70, inset 0 0 14px ${mesaColor}25`
+                        :`0 2px 10px rgba(0,0,0,0.4), inset 0 1px 0 ${mesaColor}25`,
+                      transform:isSelected?'scale(1.06)':'scale(1)',
+                      zIndex:isSelected?3:2}}
                     onClick={()=>setMesaSel(mesaSel?.key===key?null:{key,...mesa,color:mesaColor,label,reserva})}
                   >
-                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color:mesaColor,lineHeight:1}}>M{mesa.num}</div>
-                    {mesa.shape!=='round'&&<div style={{fontSize:'clamp(5px,0.7vw,9px)',color:`${mesaColor}aa`}}>{mesa.cap||mesa.capacidad}p</div>}
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(8px,1.2vw,15px)',fontWeight:900,color:'#fff',lineHeight:1,textShadow:`0 1px 6px ${mesaColor}`}}>M{mesa.num}</div>
+                    <div style={{fontSize:'clamp(4px,0.62vw,8px)',color:`${mesaColor}`,fontWeight:700,marginTop:1,background:`${mesaColor}22`,padding:'0 5px',borderRadius:8}}>{mesa.cap||mesa.capacidad}p</div>
                     {/* Cronómetro de estancia */}
                     {mins !== null && (
                       <div style={{fontSize:'clamp(4px,0.6vw,8px)',color:mesaColor,fontWeight:700,marginTop:1}}>

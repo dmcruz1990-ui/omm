@@ -5162,7 +5162,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             </div>
             {/* ── CANVAS VISUAL DEL PLANO — igual que Reserve ── */}
             <div style={{flex:1,overflow:'auto',padding:16}}>
-              <div style={{position:'relative',width:'100%',paddingBottom:'70%',background:'#0a0a12',borderRadius:16,border:'1px solid rgba(255,255,255,0.06)',overflow:'hidden'}}>
+              <div style={{position:'relative',width:'100%',paddingBottom:'70%',background:'#0a0a12',borderRadius:18,border:'1px solid rgba(255,255,255,0.07)',overflow:'hidden',boxShadow:'inset 0 0 80px rgba(0,0,0,0.6)'}}>
+                <div style={{position:'absolute',inset:0,backgroundImage:'linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px)',backgroundSize:'5% 7%',pointerEvents:'none'}}/>
                 <div style={{position:'absolute',inset:0}}>
 
                   {/* Zonas de fondo */}
@@ -5265,13 +5266,18 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                               setSelectedTableId(enDisplay.id); setShowMapaMesas(false);
                             }
                           }}
-                          style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w}%`,height:`${mesa.h}%`,borderRadius:mesa.shape==='round'?'50%':8,background:`${col}18`,border:`2px solid ${col}70`,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',transition:'all .15s',zIndex:1,boxShadow:asignada?`0 0 12px ${col}55`:'none'}}
-                          onMouseEnter={e=>{(e.currentTarget as HTMLDivElement).style.background=`${col}30`;(e.currentTarget as HTMLDivElement).style.borderColor=col;}}
-                          onMouseLeave={e=>{(e.currentTarget as HTMLDivElement).style.background=`${col}18`;(e.currentTarget as HTMLDivElement).style.borderColor=`${col}70`;}}>
-                          <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color:col,lineHeight:1}}>M{mesa.num}</div>
+                          style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w}%`,height:`${mesa.h}%`,
+                            borderRadius:mesa.shape==='round'?'50%':12,
+                            background:`radial-gradient(circle at 50% 35%, ${col}26, ${col}0d)`,
+                            border:`2px solid ${col}75`,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                            transition:'all .18s cubic-bezier(.34,1.4,.64,1)',zIndex:2,
+                            boxShadow:asignada?`0 0 16px ${col}80, inset 0 0 12px ${col}30`:`0 2px 10px rgba(0,0,0,0.4), inset 0 1px 0 ${col}25`}}
+                          onMouseEnter={e=>{const d=e.currentTarget as HTMLDivElement;d.style.transform='scale(1.06)';d.style.boxShadow=`0 0 20px ${col}80, inset 0 0 14px ${col}30`;}}
+                          onMouseLeave={e=>{const d=e.currentTarget as HTMLDivElement;d.style.transform='scale(1)';d.style.boxShadow=asignada?`0 0 16px ${col}80, inset 0 0 12px ${col}30`:`0 2px 10px rgba(0,0,0,0.4), inset 0 1px 0 ${col}25`;}}>
+                          <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(8px,1.2vw,15px)',fontWeight:900,color:'#fff',lineHeight:1,textShadow:`0 1px 6px ${col}`}}>M{mesa.num}</div>
                           {asignada
                             ? <div style={{fontSize:'clamp(4px,0.65vw,8px)',color:col,fontWeight:700,textAlign:'center',padding:'0 1px',lineHeight:1.1,marginTop:1}}>{est?.cliente_nombre?String(est.cliente_nombre).split(' ')[0]:'Sentada'}</div>
-                            : (mesa.shape!=='round' && <div style={{fontSize:'clamp(5px,0.7vw,8px)',color:`${col}90`}}>{mesa.cap}p</div>)}
+                            : <div style={{fontSize:'clamp(4px,0.62vw,8px)',color:col,fontWeight:700,marginTop:1,background:`${col}22`,padding:'0 5px',borderRadius:8}}>{mesa.cap}p</div>}
                           {asignada&&<div style={{position:'absolute',top:2,right:2,width:6,height:6,borderRadius:'50%',background:'#3dba6f',boxShadow:'0 0 6px #3dba6f'}}/>}
                           {ocupada&&<div style={{position:'absolute',top:2,right:2,width:5,height:5,borderRadius:'50%',background:col}}/>}
                         </div>
