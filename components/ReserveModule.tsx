@@ -91,8 +91,8 @@ export default function ReserveModule() {
     if (planta && planta.length > 0) setPlantaDB(planta);
     const [rv, ms, ohyeah] = await Promise.all([
       supabase.from('reservations').select('*').eq('restaurante_id',6).eq('fecha',fechaFiltro).order('hora'),
-      supabase.from('tables').select('*').eq('restaurante_id',6).order('name'),
-      supabase.from('ohyeah_reservas').select('*').eq('date',fechaFiltro).eq('status','confirmedada').order('fecha').order('hora'),
+      supabase.from('tables').select('*').order('name'),
+      supabase.from('ohyeah_reservas').select('*').eq('date',fechaFiltro).in('status',['pending','pendiente','confirmed','confirmada','seated','sentada']).order('time'),
     ]);
     const todas = [
       ...(rv.data||[]).map((r:any)=>({...r,origen:'nexum'})),
@@ -172,6 +172,7 @@ const cambiarEstado = async (id:any, estado:string, esOhYeah:boolean=false) => {
 
 const asignarMesa = async (reservaId:any, mesaNum:number) => {
   const esOhYeah = typeof reservaId === 'string' && reservaId.includes('-');
+  const reserva = reservas.find((r:any)=>String(r.id)===String(reservaId));
   if (esOhYeah) {
     await supabase.from('ohyeah_reservas')
       .update({ status:'seated', mesa_num:mesaNum, mesa_asignada_at:new Date().toISOString() })
@@ -179,7 +180,16 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
   } else {
     await supabase.from('reservations').update({ mesa_num:mesaNum, estado:'sentada' }).eq('id',reservaId);
   }
-  show(`✓ Mesa ${mesaNum} asignada`);
+  // Sentar al cliente: la mesa queda VERDE (asignada) en el mapa del POS,
+  // esperando que un mesero la tome. No se asigna mesero todavía.
+  await supabase.from('tables').update({
+    estado:'asignada',
+    cliente_nombre: reserva?.cliente_nombre || null,
+    pax_actual: reserva?.pax || 0,
+    mesero_nombre: null,
+    abierta_en: new Date().toISOString(),
+  }).eq('name', String(mesaNum));
+  show(`✓ Mesa ${mesaNum} asignada — visible en POS`);
   fetchData();
 };
 

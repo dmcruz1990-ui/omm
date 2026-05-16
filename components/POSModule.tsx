@@ -1182,11 +1182,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       const hoy = new Date().toISOString().split('T')[0];
       const { data } = await supabase
         .from('ohyeah_reservas')
-        .select('id,cliente_nombre,hora,pax,estado,restaurante_nombre')
-        .eq('fecha', hoy)
-        .in('estado', ['pendiente', 'confirmada'])
-        .order('hora');
-      if (data) setReservasHoy(data);
+        .select('id,guest_name,time,pax,status,restaurante_nombre,mesa_num')
+        .eq('date', hoy)
+        .in('status', ['pending','confirmed','seated'])
+        .order('time');
+      // Normaliza nombres de columna para el render existente
+      if (data) setReservasHoy(data.map((r:any)=>({ ...r, cliente_nombre:r.guest_name, hora:r.time })));
     };
 
     fetchAlertas();
@@ -1200,7 +1201,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'ohyeah_reservas' }, (payload) => {
         const r = payload.new as any;
-        showToast(`🦉 Nueva reserva Oh Yeah: ${r.cliente_nombre} — ${r.hora}`);
+        showToast(`🦉 Nueva reserva Oh Yeah: ${r.guest_name||r.cliente_nombre||'cliente'} — ${r.time||r.hora||''}`);
         fetchReservasOhYeah();
       })
       .subscribe();
@@ -1346,6 +1347,25 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setFormAbrirMesa(null);
     showToast(`✓ Mesa ${mesa.name} abierta`);
     return true;
+  };
+
+  // ── TOMAR MESA ASIGNADA (verde → ocupada, bloqueada al mesero) ────────
+  const tomarMesaAsignada = async (mesa: any, est: any) => {
+    const meseroActivo = profile?.nombre_completo || 'Mesero';
+    const { data, error } = await supabase.rpc('abrir_mesa', {
+      p_mesa_name: String(mesa.num),
+      p_mesero_nombre: meseroActivo,
+      p_pax: est?.pax_actual || mesa.cap || 2,
+      p_cliente_nombre: est?.cliente_nombre || null,
+    });
+    if (error || !data?.ok) {
+      showToast(`⚠️ ${data?.error || 'Error al tomar la mesa'}`);
+      return;
+    }
+    const mesaEnDisplay = displayTables.find((t:any) => String(t.num) === String(mesa.num));
+    if (mesaEnDisplay) setSelectedTableId(mesaEnDisplay.id);
+    setShowMapaMesas(false);
+    showToast(`✓ Tomaste la mesa ${mesa.num}${est?.cliente_nombre?` — ${est.cliente_nombre}`:''}`);
   };
 
   // ── CERRAR MESA ──────────────────────────────────────────────────────
@@ -5040,10 +5060,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <div style={{padding:'16px 20px',borderBottom:'1px solid #2a2a2a',display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0}}>
               <div>
                 <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900}}>🗺️ Mapa de Mesas</div>
-                <div style={{fontSize:10,color:'#606060',marginTop:2}}>{mesasEstado.filter((m:any)=>m.estado==='ocupada').length} ocupadas · {mesasEstado.filter((m:any)=>m.estado!=='ocupada').length} libres</div>
+                <div style={{fontSize:10,color:'#606060',marginTop:2}}>{mesasEstado.filter((m:any)=>m.estado==='ocupada').length} ocupadas · {mesasEstado.filter((m:any)=>m.estado==='asignada').length} sentadas · {mesasEstado.filter((m:any)=>!m.estado||m.estado==='libre').length} libres</div>
               </div>
               <div style={{display:'flex',gap:14,alignItems:'center'}}>
-                {[{c:'#3dba6f',l:'Libre'},{c:'#d4943a',l:'Ocupada'},{c:'#448AFF',l:'Reservada'},{c:'#606060',l:'Bloqueada'}].map(l=>(
+                {[{c:'#5a6472',l:'Libre'},{c:'#3dba6f',l:'Sentada'},{c:'#d4943a',l:'Mi mesa'},{c:'#e05050',l:'Otro mesero'},{c:'#404040',l:'Bloqueada'}].map(l=>(
                   <div key={l.l} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:'#a0a0a0'}}>
                     <span style={{width:7,height:7,borderRadius:'50%',background:l.c,display:'inline-block'}}/>
                     {l.l}
@@ -5096,29 +5116,52 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   </div>
 
                   {/* Mesas */}
-                  {Object.entries(PLANTA_OMM).map(([key,mesa])=>{
-                    const est = mesasEstado.find((m:any)=>String(m.name)===String(mesa.num));
-                    const libre = !est || est.estado==='libre';
-                    const ocupada = est?.estado==='ocupada';
-                    const bloqueada = est?.estado==='bloqueada';
-                    const col = libre?'#3dba6f':ocupada?'#d4943a':bloqueada?'#404040':'#448AFF';
-                    const enDisplay = displayTables.find((t:any)=>String(t.num)===String(mesa.num));
-                    return (
-                      <div key={key}
-                        onClick={()=>{
-                          if (bloqueada) { setMesaDesbloquear(est); }
-                          else if (libre) { setFormAbrirMesa({mesa:{...mesa,name:String(mesa.num)},pax:mesa.cap,cliente:''}); }
-                          else if (ocupada && enDisplay) { setSelectedTableId(enDisplay.id); setShowMapaMesas(false); }
-                        }}
-                        style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w}%`,height:`${mesa.h}%`,borderRadius:mesa.shape==='round'?'50%':8,background:`${col}18`,border:`2px solid ${col}70`,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',transition:'all .15s',zIndex:1}}
-                        onMouseEnter={e=>{(e.currentTarget as HTMLDivElement).style.background=`${col}30`;(e.currentTarget as HTMLDivElement).style.borderColor=col;}}
-                        onMouseLeave={e=>{(e.currentTarget as HTMLDivElement).style.background=`${col}18`;(e.currentTarget as HTMLDivElement).style.borderColor=`${col}70`;}}>
-                        <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color:col,lineHeight:1}}>M{mesa.num}</div>
-                        {mesa.shape!=='round'&&<div style={{fontSize:'clamp(5px,0.7vw,8px)',color:`${col}90`}}>{mesa.cap}p</div>}
-                        {ocupada&&<div style={{position:'absolute',top:2,right:2,width:5,height:5,borderRadius:'50%',background:'#d4943a'}}/>}
-                      </div>
-                    );
-                  })}
+                  {(() => {
+                    const meseroActual = profile?.nombre_completo || 'Mesero';
+                    const privilegiado = ['admin','gerencia','desarrollo','capitan','capitán','sommelier'].includes(profile?.role||'');
+                    return Object.entries(PLANTA_OMM).map(([key,mesa])=>{
+                      const est = mesasEstado.find((m:any)=>String(m.name)===String(mesa.num));
+                      const estado    = est?.estado || 'libre';
+                      const libre     = !est || estado==='libre';
+                      const asignada  = estado==='asignada';   // 🟢 sentada — esperando mesero
+                      const ocupada   = estado==='ocupada';
+                      const bloqueada = estado==='bloqueada';
+                      const enDisplay = displayTables.find((t:any)=>String(t.num)===String(mesa.num));
+                      // ¿la mesa ocupada es de este mesero?
+                      const esMia = ocupada && (!est?.mesero_nombre || est.mesero_nombre===meseroActual);
+                      const puedeEntrar = esMia || privilegiado;
+                      // color: verde=asignada · gris=libre · dorado=mía · rojo=de otro mesero · gris oscuro=bloqueada
+                      const col = asignada ? '#3dba6f'
+                        : ocupada ? (puedeEntrar ? '#d4943a' : '#e05050')
+                        : bloqueada ? '#404040'
+                        : '#5a6472';
+                      return (
+                        <div key={key}
+                          onClick={()=>{
+                            if (bloqueada) { setMesaDesbloquear(est); }
+                            else if (asignada) { tomarMesaAsignada(mesa, est); }
+                            else if (libre) { setFormAbrirMesa({mesa:{...mesa,name:String(mesa.num)},pax:mesa.cap,cliente:''}); }
+                            else if (ocupada && enDisplay) {
+                              if (!puedeEntrar) {
+                                showToast(`🔒 Mesa ${mesa.num} la atiende ${est?.mesero_nombre} — pídele compartir o llama a un capitán`);
+                                return;
+                              }
+                              setSelectedTableId(enDisplay.id); setShowMapaMesas(false);
+                            }
+                          }}
+                          style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w}%`,height:`${mesa.h}%`,borderRadius:mesa.shape==='round'?'50%':8,background:`${col}18`,border:`2px solid ${col}70`,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',transition:'all .15s',zIndex:1,boxShadow:asignada?`0 0 12px ${col}55`:'none'}}
+                          onMouseEnter={e=>{(e.currentTarget as HTMLDivElement).style.background=`${col}30`;(e.currentTarget as HTMLDivElement).style.borderColor=col;}}
+                          onMouseLeave={e=>{(e.currentTarget as HTMLDivElement).style.background=`${col}18`;(e.currentTarget as HTMLDivElement).style.borderColor=`${col}70`;}}>
+                          <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color:col,lineHeight:1}}>M{mesa.num}</div>
+                          {asignada
+                            ? <div style={{fontSize:'clamp(4px,0.65vw,8px)',color:col,fontWeight:700,textAlign:'center',padding:'0 1px',lineHeight:1.1,marginTop:1}}>{est?.cliente_nombre?String(est.cliente_nombre).split(' ')[0]:'Sentada'}</div>
+                            : (mesa.shape!=='round' && <div style={{fontSize:'clamp(5px,0.7vw,8px)',color:`${col}90`}}>{mesa.cap}p</div>)}
+                          {asignada&&<div style={{position:'absolute',top:2,right:2,width:6,height:6,borderRadius:'50%',background:'#3dba6f',boxShadow:'0 0 6px #3dba6f'}}/>}
+                          {ocupada&&<div style={{position:'absolute',top:2,right:2,width:5,height:5,borderRadius:'50%',background:col}}/>}
+                        </div>
+                      );
+                    });
+                  })()}
 
                   <div style={{position:'absolute',bottom:'1%',right:'2%',fontSize:'clamp(5px,0.65vw,8px)',color:'rgba(255,255,255,0.1)',fontWeight:700}}>OMM · Bogotá</div>
                 </div>
