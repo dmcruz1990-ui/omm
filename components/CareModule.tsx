@@ -550,6 +550,49 @@ export default function CareModule() {
               <div className="text-[12px] mt-1">Aparecen automáticamente al confirmar el pago</div>
             </div>
           )}
+          {/* Ranking de platos — bien vs mal calificados */}
+          {!loading && encuestas.length>0 && (() => {
+            const bien:Record<string,number> = {};
+            const mal:Record<string,number> = {};
+            encuestas.forEach(e=>{
+              if (!Array.isArray(e.platos_problema)) return;
+              const dst = e.estrellas>=4 ? bien : (e.estrellas>0&&e.estrellas<=3 ? mal : null);
+              if (dst) e.platos_problema.forEach((p:string)=>{ dst[p]=(dst[p]||0)+1; });
+            });
+            const topBien = Object.entries(bien).sort((a,b)=>b[1]-a[1]).slice(0,6);
+            const topMal  = Object.entries(mal ).sort((a,b)=>b[1]-a[1]).slice(0,6);
+            if (topBien.length===0 && topMal.length===0) return null;
+            return (
+              <div className="grid grid-cols-2 gap-3 mb-1">
+                <div className="bg-[#0f0f1a] border border-[#00E676]/20 rounded-xl p-3">
+                  <div className="text-[10px] font-black text-[#00E676] uppercase tracking-wider mb-2">🔥 Platos que enamoran</div>
+                  {topBien.length===0 ? <div className="text-[10px] text-[#50506A]">Sin datos aún</div> : (
+                    <div className="flex flex-col gap-1.5">
+                      {topBien.map(([p,n])=>(
+                        <div key={p} className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-white truncate">{p}</span>
+                          <span className="text-[10px] font-black text-[#00E676] shrink-0">{n}×</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="bg-[#0f0f1a] border border-[#FF5252]/20 rounded-xl p-3">
+                  <div className="text-[10px] font-black text-[#FF5252] uppercase tracking-wider mb-2">⚠️ Platos con quejas</div>
+                  {topMal.length===0 ? <div className="text-[10px] text-[#50506A]">Sin quejas registradas</div> : (
+                    <div className="flex flex-col gap-1.5">
+                      {topMal.map(([p,n])=>(
+                        <div key={p} className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-white truncate">{p}</span>
+                          <span className="text-[10px] font-black text-[#FF5252] shrink-0">{n}×</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
           {encuestas.map(enc=>{
             const c = starC(enc.estrellas);
             return (
@@ -579,6 +622,26 @@ export default function CareModule() {
                         <span key={`m${i}`} className="text-[9px] px-2 py-0.5 rounded-full bg-[#FF5252]/10 text-[#FF5252]">{t}</span>
                       ))}
                     </div>
+                    {/* Platos calificados — bien (positivo) o mal (negativo) */}
+                    {Array.isArray(enc.platos_problema) && enc.platos_problema.length>0 && (
+                      <div className="mb-2">
+                        {enc.estrellas>=4 ? (
+                          <div className="flex flex-wrap gap-1 items-center">
+                            <span className="text-[9px] font-bold text-[#00E676]">❤️ Le encantó:</span>
+                            {enc.platos_problema.map((p:string,i:number)=>(
+                              <span key={i} className="text-[9px] px-2 py-0.5 rounded-full bg-[#00E676]/12 text-[#00E676] border border-[#00E676]/25 font-semibold">{p}</span>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap gap-1 items-center">
+                            <span className="text-[9px] font-bold text-[#FF5252]">⚠️ Problema con:</span>
+                            {enc.platos_problema.map((p:string,i:number)=>(
+                              <span key={i} className="text-[9px] px-2 py-0.5 rounded-full bg-[#FF5252]/12 text-[#FF5252] border border-[#FF5252]/25 font-semibold">{p}</span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
                     {enc.comentario && <div className="text-[11px] text-[#a0a0a0] italic mb-2">"{enc.comentario}"</div>}
                     <div className="text-[9px] text-[#606060]">{fmtDate(enc.created_at)}</div>
                   </div>
