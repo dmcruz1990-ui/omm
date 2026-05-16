@@ -42,6 +42,11 @@ const S = {
   blue:'#448AFF',purple:'#B388FF',pink:'#FF2D78',cyan:'#22d3ee',
 };
 const fmt = (d:string) => new Date(d+'T00:00:00').toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'});
+const fmtElapsed = (iso?:string|null) => {
+  if (!iso) return '';
+  const min = Math.max(0, Math.floor((Date.now()-new Date(iso).getTime())/60000));
+  return min<60 ? `${min} min` : `${Math.floor(min/60)}h ${min%60}m`;
+};
 const ESTADOS:any = {
   pendiente: {c:'#FFB547',l:'⏳ Pendiente'},
   confirmada:{c:'#00E676',l:'✓ Confirmada'},
@@ -101,7 +106,8 @@ export default function ReserveModule() {
         id:r.id, cliente_nombre:r.guest_name, cliente_email:r.guest_email,
         cliente_telefono:r.guest_phone, fecha:r.date, hora:r.time, pax:r.pax,
         estado:(['confirmed','confirmada'].includes(r.status))?'confirmada':r.status==='cancelled'||r.status==='cancelada'?'cancelada':r.status==='seated'||r.status==='sentada'?'sentada':'confirmada',
-        ocasion:r.occasion, notas:r.observations, mesa_num:null, restaurante_id:6,
+        ocasion:r.occasion, notas:r.observations, mesa_num:r.mesa_num||null, restaurante_id:6,
+        sentado_at:r.mesa_asignada_at||null,
         gourmand_level:r.gourmand_level, is_first_visit:r.is_first_visit,
         visit_count:r.visit_count, mood:r.mood, nexum_brief:r.nexum_brief,
         bono_aplicado:r.bono_aplicado, origen:'ohyeah',
@@ -182,7 +188,7 @@ const sentarWalkin = async () => {
   await supabase.from('reservations').insert({
     restaurante_id:6, cliente_nombre:walkin.nombre, cliente_email:'', cliente_telefono:'',
     fecha:hoy, hora:hh, pax:walkin.pax, ocasion:'Walk-in', notas:'Walk-in — sentado en sala',
-    estado:'sentada', mesa_num:walkin.mesa,
+    estado:'sentada', mesa_num:walkin.mesa, sentado_at:new Date().toISOString(),
   }).then(()=>{}).catch(()=>{});
   // La mesa queda VERDE (asignada) en el mapa del POS
   await supabase.from('tables').update({
@@ -202,7 +208,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
       .update({ status:'seated', mesa_num:mesaNum, mesa_asignada_at:new Date().toISOString() })
       .eq('id',reservaId);
   } else {
-    await supabase.from('reservations').update({ mesa_num:mesaNum, estado:'sentada' }).eq('id',reservaId);
+    await supabase.from('reservations').update({ mesa_num:mesaNum, estado:'sentada', sentado_at:new Date().toISOString() }).eq('id',reservaId);
   }
   // Sentar al cliente: la mesa queda VERDE (asignada) en el mapa del POS,
   // esperando que un mesero la tome. No se asigna mesero todavía.
@@ -265,6 +271,86 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
           </div>
         </div>
       )}
+
+      {/* ── MODAL SELECTOR DE MESA ── */}
+      {asignandoMesa && (() => {
+        const r = asignandoMesa;
+        const pax = r.pax || 2;
+        const tablesList = mesas.map((m:any)=>{
+          const num = Number(m.name);
+          const planta = Object.values(PLANTA).find(p=>p.num===num);
+          return {
+            num,
+            estado: m.estado || 'libre',
+            cap: m.capacidad || m.seats || planta?.cap || 4,
+            zona: m.zona || m.zone || planta?.zona || 'Salón',
+            cliente: m.cliente_nombre || '',
+          };
+        }).filter((t:any)=>!isNaN(t.num)).sort((a:any,b:any)=>a.num-b.num);
+        const zonas = Array.from(new Set(tablesList.map((t:any)=>t.zona)));
+        const libres = tablesList.filter((t:any)=>!t.estado||t.estado==='libre');
+        return (
+          <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>setAsignandoMesa(null)}>
+            <div onClick={e=>e.stopPropagation()} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:20,width:'100%',maxWidth:560,maxHeight:'88vh',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+              {/* Header del modal */}
+              <div style={{padding:'18px 22px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',gap:12}}>
+                <div style={{width:44,height:44,borderRadius:'50%',background:`${S.blue}20`,border:`2px solid ${S.blue}40`,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:S.blue}}>
+                  {(r.cliente_nombre||'?').charAt(0).toUpperCase()}
+                </div>
+                <div style={{flex:1}}>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:900}}>Asignar mesa</div>
+                  <div style={{fontSize:11,color:S.t2}}>{r.cliente_nombre} · <span style={{color:S.blue,fontWeight:700}}>{pax} {pax===1?'persona':'personas'}</span> · {r.hora}</div>
+                </div>
+                <button onClick={()=>setAsignandoMesa(null)} style={{width:30,height:30,borderRadius:9,border:`1px solid ${S.border2}`,background:'transparent',color:S.t3,cursor:'pointer',fontSize:14}}>✕</button>
+              </div>
+              {/* Cuerpo: mesas por zona */}
+              <div style={{flex:1,overflowY:'auto',padding:'16px 22px'}}>
+                <div style={{fontSize:11,color:S.t3,marginBottom:14}}>
+                  {libres.length} mesa{libres.length===1?'':'s'} libre{libres.length===1?'':'s'} ·
+                  <span style={{color:S.green,marginLeft:5}}>● ideal para {pax}p</span>
+                  <span style={{color:S.gold,marginLeft:10}}>● capacidad justa</span>
+                </div>
+                {zonas.map((zona:any)=>{
+                  const delZona = tablesList.filter((t:any)=>t.zona===zona);
+                  return (
+                    <div key={zona} style={{marginBottom:18}}>
+                      <div style={{fontSize:10,color:S.t2,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>
+                        {ZONA_COLORES[zona]?.label || zona}
+                      </div>
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(78px,1fr))',gap:8}}>
+                        {delZona.map((t:any)=>{
+                          const libre = !t.estado || t.estado==='libre';
+                          const ideal = libre && t.cap>=pax;
+                          const justa = libre && t.cap<pax;
+                          const col = !libre ? S.t3 : ideal ? S.green : S.gold;
+                          return (
+                            <button key={t.num} disabled={!libre}
+                              onClick={()=>{ asignarMesa(r.id, t.num); setAsignandoMesa(null); }}
+                              style={{
+                                padding:'12px 6px',borderRadius:12,
+                                border:`2px solid ${libre?col:'rgba(255,255,255,0.06)'}`,
+                                background:libre?`${col}12`:'rgba(255,255,255,0.02)',
+                                cursor:libre?'pointer':'not-allowed',opacity:libre?1:0.4,
+                                display:'flex',flexDirection:'column',alignItems:'center',gap:2,transition:'all .15s',
+                              }}>
+                              <span style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:col}}>M{t.num}</span>
+                              <span style={{fontSize:9,color:S.t2,fontWeight:600}}>{t.cap} pers.</span>
+                              <span style={{fontSize:8,color:col,fontWeight:700,textTransform:'uppercase'}}>
+                                {!libre ? (t.estado==='ocupada'?'Ocupada':t.estado==='asignada'?'Sentada':'No disp.') : ideal?'Disponible':'Justa'}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+                {tablesList.length===0 && <div style={{textAlign:'center',color:S.t3,padding:30}}>No hay mesas configuradas</div>}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Header */}
       <div style={{padding:'14px 24px',borderBottom:`1px solid ${S.border}`,background:S.bg2,display:'flex',alignItems:'center',gap:14,flexShrink:0,flexWrap:'wrap'}}>
@@ -391,20 +477,22 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
               {/* Mesa asignada o botón asignar */}
               <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,flexShrink:0}}>
                 {r.mesa_num ? (
-                  <div style={{textAlign:'center'}}>
+                  <button onClick={()=>setAsignandoMesa(r)} style={{textAlign:'center',background:'none',border:'none',cursor:'pointer'}}>
                     <div style={{fontFamily:"'Syne',sans-serif",fontSize:24,fontWeight:900,color:S.blue,lineHeight:1}}>M{r.mesa_num}</div>
-                    <div style={{fontSize:9,color:S.t3}}>asignada</div>
-                  </div>
+                    {r.estado==='sentada' && r.sentado_at
+                      ? <div style={{fontSize:9,color:S.green,fontWeight:700}}>🪑 {fmtElapsed(r.sentado_at)}</div>
+                      : <div style={{fontSize:9,color:S.t3}}>asignada · cambiar</div>}
+                  </button>
                 ) : (
                   <button
-                    onClick={()=>{ setAsignandoMesa(r); setTab('mapa'); }}
+                    onClick={()=>setAsignandoMesa(r)}
                     style={{
                       padding:'8px 14px',borderRadius:10,border:`2px solid ${S.gold}`,
                       background:`${S.gold}15`,color:S.gold,fontSize:11,fontWeight:700,
                       cursor:'pointer',whiteSpace:'nowrap',
                       animation: sinMesa ? 'pulse 2s infinite' : 'none',
                     }}>
-                    🗺️ Asignar mesa
+                    🪑 Asignar mesa
                   </button>
                 )}
               </div>
@@ -414,12 +502,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
                 <span style={{fontSize:10,background:`${est.c}15`,color:est.c,border:`1px solid ${est.c}30`,padding:'2px 10px',borderRadius:20,fontWeight:700}}>{est.l}</span>
                 <div style={{display:'flex',gap:4}}>
                   {r.estado==='pendiente'   && <button onClick={()=>cambiarEstado(r.id,'confirmada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,cursor:'pointer',fontWeight:700}}>✓ Confirmar</button>}
-                  {r.estado==='confirmada'  && <button onClick={()=>{
-                    cambiarEstado(r.id,'sentada',esOhYeah);
-                    // Ir al mapa para asignar mesa
-                    setAsignandoMesa(r);
-                    setTab('mapa');
-                  }} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,cursor:'pointer',fontWeight:700}}>🪑 Sentar → Mesa</button>}
+                  {r.estado==='confirmada'  && <button onClick={()=>setAsignandoMesa(r)}
+                    style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,cursor:'pointer',fontWeight:700}}>🪑 Sentar → Mesa</button>}
                   {r.estado==='sentada'     && <button onClick={()=>cambiarEstado(r.id,'completada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,cursor:'pointer',fontWeight:700}}>✅ Completar</button>}
                   {!['cancelada','completada'].includes(r.estado) && <button onClick={()=>esOhYeah?cancelarOhYeah(r.id,r.cliente_nombre):cambiarEstado(r.id,'cancelada',false)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.red}40`,background:`${S.red}10`,color:S.red,cursor:'pointer',fontWeight:700}}>✗ Cancelar</button>}
                   {esOhYeah && r.estado==='confirmada' && !r.mesa_num && (
@@ -471,14 +555,19 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
                       {r.ocasion&&r.ocasion!=='Sin ocasión especial'?<span style={{fontSize:11,background:`${S.purple}15`,color:S.purple,padding:'2px 8px',borderRadius:20}}>{r.ocasion}</span>:<span style={{color:S.t3,fontSize:11}}>—</span>}
                     </td>
                     <td style={{padding:'10px 14px'}}>
-                      {r.mesa_num?<span style={{fontSize:12,fontWeight:700,background:`${S.blue}15`,color:S.blue,padding:'3px 10px',borderRadius:20}}>M{r.mesa_num}</span>:
-                        r.estado==='confirmada'?(
-                          <select onChange={e=>asignarMesa(r.id,Number(e.target.value))} defaultValue=""
-                            style={{background:S.bg3,border:`1px solid ${S.border}`,borderRadius:6,padding:'4px 8px',color:S.t2,fontSize:11,cursor:'pointer'}}>
-                            <option value="" disabled>Asignar...</option>
-                            {[...Array(16)].map((_,n)=><option key={n+1} value={n+1}>Mesa {n+1}</option>)}
-                          </select>
-                        ):<span style={{color:S.t3,fontSize:11}}>—</span>}
+                      {r.mesa_num ? (
+                        <button onClick={()=>setAsignandoMesa(r)} style={{display:'flex',alignItems:'center',gap:6,background:'none',border:'none',cursor:'pointer'}}>
+                          <span style={{fontSize:12,fontWeight:700,background:`${S.blue}15`,color:S.blue,padding:'3px 10px',borderRadius:20}}>M{r.mesa_num}</span>
+                          {r.estado==='sentada' && r.sentado_at && (
+                            <span style={{fontSize:10,color:S.green,fontWeight:700}}>🪑 {fmtElapsed(r.sentado_at)}</span>
+                          )}
+                        </button>
+                      ) : ['confirmada','pendiente'].includes(r.estado) ? (
+                        <button onClick={()=>setAsignandoMesa(r)}
+                          style={{background:`${S.gold}15`,border:`1px solid ${S.gold}40`,borderRadius:7,padding:'4px 10px',color:S.gold,fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                          🪑 Asignar
+                        </button>
+                      ) : <span style={{color:S.t3,fontSize:11}}>—</span>}
                     </td>
                     <td style={{padding:'10px 14px'}}>
                       <span style={{fontSize:10,background:`${est.c}15`,color:est.c,border:`1px solid ${est.c}30`,padding:'3px 10px',borderRadius:50,fontWeight:700,whiteSpace:'nowrap'}}>{est.l}</span>
@@ -489,7 +578,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
                     <td style={{padding:'10px 14px'}}>
                       <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
                         {r.estado==='pendiente'&&<button onClick={()=>cambiarEstado(r.id,'confirmada',esOhYeah)} style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,fontSize:10,fontWeight:700,cursor:'pointer'}}>✓ Confirmar</button>}
-                        {r.estado==='confirmada'&&<button onClick={()=>cambiarEstado(r.id,'sentada',esOhYeah)} style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,fontSize:10,fontWeight:700,cursor:'pointer'}}>🪑 Sentar</button>}
+                        {r.estado==='confirmada'&&<button onClick={()=>setAsignandoMesa(r)} style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,fontSize:10,fontWeight:700,cursor:'pointer'}}>🪑 Sentar</button>}
                         {r.estado==='sentada'&&<button onClick={()=>cambiarEstado(r.id,'completada',esOhYeah)} style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${S.purple}40`,background:`${S.purple}10`,color:S.purple,fontSize:10,fontWeight:700,cursor:'pointer'}}>✅ Cerrar</button>}
                         {!['cancelada','completada'].includes(r.estado)&&<button onClick={()=>cambiarEstado(r.id,'cancelada',esOhYeah)} style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${S.red}40`,background:'transparent',color:S.red,fontSize:10,cursor:'pointer'}}>✗</button>}
                         {!esOhYeah&&<button onClick={()=>{setSelected(r);setForm({...r,mesa_num:r.mesa_num||0});setTab('nueva');}} style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${S.border}`,background:'transparent',color:S.t2,fontSize:10,cursor:'pointer'}}>✏️</button>}
