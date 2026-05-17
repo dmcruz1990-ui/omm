@@ -55,6 +55,31 @@ const ModuleLoader = () => (
   </div>
 );
 
+// Error boundary — un fallo en un módulo ya no tumba toda la app (sin pantalla negra)
+class ModuleErrorBoundary extends React.Component<{children: React.ReactNode}, {error: Error|null}> {
+  constructor(props: {children: React.ReactNode}) { super(props); this.state = { error: null }; }
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error) { console.error('Módulo crasheó:', error); }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-[70vh] text-center px-8">
+          <div className="text-5xl mb-4">⚠️</div>
+          <div className="text-lg font-black text-white mb-2">Este módulo tuvo un problema</div>
+          <div className="text-[12px] text-gray-500 mb-6 max-w-md">
+            El resto del sistema sigue funcionando. Recarga o cambia de módulo.
+          </div>
+          <button onClick={() => this.setState({ error: null })}
+            className="px-6 py-2.5 rounded-xl bg-blue-600 text-white text-[12px] font-bold">
+            Reintentar
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 const Dashboard: React.FC = () => {
   const { profile, signOut } = useAuth();
   const [activeModule, setActiveModule] = useState<ModuleType>(ModuleType.SERVICE_OS);
@@ -362,6 +387,7 @@ const Dashboard: React.FC = () => {
         </header>
 
         <div className="flex-1 overflow-hidden relative z-10">
+          <ModuleErrorBoundary key={activeModule}>
           <Suspense fallback={<ModuleLoader />}>
             {activeModule === ModuleType.SERVICE_OS && (
               <div className="h-full flex flex-col">
@@ -409,6 +435,7 @@ const Dashboard: React.FC = () => {
               </div>
             )}
           </Suspense>
+          </ModuleErrorBoundary>
         </div>
       </main>
 
