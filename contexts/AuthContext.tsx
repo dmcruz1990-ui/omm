@@ -33,22 +33,27 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       else if (email.startsWith('cocina') || email.startsWith('chef')) assignedRole = 'cocina';
       else if (email.startsWith('mesero')) assignedRole = 'mesero';
       
-      const virtualProfile: Profile = { 
-        id: user.id, 
-        email: email, 
-        role: assignedRole, 
-        full_name: email.split('@')[0].toUpperCase(),
+      // Nombre: usa el full_name de la metadata del usuario si existe,
+      // si no lo deriva del correo. Se expone como full_name Y nombre_completo
+      // (los módulos POS/Propinas leen nombre_completo).
+      const nombre = (user.user_metadata?.full_name as string) || email.split('@')[0].toUpperCase();
+      const virtualProfile: Profile = {
+        id: user.id,
+        email: email,
+        role: assignedRole,
+        full_name: nombre,
+        nombre_completo: nombre,
         loyalty_level: 'UMBRAL'
       };
-      
+
       setProfile(virtualProfile);
-      
+
       try {
-        await supabase.from('profiles').upsert({ 
-          id: user.id, 
-          email: email, 
-          role: assignedRole, 
-          full_name: virtualProfile.full_name,
+        await supabase.from('profiles').upsert({
+          id: user.id,
+          email: email,
+          role: assignedRole,
+          full_name: nombre,
           loyalty_level: 'UMBRAL'
         }, { onConflict: 'id' });
       } catch (e) {
@@ -121,6 +126,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: mockEmail,
       role: role,
       full_name: `TEST_${role.toUpperCase()}`,
+      nombre_completo: `TEST_${role.toUpperCase()}`,
       loyalty_level: 'UMBRAL'
     };
 
