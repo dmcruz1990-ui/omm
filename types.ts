@@ -150,6 +150,7 @@ export interface Profile {
   email: string;
   role: UserRole;
   full_name: string;
+  nombre_completo?: string;
   loyalty_level: LoyaltyLevel;
 }
 
