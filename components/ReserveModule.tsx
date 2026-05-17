@@ -323,6 +323,9 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
       {asignandoMesa && (() => {
         const r = asignandoMesa;
         const pax = r.pax || 2;
+        // Cliente VIP — score alto (VIP / Consagrado / Élite)
+        const VIP_TIERS = ['VIP','CONSAGRADO','ÉLITE','ELITE','GRAND GOURMAND','LA CREME'];
+        const clienteVip = VIP_TIERS.includes(String(r.gourmand_level||'').toUpperCase());
         const tablesList = mesas.map((m:any)=>{
           const num = Number(m.name);
           const planta = Object.values(PLANTA).find(p=>p.num===num);
@@ -332,6 +335,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
             cap: m.capacidad || m.seats || planta?.cap || 4,
             zona: m.zona || m.zone || planta?.zona || 'Salón',
             cliente: m.cliente_nombre || '',
+            vip: m.vip === true,
           };
         }).filter((t:any)=>!isNaN(t.num)).sort((a:any,b:any)=>a.num-b.num);
         const zonas = Array.from(new Set(tablesList.map((t:any)=>t.zona)));
@@ -365,7 +369,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
                 <div style={{fontSize:11,color:S.t3,marginBottom:14}}>
                   {libres.length} mesa{libres.length===1?'':'s'} libre{libres.length===1?'':'s'} ·
                   <span style={{color:S.green,marginLeft:5}}>● apta para {pax}p</span>
-                  <span style={{color:S.t3,marginLeft:10}}>● no apta (tamaño)</span>
+                  <span style={{color:S.gold,marginLeft:10}}>⭐ mesa VIP</span>
+                  {clienteVip && <span style={{color:S.gold,marginLeft:10,fontWeight:700}}>· Cliente VIP — prioriza las ⭐</span>}
                 </div>
                 {zonas.map((zona:any)=>{
                   const delZona = tablesList.filter((t:any)=>t.zona===zona);
@@ -381,22 +386,28 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
                           const apta = libre && pax>=rg.min && pax<=rg.max;
                           const motivo = pax<rg.min ? `mín ${rg.min}` : pax>rg.max ? `máx ${rg.max}` : '';
                           const seleccionable = libre && apta;
-                          const col = !libre ? S.t3 : apta ? S.green : S.gold;
+                          // VIP no aptas para cliente normal: igual seleccionable (soft), pero avisa
+                          const vipReservada = t.vip && !clienteVip;
+                          const col = !libre ? S.t3 : t.vip ? S.gold : apta ? S.green : '#FFB547';
                           return (
                             <button key={t.num} disabled={!seleccionable}
                               onClick={()=>{ asignarMesa(r.id, t.num); setAsignandoMesa(null); }}
                               style={{
-                                padding:'12px 6px',borderRadius:12,
+                                padding:'12px 6px',borderRadius:12,position:'relative',
                                 border:`2px solid ${seleccionable?col:'rgba(255,255,255,0.06)'}`,
-                                background:seleccionable?`${col}12`:'rgba(255,255,255,0.02)',
+                                background:seleccionable?`${col}${t.vip?'1f':'12'}`:'rgba(255,255,255,0.02)',
                                 cursor:seleccionable?'pointer':'not-allowed',opacity:seleccionable?1:0.4,
                                 display:'flex',flexDirection:'column',alignItems:'center',gap:2,transition:'all .15s',
+                                boxShadow: t.vip&&seleccionable ? `0 0 10px ${S.gold}40` : 'none',
                               }}>
+                              {t.vip && <span style={{position:'absolute',top:3,right:5,fontSize:11}}>⭐</span>}
                               <span style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:col}}>M{t.num}</span>
                               <span style={{fontSize:9,color:S.t2,fontWeight:600}}>{rg.min}-{rg.max} pers.</span>
                               <span style={{fontSize:8,color:col,fontWeight:700,textTransform:'uppercase'}}>
                                 {!libre ? (t.estado==='ocupada'?'Ocupada':t.estado==='asignada'?'Sentada':'No disp.')
-                                  : apta ? 'Apta' : `No apta · ${motivo}`}
+                                  : !apta ? `No apta · ${motivo}`
+                                  : t.vip ? (clienteVip ? 'VIP ⭐ ideal' : 'VIP · guárdala')
+                                  : 'Apta'}
                               </span>
                             </button>
                           );
@@ -687,6 +698,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
           onAsignarMesa={(id:any,mesa:number)=>{asignarMesa(id,mesa);setAsignandoMesa(null);setTab('home');}}
           onCambiarEstado={cambiarEstado}
           plantaDB={plantaDB}
+          mesas={mesas}
+          onToggleVip={async(num:number,vip:boolean)=>{ await supabase.from('tables').update({vip}).eq('name',String(num)); show(vip?`⭐ Mesa ${num} marcada VIP`:`Mesa ${num} ya no es VIP`); fetchData(); }}
           now={now}
           busquedaMesa={busquedaMesa}
           setBusquedaMesa={setBusquedaMesa}
@@ -775,7 +788,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
 // ═══════════════════════════════════════════════════════════════════════
 // MAPA INTERACTIVO
 // ═══════════════════════════════════════════════════════════════════════
-function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, now, busquedaMesa, setBusquedaMesa }:any) {
+function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, mesas, onToggleVip, now, busquedaMesa, setBusquedaMesa }:any) {
+  const vipPorNum = new Set((mesas||[]).filter((m:any)=>m.vip).map((m:any)=>Number(m.name)));
   const [mesaSel, setMesaSel] = React.useState<any>(null);
   const [vistaZona, setVistaZona] = React.useState<string|null>(null);
   const nowMs = now || Date.now();
@@ -962,6 +976,8 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, 
                     {/* Punto pulsante */}
                     {reserva?.estado==='sentada' && <div style={{position:'absolute',top:2,right:2,width:6,height:6,borderRadius:'50%',background:mesaColor,boxShadow:enAlerta?`0 0 6px ${mesaColor}`:'none'}}/>}
                     {enAlerta && <div style={{position:'absolute',top:-4,left:'50%',transform:'translateX(-50%)',fontSize:9,whiteSpace:'nowrap'}}>⚠️</div>}
+                    {/* Estrella VIP */}
+                    {vipPorNum.has(mesa.num) && <div style={{position:'absolute',top:-5,left:-3,fontSize:'clamp(8px,1.1vw,13px)',filter:'drop-shadow(0 0 3px #FFB547)'}}>⭐</div>}
                   </div>
                 );
               })}
@@ -985,11 +1001,19 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, 
                   <span style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:mesaSel.color}}>M{mesaSel.num}</span>
                 </div>
                 <div>
-                  <div style={{fontSize:14,fontWeight:700}}>{mesaSel.zona}</div>
+                  <div style={{fontSize:14,fontWeight:700}}>{mesaSel.zona}{vipPorNum.has(mesaSel.num)&&<span style={{color:'#FFB547',marginLeft:5}}>⭐ VIP</span>}</div>
                   <div style={{fontSize:10,color:mesaSel.color,fontWeight:700}}>{mesaSel.label}</div>
                   <div style={{fontSize:10,color:'#50506A'}}>{mesaSel.cap||mesaSel.capacidad} personas</div>
                 </div>
               </div>
+              {/* Marcar mesa VIP — mejor vista / cerca del DJ */}
+              <button onClick={()=>onToggleVip && onToggleVip(mesaSel.num, !vipPorNum.has(mesaSel.num))}
+                style={{width:'100%',marginBottom:12,padding:'9px',borderRadius:9,cursor:'pointer',fontSize:12,fontWeight:700,
+                  border:`1px solid ${vipPorNum.has(mesaSel.num)?'#FFB547':'rgba(255,255,255,0.12)'}`,
+                  background:vipPorNum.has(mesaSel.num)?'rgba(255,181,71,0.15)':'transparent',
+                  color:vipPorNum.has(mesaSel.num)?'#FFB547':'#A0A0B8'}}>
+                {vipPorNum.has(mesaSel.num)?'⭐ Mesa VIP — quitar estrella':'☆ Marcar como mesa VIP'}
+              </button>
               {!mesaSel.reserva?(
                 <div style={{padding:'12px 14px',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:10}}>
                   <div style={{fontSize:11,color:'#3dba6f',fontWeight:700,marginBottom:4}}>✓ Mesa libre</div>
