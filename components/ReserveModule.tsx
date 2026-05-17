@@ -223,12 +223,8 @@ const sentarWalkin = async () => {
   }
   const ahora = new Date();
   const hh = ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-  // Capacidad: el walk-in también respeta la franja de 2h
-  const { data: disp } = await supabase.rpc('franja_disponibilidad', { p_fecha: hoy, p_hora: hh });
-  if (disp && disp.disponible === false) {
-    show(`⛔ Franja llena — ${disp.ocupadas}/${disp.mesas_total} mesas ocupadas ahora`);
-    return;
-  }
+  // §2 del doc: el walk-in NO se bloquea por la franja — toma capacidad
+  // residual. Sólo necesita una mesa físicamente libre (ya filtrada arriba).
   // Registro de la visita walk-in
   await supabase.from('reservations').insert({
     restaurante_id:6, cliente_nombre:walkin.nombre, cliente_email:'', cliente_telefono:'',
