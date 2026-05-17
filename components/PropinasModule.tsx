@@ -66,8 +66,26 @@ export default function PropinasModule() {
   const [fotoPreview, setFotoPreview]   = useState<string>('');
   const [retiroMonto, setRetiroMonto]   = useState(0);
   const [retiroEmpleado, setRetiroEmp]  = useState('');
+  const [crewEnvios, setCrewEnvios]     = useState<any[]>([]);
+  const [enviandoCrew, setEnviandoCrew] = useState(false);
 
   const show = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3500); };
+
+  // Enviar las propinas del día (con desglose por pools) a Seratta Crew
+  const enviarCrew = async () => {
+    setEnviandoCrew(true);
+    const { data } = await supabase.rpc('enviar_propinas_crew', {
+      p_restaurante: 6, p_inicio: fechaFiltro, p_fin: fechaFiltro,
+      p_por: profile?.nombre_completo || 'Gerencia',
+    });
+    if (data?.ok) {
+      show(`✓ Enviado a Seratta Crew — ${data.empleados} empleados · ${fmt(data.total||0)}`);
+      fetchAll();
+    } else {
+      show('⚠️ No se pudo enviar a Seratta Crew');
+    }
+    setEnviandoCrew(false);
+  };
 
   const fetchAll = useCallback(async () => {
     setLoading(true);
@@ -87,6 +105,10 @@ export default function PropinasModule() {
     if (tg.data)   setTags(tg.data);
     if (cfg.data)  setConfig(cfg.data);
     if (bo.data)   setBackoffice(bo.data);
+    const ce = await supabase.from('crew_propinas').select('*')
+      .eq('restaurante_id',6).eq('periodo_inicio',fechaFiltro)
+      .order('propina_total',{ascending:false});
+    setCrewEnvios(ce.data||[]);
     // Staff completo para admin
     const st = await supabase.from('staff_nexum').select('*').eq('restaurante_id',6).order('nombre');
     if (st.data) setStaff(st.data);
@@ -277,6 +299,55 @@ export default function PropinasModule() {
                     Procesar retiro
                   </button>
                 </div>
+              </div>
+            )}
+
+            {/* ── ENVIAR A SERATTA CREW ── */}
+            {isGerencia && (
+              <div style={{background:S.bg2,border:`1px solid ${crewEnvios.length?`${S.green}40`:S.border}`,borderRadius:14,padding:16,marginBottom:20}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap',marginBottom:crewEnvios.length?12:0}}>
+                  <div style={{flex:1,minWidth:180}}>
+                    <div style={{fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:6}}>📤 Enviar a Seratta Crew</div>
+                    <div style={{fontSize:10,color:S.t3,marginTop:2}}>
+                      Envía las propinas del {fechaFiltro} con el desglose de los 9 pools a la app del crew.
+                    </div>
+                  </div>
+                  {crewEnvios.length>0 && (
+                    <span style={{fontSize:10,color:S.green,background:`${S.green}15`,border:`1px solid ${S.green}35`,padding:'3px 10px',borderRadius:20,fontWeight:700}}>
+                      ✓ Enviado · {crewEnvios.length} empleados
+                    </span>
+                  )}
+                  <button onClick={enviarCrew} disabled={enviandoCrew}
+                    style={{padding:'9px 18px',borderRadius:8,border:'none',background:enviandoCrew?S.border:`linear-gradient(135deg,${S.gold},#d4943a)`,color:enviandoCrew?S.t3:'#000',fontSize:12,fontWeight:800,cursor:enviandoCrew?'default':'pointer',whiteSpace:'nowrap'}}>
+                    {enviandoCrew?'Enviando...':crewEnvios.length?'↻ Reenviar':'📤 Enviar a Crew'}
+                  </button>
+                </div>
+                {/* Resumen del envío por empleado */}
+                {crewEnvios.length>0 && (
+                  <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:240,overflowY:'auto'}}>
+                    {crewEnvios.map(ce=>{
+                      const pools = ce.desglose_pools && typeof ce.desglose_pools==='object' ? Object.entries(ce.desglose_pools) : [];
+                      return (
+                        <div key={ce.id} style={{background:S.bg3,border:`1px solid ${S.border}`,borderRadius:10,padding:'9px 12px'}}>
+                          <div style={{display:'flex',alignItems:'center',gap:8}}>
+                            <span style={{fontSize:12,fontWeight:700,flex:1}}>{ce.empleado_nombre}</span>
+                            <span style={{fontSize:9,color:S.t3}}>{ce.eventos} eventos</span>
+                            <span style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,color:S.gold}}>{fmt(ce.propina_total||0)}</span>
+                          </div>
+                          {pools.length>0 && (
+                            <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:6}}>
+                              {pools.map(([code,monto]:any)=>(
+                                <span key={code} style={{fontSize:9,padding:'2px 7px',borderRadius:6,background:'rgba(255,255,255,0.05)',color:S.t2,fontWeight:600}}>
+                                  {String(code).replace(/_/g,' ')}: <b style={{color:S.t1}}>{fmt(Number(monto)||0)}</b>
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
