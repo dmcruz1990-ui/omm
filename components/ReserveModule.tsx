@@ -150,6 +150,14 @@ const confirmarOhYeah = async (id:string) => {
 
 const guardar = async () => {
     if (!form.cliente_nombre) { show('⚠️ Nombre requerido'); return; }
+    // Capacidad: bloquea si la franja de 2h ya está llena (sólo reservas nuevas)
+    if (!selected?.id) {
+      const { data: disp } = await supabase.rpc('franja_disponibilidad', { p_fecha: form.fecha, p_hora: form.hora });
+      if (disp && disp.disponible === false) {
+        show(`⛔ Franja llena — ${disp.ocupadas}/${disp.mesas_total} mesas ocupadas a las ${form.hora}`);
+        return;
+      }
+    }
     setSaving(true);
     const payload = {...form,restaurante_id:6,estado:'confirmada',mesa_num:form.mesa_num||null};
     if (selected?.id) {
@@ -183,6 +191,12 @@ const sentarWalkin = async () => {
   if (!walkin.mesa) { show('⚠️ Selecciona una mesa'); return; }
   const ahora = new Date();
   const hh = ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
+  // Capacidad: el walk-in también respeta la franja de 2h
+  const { data: disp } = await supabase.rpc('franja_disponibilidad', { p_fecha: hoy, p_hora: hh });
+  if (disp && disp.disponible === false) {
+    show(`⛔ Franja llena — ${disp.ocupadas}/${disp.mesas_total} mesas ocupadas ahora`);
+    return;
+  }
   // Registro de la visita walk-in
   await supabase.from('reservations').insert({
     restaurante_id:6, cliente_nombre:walkin.nombre, cliente_email:'', cliente_telefono:'',
