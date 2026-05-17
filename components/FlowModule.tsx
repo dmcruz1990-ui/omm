@@ -57,7 +57,7 @@ export default function FlowModule() {
   const [filtroEst,  setFiltroEst]  = useState<string>('all');
   const [statsHoy,   setStatsHoy]   = useState<any>(null);
   const [careMetrics,setCareMetrics] = useState<any>(null);
-  const [careByMesa, setCareByMesa] = useState<Record<number,{stars:number; tags_negativos:string[]; platos_problema:string[]; created_at:string}>>({});
+  const [careByMesa, setCareByMesa] = useState<Record<number,any>>({});
   const [tick,       setTick]       = useState(0);
 
   useEffect(() => {
@@ -123,24 +123,41 @@ export default function FlowModule() {
     const hoy = new Date().toISOString().split('T')[0];
     const { data } = await supabase
       .from('xcare_encuestas')
-      .select('mesa_numero,estrellas,tags_negativos,platos_problema,created_at')
+      .select('id,mesa_numero,estrellas,tags_negativos,tags_positivos,platos_problema,comentario,gestion_conflicto,created_at')
       .gte('created_at', hoy+'T00:00:00')
       .order('created_at', {ascending:false});
     if (!data) return;
-    const map: Record<number,{stars:number; tags_negativos:string[]; platos_problema:string[]; created_at:string}> = {};
+    const map: Record<number,any> = {};
     data.forEach((d:any) => {
       if (d.mesa_numero == null) return;
       if (!map[d.mesa_numero]) {
         map[d.mesa_numero] = {
+          id: d.id,
           stars: d.estrellas || 0,
           tags_negativos: d.tags_negativos || [],
+          tags_positivos: d.tags_positivos || [],
           platos_problema: d.platos_problema || [],
+          comentario: d.comentario || '',
+          gestion_conflicto: Array.isArray(d.gestion_conflicto) ? d.gestion_conflicto : [],
           created_at: d.created_at,
         };
       }
     });
     setCareByMesa(map);
   }, []);
+
+  // Registrar una acción de gestión de conflicto en la encuesta
+  const registrarGestion = useCallback(async (encuestaId:any, accion:string) => {
+    if (!encuestaId) return;
+    const { data } = await supabase.from('xcare_encuestas').select('gestion_conflicto').eq('id',encuestaId).maybeSingle();
+    const actuales = Array.isArray(data?.gestion_conflicto) ? data!.gestion_conflicto : [];
+    const next = [...actuales, { accion, at: new Date().toISOString() }];
+    await supabase.from('xcare_encuestas').update({
+      gestion_conflicto: next,
+      alerta_resuelta: accion==='Resuelto' ? true : undefined,
+    }).eq('id', encuestaId);
+    fetchCareByMesa();
+  }, [fetchCareByMesa]);
 
   useEffect(() => { fetchLive(); fetchDia(); fetchCareMetrics(); fetchCareByMesa(); }, [fetchLive, fetchDia, fetchCareMetrics, fetchCareByMesa]);
   useEffect(() => { const t = setInterval(fetchLive, 15000); return () => clearInterval(t); }, [fetchLive]);
@@ -326,16 +343,79 @@ export default function FlowModule() {
                       </div>
                     </div>
 
-                    {/* Rating X-CARE — SIEMPRE visible (placeholder si no hay encuesta) */}
-                    <div style={{padding:'8px 14px',display:'flex',alignItems:'center',gap:10,borderBottom:`1px solid ${S.border}`,background:careRating ? `${careColor}08` : 'rgba(255,255,255,0.02)'}}
-                      title={careRating?`X-CARE: ${careRating.stars}★${careRating.tags_negativos?.length?` · ${careRating.tags_negativos.join(', ')}`:''}`:'Sin encuesta X-CARE aún'}>
-                      <span style={{fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em'}}>X-Care</span>
-                      <span style={{fontSize:16,letterSpacing:1,color: careRating?(careColor||S.gold):S.t3,fontWeight:900}}>
-                        {careRating ? `${'★'.repeat(careRating.stars)}${'☆'.repeat(Math.max(0,5-careRating.stars))}` : '☆☆☆☆☆'}
-                      </span>
-                      <span style={{fontSize:11,color:careRating?(careColor||S.t2):S.t3,marginLeft:'auto',fontWeight:700}}>
-                        {careRating ? `${careRating.stars}/5` : 'Sin encuesta'}
-                      </span>
+                    {/* Rating X-CARE + platos calificados + trazabilidad de conflicto */}
+                    <div style={{borderBottom:`1px solid ${S.border}`,background:careRating ? `${careColor}08` : 'rgba(255,255,255,0.02)'}}>
+                      <div style={{padding:'8px 14px',display:'flex',alignItems:'center',gap:10}}>
+                        <span style={{fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em'}}>X-Care</span>
+                        <span style={{fontSize:16,letterSpacing:1,color: careRating?(careColor||S.gold):S.t3,fontWeight:900}}>
+                          {careRating ? `${'★'.repeat(careRating.stars)}${'☆'.repeat(Math.max(0,5-careRating.stars))}` : '☆☆☆☆☆'}
+                        </span>
+                        <span style={{fontSize:11,color:careRating?(careColor||S.t2):S.t3,marginLeft:'auto',fontWeight:700}}>
+                          {careRating ? `${careRating.stars}/5` : 'Sin encuesta'}
+                        </span>
+                      </div>
+
+                      {/* Platos calificados — para que el chef vea qué gustó / qué falló */}
+                      {careRating && (careRating.platos_problema?.length>0) && (
+                        <div style={{padding:'0 14px 8px',display:'flex',flexWrap:'wrap',gap:4,alignItems:'center'}}>
+                          {careRating.stars>=4 ? (
+                            <>
+                              <span style={{fontSize:10,fontWeight:800,color:S.green}}>❤️ Le encantó:</span>
+                              {careRating.platos_problema.map((p:string,i:number)=>(
+                                <span key={i} style={{fontSize:10,padding:'2px 7px',borderRadius:8,background:`${S.green}15`,border:`1px solid ${S.green}35`,color:S.green,fontWeight:700}}>{p}</span>
+                              ))}
+                            </>
+                          ) : (
+                            <>
+                              <span style={{fontSize:10,fontWeight:800,color:S.red}}>⚠ Falló:</span>
+                              {careRating.platos_problema.map((p:string,i:number)=>(
+                                <span key={i} style={{fontSize:10,padding:'2px 7px',borderRadius:8,background:`${S.red}15`,border:`1px solid ${S.red}35`,color:S.red,fontWeight:700}}>{p}</span>
+                              ))}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Caja de trazabilidad — sólo en 1·2·3 estrellas */}
+                      {careRating && careRating.stars>0 && careRating.stars<=3 && (
+                        <div style={{margin:'0 12px 10px',padding:'9px 11px',background:`${S.red}0c`,border:`1px solid ${S.red}30`,borderRadius:10}}>
+                          <div style={{fontSize:9,fontWeight:900,color:S.red,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>
+                            🛠 Gestión del conflicto
+                          </div>
+                          {/* Acciones rápidas */}
+                          <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:(careRating.gestion_conflicto?.length>0)?7:0}}>
+                            {['📞 Llamé al cliente','🎁 Re-invitado','👨‍🍳 Receta corregida','🤵 Gerente intervino','✅ Resuelto'].map(a=>{
+                              const accion = a.replace(/^\S+\s/,'');
+                              const yaHecha = (careRating.gestion_conflicto||[]).some((g:any)=>g.accion===accion);
+                              return (
+                                <button key={a} onClick={()=>!yaHecha && registrarGestion(careRating.id, accion)}
+                                  disabled={yaHecha}
+                                  style={{fontSize:9.5,padding:'4px 8px',borderRadius:7,cursor:yaHecha?'default':'pointer',fontWeight:700,
+                                    border:`1px solid ${yaHecha?S.green+'50':'rgba(255,255,255,0.14)'}`,
+                                    background:yaHecha?`${S.green}15`:'rgba(255,255,255,0.04)',
+                                    color:yaHecha?S.green:S.t2}}>
+                                  {yaHecha?'✓ ':''}{a}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {/* Bitácora de acciones */}
+                          {careRating.gestion_conflicto?.length>0 && (
+                            <div style={{display:'flex',flexDirection:'column',gap:3}}>
+                              {careRating.gestion_conflicto.map((g:any,i:number)=>(
+                                <div key={i} style={{display:'flex',gap:6,fontSize:9.5,color:S.t2}}>
+                                  <span style={{color:S.green}}>●</span>
+                                  <span style={{fontWeight:700}}>{g.accion}</span>
+                                  <span style={{color:S.t3,marginLeft:'auto'}}>{g.at?new Date(g.at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}):''}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {(!careRating.gestion_conflicto||careRating.gestion_conflicto.length===0) && (
+                            <div style={{fontSize:9,color:S.t3,marginTop:2}}>Registra cómo se gestionó la queja del cliente.</div>
+                          )}
+                        </div>
+                      )}
                     </div>
 
                     {/* Items del pedido */}
