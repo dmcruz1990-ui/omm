@@ -32,6 +32,15 @@ const ZONA_AREAS: Record<string,{x:number;y:number;w:number;h:number}> = {
   'Ventanal':   {x:36,y:81,w:37,h:16},
   'Torre Bar':  {x:71,y:54,w:26,h:39},
 };
+// Lógica de mesas — rango de personas válido por capacidad de mesa
+const RANGO_MESA: Record<number,{min:number;max:number}> = {
+  2:{min:1,max:2}, 3:{min:2,max:3}, 4:{min:2,max:4}, 5:{min:2,max:5}, 6:{min:2,max:6},
+  7:{min:4,max:7}, 8:{min:4,max:8}, 9:{min:5,max:9}, 10:{min:6,max:10}, 11:{min:6,max:11},
+  12:{min:8,max:12}, 13:{min:10,max:13}, 14:{min:10,max:14}, 15:{min:10,max:15}, 16:{min:12,max:16},
+};
+const rangoMesa = (cap:number) => RANGO_MESA[cap] || { min: Math.max(1, Math.floor(cap*0.6)), max: cap };
+// Más de 16 personas → reservar por evento escribiendo al restaurante
+const MAX_PAX_RESERVA = 16;
 
 const S = {
   bg:'#08080f',bg2:'#0f0f1a',bg3:'#161624',
@@ -162,6 +171,11 @@ const confirmarOhYeah = async (id:string) => {
 
 const guardar = async () => {
     if (!form.cliente_nombre) { show('⚠️ Nombre requerido'); return; }
+    // Más de 16 personas → evento privado, escribir al restaurante
+    if ((form.pax||0) > MAX_PAX_RESERVA) {
+      show(`🎉 Grupos de +${MAX_PAX_RESERVA} se reservan por evento — el cliente debe escribir al restaurante`);
+      return;
+    }
     // Capacidad: bloquea si la franja de 2h ya está llena (sólo reservas nuevas)
     if (!selected?.id) {
       const { data: disp } = await supabase.rpc('franja_disponibilidad', { p_fecha: form.fecha, p_hora: form.hora });
@@ -201,6 +215,12 @@ const sentarWalkin = async () => {
   if (!walkin) return;
   if (!walkin.nombre.trim()) { show('⚠️ Nombre requerido'); return; }
   if (!walkin.mesa) { show('⚠️ Selecciona una mesa'); return; }
+  if (walkin.pax > MAX_PAX_RESERVA) { show(`🎉 Grupos de +${MAX_PAX_RESERVA} se gestionan como evento`); return; }
+  const mesaSel = mesas.find((m:any)=>Number(m.name)===walkin.mesa);
+  const rg = rangoMesa(mesaSel?.capacidad || mesaSel?.seats || 4);
+  if (walkin.pax < rg.min || walkin.pax > rg.max) {
+    show(`⚠️ La mesa ${walkin.mesa} admite ${rg.min}-${rg.max} personas`); return;
+  }
   const ahora = new Date();
   const hh = ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
   // Capacidad: el walk-in también respeta la franja de 2h
@@ -332,10 +352,20 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
               </div>
               {/* Cuerpo: mesas por zona */}
               <div style={{flex:1,overflowY:'auto',padding:'16px 22px'}}>
+                {pax > MAX_PAX_RESERVA ? (
+                  <div style={{textAlign:'center',padding:'30px 10px'}}>
+                    <div style={{fontSize:40,marginBottom:10}}>🎉</div>
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:6}}>Grupo de {pax} personas</div>
+                    <div style={{fontSize:12,color:S.t2,lineHeight:1.6,maxWidth:340,margin:'0 auto'}}>
+                      Las reservas de más de {MAX_PAX_RESERVA} personas se gestionan como <b style={{color:S.gold}}>evento privado</b>.
+                      El cliente debe escribir directamente al restaurante para coordinarlo.
+                    </div>
+                  </div>
+                ) : (<>
                 <div style={{fontSize:11,color:S.t3,marginBottom:14}}>
                   {libres.length} mesa{libres.length===1?'':'s'} libre{libres.length===1?'':'s'} ·
-                  <span style={{color:S.green,marginLeft:5}}>● ideal para {pax}p</span>
-                  <span style={{color:S.gold,marginLeft:10}}>● capacidad justa</span>
+                  <span style={{color:S.green,marginLeft:5}}>● apta para {pax}p</span>
+                  <span style={{color:S.t3,marginLeft:10}}>● no apta (tamaño)</span>
                 </div>
                 {zonas.map((zona:any)=>{
                   const delZona = tablesList.filter((t:any)=>t.zona===zona);
@@ -347,23 +377,26 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
                       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(78px,1fr))',gap:8}}>
                         {delZona.map((t:any)=>{
                           const libre = !t.estado || t.estado==='libre';
-                          const ideal = libre && t.cap>=pax;
-                          const justa = libre && t.cap<pax;
-                          const col = !libre ? S.t3 : ideal ? S.green : S.gold;
+                          const rg = rangoMesa(t.cap);
+                          const apta = libre && pax>=rg.min && pax<=rg.max;
+                          const motivo = pax<rg.min ? `mín ${rg.min}` : pax>rg.max ? `máx ${rg.max}` : '';
+                          const seleccionable = libre && apta;
+                          const col = !libre ? S.t3 : apta ? S.green : S.gold;
                           return (
-                            <button key={t.num} disabled={!libre}
+                            <button key={t.num} disabled={!seleccionable}
                               onClick={()=>{ asignarMesa(r.id, t.num); setAsignandoMesa(null); }}
                               style={{
                                 padding:'12px 6px',borderRadius:12,
-                                border:`2px solid ${libre?col:'rgba(255,255,255,0.06)'}`,
-                                background:libre?`${col}12`:'rgba(255,255,255,0.02)',
-                                cursor:libre?'pointer':'not-allowed',opacity:libre?1:0.4,
+                                border:`2px solid ${seleccionable?col:'rgba(255,255,255,0.06)'}`,
+                                background:seleccionable?`${col}12`:'rgba(255,255,255,0.02)',
+                                cursor:seleccionable?'pointer':'not-allowed',opacity:seleccionable?1:0.4,
                                 display:'flex',flexDirection:'column',alignItems:'center',gap:2,transition:'all .15s',
                               }}>
                               <span style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:col}}>M{t.num}</span>
-                              <span style={{fontSize:9,color:S.t2,fontWeight:600}}>{t.cap} pers.</span>
+                              <span style={{fontSize:9,color:S.t2,fontWeight:600}}>{rg.min}-{rg.max} pers.</span>
                               <span style={{fontSize:8,color:col,fontWeight:700,textTransform:'uppercase'}}>
-                                {!libre ? (t.estado==='ocupada'?'Ocupada':t.estado==='asignada'?'Sentada':'No disp.') : ideal?'Disponible':'Justa'}
+                                {!libre ? (t.estado==='ocupada'?'Ocupada':t.estado==='asignada'?'Sentada':'No disp.')
+                                  : apta ? 'Apta' : `No apta · ${motivo}`}
                               </span>
                             </button>
                           );
@@ -373,6 +406,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
                   );
                 })}
                 {tablesList.length===0 && <div style={{textAlign:'center',color:S.t3,padding:30}}>No hay mesas configuradas</div>}
+                </>)}
               </div>
             </div>
           </div>
