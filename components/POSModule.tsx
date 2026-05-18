@@ -1257,8 +1257,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       const itemsData = itemsCliente.map((it:any) => ({
         nombre: it.nombre, precio: it.precio, estado: it.estado
       }));
-      const desc = Math.round(totalCliente * (posDescuento||0) / 100);
-      const totalFinal = totalCliente - desc + propinaCliente;
+      // totalCliente ya incluye neto + IVA + propina (ver definición). No volver a sumar propina ni descuento.
+      const totalFinal = totalCliente;
       const meseroNombre = profile?.nombre_completo || 'Mesero';
       
       // Guardar datos de factura según tipo
@@ -1272,7 +1272,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           await supabase.from('facturas_electronicas').insert({
             restaurante_id:6, mesa_num:mesaCliente?.num??0,
             nombre:n, correo:em, cedula_nit:cc, telefono:tel, direccion:dir,
-            total:Math.round(totalCliente+propinaCliente),
+            total:Math.round(totalCliente),
             estado:'pendiente',
           }).then(()=>{}).catch(()=>{});
         }
@@ -1336,10 +1336,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         mesa_num: mesaCliente?.num ?? 0,
         mesero: meseroNombre,
         items: itemsData,
-        subtotal: Math.round(totalCliente),
-        iva: Math.round(totalCliente * 0.08),
+        subtotal: Math.round(netoCliente),
+        iva: Math.round(ivaCliente),
         propina: Math.round(propinaCliente),
-        descuento: desc,
+        descuento: descuentoCliente,
         total: Math.round(totalFinal),
         metodo_pago: metodoPago,
         factura_tipo: facturaTipo,
