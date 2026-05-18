@@ -92,12 +92,11 @@ function EncuestaXCare({
     if (estrellas <= 2) {
       await supabase.from('xcare_alertas').insert({
         restaurante_id: 6,
-        mesa_num: mesaNum,
-        mesero_nombre: meseroNombre,
-        senales: platosSeleccionados.length > 0 ? platosSeleccionados : ['Experiencia negativa'],
-        nivel_riesgo: estrellas === 1 ? 'critico' : 'alto',
+        mesa_numero: mesaNum,
+        tipo: estrellas === 1 ? 'critico' : 'alto',
+        activa: true,
         descripcion: `${estrellas}★ — ${tagsSeleccionados.join(', ')}${comentario?` — "${comentario}"`: ''}`,
-      });
+      }).then(()=>{}).catch(()=>{});
     }
     onGuardar(data);
     setPaso('gracias');
@@ -386,7 +385,15 @@ export default function CareModule() {
       }));
       setEncuestas(norm as XCareEncuesta[]);
     }
-    if (alt.data)  setAlertas(alt.data as XCareAlerta[]);
+    if (alt.data) {
+      // xcare_alertas guarda mesa_numero/tipo; el render usa mesa_num/nivel_riesgo.
+      const altNorm = (alt.data as any[]).map(a => ({
+        ...a,
+        mesa_num:     a.mesa_num ?? a.mesa_numero ?? null,
+        nivel_riesgo: a.nivel_riesgo ?? a.tipo ?? 'media',
+      }));
+      setAlertas(altNorm as XCareAlerta[]);
+    }
     if (dash.data) setDashboard(dash.data);
     setLoading(false);
   }, []);
@@ -417,7 +424,7 @@ export default function CareModule() {
   }, [fetchData]);
 
   const resolverAlerta = async (id:string) => {
-    await supabase.from('xcare_alertas').update({resuelta:true,resuelta_at:new Date().toISOString()}).eq('id',id);
+    await supabase.from('xcare_alertas').update({resuelta:true}).eq('id',id);
     setAlertas(prev => prev.filter(a=>a.id!==id));
   };
 

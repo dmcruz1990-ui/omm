@@ -228,7 +228,7 @@ const sentarWalkin = async () => {
   // Registro de la visita walk-in
   await supabase.from('reservations').insert({
     restaurante_id:6, cliente_nombre:walkin.nombre, cliente_email:'', cliente_telefono:'',
-    fecha:hoy, hora:hh, pax:walkin.pax, ocasion:'Walk-in', notas:'Walk-in — sentado en sala',
+    fecha:ahora.toISOString().split('T')[0], hora:hh, pax:walkin.pax, ocasion:'Walk-in', notas:'Walk-in — sentado en sala',
     estado:'sentada', mesa_num:walkin.mesa, sentado_at:new Date().toISOString(),
   }).then(()=>{}).catch(()=>{});
   // La mesa queda VERDE (asignada) en el mapa del POS

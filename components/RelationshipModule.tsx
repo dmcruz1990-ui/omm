@@ -156,7 +156,7 @@ export default function CustomersModule() {
       await supabase.from('customers').update(form).eq('id',selected.id);
       showToast('✓ Cliente actualizado');
     } else {
-      await supabase.from('customers').insert({ ...form, restaurante_id:6, score:0, total_visits:0, total_spent:0, puntos:0 });
+      await supabase.from('customers').insert({ ...form, score:0, total_visits:0, total_spent:0, puntos:0 });
       showToast('✓ Cliente creado');
       setCtab('lista');
     }
@@ -200,7 +200,7 @@ export default function CustomersModule() {
     let ok=0, err=0;
     for (const row of csvPreview.slice(0,200)) {
       try {
-        await supabase.from('customers').insert({ ...row, restaurante_id:6, score:0, total_visits:0, puntos:0 });
+        await supabase.from('customers').insert({ ...row, score:0, total_visits:0, puntos:0 });
         ok++;
       } catch { err++; }
     }
@@ -784,7 +784,7 @@ export default function CustomersModule() {
                         <div style={{fontSize:10,color:S.t3,marginBottom:4}}>{h}</div>
                         <select style={inp} value={csvMapping[h]||''} onChange={e=>setCsvMapping(p=>({...p,[h]:e.target.value}))}>
                           <option value="">No importar</option>
-                          {['name','apellido','phone','email','ciudad','documento','origen_captacion','notas'].map(f=><option key={f} value={f}>{f}</option>)}
+                          {['name','apellido','phone','email','ciudad','documento','origen_captacion','notes'].map(f=><option key={f} value={f}>{f}</option>)}
                         </select>
                       </div>
                     ))}
