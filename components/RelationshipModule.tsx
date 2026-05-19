@@ -153,10 +153,13 @@ export default function CustomersModule() {
   const guardar = async () => {
     if (!form.name) { showToast('⚠️ Nombre requerido'); return; }
     if (selected && editMode) {
-      await supabase.from('customers').update(form).eq('id',selected.id);
+      if (selected.origen_captacion === 'oh_yeah') { showToast('⚠️ Cliente de Oh Yeah — solo lectura'); return; }
+      const { error } = await supabase.from('customers').update(form).eq('id',selected.id);
+      if (error) { showToast('✗ No se pudo actualizar: ' + error.message); return; }
       showToast('✓ Cliente actualizado');
     } else {
-      await supabase.from('customers').insert({ ...form, score:0, total_visits:0, total_spent:0, puntos:0 });
+      const { error } = await supabase.from('customers').insert({ ...form, score:0, total_visits:0, total_spent:0, puntos:0 });
+      if (error) { showToast('✗ No se pudo crear: ' + error.message); return; }
       showToast('✓ Cliente creado');
       setCtab('lista');
     }
@@ -165,8 +168,10 @@ export default function CustomersModule() {
 
   const agregarNota = async () => {
     if (!nuevaNota.trim() || !selected) return;
+    if (selected.origen_captacion === 'oh_yeah') { showToast('⚠️ Cliente de Oh Yeah — solo lectura'); return; }
     const notas = selected.historial_notas || [];
-    await supabase.from('customers').update({ historial_notas:[...notas,{fecha:hoy(),nota:nuevaNota,autor:'Staff'}] }).eq('id',selected.id);
+    const { error } = await supabase.from('customers').update({ historial_notas:[...notas,{fecha:hoy(),nota:nuevaNota,autor:'Staff'}] }).eq('id',selected.id);
+    if (error) { showToast('✗ No se pudo guardar la nota'); return; }
     showToast('✓ Nota agregada');
     setNuevaNota('');
     fetchClientes();
@@ -556,8 +561,8 @@ export default function CustomersModule() {
                 )}
 
                 <div style={{display:'flex',gap:8}}>
-                  <button onClick={()=>{ setEditMode(true); setCtab('nuevo'); }}
-                    style={{flex:1,padding:11,borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t2,cursor:'pointer',fontSize:12,fontWeight:700}}>
+                  <button onClick={()=>{ if(selected.origen_captacion==='oh_yeah'){ showToast('⚠️ Cliente de Oh Yeah — solo lectura'); return; } setEditMode(true); setCtab('nuevo'); }}
+                    style={{flex:1,padding:11,borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:selected.origen_captacion==='oh_yeah'?S.t3:S.t2,cursor:'pointer',fontSize:12,fontWeight:700}}>
                     ✏️ Editar
                   </button>
                   <button onClick={()=>setCtab('lista')}

@@ -2512,7 +2512,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const mesaCliente = displayTables.find(x => x.id === clienteTableId) || displayTables[0];
   const itemsCliente = order.filter(o => o.mesa === mesaCliente?.num);
   // mesaCliente.ticket ya incluye el pedido local (ver displayTables); no re-sumar.
-  const subtotalCliente = (mesaCliente?.ticket || 0);
+  // Restar los platos que el Maître haya eliminado de la cuenta.
+  const totalEliminadoCliente = itemsCliente
+    .filter(i => itemsEliminados.includes(i.nombre))
+    .reduce((s, i) => s + parsePrecio(i.precio), 0);
+  const subtotalCliente = Math.max(0, (mesaCliente?.ticket || 0) - totalEliminadoCliente);
   const descuentoCliente = Math.round(subtotalCliente * (posDescuento / 100));
   const corteCliente = posCorte;
   const netoCliente = Math.max(0, subtotalCliente - descuentoCliente - corteCliente);
