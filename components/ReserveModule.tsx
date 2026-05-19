@@ -95,6 +95,7 @@ export default function ReserveModule() {
     pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0,
   });
   const [walkin, setWalkin] = useState<{nombre:string;pax:number;mesa:number}|null>(null);
+  const [sugerenciasHora, setSugerenciasHora] = useState<{hora:string,libres:number}[]>([]);
   const [sobreventa, setSobreventa] = useState(0);
 
   const show = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
@@ -178,14 +179,32 @@ const guardar = async () => {
       show(`🎉 Grupos de +${MAX_PAX_RESERVA} se reservan por evento — el cliente debe escribir al restaurante`);
       return;
     }
-    // Capacidad: bloquea si la franja de 2h ya está llena (sólo reservas nuevas)
+    // Capacidad: si la franja está llena, NO bloqueamos — Soft Denial™ del PDF NEXUM:
+    // sugerimos horarios alternativos cercanos con disponibilidad real.
     if (!selected?.id) {
       const { data: disp } = await supabase.rpc('franja_disponibilidad', { p_fecha: form.fecha, p_hora: form.hora });
       if (disp && disp.disponible === false) {
-        show(`⛔ Franja llena — ${disp.ocupadas}/${disp.mesas_total} mesas ocupadas a las ${form.hora}`);
+        const addMin = (hhmm:string, d:number) => {
+          const [h,m] = hhmm.split(':').map(Number);
+          const total = Math.max(0, Math.min(23*60+45, h*60+m+d));
+          return `${String(Math.floor(total/60)).padStart(2,'0')}:${String(total%60).padStart(2,'0')}`;
+        };
+        const deltas = [-60,-45,-30,-15,15,30,45,60];
+        const candidatos = deltas.map(d => addMin(form.hora, d));
+        const checks = await Promise.all(candidatos.map(h =>
+          supabase.rpc('franja_disponibilidad', { p_fecha: form.fecha, p_hora: h })
+            .then((r:any) => ({ hora: h, libres: r.data?.disponible ? Math.max(0, (r.data.mesas_total||0) - (r.data.ocupadas||0)) : 0 }))
+            .catch(() => ({ hora: h, libres: 0 }))
+        ));
+        const sug = checks.filter(c => c.libres > 0).sort((a,b)=>b.libres-a.libres).slice(0, 4);
+        setSugerenciasHora(sug);
+        show(sug.length
+          ? `🌟 Recomendamos otra hora — ${sug.length} opciones disponibles`
+          : `⚠️ Sin disponibilidad cercana — prueba otra fecha o la lista prioritaria`);
         return;
       }
     }
+    setSugerenciasHora([]);
     setSaving(true);
     const payload = {...form,restaurante_id:6,estado:'confirmada',mesa_num:form.mesa_num||null};
     if (selected?.id) {
@@ -270,7 +289,11 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
   // reservas ya viene filtrado por la fecha seleccionada (fechaFiltro).
   // No re-filtrar por "hoy" — eso vaciaba la pestaña al cambiar de día.
   const reservasHoy = reservas;
-  const ocupacion = mesas.length?Math.round(reservasHoy.filter(r=>r.estado==='sentada').length/mesas.length*100):0;
+  // Walk-ins NO afectan ocupación esperada (PDF NEXUM § 4 — son capacidad residual)
+  const esWalkin = (r:any) => r.ocasion === 'Walk-in' || String(r.notas || '').toLowerCase().includes('walk-in');
+  const reservasReales = reservasHoy.filter((r:any) => !esWalkin(r));
+  const walkinsCount = reservasHoy.filter(esWalkin).length;
+  const ocupacion = mesas.length?Math.round(reservasReales.filter(r=>r.estado==='sentada').length/mesas.length*100):0;
 
   return (
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:S.bg,color:S.t1,fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
@@ -433,7 +456,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
         </div>
         {[
           {l:'Hoy',v:`${reservasHoy.length} reservas`,c:S.blue},
-          {l:'Pax',v:`${reservasHoy.reduce((s,r)=>s+(r.pax||0),0)}p`,c:S.purple},
+          {l:'Pax',v:`${reservasReales.reduce((s,r)=>s+(r.pax||0),0)}p`,c:S.purple},
+          {l:'Walk-ins',v:`${walkinsCount}`,c:S.cyan},
           {l:'Ocupación',v:`${ocupacion}%`,c:ocupacion>80?S.red:ocupacion>50?S.gold:S.green},
           {l:'Oh Yeah',v:`${reservas.filter(r=>r.origen==='ohyeah').length}`,c:S.gold},
         ].map(k=>(
@@ -740,7 +764,18 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
               </div>
               <div>
                 <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>HORA *</div>
-                <input type="time" style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.hora} onChange={e=>setF('hora',e.target.value)}/>
+                <input type="time" style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.hora} onChange={e=>{ setF('hora',e.target.value); setSugerenciasHora([]); }}/>
+                {sugerenciasHora.length > 0 && (
+                  <div style={{marginTop:8,display:'flex',gap:5,flexWrap:'wrap',alignItems:'center'}}>
+                    <span style={{fontSize:9,color:S.gold,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em'}}>🌟 Mejor disponibilidad:</span>
+                    {sugerenciasHora.map(s=>(
+                      <button key={s.hora} type="button" onClick={()=>{ setF('hora',s.hora); setSugerenciasHora([]); }}
+                        style={{padding:'4px 10px',borderRadius:8,border:`1px solid ${S.gold}55`,background:`${S.gold}18`,color:S.gold,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                        {s.hora} <span style={{color:S.green,marginLeft:3}}>· {s.libres} libres</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
               <div>
                 <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>PERSONAS</div>
