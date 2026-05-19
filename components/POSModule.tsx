@@ -1333,25 +1333,27 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         }).then(()=>{}).catch(()=>{});
       }
 
-      // Guardar en facturacion
-      await supabase.from('facturacion').insert({
-        restaurante_id: 6,
-        mesa_num: mesaCliente?.num ?? 0,
-        mesero: meseroNombre,
-        items: itemsData,
-        subtotal: Math.round(netoCliente),
-        iva: Math.round(ivaCliente),
-        propina: Math.round(propinaCliente),
-        descuento: descuentoCliente,
-        total: Math.round(totalFinal),
-        metodo_pago: metodoPago,
-        factura_tipo: facturaTipo,
-        cliente_email: facturaCorreo || null,
-        puntos_generados: calcularPuntos(totalFinal),
-        cerrada_en: ahora.toISOString(),
-        fecha: ahora.toISOString().split('T')[0],
-        hora: ahora.toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' }),
-      });
+      // Guardar en facturacion — no debe bloquear el cierre de mesa si falla
+      try {
+        await supabase.from('facturacion').insert({
+          restaurante_id: 6,
+          mesa_num: mesaCliente?.num ?? 0,
+          mesero: meseroNombre,
+          items: itemsData,
+          subtotal: Math.round(netoCliente),
+          iva: Math.round(ivaCliente),
+          propina: Math.round(propinaCliente),
+          descuento: descuentoCliente,
+          total: Math.round(totalFinal),
+          metodo_pago: metodoPago,
+          factura_tipo: facturaTipo,
+          cliente_email: facturaCorreo || null,
+          puntos_generados: calcularPuntos(totalFinal),
+          cerrada_en: ahora.toISOString(),
+          fecha: ahora.toISOString().split('T')[0],
+          hora: ahora.toLocaleTimeString('es-CO', { hour:'2-digit', minute:'2-digit' }),
+        });
+      } catch (e) { console.error('facturacion insert error:', e); }
 
       // Cerrar la orden en Supabase
       const { data: ordenes } = await supabase.from('orders').select('id')
@@ -1363,7 +1365,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       }
       // Liberar la mesa: estado 'libre' + cierre de orden (RPC cerrar_mesa)
       if (mesaCliente?.num != null) {
-        await supabase.rpc('cerrar_mesa', { p_mesa_name: String(mesaCliente.num) });
+        await supabase.rpc('cerrar_mesa', { p_mesa_name: String(mesaCliente.name ?? mesaCliente.num) });
       }
     } catch(e) { console.error('guardarFactura error:', e); }
     finally { cobrandoRef.current = false; }
@@ -3644,7 +3646,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
       {/* ═══ PASO 5: PREMIO — picker entre Ruleta y 6 Cartas ═══ */}
       {clientePaso === 'premio' && (() => {
-        const cerrarMesa = () => {
+        const cerrarMesa = async () => {
+          const mesaName = String(mesaCliente?.name ?? mesaCliente?.num ?? '');
+          if (mesaName) {
+            try { await supabase.rpc('cerrar_mesa', { p_mesa_name: mesaName }); }
+            catch (e) { console.error('cerrar_mesa error:', e); }
+          }
           setClienteMode(false);
           setOrder(prev => prev.filter(o => o.mesa !== mesaCliente?.num));
           setClientePaso('cuenta');
@@ -4889,15 +4896,23 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   className="w-full py-2.5 rounded-xl text-[12px] font-black transition-all bg-[#d4943a] text-black hover:bg-[#f0b45a] active:bg-[#3dba6f] flex items-center justify-center gap-2">
                   {isGerencia || pinUnlocked ? '👔 Cobrar Gerencia' : '🔐 Cobrar Gerencia'}
                 </button>
-                {/* Cobrar Xpress — rápido sin ajustes */}
-                <button onClick={() => abrirModoCliente(selectedTableId)}
+                {/* Cobrar Xpress — rápido sin ajustes (requiere clave de gerencia) */}
+                <button onClick={() => {
+                    if (isGerencia || pinUnlocked) { abrirModoCliente(selectedTableId); }
+                    else { requirePin(() => abrirModoCliente(selectedTableId)); }
+                  }}
                   className="w-full py-2.5 rounded-xl text-[12px] font-black transition-all bg-[#3dba6f] text-black hover:bg-[#4dca7f] active:bg-[#d4943a] flex items-center justify-center gap-2">
-                  ⚡ Cobrar Xpress
+                  {isGerencia || pinUnlocked ? '⚡ Cobrar Xpress' : '🔐 Cobrar Xpress'}
                 </button>
               </div>
               <div className="flex gap-2 flex-wrap">
                 <button onClick={() => setMostrarTraspaso(true)} className="flex-1 py-2 px-2 rounded-lg text-[11px] font-semibold border border-[#4a8fd4]/40 text-[#4a8fd4] hover:bg-[#4a8fd4]/10 transition-all">↔ Traspaso</button>
-                <button onClick={() => { showToast(`Mesa ${selectedTable.num} cerrada`); setOrder(prev => prev.filter(o => o.mesa !== selectedTable.num)); }} className="flex-1 py-2 px-2 rounded-lg text-[11px] font-semibold bg-[#e05050]/15 border border-[#e05050]/30 text-[#e05050] hover:bg-[#e05050]/25 transition-all">Cerrar Mesa</button>
+                <button onClick={() => requirePin(async () => {
+                    const mesaName = String(selectedTable?.name ?? selectedTable?.num ?? '');
+                    if (mesaName) { try { await supabase.rpc('cerrar_mesa', { p_mesa_name: mesaName }); } catch (e) { console.error('cerrar_mesa error:', e); } }
+                    setOrder(prev => prev.filter(o => o.mesa !== selectedTable.num));
+                    showToast(`✓ Mesa ${selectedTable.num} cerrada`);
+                  })} className="flex-1 py-2 px-2 rounded-lg text-[11px] font-semibold bg-[#e05050]/15 border border-[#e05050]/30 text-[#e05050] hover:bg-[#e05050]/25 transition-all">Cerrar Mesa</button>
               </div>
             </div>
           )}
