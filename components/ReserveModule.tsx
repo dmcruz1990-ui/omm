@@ -1181,8 +1181,19 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, 
                     {/* Punto pulsante */}
                     {reserva?.estado==='sentada' && <div style={{position:'absolute',top:2,right:2,width:6,height:6,borderRadius:'50%',background:mesaColor,boxShadow:enAlerta?`0 0 6px ${mesaColor}`:'none'}}/>}
                     {enAlerta && <div style={{position:'absolute',top:-4,left:'50%',transform:'translateX(-50%)',fontSize:9,whiteSpace:'nowrap'}}>⚠️</div>}
-                    {/* Estrella VIP */}
-                    {vipPorNum.has(mesa.num) && <div style={{position:'absolute',top:-5,left:-3,fontSize:'clamp(8px,1.1vw,13px)',filter:'drop-shadow(0 0 3px #FFB547)'}}>⭐</div>}
+                    {/* Botón VIP — siempre visible en cada mesa, click toggle */}
+                    <button onClick={(e)=>{e.stopPropagation(); onToggleVip && onToggleVip(mesa.num, !vipPorNum.has(mesa.num));}}
+                      title={vipPorNum.has(mesa.num)?`Mesa ${mesa.num} — Quitar VIP`:`Mesa ${mesa.num} — Marcar como VIP`}
+                      style={{position:'absolute',top:-7,left:-5,width:18,height:18,display:'flex',alignItems:'center',justifyContent:'center',
+                        background:vipPorNum.has(mesa.num)?'rgba(255,181,71,0.95)':'rgba(20,20,30,0.85)',
+                        border:`1.5px solid ${vipPorNum.has(mesa.num)?'#FFB547':'rgba(255,255,255,0.25)'}`,
+                        borderRadius:'50%',cursor:'pointer',padding:0,
+                        fontSize:'clamp(7px,0.9vw,11px)',
+                        color:vipPorNum.has(mesa.num)?'#000':'#a0a0b8',
+                        boxShadow:vipPorNum.has(mesa.num)?'0 0 8px rgba(255,181,71,0.7)':'0 1px 4px rgba(0,0,0,0.4)',
+                        transition:'all .15s',zIndex:4}}>
+                      {vipPorNum.has(mesa.num)?'⭐':'☆'}
+                    </button>
                   </div>
                 );
               })}
