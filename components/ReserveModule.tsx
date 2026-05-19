@@ -94,7 +94,8 @@ export default function ReserveModule() {
     fecha:new Date().toISOString().split('T')[0],hora:'20:00',
     pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0,
   });
-  const [walkin, setWalkin] = useState<{nombre:string;pax:number;mesa:number}|null>(null);
+  const [walkin, setWalkin] = useState<{nombre:string;pax:number;mesa:number;telefono:string;email:string;vip:boolean}|null>(null);
+  const [walkinCRM, setWalkinCRM] = useState<any>(null);
   const [sugerenciasHora, setSugerenciasHora] = useState<{hora:string,libres:number}[]>([]);
   const [sobreventa, setSobreventa] = useState(0);
   // PDF NEXUM § Roadmap 1 — Modos dinámicos (Base / Smart Peak / Evento Especial)
@@ -245,6 +246,7 @@ const cambiarEstado = async (id:any, estado:string, esOhYeah:boolean=false) => {
 const sentarWalkin = async () => {
   if (!walkin) return;
   if (!walkin.nombre.trim()) { show('⚠️ Nombre requerido'); return; }
+  if (!walkin.telefono.trim()) { show('⚠️ Celular requerido'); return; }
   if (!walkin.mesa) { show('⚠️ Selecciona una mesa'); return; }
   if (walkin.pax > MAX_PAX_RESERVA) { show(`🎉 Grupos de +${MAX_PAX_RESERVA} se gestionan como evento`); return; }
   const mesaSel = mesas.find((m:any)=>Number(m.name)===walkin.mesa);
@@ -254,21 +256,36 @@ const sentarWalkin = async () => {
   }
   const ahora = new Date();
   const hh = ahora.getHours().toString().padStart(2,'0')+':'+ahora.getMinutes().toString().padStart(2,'0');
-  // §2 del doc: el walk-in NO se bloquea por la franja — toma capacidad
-  // residual. Sólo necesita una mesa físicamente libre (ya filtrada arriba).
+  // §2 del doc: el walk-in NO se bloquea por la franja — toma capacidad residual.
   // Registro de la visita walk-in
   await supabase.from('reservations').insert({
-    restaurante_id:6, cliente_nombre:walkin.nombre, cliente_email:'', cliente_telefono:'',
+    restaurante_id:6, cliente_nombre:walkin.nombre, cliente_email:walkin.email||'', cliente_telefono:walkin.telefono,
     fecha:ahora.toISOString().split('T')[0], hora:hh, pax:walkin.pax, ocasion:'Walk-in', notas:'Walk-in — sentado en sala',
     estado:'sentada', mesa_num:walkin.mesa, sentado_at:new Date().toISOString(),
   }).then(()=>{}).catch(()=>{});
-  // La mesa queda VERDE (asignada) en el mapa del POS
+  // Persistir/actualizar el cliente en el CRM (customers) para tener su historial
+  if (walkinCRM?.id) {
+    await supabase.from('customers').update({
+      total_visits: (Number(walkinCRM.total_visits)||0) + 1,
+      ultima_visita: ahora.toISOString().split('T')[0],
+      ...(walkin.vip && !walkinCRM.vip_status ? { vip_status: true } : {}),
+    }).eq('id', walkinCRM.id).then(()=>{}).catch(()=>{});
+  } else {
+    await supabase.from('customers').insert({
+      name: walkin.nombre, phone: walkin.telefono, email: walkin.email || null,
+      origen_captacion: 'walk-in', vip_status: !!walkin.vip,
+      total_visits: 1, ultima_visita: ahora.toISOString().split('T')[0],
+      score: 0, puntos: 0, activo: true,
+    }).then(()=>{}).catch(()=>{});
+  }
+  // La mesa queda VERDE (asignada) en el mapa del POS — con datos del cliente
   await supabase.from('tables').update({
     estado:'asignada', cliente_nombre:walkin.nombre, pax_actual:walkin.pax,
+    cliente_telefono:walkin.telefono, cliente_email:walkin.email||null, vip:!!walkin.vip,
     mesero_nombre:null, meseros_compartidos:[], abierta_en:new Date().toISOString(),
   }).eq('name', String(walkin.mesa));
-  show(`✓ Walk-in sentado en mesa ${walkin.mesa} — visible en POS`);
-  setWalkin(null);
+  show(`✓ Walk-in sentado en mesa ${walkin.mesa} — registrado en CRM`);
+  setWalkin(null); setWalkinCRM(null);
   fetchData();
 };
 
@@ -350,15 +367,69 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
 
       {/* ── MODAL WALK-IN ── */}
       {walkin && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>setWalkin(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:20,width:'100%',maxWidth:400,padding:24}}>
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>{setWalkin(null);setWalkinCRM(null);}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:20,width:'100%',maxWidth:400,padding:24,maxHeight:'92vh',overflowY:'auto'}}>
             <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,marginBottom:3}}>🚶 Sentar Walk-in</div>
-            <div style={{fontSize:11,color:S.t3,marginBottom:18}}>Cliente sin reserva — se sienta directo y la mesa queda verde en el POS.</div>
+            <div style={{fontSize:11,color:S.t3,marginBottom:18}}>Cliente sin reserva — buscamos en CRM antes de sentarlo y queda registrado.</div>
 
-            <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Nombre del cliente</div>
-            <input value={walkin.nombre} onChange={e=>setWalkin(w=>w?{...w,nombre:e.target.value}:w)} autoFocus
+            {/* Celular primero — dispara búsqueda en customers + nexum_clientes_ohyeah */}
+            <div style={{fontSize:10,color:S.gold,fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>📱 Celular *</div>
+            <input value={walkin.telefono}
+              onChange={e=>setWalkin(w=>w?{...w,telefono:e.target.value}:w)}
+              onBlur={async e=>{
+                const t = e.target.value.trim();
+                if (t.length < 7) { setWalkinCRM(null); return; }
+                const [c1, c2] = await Promise.all([
+                  supabase.from('customers').select('id,name,email,vip_status,total_visits,total_spent,score,puntos,origen_captacion').eq('phone', t).limit(1).maybeSingle(),
+                  supabase.from('nexum_clientes_ohyeah').select('id,nombre,email,nivel,visitas,total_reservas,dias_sin_visitar').eq('telefono', t).limit(1).maybeSingle(),
+                ]);
+                const c = c1.data || (c2.data ? { ...c2.data, name:c2.data.nombre, total_visits:c2.data.visitas, score:0, vip_status:String(c2.data.nivel||'').toUpperCase()==='VIP', origen_captacion:'oh_yeah' } : null);
+                if (c) {
+                  setWalkinCRM(c);
+                  setWalkin(w => w ? { ...w, nombre: w.nombre || c.name || '', email: w.email || c.email || '', vip: w.vip || !!c.vip_status } : w);
+                } else setWalkinCRM(null);
+              }}
+              placeholder="3001234567" inputMode="tel" autoFocus
+              style={{width:'100%',padding:'12px 14px',borderRadius:10,border:`1px solid ${walkin.telefono?S.gold:S.border2}`,background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:14,fontWeight:600,outline:'none',marginBottom:10}}/>
+
+            {walkinCRM && (
+              <div style={{background:`${S.green}10`,border:`1px solid ${S.green}40`,borderRadius:10,padding:'10px 14px',marginBottom:12,display:'flex',flexDirection:'column',gap:6}}>
+                <div style={{display:'flex',alignItems:'center',gap:10}}>
+                  <span style={{fontSize:20}}>{walkinCRM.vip_status?'⭐':walkinCRM.origen_captacion==='oh_yeah'?'🦉':'✓'}</span>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,fontWeight:700,color:S.green}}>
+                      Cliente conocido{walkinCRM.vip_status?' · VIP':''}{walkinCRM.origen_captacion==='oh_yeah'?' · Oh Yeah':''}
+                    </div>
+                    <div style={{fontSize:10,color:S.t3}}>{walkinCRM.name} · {walkinCRM.total_visits||0} visita(s)</div>
+                  </div>
+                </div>
+                {(walkinCRM.score>0 || walkinCRM.nivel) && (
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                    {walkinCRM.score>0 && <span style={{fontSize:9,background:`${S.green}1f`,color:S.green,padding:'2px 8px',borderRadius:8,fontWeight:800}}>📊 Score {walkinCRM.score}</span>}
+                    {walkinCRM.nivel && <span style={{fontSize:9,background:`${S.gold}1f`,color:S.gold,padding:'2px 8px',borderRadius:8,fontWeight:800}}>🦉 {walkinCRM.nivel}</span>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div style={{fontSize:10,color:S.gold,fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Nombre *</div>
+            <input value={walkin.nombre} onChange={e=>setWalkin(w=>w?{...w,nombre:e.target.value}:w)}
               placeholder="Ej: Sr. Pérez, Familia López..."
-              style={{width:'100%',padding:'10px 14px',borderRadius:10,border:`1px solid ${S.border2}`,background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',marginBottom:14}}/>
+              style={{width:'100%',padding:'10px 14px',borderRadius:10,border:`1px solid ${S.border2}`,background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',marginBottom:10}}/>
+
+            <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Email (opcional)</div>
+            <input value={walkin.email} onChange={e=>setWalkin(w=>w?{...w,email:e.target.value}:w)}
+              placeholder="correo@ejemplo.com" inputMode="email"
+              style={{width:'100%',padding:'10px 14px',borderRadius:10,border:`1px solid ${S.border2}`,background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',marginBottom:12}}/>
+
+            <button onClick={()=>setWalkin(w=>w?{...w,vip:!w.vip}:w)}
+              style={{width:'100%',padding:'10px 14px',borderRadius:10,marginBottom:14,cursor:'pointer',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:8,
+                border:`1px solid ${walkin.vip?S.gold:S.border2}`,
+                background:walkin.vip?`${S.gold}22`:'transparent',
+                color:walkin.vip?S.gold:S.t3}}>
+              <span style={{fontSize:14}}>{walkin.vip?'⭐':'☆'}</span>
+              {walkin.vip?'Cliente VIP — marcado':'Marcar como VIP'}
+            </button>
 
             <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Personas</div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:6,marginBottom:14}}>
@@ -382,7 +453,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
             </div>
 
             <div style={{display:'flex',gap:10}}>
-              <button onClick={()=>setWalkin(null)} style={{flex:1,padding:'11px',borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t3,cursor:'pointer',fontSize:13}}>Cancelar</button>
+              <button onClick={()=>{setWalkin(null);setWalkinCRM(null);}} style={{flex:1,padding:'11px',borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t3,cursor:'pointer',fontSize:13}}>Cancelar</button>
               <button onClick={sentarWalkin} style={{flex:2,padding:'11px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.green},#2a9d5a)`,color:'#fff',fontWeight:700,cursor:'pointer',fontSize:13}}>✓ Sentar walk-in</button>
             </div>
           </div>
@@ -563,7 +634,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
           </div>
           <input type="date" value={fechaFiltro} onChange={e=>setFechaFiltro(e.target.value)}
             style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:8,padding:'7px 12px',color:'#fff',fontSize:12,outline:'none'}}/>
-          <button onClick={()=>setWalkin({nombre:'',pax:2,mesa:0})}
+          <button onClick={()=>setWalkin({nombre:'',pax:2,mesa:0,telefono:'',email:'',vip:false})}
             style={{padding:'8px 16px',borderRadius:10,border:`1px solid ${S.green}`,background:`${S.green}18`,color:S.green,fontSize:12,fontWeight:700,cursor:'pointer'}}>
             🚶 Walk-in
           </button>
