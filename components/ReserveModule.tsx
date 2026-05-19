@@ -97,6 +97,16 @@ export default function ReserveModule() {
   const [walkin, setWalkin] = useState<{nombre:string;pax:number;mesa:number}|null>(null);
   const [sugerenciasHora, setSugerenciasHora] = useState<{hora:string,libres:number}[]>([]);
   const [sobreventa, setSobreventa] = useState(0);
+  // PDF NEXUM § Roadmap 1 — Modos dinámicos (Base / Smart Peak / Evento Especial)
+  const [modoDinamico, setModoDinamico] = useState<'base'|'smart_peak'|'evento'>(() => {
+    try { return (localStorage.getItem('omm_modo_dinamico') as any) || 'base'; } catch { return 'base'; }
+  });
+  const cambiarModo = (m:'base'|'smart_peak'|'evento') => {
+    setModoDinamico(m);
+    try { localStorage.setItem('omm_modo_dinamico', m); } catch {}
+    const labels:any = { base:'Base', smart_peak:'⚡ Smart Peak', evento:'🎉 Evento Especial' };
+    show(`Modo: ${labels[m]}`);
+  };
 
   const show = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
 
@@ -295,6 +305,45 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
   const walkinsCount = reservasHoy.filter(esWalkin).length;
   const ocupacion = mesas.length?Math.round(reservasReales.filter(r=>r.estado==='sentada').length/mesas.length*100):0;
 
+  // PDF NEXUM § Roadmap 2 — Demand Score™
+  // Variables: ocupación reservada + histórico + velocidad reservas + fecha especial + hora premium + clima.
+  // Clima requiere API externa; el resto se aproxima con datos locales.
+  const demandScore = (() => {
+    let s = 0;
+    s += Math.min(50, ocupacion * 0.5); // ocupación esperada (0-50)
+    const dow = new Date(fechaFiltro + 'T00:00:00').getDay(); // 0=dom
+    if ([0,4,5,6].includes(dow)) s += 15; // jue-dom = días premium
+    const confirmadas = reservasReales.filter((r:any)=>r.estado==='confirmada' || r.estado==='sentada').length;
+    s += Math.min(15, confirmadas * 1.5); // velocidad/volumen reservas
+    if (modoDinamico === 'smart_peak') s += 10;
+    if (modoDinamico === 'evento') s += 20;
+    if (sobreventa > 0) s += 5; // presión de demanda
+    return Math.min(100, Math.round(s));
+  })();
+  const demandLabel = demandScore < 30 ? 'Baja' : demandScore < 60 ? 'Media' : demandScore < 85 ? 'Alta' : 'Pico';
+  const demandColor = demandScore < 30 ? S.green : demandScore < 60 ? S.gold : demandScore < 85 ? '#FF6B00' : S.red;
+
+  // PDF NEXUM § Roadmap 7 — Shift Pacing Intelligence™
+  // Saturación por bloque de hora: agrupa reservas reales por hora HH y muestra picos.
+  const horaActual = new Date().toTimeString().slice(0,2);
+  const pacingHoraActual = reservasReales.filter((r:any)=>String(r.hora||'').startsWith(horaActual)).length;
+  const pacingPico = Math.max(1, ...Array.from({length:24}, (_,h) => {
+    const hh = String(h).padStart(2,'0');
+    return reservasReales.filter((r:any)=>String(r.hora||'').startsWith(hh)).length;
+  }));
+  const cocinaSat = mesas.length ? Math.min(100, Math.round(pacingHoraActual / Math.max(1, mesas.length) * 200)) : 0;
+  const barraSat = Math.min(100, cocinaSat + (walkinsCount * 10)); // barra incluye walkins
+  const servicioSat = ocupacion;
+
+  // PDF NEXUM § Roadmap 4 — Liberación progresiva (mesas reservadas que se aproximan)
+  const ahoraTs = Date.now();
+  const liberacionesProximas = reservasReales.filter((r:any) => {
+    if (r.estado !== 'confirmada' || r.mesa_num) return false;
+    const t = new Date(`${r.fecha}T${r.hora || '20:00'}:00`).getTime();
+    const horas = (t - ahoraTs) / 3600000;
+    return horas > 0 && horas <= 6; // próximas 6 horas sin mesa asignada
+  }).length;
+
   return (
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:S.bg,color:S.t1,fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
       {toast&&<div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:'#1e1e2e',border:`1px solid ${S.pink}`,color:'#fff',padding:'10px 28px',borderRadius:50,fontSize:13,fontWeight:700,zIndex:9999}}>{toast}</div>}
@@ -467,6 +516,39 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
           </div>
         ))}
         <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          {/* Modo dinámico (PDF NEXUM Roadmap 1) */}
+          <div title="Modo operativo del motor de reservas — afecta Demand Score y políticas de pacing" style={{display:'flex',alignItems:'center',gap:4,background:'rgba(255,255,255,0.04)',border:`1px solid ${modoDinamico!=='base'?S.purple:S.border2}`,borderRadius:10,padding:'3px 6px 3px 10px'}}>
+            <span style={{fontSize:10,color:modoDinamico!=='base'?S.purple:S.t3,fontWeight:700,textTransform:'uppercase'}}>🎚️ Modo</span>
+            {(['base','smart_peak','evento'] as const).map(m=>{
+              const lbl = m==='base'?'Base':m==='smart_peak'?'⚡ Peak':'🎉 Evento';
+              const sel = modoDinamico===m;
+              return (
+                <button key={m} onClick={()=>cambiarModo(m)}
+                  style={{padding:'4px 8px',borderRadius:7,border:'none',cursor:'pointer',fontSize:11,fontWeight:800,
+                    background:sel?(m==='base'?S.t3:m==='smart_peak'?'#FF6B00':S.purple):'transparent',
+                    color:sel?'#000':S.t3}}>{lbl}</button>
+              );
+            })}
+          </div>
+
+          {/* Demand Score™ (PDF NEXUM Roadmap 2) */}
+          <div title={`Demand Score — ${demandLabel} (${demandScore}/100). Combina ocupación, día premium, velocidad de reservas y modo dinámico.`}
+            style={{display:'flex',alignItems:'center',gap:6,background:`${demandColor}10`,border:`1px solid ${demandColor}44`,borderRadius:10,padding:'4px 10px'}}>
+            <span style={{fontSize:10,color:demandColor,fontWeight:800,textTransform:'uppercase'}}>📊 Demand</span>
+            <span style={{fontSize:13,color:demandColor,fontWeight:900,letterSpacing:'.02em'}}>{demandScore}</span>
+            <span style={{fontSize:9,color:demandColor,fontWeight:700}}>· {demandLabel}</span>
+          </div>
+
+          {/* Liberación progresiva (PDF NEXUM Roadmap 4) */}
+          {liberacionesProximas > 0 && (
+            <div title="Mesas reservadas en las próximas 6h sin asignar — riesgo de no-show o demora"
+              style={{display:'flex',alignItems:'center',gap:5,background:`${S.gold}15`,border:`1px solid ${S.gold}55`,borderRadius:10,padding:'4px 10px',cursor:'help'}}>
+              <span style={{fontSize:11}}>⏳</span>
+              <span style={{fontSize:10,color:S.gold,fontWeight:800,textTransform:'uppercase'}}>Por asignar</span>
+              <span style={{fontSize:12,color:S.gold,fontWeight:900}}>{liberacionesProximas}</span>
+            </div>
+          )}
+
           {/* Sobreventa VIP — solo La Crème · Grand Gourmand · socios · estratégicos. Hard stop al 110%. */}
           <div style={{display:'flex',alignItems:'center',gap:4,background:'rgba(255,255,255,0.04)',border:`1px solid ${sobreventa>0?S.gold:S.border2}`,borderRadius:10,padding:'3px 6px 3px 10px'}} title="Sobreventa exclusiva para VIPs · La Crème, Grand Gourmand, socios y clientes estratégicos. Máx 10% — hard stop al 110%.">
             <span style={{fontSize:10,color:sobreventa>0?S.gold:S.t3,fontWeight:700,textTransform:'uppercase'}}>⭐ Sobreventa VIP</span>
@@ -490,6 +572,25 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
             + Nueva reserva
           </button>
         </div>
+      </div>
+
+      {/* PDF NEXUM Roadmap 7 — Shift Pacing Intelligence™ (saturación por área) */}
+      <div style={{display:'flex',gap:14,padding:'8px 24px',background:S.bg2,borderBottom:`1px solid ${S.border}`,fontSize:10,flexWrap:'wrap',alignItems:'center'}}>
+        <span style={{color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em'}}>🛡️ Shift Pacing</span>
+        {[
+          {l:'Cocina', v:cocinaSat, c:cocinaSat>80?S.red:cocinaSat>50?S.gold:S.green},
+          {l:'Barra',  v:barraSat,  c:barraSat>80?S.red:barraSat>50?S.gold:S.green},
+          {l:'Servicio', v:servicioSat, c:servicioSat>80?S.red:servicioSat>50?S.gold:S.green},
+        ].map(b=>(
+          <div key={b.l} style={{display:'flex',alignItems:'center',gap:6,flex:'1 1 140px',maxWidth:240}}>
+            <span style={{color:b.c,fontWeight:700,minWidth:54}}>{b.l}</span>
+            <div style={{flex:1,height:6,background:'rgba(255,255,255,0.06)',borderRadius:3,overflow:'hidden'}}>
+              <div style={{height:'100%',width:`${b.v}%`,background:b.c,transition:'width .4s'}}/>
+            </div>
+            <span style={{color:b.c,fontWeight:800,minWidth:32,textAlign:'right'}}>{b.v}%</span>
+          </div>
+        ))}
+        <span style={{marginLeft:'auto',color:S.t3,fontSize:9}}>Pico/hora: {pacingPico}r · Actual: {pacingHoraActual}r</span>
       </div>
 
       {/* Tabs */}
