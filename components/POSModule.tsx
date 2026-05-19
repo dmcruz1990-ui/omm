@@ -897,7 +897,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   ]);
   const [posDescuento, setPosDescuento] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [barraColapsada, setBarraColapsada] = useState(true);
+  const [barraColapsada, setBarraColapsada] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedPlato, setSelectedPlato] = useState<any>(null); // plato seleccionado para info IA
   const [stockFlow, setStockFlow] = useState<Record<string, number>>(() => {
@@ -1372,7 +1372,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   };
 
   // ── ABRIR MESA — llama la función de Supabase ──────────────────────
-  const abrirMesaDB = async (mesa: any, pax: number, clienteNombre?: string) => {
+  const abrirMesaDB = async (mesa: any, pax: number, clienteNombre?: string, extra?: { telefono?: string; email?: string; vip?: boolean }) => {
     const meseroActivo = profile?.nombre_completo || 'Mesero';
     const { data, error } = await supabase.rpc('abrir_mesa', {
       p_mesa_name: mesa.name,
@@ -1383,6 +1383,16 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     if (error || !data?.ok) {
       showToast(`⚠️ ${data?.error || 'Error al abrir mesa'}`);
       return false;
+    }
+    // Guardar datos del cliente walk-in (teléfono, email, VIP) para rastreo
+    if (extra && (extra.telefono || extra.email || extra.vip)) {
+      try {
+        await supabase.from('tables').update({
+          cliente_telefono: extra.telefono || null,
+          cliente_email: extra.email || null,
+          vip: !!extra.vip,
+        }).eq('name', String(mesa.name));
+      } catch (e) { console.error('walk-in datos error:', e); }
     }
     // Seleccionar la mesa en el POS
     const mesaEnDisplay = displayTables.find((t:any) => String(t.num) === String(mesa.name));
@@ -2278,7 +2288,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [showMapaMesas, setShowMapaMesas] = useState(false);
   const [chatIAOpen, setChatIAOpen]       = useState(false);
   const [mesasEstado, setMesasEstado] = useState<any[]>([]);
-  const [formAbrirMesa, setFormAbrirMesa] = useState<{mesa:any,pax:number,cliente:string}|null>(null);
+  const [formAbrirMesa, setFormAbrirMesa] = useState<{mesa:any,pax:number,cliente:string,telefono:string,email:string,vip:boolean}|null>(null);
   const [pinDesbloqueo, setPinDesbloqueo] = useState('');
   const [mesaDesbloquear, setMesaDesbloquear] = useState<any>(null);
   const [dividirPax, setDividirPax] = useState(1);
@@ -5282,7 +5292,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                           onClick={()=>{
                             if (bloqueada) { setMesaDesbloquear(est); }
                             else if (asignada) { tomarMesaAsignada(mesa, est); }
-                            else if (libre) { setFormAbrirMesa({mesa:{...mesa,name:String(mesa.num)},pax:mesa.cap,cliente:''}); }
+                            else if (libre) { setFormAbrirMesa({mesa:{...mesa,name:String(mesa.num)},pax:mesa.cap,cliente:'',telefono:'',email:'',vip:false}); }
                             else if (ocupada && enDisplay) {
                               if (!puedeEntrar) {
                                 showToast(`🔒 Mesa ${mesa.num} la atiende ${est?.mesero_nombre} — pídele compartir o llama a un capitán`);
@@ -5333,18 +5343,47 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 </button>
               ))}
             </div>
-            <div style={{fontSize:10,color:'#606060',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Nombre del cliente (opcional)</div>
+            <div style={{fontSize:10,color:'#606060',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Nombre del cliente</div>
             <input value={formAbrirMesa.cliente}
               onChange={e=>setFormAbrirMesa((p:any)=>p?{...p,cliente:e.target.value}:null)}
               placeholder="Ej: Familia García, Sr. López..."
-              style={{width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid #2a2a2a',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',marginBottom:16}}/>
+              style={{width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid #2a2a2a',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',marginBottom:10}}/>
+            <div style={{display:'flex',gap:8,marginBottom:10}}>
+              <input value={formAbrirMesa.telefono}
+                onChange={e=>setFormAbrirMesa((p:any)=>p?{...p,telefono:e.target.value}:null)}
+                placeholder="Teléfono" inputMode="tel"
+                style={{flex:1,padding:'10px 14px',borderRadius:10,border:'1px solid #2a2a2a',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none'}}/>
+              <input value={formAbrirMesa.email}
+                onChange={e=>setFormAbrirMesa((p:any)=>p?{...p,email:e.target.value}:null)}
+                placeholder="Email" inputMode="email"
+                style={{flex:1.4,padding:'10px 14px',borderRadius:10,border:'1px solid #2a2a2a',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none'}}/>
+            </div>
+            <button onClick={()=>setFormAbrirMesa((p:any)=>p?{...p,vip:!p.vip}:null)}
+              style={{width:'100%',padding:'10px 14px',borderRadius:10,marginBottom:16,cursor:'pointer',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:8,
+                border:`1px solid ${formAbrirMesa.vip?'#d4943a':'#2a2a2a'}`,
+                background:formAbrirMesa.vip?'rgba(212,148,58,0.15)':'#141414',
+                color:formAbrirMesa.vip?'#d4943a':'#606060'}}>
+              <span style={{fontSize:14}}>{formAbrirMesa.vip?'⭐':'☆'}</span>
+              {formAbrirMesa.vip?'Cliente VIP — marcado':'Marcar como cliente VIP'}
+            </button>
             <div style={{display:'flex',gap:10}}>
               <button onClick={()=>setFormAbrirMesa(null)} style={{flex:1,padding:'11px',borderRadius:10,border:'1px solid #2a2a2a',background:'transparent',color:'#606060',cursor:'pointer',fontSize:13}}>Cancelar</button>
-              <button onClick={()=>abrirMesaDB(formAbrirMesa.mesa,formAbrirMesa.pax,formAbrirMesa.cliente||undefined)}
+              <button onClick={()=>abrirMesaDB(formAbrirMesa.mesa,formAbrirMesa.pax,formAbrirMesa.cliente||undefined,{telefono:formAbrirMesa.telefono,email:formAbrirMesa.email,vip:formAbrirMesa.vip})}
                 style={{flex:2,padding:'11px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#d4943a,#b07820)',color:'#000',fontWeight:700,cursor:'pointer',fontSize:13}}>
-                ✓ Sentar cliente en Mesa {formAbrirMesa.mesa.name}
+                ✓ Sentar en Mesa {formAbrirMesa.mesa.name}
               </button>
             </div>
+            {isGerencia && (
+              <button onClick={async()=>{
+                  const mn = String(formAbrirMesa.mesa.name);
+                  try { await supabase.from('tables').update({estado:'bloqueada',status:'blocked'}).eq('name',mn); } catch(e){ console.error('bloquear mesa:',e); }
+                  showToast(`🔒 Mesa ${mn} bloqueada`);
+                  setFormAbrirMesa(null);
+                }}
+                style={{width:'100%',marginTop:10,padding:'9px',borderRadius:10,border:'1px solid #e05050',background:'transparent',color:'#e05050',cursor:'pointer',fontSize:12,fontWeight:700}}>
+                🔒 Bloquear esta mesa (gerencia)
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -5365,7 +5404,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     if (k==='✓') {
                       if (pinDesbloqueo==='1234') {
                         supabase.from('tables').update({estado:'libre',mesero_nombre:null,abierta_en:null,pax_actual:0}).eq('id',mesaDesbloquear.id);
-                        setFormAbrirMesa({mesa:mesaDesbloquear,pax:2,cliente:''});
+                        setFormAbrirMesa({mesa:mesaDesbloquear,pax:2,cliente:'',telefono:'',email:'',vip:false});
                         setMesaDesbloquear(null); setPinDesbloqueo('');
                       } else { showToast('⚠️ PIN incorrecto'); setPinDesbloqueo(''); }
                       return;
