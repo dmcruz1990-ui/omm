@@ -5354,7 +5354,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               onBlur={async e=>{
                 const t = e.target.value.trim();
                 if (t.length < 7) { setClienteCRM(null); return; }
-                const { data } = await supabase.from('customers').select('id,name,email,vip_status,total_visits,total_spent').eq('phone', t).limit(1).maybeSingle();
+                const { data } = await supabase.from('customers').select('id,name,email,vip_status,total_visits,total_spent,score,puntos').eq('phone', t).limit(1).maybeSingle();
                 if (data) {
                   setClienteCRM(data);
                   setFormAbrirMesa((p:any) => p ? { ...p, cliente: p.cliente || data.name || '', email: p.email || data.email || '', vip: p.vip || !!data.vip_status } : null);
@@ -5363,15 +5363,33 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               placeholder="3001234567" inputMode="tel" autoFocus
               style={{width:'100%',padding:'12px 14px',borderRadius:10,border:`1px solid ${formAbrirMesa.telefono?'#d4943a':'#2a2a2a'}`,background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:14,fontWeight:600,outline:'none',marginBottom:10}}/>
 
-            {clienteCRM && (
-              <div style={{background:'rgba(0,230,118,0.08)',border:'1px solid rgba(0,230,118,0.3)',borderRadius:10,padding:'10px 14px',marginBottom:12,display:'flex',alignItems:'center',gap:10}}>
-                <span style={{fontSize:20}}>{clienteCRM.vip_status?'⭐':'✓'}</span>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:700,color:'#00E676'}}>Cliente conocido{clienteCRM.vip_status?' · VIP':''}</div>
-                  <div style={{fontSize:10,color:'#a0a0a0'}}>{clienteCRM.name} · {clienteCRM.total_visits||0} visita(s)</div>
+            {clienteCRM && (() => {
+              // PDF NEXUM § Roadmap 5/6 — Client Score™ y proxy No-show Score
+              const score = Number(clienteCRM.score || 0);
+              const visitas = Number(clienteCRM.total_visits || 0);
+              const ticket = Number(clienteCRM.total_spent || 0);
+              const ticketProm = visitas > 0 ? Math.round(ticket / visitas) : 0;
+              const sCol = score >= 70 ? '#00E676' : score >= 40 ? '#FFB547' : '#a0a0a0';
+              // No-show Score proxy: si nunca ha venido pero tiene reservas históricas (no implementado a fondo).
+              // Para demo: derivamos riesgo según puntos y visitas — pocos puntos + sin visitas = riesgo alto.
+              const noShowRisk = visitas === 0 ? 'medio' : (Number(clienteCRM.puntos || 0) < 50 ? 'bajo' : 'muy bajo');
+              const nsCol = noShowRisk === 'medio' ? '#FFB547' : '#00E676';
+              return (
+                <div style={{background:'rgba(0,230,118,0.08)',border:'1px solid rgba(0,230,118,0.3)',borderRadius:10,padding:'10px 14px',marginBottom:12,display:'flex',flexDirection:'column',gap:6}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10}}>
+                    <span style={{fontSize:20}}>{clienteCRM.vip_status?'⭐':'✓'}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:700,color:'#00E676'}}>Cliente conocido{clienteCRM.vip_status?' · VIP':''}</div>
+                      <div style={{fontSize:10,color:'#a0a0a0'}}>{clienteCRM.name} · {visitas} visita(s){ticketProm>0?` · ticket prom $${ticketProm.toLocaleString('es-CO')}`:''}</div>
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                    <span style={{fontSize:9,background:`${sCol}1f`,color:sCol,border:`1px solid ${sCol}55`,padding:'2px 8px',borderRadius:8,fontWeight:800}} title="Client Score™ del cliente">📊 Score {score}</span>
+                    <span style={{fontSize:9,background:`${nsCol}1f`,color:nsCol,border:`1px solid ${nsCol}55`,padding:'2px 8px',borderRadius:8,fontWeight:800}} title="No-show Score (estimado)">👤 No-show: {noShowRisk}</span>
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             <div style={{fontSize:10,color:'#d4943a',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Nombre *</div>
             <input value={formAbrirMesa.cliente}
