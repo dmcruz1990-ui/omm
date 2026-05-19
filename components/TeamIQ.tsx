@@ -310,7 +310,7 @@ export default function TeamIQ() {
   const [periodo, setPeriodo]     = useState<'hoy'|'semana'|'mes'|'3meses'>('mes');
   const [search, setSearch]       = useState('');
   const [empSel, setEmpSel]       = useState<Empleado | null>(null);
-  const [activeTab, setActiveTab] = useState<'equipo'|'ranking'|'alertas'|'propinas'>('equipo');
+  const [activeTab, setActiveTab] = useState<'equipo'|'ranking'|'alertas'|'propinas'|'euros'|'vida'>('equipo');
 
   // Cargar empleados desde Supabase con fallback demo
   const cargar = useCallback(async () => {
@@ -485,6 +485,8 @@ export default function TeamIQ() {
             { id:'ranking',  icon:Crown,    label:'Ranking' },
             { id:'alertas',  icon:Shield,   label:`Alertas${alertasCnt>0?' ·'+alertasCnt:''}` },
             { id:'propinas', icon:DollarSign,label:'Propinas' },
+            { id:'euros',    icon:Award,    label:'Euros App' },
+{ id:'vida',     icon:Brain,    label:'Seratta Life 🚀' },
           ] as const).map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id as any)} style={{
               flex:1, display:'flex', alignItems:'center', justifyContent:'center',
@@ -714,7 +716,309 @@ export default function TeamIQ() {
           </div>
         )}
 
+        {/* ── TAB: EUROS DE LA APP ── */}
+        {activeTab === 'euros' && (() => {
+          const eurosData = [
+            { id:1,  nombre:'Mateo Herrera',       iniciales:'MH', cargo:'Mesero Senior',  euros:1240, canjeados:800,  disponibles:440, nivel:'Oro',    beneficios:['Día libre extra','Bono $50k','Descuento 30% comida'] },
+            { id:2,  nombre:'Esteban Salazar',      iniciales:'ES', cargo:'Sommelier',      euros:1180, canjeados:1100, disponibles:80,  nivel:'Oro',    beneficios:['Capacitación vinos','Certificado sommelier'] },
+            { id:3,  nombre:'Andrés Felipe Mora',   iniciales:'AM', cargo:'Mesero',         euros:920,  canjeados:500,  disponibles:420, nivel:'Plata',  beneficios:['Bono $30k','Turno preferido'] },
+            { id:4,  nombre:'Santiago León',        iniciales:'SL', cargo:'Bartender',      euros:860,  canjeados:860,  disponibles:0,   nivel:'Plata',  beneficios:['Todos canjeados este mes'] },
+            { id:5,  nombre:'Laura Villalobos',     iniciales:'LV', cargo:'Maître',         euros:780,  canjeados:200,  disponibles:580, nivel:'Plata',  beneficios:['Día libre','Bono $20k'] },
+            { id:6,  nombre:'Juan Camilo Rojas',    iniciales:'JR', cargo:'Mesero',         euros:540,  canjeados:300,  disponibles:240, nivel:'Bronce', beneficios:['Descuento 20% comida'] },
+            { id:7,  nombre:'Kenji Nakamura',       iniciales:'KN', cargo:'Sushero',        euros:490,  canjeados:490,  disponibles:0,   nivel:'Bronce', beneficios:['Todos canjeados'] },
+            { id:8,  nombre:'Carlos Méndez',        iniciales:'CM', cargo:'Cocinero',       euros:320,  canjeados:100,  disponibles:220, nivel:'Bronce', beneficios:['Descuento comida'] },
+            { id:9,  nombre:'Sebastián Duarte',     iniciales:'SD', cargo:'Mesero',         euros:180,  canjeados:0,    disponibles:180, nivel:'Básico', beneficios:['Sin beneficios canjeados aún'] },
+          ];
+          const nivelColor: Record<string,string> = { Oro:'#FFD700', Plata:'#C0C0C0', Bronce:'#CD7F32', Básico:'#505050' };
+          const totalEuros = eurosData.reduce((a,e)=>a+e.euros,0);
+          const totalCanjeados = eurosData.reduce((a,e)=>a+e.canjeados,0);
+          const totalDisponibles = eurosData.reduce((a,e)=>a+e.disponibles,0);
+
+          return (
+            <div>
+              {/* KPIs */}
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:14 }}>
+                {[
+                  { label:'Euros totales', value:totalEuros, color:'#FFD700' },
+                  { label:'Canjeados', value:totalCanjeados, color:'#4A8FD4' },
+                  { label:'Disponibles', value:totalDisponibles, color:'#22D07A' },
+                ].map(k => (
+                  <div key={k.label} style={{ background:'#0d0d0d', border:'1px solid #141414', borderRadius:12, padding:'12px 14px' }}>
+                    <div style={{ fontSize:10, color:'#505050', marginBottom:4, textTransform:'uppercase' as const, letterSpacing:'.06em' }}>{k.label}</div>
+                    <div style={{ fontFamily:'Syne,sans-serif', fontSize:22, fontWeight:900, color:k.color }}>€{k.value.toLocaleString('es-CO')}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Tabla */}
+              {eurosData.sort((a,b)=>b.euros-a.euros).map((emp, i) => {
+                const pct = Math.round((emp.canjeados / emp.euros) * 100);
+                const nc = nivelColor[emp.nivel];
+                return (
+                  <div key={emp.id} style={{
+                    background:'#0d0d0d', border:`1px solid #141414`,
+                    borderRadius:12, padding:'12px 14px', marginBottom:8,
+                  }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:8 }}>
+                      <span style={{ fontSize:13, fontWeight:700, color:'#303030', width:18, flexShrink:0 }}>#{i+1}</span>
+                      <div style={{ width:34, height:34, borderRadius:9, background:'#141414', display:'flex', alignItems:'center', justifyContent:'center', fontFamily:'Syne,sans-serif', fontWeight:800, fontSize:12, flexShrink:0 }}>{emp.iniciales}</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontWeight:600, fontSize:13, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{emp.nombre}</div>
+                        <div style={{ fontSize:10, color:'#505050' }}>{emp.cargo}</div>
+                      </div>
+                      {/* Nivel badge */}
+                      <span style={{ fontSize:10, fontWeight:700, color:nc, background:nc+'18', border:`1px solid ${nc}40`, padding:'2px 8px', borderRadius:20, flexShrink:0 }}>{emp.nivel}</span>
+                      {/* Total euros */}
+                      <div style={{ textAlign:'right', flexShrink:0 }}>
+                        <div style={{ fontFamily:'Syne,sans-serif', fontSize:15, fontWeight:900, color:'#FFD700' }}>€{emp.euros}</div>
+                        <div style={{ fontSize:10, color:'#505050' }}>€{emp.disponibles} disp.</div>
+                      </div>
+                    </div>
+
+                    {/* Barra de canje */}
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <div style={{ flex:1, height:4, background:'#1a1a1a', borderRadius:4, overflow:'hidden' }}>
+                        <div style={{ height:'100%', width:`${pct}%`, background: pct===100?'#4A8FD4':'#FFD700', borderRadius:4, transition:'width .4s' }}/>
+                      </div>
+                      <span style={{ fontSize:10, color:'#505050', flexShrink:0 }}>{pct}% canjeado</span>
+                    </div>
+
+                    {/* Beneficios */}
+                    <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginTop:8 }}>
+                      {emp.beneficios.map(b => (
+                        <span key={b} style={{ fontSize:10, color:'#808080', background:'#141414', border:'1px solid #1e1e1e', padding:'2px 8px', borderRadius:20 }}>{b}</span>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
       </div>
+
+      {/* ══════════════════════════════════════════════════════════
+          TAB: SERATTA LIFE™ — Workforce Intelligence Platform
+          Visión completa del colaborador
+      ═══════════════════════════════════════════════════════════ */}
+      {activeTab === 'vida' && (
+        <div style={{display:'flex',flexDirection:'column',gap:12,paddingBottom:80}}>
+
+          {/* ── HEADER VISIÓN ── */}
+          <div style={{background:'linear-gradient(135deg,rgba(155,114,255,0.12),rgba(255,92,53,0.08))',border:'1px solid rgba(155,114,255,0.25)',borderRadius:14,padding:'18px 20px'}}>
+            <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:10}}>
+              <div style={{width:44,height:44,borderRadius:13,background:'linear-gradient(135deg,#9b72ff,#FF5C53)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>🚀</div>
+              <div>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:900,color:'#f0f0f0'}}>SERATTA LIFE™</div>
+                <div style={{fontSize:10,color:'#606060',textTransform:'uppercase',letterSpacing:'.08em'}}>Super App del Colaborador — Human Performance OS</div>
+              </div>
+            </div>
+            <div style={{fontSize:12,color:'#a0a0a0',lineHeight:1.6}}>
+              Convertir a Grupo Seratta en <strong style={{color:'#9b72ff'}}>el mejor lugar para trabajar en restaurantes en Colombia</strong>. Cada colaborador debe sentir: <em style={{color:'#f0b45a'}}>"Aquí tengo claridad, apoyo, crecimiento y una empresa que sí me escucha."</em>
+            </div>
+          </div>
+
+          {/* ── 6 CAPAS DEL SISTEMA ── */}
+          <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#505050',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>6 capas del sistema</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8}}>
+              {[
+                {ico:'⚙️',l:'Operación',         d:'Turnos, asistencia, incidencias'},
+                {ico:'👥',l:'Talento Humano',     d:'Pagos, certificados, solicitudes'},
+                {ico:'💙',l:'Bienestar',          d:'Emocional, salud, pausas activas'},
+                {ico:'🎯',l:'Cultura',            d:'Reconocimiento, valores, orgullo'},
+                {ico:'🤖',l:'IA & Automatización',d:'Chatbot, turnos, detección burnout'},
+                {ico:'📊',l:'Analítica',          d:'Clima, liderazgo, eNPS interno'},
+              ].map(k=>(
+                <div key={k.l} style={{background:'#0d0d0d',borderRadius:10,padding:'10px 12px'}}>
+                  <div style={{fontSize:18,marginBottom:4}}>{k.ico}</div>
+                  <div style={{fontSize:11,fontWeight:700,color:'#f0f0f0',marginBottom:2}}>{k.l}</div>
+                  <div style={{fontSize:9,color:'#505050',lineHeight:1.4}}>{k.d}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── MÓDULOS DEL PRODUCTO ── */}
+          <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#505050',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>12 módulos obligatorios</div>
+            {[
+              {n:'01',ico:'🏠',t:'Home Inteligente',         s:'Turno del día · Pagos · Solicitudes · Reconocimientos',  fase:'MVP',color:'#4A8FD4'},
+              {n:'02',ico:'📅',t:'Turnos Inteligentes',      s:'Ver · Confirmar · Cambiar · Intercambiar · Disponibilidad',fase:'MVP',color:'#3dba6f'},
+              {n:'03',ico:'💰',t:'Centro Laboral',           s:'Nómina · Propinas · Vacaciones · Certificados · Docs',    fase:'MVP',color:'#f0b45a'},
+              {n:'04',ico:'🛡️',t:'Canal de Escucha',         s:'Denuncias anónimas · Radicado · Trazabilidad · SLA',     fase:'MVP',color:'#FF5C53'},
+              {n:'05',ico:'💜',t:'Pulse Emocional',          s:'Termómetro diario · Por sede · Alertas agregadas',        fase:'MVP',color:'#9b72ff'},
+              {n:'06',ico:'🎓',t:'Academia Seratta',         s:'Videos · Microlearning · Rutas por cargo · Badges',       fase:'V2', color:'#22d3ee'},
+              {n:'07',ico:'🌿',t:'Bienestar Integral',       s:'Pausas activas · Apoyo psicológico · Tips estrés',        fase:'V2', color:'#3dba6f'},
+              {n:'08',ico:'🏆',t:'Reconocimiento & Cultura', s:'Premiar compañeros · Gamificar · Embajadores internos',   fase:'V2', color:'#f0b45a'},
+              {n:'09',ico:'🎁',t:'Beneficios & Convenios',   s:'Descuentos · Alianzas · Campañas especiales',             fase:'V2', color:'#9b72ff'},
+              {n:'10',ico:'📈',t:'Plan de Carrera',          s:'Ruta por cargo · Habilidades · Vacantes internas',        fase:'V3', color:'#22d3ee'},
+              {n:'11',ico:'🤖',t:'Chatbot IA Seratta',       s:'¿Cuándo me pagan? ¿Cómo pido turno? Base conocimiento',  fase:'V3', color:'#FF5C53'},
+              {n:'12',ico:'📢',t:'Comunicaciones Internas',  s:'Anuncios · Campañas · Mensajes urgentes · Lectura conf.', fase:'V2', color:'#4A8FD4'},
+            ].map(m=>(
+              <div key={m.n} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 10px',borderRadius:10,background:'#0d0d0d',marginBottom:5}}>
+                <div style={{width:32,height:32,borderRadius:9,background:`${m.color}12`,border:`1px solid ${m.color}20`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{m.ico}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:700,color:'#f0f0f0'}}>{m.t}</div>
+                  <div style={{fontSize:9,color:'#505050',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{m.s}</div>
+                </div>
+                <span style={{fontSize:9,fontWeight:700,padding:'2px 8px',borderRadius:20,background:m.fase==='MVP'?'rgba(61,186,111,0.15)':m.fase==='V2'?'rgba(74,143,212,0.15)':'rgba(155,114,255,0.15)',color:m.fase==='MVP'?'#3dba6f':m.fase==='V2'?'#4A8FD4':'#9b72ff',flexShrink:0}}>{m.fase}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* ── NOMBRE RECOMENDADO ── */}
+          <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#505050',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>Nombre recomendado</div>
+            {[
+              {n:'SERATTA LIFE™',  r:'⭐ Recomendado', d:'Fuerza de marca · Cercanía emocional · SaaS potencial · Aspiracional pero humano', c:'#f0b45a'},
+              {n:'Seratta Crew',   r:'Alternativa 1',  d:'Cercano · Sentido de pertenencia · Ya existe como PWA del mesero', c:'#4A8FD4'},
+              {n:'Casa Seratta',   r:'Alternativa 2',  d:'Familiar · Cálido · Fuerte para cultura interna', c:'#3dba6f'},
+              {n:'Seratta Pulse',  r:'Alternativa 3',  d:'Moderno · Sugiere vitalidad · Bueno para bienestar emocional', c:'#9b72ff'},
+            ].map(n=>(
+              <div key={n.n} style={{display:'flex',gap:10,alignItems:'flex-start',padding:'10px 12px',borderRadius:10,background:`${n.c}08`,border:`1px solid ${n.c}20`,marginBottom:6}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:900,color:n.c,marginBottom:2}}>{n.n} <span style={{fontSize:10,fontWeight:400,color:'#606060'}}>{n.r}</span></div>
+                  <div style={{fontSize:11,color:'#808080'}}>{n.d}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── ROADMAP ── */}
+          <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#505050',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>Roadmap de desarrollo</div>
+            {[
+              {f:'Fase 1 — MVP',       dur:'8–10 semanas', c:'#3dba6f', items:['Home inteligente','Turnos básicos','Centro laboral (nómina + propinas)','Canal de escucha anónimo','Pulse emocional semanal','Notificaciones push']},
+              {f:'Fase 2 — App robusta',dur:'12–16 semanas',c:'#4A8FD4', items:['Academia Seratta','Reconocimiento & cultura','Bienestar integral','Beneficios & convenios','Comunicaciones segmentadas','Dashboard RRHH + Operaciones']},
+              {f:'Fase 3 — Plataforma', dur:'20–24 semanas',c:'#9b72ff', items:['Chatbot IA Seratta','Plan de carrera con IA','Optimización de turnos con IA','Detección de burnout agregado','Multi-sede · Multi-empresa','Dashboard CEO ejecutivo','Visión SaaS regional']},
+            ].map(f=>(
+              <div key={f.f} style={{marginBottom:12}}>
+                <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                  <div style={{width:10,height:10,borderRadius:'50%',background:f.c,flexShrink:0}}/>
+                  <div style={{fontSize:12,fontWeight:700,color:f.c}}>{f.f}</div>
+                  <div style={{fontSize:10,color:'#404040',marginLeft:'auto'}}>⏱ {f.dur}</div>
+                </div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:4,paddingLeft:18}}>
+                  {f.items.map(i=>(
+                    <span key={i} style={{fontSize:10,background:`${f.c}10`,color:f.c,border:`1px solid ${f.c}20`,padding:'2px 8px',borderRadius:10}}>✓ {i}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── STACK TÉCNICO ── */}
+          <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#505050',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>Stack técnico recomendado</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+              {[
+                {c:'Mobile',    v:'React Native + Expo',     why:'Mismo stack que NEXUM · Rápido · iOS + Android'},
+                {c:'Panel Web', v:'React + Vite + Tailwind', why:'Ya construido en NEXUM · Consistencia total'},
+                {c:'Backend',   v:'Supabase',                why:'Ya activo · RLS · Realtime · Auth · Storage'},
+                {c:'Auth',      v:'Supabase Auth + OTP SMS', why:'Sin contraseña · Solo teléfono para operativos'},
+                {c:'Push',      v:'Expo Notifications',      why:'Nativo iOS/Android · Sin costo extra'},
+                {c:'IA',        v:'Claude API (Anthropic)',   why:'Chatbot Seratta · Análisis de clima · Resúmenes'},
+                {c:'Storage',   v:'Supabase Storage',        why:'Documentos · Certificados · Fotos perfil'},
+                {c:'Deploy',    v:'Vercel + EAS Build',      why:'Panel en Vercel · App en stores con Expo EAS'},
+              ].map(s=>(
+                <div key={s.c} style={{background:'#0d0d0d',borderRadius:9,padding:'9px 11px'}}>
+                  <div style={{fontSize:9,color:'#505050',textTransform:'uppercase',marginBottom:2}}>{s.c}</div>
+                  <div style={{fontSize:12,fontWeight:700,color:'#f0f0f0',marginBottom:2}}>{s.v}</div>
+                  <div style={{fontSize:9,color:'#606060'}}>{s.why}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── ROLES Y PERMISOS ── */}
+          <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#505050',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>Roles del sistema</div>
+            {[
+              {r:'Colaborador',        p:'Ver turnos · Ver pagos · Enviar pulse · Denunciar · Cursos',    c:'#4A8FD4'},
+              {r:'Líder de turno',     p:'Todo colaborador + ver equipo asignado · Alertas operativas',  c:'#3dba6f'},
+              {r:'Gerente de sede',    p:'Dashboard sede · Aprobar cambios turno · Ver casos activos',   c:'#f0b45a'},
+              {r:'RRHH',               p:'Gestión completa empleados · Pagos · Certificados · Casos',    c:'#9b72ff'},
+              {r:'Bienestar/Cultura',  p:'Pulse agregado · Reconocimientos · Formación · Alertas clima', c:'#22d3ee'},
+              {r:'Comité convivencia', p:'Solo módulo denuncias · Confidencial · Bitácora',              c:'#FF5C53'},
+              {r:'CEO/Dirección',      p:'Dashboard ejecutivo · eNPS · Todos los KPIs · Solo lectura',   c:'#f0b45a'},
+              {r:'Superadmin',         p:'Control total · Multi-empresa · Configuración sistema',        c:'#FF5C53'},
+            ].map(r=>(
+              <div key={r.r} style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:6}}>
+                <div style={{width:8,height:8,borderRadius:'50%',background:r.c,marginTop:4,flexShrink:0}}/>
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:r.c}}>{r.r}</div>
+                  <div style={{fontSize:10,color:'#606060'}}>{r.p}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── KPIs DE ÉXITO ── */}
+          <div style={{background:'#111',border:'1px solid #1e1e1e',borderRadius:14,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#505050',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:10}}>KPIs de éxito del producto</div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6}}>
+              {[
+                {k:'Adopción',          t:'>70% activos semanales',      c:'#3dba6f'},
+                {k:'Resolución casos',  t:'<48h promedio SLA',           c:'#FF5C53'},
+                {k:'Satisfacción app',  t:'>4.2/5.0 en encuesta',        c:'#9b72ff'},
+                {k:'Rotación',          t:'-20% en 6 meses',             c:'#f0b45a'},
+                {k:'PQR a RRHH',        t:'-40% preguntas repetitivas',  c:'#4A8FD4'},
+                {k:'eNPS interno',      t:'>30 puntos en 12 meses',      c:'#22d3ee'},
+                {k:'Formación',         t:'>60% completan rutas MVP',    c:'#3dba6f'},
+                {k:'Pulse emocional',   t:'>80% responden semanalmente', c:'#9b72ff'},
+              ].map(k=>(
+                <div key={k.k} style={{background:'#0d0d0d',borderRadius:8,padding:'8px 10px'}}>
+                  <div style={{fontSize:10,fontWeight:700,color:k.c}}>{k.k}</div>
+                  <div style={{fontSize:11,color:'#808080',marginTop:1}}>{k.t}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* ── PRINCIPIOS NO NEGOCIABLES ── */}
+          <div style={{background:'linear-gradient(135deg,rgba(155,114,255,0.06),rgba(255,92,53,0.04))',border:'1px solid rgba(155,114,255,0.2)',borderRadius:14,padding:16}}>
+            <div style={{fontSize:11,fontWeight:700,color:'#9b72ff',textTransform:'uppercase',letterSpacing:'.08em',marginBottom:12}}>8 principios no negociables</div>
+            {[
+              ['📱','Mobile First',       'Todo pensado para celular. Frontline workers primero.'],
+              ['⚡','Baja fricción',       'Las tareas más importantes en menos de 3 taps.'],
+              ['🔒','Alta confianza',      'Jamás sentirse vigilado. La app es del colaborador.'],
+              ['✅','Claridad radical',    'Pagos, turnos y solicitudes siempre trazables.'],
+              ['🌐','Escalabilidad',       'MVP → plataforma regional multiempresa SaaS.'],
+              ['♿','Accesibilidad',       'Contraste, texto legible, navegación simple.'],
+              ['🛡️','Privacidad & ética', 'Datos emocionales jamás para castigar.'],
+              ['🚀','Impacto real',        'No humo. Solo lo que resuelve problemas reales.'],
+            ].map(([ico,t,d])=>(
+              <div key={t as string} style={{display:'flex',gap:8,alignItems:'flex-start',marginBottom:8}}>
+                <span style={{fontSize:16,flexShrink:0}}>{ico}</span>
+                <div>
+                  <div style={{fontSize:11,fontWeight:700,color:'#f0f0f0'}}>{t as string}</div>
+                  <div style={{fontSize:10,color:'#606060'}}>{d as string}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* ── VISIÓN SAAS ── */}
+          <div style={{background:'linear-gradient(135deg,rgba(240,180,90,0.08),rgba(155,114,255,0.06))',border:'1px solid rgba(240,180,90,0.25)',borderRadius:14,padding:16}}>
+            <div style={{fontSize:13,fontWeight:900,color:'#f0b45a',marginBottom:8,fontFamily:"'Syne',sans-serif"}}>🌎 Visión SaaS Futura</div>
+            <div style={{fontSize:12,color:'#a0a0a0',lineHeight:1.7}}>
+              <strong style={{color:'#f0b45a'}}>Seratta Life™</strong> puede evolucionar a la primera plataforma de <strong style={{color:'#f0f0f0'}}>Employee OS para restaurantes y hospitality en Latinoamérica</strong>.<br/><br/>
+              El equivalente a <strong style={{color:'#9b72ff'}}>Workday + 7shifts + Slack</strong> para la industria gastronómica. Multi-sede → multi-empresa → SaaS regional con módulos de:<br/>
+            </div>
+            <div style={{display:'flex',flexWrap:'wrap',gap:4,marginTop:10}}>
+              {['Workforce Management','Turnos IA','Nómina digital','eNPS continuo','Formación LMS','Canal denuncias','Bienestar 360°','Analytics de clima','Multi-marca'].map(t=>(
+                <span key={t} style={{fontSize:10,background:'rgba(240,180,90,0.1)',color:'#f0b45a',border:'1px solid rgba(240,180,90,0.2)',padding:'2px 9px',borderRadius:20}}>{t}</span>
+              ))}
+            </div>
+            <div style={{marginTop:12,fontSize:11,color:'#606060',fontStyle:'italic'}}>
+              "No existe un producto así para restaurantes en Latinoamérica. Esta es la oportunidad."
+            </div>
+          </div>
+
+        </div>
+      )}
 
       {/* Panel detalle */}
       {empSel && <PanelEmpleado emp={empSel} onClose={() => setEmpSel(null)} />}
