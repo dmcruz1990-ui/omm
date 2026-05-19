@@ -1,656 +1,596 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { supabase } from '../lib/supabase.ts';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { supabase } from '../lib/supabase';
 
-const S = {
-  bg:'#0a0a0a', bg2:'#141414', bg3:'#1c1c1c', bg4:'#242424',
-  border:'#2a2a2a', border2:'#333',
-  text1:'#f0f0f0', text2:'#a0a0a0', text3:'#606060',
-  gold:'#d4943a', goldL:'#f0b45a', green:'#3dba6f', greenL:'#4ade80',
-  red:'#e05050', blue:'#4a8fd4', purple:'#9b72ff', pink:'#e91e8c',
-  cyan:'#22d3ee',
-};
-
-const inp: React.CSSProperties = { background:S.bg3, border:`1px solid ${S.border}`, borderRadius:8, padding:'9px 14px', color:S.text1, fontSize:13, outline:'none', width:'100%' };
-const btn = (bg:string,color='#fff'): React.CSSProperties => ({ padding:'9px 18px', borderRadius:9, border:'none', background:bg, color, fontSize:12, fontWeight:700, cursor:'pointer', transition:'opacity .15s' });
-
-type MTab = 'tabla' | 'nuevo' | 'detalle' | 'costos';
-type Estacion = 'Cocina Caliente' | 'Cocina Fría' | 'Barra 1' | 'Barra 2' | 'Postres' | 'Panadería';
-
-interface Ingrediente { id?:number; nombre:string; cantidad:number; unidad:string; costo_unitario:number; costo_total?:number; proveedor?:string; }
-interface MenuItem {
-  id?:string; name:string; emoji:string; category:string; descripcion_comercial?:string;
-  costo_produccion:number; precio_venta:number; margen?:number; margen_real?:number;
-  tiempo_preparacion:number; centro_preparacion:string; disponible:boolean;
-  tips_flow?:string; alerta_stock?:boolean; stock_minimo?:number;
-  tags?:string[]; es_especial?:boolean; calorias?:number; alergenos?:string[];
-  num_ingredientes?:number; costo_real?:number;
-  ingredientes?: Ingrediente[];
+// ── Tipos ──────────────────────────────────────────────────────────────
+interface Supply {
+  id: string; nombre: string; categoria: string | null; unidad: string;
+  precio_unidad: number; stock_actual: number; stock_minimo: number;
+  proveedor: string | null; activo: boolean;
+}
+interface FoodCostRow {
+  id: string; nombre: string; categoria: string | null; estacion: string;
+  emoji: string; precio_venta: number; activo: boolean; disponible: boolean;
+  costo_total: number; food_cost_pct: number;
+}
+interface RecetaItem {
+  id: string; plato_id: string; supply_id: string; cantidad: number;
+  unidad: string | null; notas: string | null; supply?: Supply;
+}
+interface IngForm {
+  supply_id: string; nombre: string; cantidad: number; unidad: string; precio_unidad: number;
 }
 
-const CATEGORIAS = ['Para Compartir','Robata/Wok','Sushi Frío','Ensaladas','Postres','Cocteles','Vinos','Sakes','Cervezas','Aguas','Café/Té','Especiales'];
-const ESTACIONES: Estacion[] = ['Cocina Caliente','Cocina Fría','Barra 1','Barra 2','Postres','Panadería'];
-const UNIDADES = ['gr','kg','ml','lt','unidad','porción','taza','cucharada'];
-const ALERGENOS_LISTA = ['Gluten','Mariscos','Lácteos','Huevo','Nueces','Soya','Pescado','Maní','Sésamo'];
-const EMOJIS_CAT: Record<string,string> = { 'Para Compartir':'🥟','Robata/Wok':'🔥','Sushi Frío':'🍣','Ensaladas':'🥗','Postres':'🍮','Cocteles':'🍹','Vinos':'🍷','Sakes':'🍶','Cervezas':'🍺','Aguas':'💧','Café/Té':'☕','Especiales':'⭐' };
-
-const fmt = (n:number) => `$${Math.round(n).toLocaleString('es-CO')}`;
-const margenColor = (m:number) => m>=60?S.green:m>=40?S.goldL:m>=20?S.gold:S.red;
-const margenLabel = (m:number) => m>=60?'Excelente':m>=40?'Bueno':m>=20?'Regular':'Bajo';
-
-const PLATO_INICIAL: MenuItem = {
-  name:'', emoji:'🍽️', category:'Para Compartir',
-  descripcion_comercial:'', costo_produccion:0, precio_venta:0,
-  tiempo_preparacion:15, centro_preparacion:'Cocina Caliente',
-  disponible:true, tips_flow:'', es_especial:false,
-  tags:[], alergenos:[], ingredientes:[],
+// ── Estilo ─────────────────────────────────────────────────────────────
+const C = {
+  bg: '#08080f', s1: '#0f0f1a', s2: '#1c1c1c', t1: '#fff', t2: '#9a9ab0',
+  t3: '#50506A', border: 'rgba(255,255,255,0.07)', gold: '#FFB547',
+  green: '#00E676', red: '#FF5252', blue: '#448AFF', purple: '#B388FF',
 };
+const CATEGORIAS = ['entrada', 'principal', 'postre', 'coctel', 'bebida', 'otros'];
+const ESTACIONES = ['cocina_caliente', 'cocina_fria', 'bar', 'cava', 'robata', 'postres'];
+const UNIDADES = ['gr', 'ml', 'kg', 'lt', 'unidad'];
+const SUPPLY_CATS = ['carnes', 'pescados', 'vegetales', 'lacteos', 'licores', 'secos', 'otros'];
+const EMOJIS = ['🍽️', '🥩', '🍣', '🍤', '🦞', '🐙', '🍜', '🍝', '🥗', '🍲', '🍱', '🍛', '🧀', '🍰', '🍮', '🍦', '🍷', '🍸', '🍹', '🍵', '☕', '🥃', '🐟', '🦐', '🌮', '🥟'];
+const CAT_EMOJI: Record<string, string> = { carnes: '🥩', pescados: '🐟', vegetales: '🥬', lacteos: '🧀', licores: '🍾', secos: '🌾', otros: '📦' };
 
+const fmt = (n: number) => '$' + Math.round(n || 0).toLocaleString('es-CO');
+const titulo = (s: string) => (s || '').replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+const fcColor = (pct: number) => pct <= 0 ? C.t3 : pct < 30 ? C.green : pct <= 40 ? C.gold : C.red;
+
+// ════════════════════════════════════════════════════════════════════════
 export default function MenuModule() {
-  const [tab, setTab]             = useState<MTab>('tabla');
-  const [items, setItems]         = useState<MenuItem[]>([]);
-  const [selected, setSelected]   = useState<MenuItem|null>(null);
-  const [loading, setLoading]     = useState(true);
-  const [busqueda, setBusqueda]   = useState('');
-  const [catFiltro, setCatFiltro] = useState('Todas');
-  const [form, setForm]           = useState<MenuItem>({...PLATO_INICIAL});
-  const [ingredientes, setIngredientes] = useState<Ingrediente[]>([]);
-  const [newIng, setNewIng]       = useState<Ingrediente>({nombre:'',cantidad:0,unidad:'gr',costo_unitario:0});
-  const [saving, setSaving]       = useState(false);
-  const [toast, setToast]         = useState('');
-  const [sortCol, setSortCol]     = useState<string>('name');
-  const [sortDir, setSortDir]     = useState<'asc'|'desc'>('asc');
+  const [tab, setTab] = useState<'carta' | 'nuevo' | 'supply' | 'analisis'>('carta');
+  const [platos, setPlatos] = useState<FoodCostRow[]>([]);
+  const [supplies, setSupplies] = useState<Supply[]>([]);
+  const [careCount, setCareCount] = useState<Record<string, number>>({});
+  const [loading, setLoading] = useState(true);
+  const [toast, setToast] = useState('');
 
-  const showToast = useCallback((m:string)=>{ setToast(m); setTimeout(()=>setToast(''),3000); },[]);
-  const setF = (k:string,v:any) => setForm(p=>({...p,[k]:v}));
+  const showToast = (m: string) => { setToast(m); window.setTimeout(() => setToast(''), 2800); };
 
-  const fetchMenu = async () => {
-    const { data } = await supabase.from('vista_menu').select('*').order('category').order('name');
-    if (data) setItems(data as MenuItem[]);
-    setLoading(false);
+  // ── Fetch ──
+  const fetchPlatos = useCallback(async () => {
+    const { data } = await supabase.from('menu_food_cost').select('*');
+    if (data) setPlatos(data as FoodCostRow[]);
+  }, []);
+  const fetchSupplies = useCallback(async () => {
+    const { data } = await supabase.from('supply').select('*').order('categoria').order('nombre');
+    if (data) setSupplies(data as Supply[]);
+  }, []);
+  const fetchCare = useCallback(async () => {
+    const hace = new Date(Date.now() - 14 * 86400000).toISOString();
+    const { data } = await supabase.from('xcare_encuestas').select('platos_problema').gte('created_at', hace);
+    const map: Record<string, number> = {};
+    (data || []).forEach((e: any) => (e.platos_problema || []).forEach((p: string) => {
+      const k = String(p).toLowerCase().trim();
+      if (k) map[k] = (map[k] || 0) + 1;
+    }));
+    setCareCount(map);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      await Promise.all([fetchPlatos(), fetchSupplies(), fetchCare()]);
+      setLoading(false);
+    })();
+  }, [fetchPlatos, fetchSupplies, fetchCare]);
+
+  useEffect(() => {
+    const ch = supabase.channel('mi-menu-rt')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'supply' }, () => { fetchSupplies(); fetchPlatos(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_platos' }, () => fetchPlatos())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_recetas' }, () => fetchPlatos())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [fetchSupplies, fetchPlatos]);
+
+  const careFor = (nombre: string) => {
+    const n = (nombre || '').toLowerCase();
+    let tot = 0;
+    Object.entries(careCount).forEach(([k, v]) => { if (k && (n.includes(k) || k.includes(n))) tot += v; });
+    return tot;
   };
 
-  useEffect(()=>{ fetchMenu(); },[]);
+  // ════════ TAB 1 — CARTA ════════
+  const [fCat, setFCat] = useState('all');
+  const [fEst, setFEst] = useState('all');
+  const [busca, setBusca] = useState('');
+  const [sel, setSel] = useState<FoodCostRow | null>(null);
+  const [selRecetas, setSelRecetas] = useState<RecetaItem[]>([]);
+  const [editP, setEditP] = useState<Partial<FoodCostRow> | null>(null);
 
-  // ── Filtros y sort ──────────────────────────────────────
-  const filtrados = (() => {
-    let base = items;
-    if (catFiltro!=='Todas') base = base.filter(i=>i.category===catFiltro);
-    if (busqueda.trim()) {
-      const q = busqueda.toLowerCase();
-      base = base.filter(i=>i.name.toLowerCase().includes(q)||i.category.toLowerCase().includes(q)||i.descripcion_comercial?.toLowerCase().includes(q));
+  const platosFiltrados = useMemo(() => platos.filter(p =>
+    (fCat === 'all' || p.categoria === fCat) &&
+    (fEst === 'all' || p.estacion === fEst) &&
+    (p.nombre || '').toLowerCase().includes(busca.toLowerCase())
+  ), [platos, fCat, fEst, busca]);
+
+  const abrirPlato = async (p: FoodCostRow) => {
+    setSel(p); setEditP({ ...p }); setSelRecetas([]);
+    const { data } = await supabase.from('menu_recetas').select('*, supply(*)').eq('plato_id', p.id);
+    if (data) setSelRecetas(data as RecetaItem[]);
+  };
+  const toggleDisponible = async (p: FoodCostRow) => {
+    await supabase.from('menu_platos').update({ disponible: !p.disponible }).eq('id', p.id);
+    showToast(!p.disponible ? `✓ ${p.nombre} disponible` : `86 — ${p.nombre} agotado`);
+    fetchPlatos();
+  };
+  const guardarEdicion = async () => {
+    if (!editP?.id) return;
+    await supabase.from('menu_platos').update({
+      nombre: editP.nombre, categoria: editP.categoria, estacion: editP.estacion,
+      precio_venta: Number(editP.precio_venta) || 0,
+    }).eq('id', editP.id);
+    showToast('✓ Plato actualizado');
+    setSel(null); fetchPlatos();
+  };
+  const eliminarPlato = async (id: string) => {
+    await supabase.from('menu_platos').delete().eq('id', id);
+    showToast('Plato eliminado');
+    setSel(null); fetchPlatos();
+  };
+
+  // ════════ TAB 2 — NUEVO PLATO ════════
+  const vacio = { emoji: '🍽️', nombre: '', descripcion: '', categoria: 'principal', estacion: 'cocina_caliente', precio_venta: 0 };
+  const [nuevo, setNuevo] = useState({ ...vacio });
+  const [ings, setIngs] = useState<IngForm[]>([]);
+  const [supSel, setSupSel] = useState('');
+  const [cant, setCant] = useState<number>(0);
+  const [unidadIng, setUnidadIng] = useState('gr');
+  const [guardando, setGuardando] = useState(false);
+
+  const costoNuevo = useMemo(() => ings.reduce((s, i) => s + i.cantidad * i.precio_unidad, 0), [ings]);
+  const fcNuevo = nuevo.precio_venta > 0 ? (costoNuevo / nuevo.precio_venta) * 100 : 0;
+
+  const agregarIng = () => {
+    const sup = supplies.find(s => s.id === supSel);
+    if (!sup || cant <= 0) { showToast('⚠️ Elige insumo y cantidad'); return; }
+    setIngs(prev => [...prev, { supply_id: sup.id, nombre: sup.nombre, cantidad: cant, unidad: unidadIng, precio_unidad: sup.precio_unidad }]);
+    setSupSel(''); setCant(0);
+  };
+  const guardarPlato = async () => {
+    if (!nuevo.nombre.trim()) { showToast('⚠️ El nombre es obligatorio'); return; }
+    if (nuevo.precio_venta <= 0) { showToast('⚠️ El precio de venta es obligatorio'); return; }
+    setGuardando(true);
+    const { data: plato, error } = await supabase.from('menu_platos').insert({
+      restaurante_id: 6, nombre: nuevo.nombre.trim(), descripcion: nuevo.descripcion || null,
+      categoria: nuevo.categoria, estacion: nuevo.estacion, emoji: nuevo.emoji,
+      precio_venta: Number(nuevo.precio_venta) || 0,
+    }).select('id').single();
+    if (error || !plato) { showToast('✗ Error al guardar el plato'); setGuardando(false); return; }
+    if (ings.length > 0) {
+      await supabase.from('menu_recetas').insert(ings.map(i => ({
+        plato_id: plato.id, supply_id: i.supply_id, cantidad: i.cantidad, unidad: i.unidad,
+      })));
     }
-    return [...base].sort((a,b)=>{
-      const va = (a as any)[sortCol]??''; const vb = (b as any)[sortCol]??'';
-      const r = typeof va==='number' ? va-vb : String(va).localeCompare(String(vb));
-      return sortDir==='asc'?r:-r;
+    showToast('✓ Plato creado');
+    setNuevo({ ...vacio }); setIngs([]); setGuardando(false);
+    await fetchPlatos();
+    setTab('carta');
+  };
+
+  // ════════ TAB 3 — SUPPLY ════════
+  const supVacio = { nombre: '', categoria: 'carnes', unidad: 'gr', precio_unidad: 0, stock_actual: 0, stock_minimo: 0, proveedor: '' };
+  const [nuevoSup, setNuevoSup] = useState({ ...supVacio });
+  const [formSupOpen, setFormSupOpen] = useState(false);
+
+  const guardarSupply = async () => {
+    if (!nuevoSup.nombre.trim()) { showToast('⚠️ Nombre del insumo requerido'); return; }
+    const { error } = await supabase.from('supply').insert({
+      restaurante_id: 6, nombre: nuevoSup.nombre.trim(), categoria: nuevoSup.categoria,
+      unidad: nuevoSup.unidad, precio_unidad: Number(nuevoSup.precio_unidad) || 0,
+      stock_actual: Number(nuevoSup.stock_actual) || 0, stock_minimo: Number(nuevoSup.stock_minimo) || 0,
+      proveedor: nuevoSup.proveedor || null,
     });
-  })();
-
-  // ── KPIs ───────────────────────────────────────────────
-  const kpis = [
-    { l:'Platos activos',    v:items.filter(i=>i.disponible).length,                                                    c:S.green  },
-    { l:'Margen promedio',   v:`${Math.round(items.reduce((a,i)=>a+(i.margen_real||i.margen||0),0)/Math.max(items.length,1))}%`, c:S.goldL },
-    { l:'Platos especiales', v:items.filter(i=>i.es_especial).length,                                                  c:S.purple },
-    { l:'Ticket promedio',   v:fmt(items.reduce((a,i)=>a+i.precio_venta,0)/Math.max(items.length,1)),                  c:S.blue   },
-    { l:'Costo promedio',    v:fmt(items.reduce((a,i)=>a+(i.costo_real||i.costo_produccion||0),0)/Math.max(items.length,1)), c:S.red },
-  ];
-
-  // ── Costo total ingredientes ───────────────────────────
-  const costoIngredientes = ingredientes.reduce((a,i)=>a+(i.cantidad*i.costo_unitario),0);
-
-  // ── Guardar plato ──────────────────────────────────────
-  const guardar = async () => {
-    if (!form.name) { showToast('⚠️ Nombre requerido'); return; }
-    setSaving(true);
-    const payload = {
-      ...form,
-      costo_produccion: costoIngredientes > 0 ? costoIngredientes : form.costo_produccion,
-      restaurant_id: 'kxaxjttvkaeewsjbpert',
-    };
-    delete (payload as any).ingredientes;
-    delete (payload as any).margen;
-    delete (payload as any).margen_real;
-    delete (payload as any).num_ingredientes;
-    delete (payload as any).costo_real;
-
-    let itemId = form.id;
-    if (itemId) {
-      await supabase.from('menu_items').update(payload).eq('id', itemId);
-    } else {
-      const { data } = await supabase.from('menu_items').insert(payload).select().single();
-      itemId = (data as any)?.id;
-    }
-
-    // Guardar ingredientes
-    if (itemId && ingredientes.length > 0) {
-      await supabase.from('menu_ingredientes').delete().eq('menu_item_id', itemId);
-      await supabase.from('menu_ingredientes').insert(
-        ingredientes.map(i=>({ menu_item_id:itemId, nombre:i.nombre, cantidad:i.cantidad, unidad:i.unidad, costo_unitario:i.costo_unitario, proveedor:i.proveedor||null }))
-      );
-    }
-
-    showToast(`✓ ${form.name} guardado`);
-    setSaving(false);
-    setTab('tabla');
-    setForm({...PLATO_INICIAL});
-    setIngredientes([]);
-    fetchMenu();
+    if (error) { showToast('✗ Error al guardar insumo'); return; }
+    showToast('✓ Insumo agregado');
+    setNuevoSup({ ...supVacio }); setFormSupOpen(false);
+    fetchSupplies();
+  };
+  const actualizarSupply = async (id: string, campo: 'precio_unidad' | 'stock_actual', valor: number) => {
+    await supabase.from('supply').update({ [campo]: valor }).eq('id', id);
+    fetchSupplies(); fetchPlatos();
   };
 
-  const toggleDisponible = async (item:MenuItem) => {
-    await supabase.from('menu_items').update({ disponible:!item.disponible }).eq('id', item.id!);
-    showToast(item.disponible ? `86 ${item.name}` : `✓ ${item.name} disponible`);
-    fetchMenu();
+  // ════════ TAB 4 — ANÁLISIS ════════
+  const analisis = useMemo(() => {
+    const conReceta = platos.filter(p => p.costo_total > 0 && p.precio_venta > 0);
+    const fcProm = conReceta.length ? conReceta.reduce((s, p) => s + p.food_cost_pct, 0) / conReceta.length : 0;
+    const altaRent = conReceta.filter(p => p.food_cost_pct < 25).length;
+    const criticos = conReceta.filter(p => p.food_cost_pct > 40).length;
+    const activos = platos.filter(p => p.activo).length;
+    const topRent = [...conReceta].sort((a, b) => a.food_cost_pct - b.food_cost_pct).slice(0, 5);
+    const topMalo = [...conReceta].sort((a, b) => b.food_cost_pct - a.food_cost_pct).slice(0, 5);
+    const stockBajo = supplies.filter(s => Number(s.stock_actual) < Number(s.stock_minimo));
+    const porCat: Record<string, { sum: number; n: number }> = {};
+    conReceta.forEach(p => {
+      const k = p.categoria || 'otros';
+      if (!porCat[k]) porCat[k] = { sum: 0, n: 0 };
+      porCat[k].sum += p.food_cost_pct; porCat[k].n++;
+    });
+    const distrib = Object.entries(porCat).map(([cat, v]) => ({ cat, pct: v.sum / v.n }));
+    return { fcProm, altaRent, criticos, activos, topRent, topMalo, stockBajo, distrib };
+  }, [platos, supplies]);
+
+  // ── UI helpers ──
+  const TabBtn = ({ id, label }: { id: typeof tab; label: string }) => (
+    <button onClick={() => setTab(id)}
+      style={{
+        padding: '8px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+        border: `1px solid ${tab === id ? C.gold : C.border}`,
+        background: tab === id ? `${C.gold}1a` : 'transparent',
+        color: tab === id ? C.gold : C.t2, fontFamily: "'DM Sans',sans-serif",
+      }}>{label}</button>
+  );
+  const inp: React.CSSProperties = {
+    width: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 8,
+    padding: '8px 10px', color: C.t1, fontSize: 13, outline: 'none',
   };
+  const card: React.CSSProperties = { background: C.s1, border: `1px solid ${C.border}`, borderRadius: 14, padding: 16 };
 
-  const abrirDetalle = async (item:MenuItem) => {
-    setSelected(item);
-    setForm({...item});
-    const { data } = await supabase.from('menu_ingredientes').select('*').eq('menu_item_id', item.id!);
-    setIngredientes(data||[]);
-    setTab('detalle');
-  };
+  if (loading) return (
+    <div style={{ height: '100%', background: C.bg, color: C.t2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13 }}>
+      Cargando Mi Menú…
+    </div>
+  );
 
-  const sort = (col:string) => {
-    if (sortCol===col) setSortDir(p=>p==='asc'?'desc':'asc');
-    else { setSortCol(col); setSortDir('asc'); }
-  };
-
-  const SortIcon = ({col}:{col:string}) => sortCol===col
-    ? <span style={{fontSize:9,marginLeft:3}}>{sortDir==='asc'?'▲':'▼'}</span>
-    : <span style={{fontSize:9,marginLeft:3,opacity:.3}}>▲</span>;
-
-  // ── RENDER ─────────────────────────────────────────────
   return (
-    <div style={{display:'flex',flexDirection:'column',height:'100%',background:S.bg,color:S.text1,fontFamily:"'DM Sans',sans-serif"}}>
-
-      {/* Toast */}
-      {toast && <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:'#222',border:`1px solid ${S.gold}`,color:S.text1,padding:'10px 22px',borderRadius:10,fontSize:13,zIndex:9999,whiteSpace:'nowrap'}}>{toast}</div>}
+    <div style={{ height: '100%', overflowY: 'auto', background: C.bg, color: C.t1, fontFamily: "'DM Sans',sans-serif", padding: 24 }}>
+      {toast && (
+        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: C.s2, border: `1px solid ${C.gold}`, color: C.t1, padding: '10px 24px', borderRadius: 50, fontSize: 13, fontWeight: 700, zIndex: 9999 }}>{toast}</div>
+      )}
 
       {/* Header */}
-      <div style={{padding:'12px 20px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',flexShrink:0,flexWrap:'wrap',gap:10}}>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <div style={{width:40,height:40,borderRadius:12,background:`linear-gradient(135deg,${S.gold},${S.purple})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>📋</div>
-          <div>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,letterSpacing:'-0.02em'}}>MI MENÚ</div>
-            <div style={{fontSize:11,color:S.text3}}>Ingeniería de menú — OMM Seratta</div>
-          </div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ fontFamily: "'Syne',sans-serif", fontSize: 24, fontWeight: 800, margin: 0 }}>🍽️ Mi Menú</h1>
+          <p style={{ fontSize: 11, color: C.t3, margin: '2px 0 0' }}>Carta · Recetas · Food Cost · Supply</p>
         </div>
-        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-          <input placeholder="🔍 Buscar plato..." value={busqueda} onChange={e=>setBusqueda(e.target.value)}
-            style={{...inp,width:220,fontSize:12,padding:'7px 14px'}} />
-          <select style={{...inp,width:'auto',fontSize:12,padding:'7px 12px'}} value={catFiltro} onChange={e=>setCatFiltro(e.target.value)}>
-            <option>Todas</option>
-            {CATEGORIAS.map(c=><option key={c}>{c}</option>)}
-          </select>
-          <button onClick={()=>setTab('costos')} style={{...btn(`${S.blue}20`,S.blue),border:`1px solid ${S.blue}40`,padding:'7px 14px',fontSize:11}}>📊 Análisis</button>
-          <button onClick={()=>{setForm({...PLATO_INICIAL});setIngredientes([]);setTab('nuevo');}} style={{...btn(`linear-gradient(135deg,${S.gold},${S.purple})`),padding:'8px 18px'}}>+ Nuevo plato</button>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <TabBtn id="carta" label="📋 Carta" />
+          <TabBtn id="nuevo" label="➕ Nuevo plato" />
+          <TabBtn id="supply" label="🥩 Supply" />
+          <TabBtn id="analisis" label="📊 Análisis" />
         </div>
       </div>
 
-      {/* KPIs */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:8,padding:'10px 20px',borderBottom:`1px solid ${S.border}`,flexShrink:0}}>
-        {kpis.map(k=>(
-          <div key={k.l} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,padding:'8px 14px'}}>
-            <div style={{fontSize:9,color:S.text3,marginBottom:2,textTransform:'uppercase' as const,letterSpacing:'.06em'}}>{k.l}</div>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:k.c}}>{k.v}</div>
+      {/* ════ TAB CARTA ════ */}
+      {tab === 'carta' && (
+        <div>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
+            <input placeholder="Buscar plato…" value={busca} onChange={e => setBusca(e.target.value)} style={{ ...inp, width: 220 }} />
+            <select value={fCat} onChange={e => setFCat(e.target.value)} style={{ ...inp, width: 170 }}>
+              <option value="all">Todas las categorías</option>
+              {CATEGORIAS.map(c => <option key={c} value={c}>{titulo(c)}</option>)}
+            </select>
+            <select value={fEst} onChange={e => setFEst(e.target.value)} style={{ ...inp, width: 180 }}>
+              <option value="all">Todas las estaciones</option>
+              {ESTACIONES.map(e => <option key={e} value={e}>{titulo(e)}</option>)}
+            </select>
+            <span style={{ marginLeft: 'auto', fontSize: 12, color: C.t3, alignSelf: 'center' }}>{platosFiltrados.length} platos</span>
           </div>
-        ))}
-      </div>
 
-      <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+          {platos.length === 0 && (
+            <div style={{ ...card, textAlign: 'center', color: C.t3, padding: 40 }}>
+              Aún no hay platos en la carta. Ve a "➕ Nuevo plato" para crear el primero.
+            </div>
+          )}
 
-        {/* ── TABLA EXCEL ── */}
-        {tab==='tabla' && (
-          <div style={{flex:1,overflowY:'auto'}}>
-            {loading && <div style={{padding:40,textAlign:'center',color:S.text3}}>Cargando menú...</div>}
-            {!loading && (
-              <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:12}}>
-                <thead style={{position:'sticky',top:0,zIndex:10}}>
-                  <tr style={{background:S.bg3,borderBottom:`2px solid ${S.border}`}}>
-                    {[
-                      {k:'disponible',l:''},
-                      {k:'emoji',l:''},
-                      {k:'name',l:'Nombre'},
-                      {k:'category',l:'Categoría'},
-                      {k:'descripcion_comercial',l:'Descripción comercial'},
-                      {k:'centro_preparacion',l:'Estación'},
-                      {k:'tiempo_preparacion',l:'⏱ Min'},
-                      {k:'costo_real',l:'Costo'},
-                      {k:'precio_venta',l:'Precio venta'},
-                      {k:'margen_real',l:'Margen %'},
-                      {k:'tips_flow',l:'Tips Flow'},
-                      {k:'acciones',l:''},
-                    ].map(col=>(
-                      <th key={col.k} onClick={()=>col.k!=='acciones'&&col.k!=='emoji'&&col.k!=='disponible'&&sort(col.k)}
-                        style={{padding:'10px 12px',textAlign:'left' as const,fontSize:10,fontWeight:700,color:S.text3,textTransform:'uppercase' as const,letterSpacing:'.06em',cursor:'pointer',whiteSpace:'nowrap',userSelect:'none' as const}}>
-                        {col.l}<SortIcon col={col.k}/>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtrados.map((item,idx)=>{
-                    const mg = item.margen_real||item.margen||0;
-                    const costo = item.costo_real||item.costo_produccion||0;
-                    return (
-                      <tr key={item.id||idx}
-                        style={{background:idx%2===0?S.bg:S.bg2,borderBottom:`1px solid ${S.border}`,transition:'background .1s',cursor:'pointer'}}
-                        onMouseEnter={e=>(e.currentTarget as HTMLTableRowElement).style.background=`${S.gold}08`}
-                        onMouseLeave={e=>(e.currentTarget as HTMLTableRowElement).style.background=idx%2===0?S.bg:S.bg2}>
-                        {/* Disponible toggle */}
-                        <td style={{padding:'8px 12px',textAlign:'center' as const}}>
-                          <div onClick={e=>{e.stopPropagation();toggleDisponible(item);}}
-                            style={{width:28,height:16,borderRadius:8,background:item.disponible?S.green:S.border,position:'relative',cursor:'pointer',transition:'all .2s',flexShrink:0,display:'inline-block'}}>
-                            <div style={{position:'absolute',top:2,left:item.disponible?14:2,width:12,height:12,borderRadius:'50%',background:'#fff',transition:'left .2s'}}/>
-                          </div>
-                        </td>
-                        {/* Emoji */}
-                        <td style={{padding:'8px 8px',fontSize:20,textAlign:'center' as const}}>{item.emoji}</td>
-                        {/* Nombre */}
-                        <td onClick={()=>abrirDetalle(item)} style={{padding:'8px 12px',fontWeight:700,whiteSpace:'nowrap'}}>
-                          <div style={{display:'flex',alignItems:'center',gap:6}}>
-                            {item.name}
-                            {item.es_especial && <span style={{fontSize:9,background:`${S.gold}20`,color:S.gold,padding:'1px 6px',borderRadius:10,fontWeight:700}}>ESPECIAL</span>}
-                            {!item.disponible && <span style={{fontSize:9,background:`${S.red}20`,color:S.red,padding:'1px 6px',borderRadius:10}}>86</span>}
-                            {(item.margen_real||item.margen||0)>=70 && <span style={{fontSize:9,background:'rgba(212,148,58,0.15)',color:'#d4943a',padding:'1px 6px',borderRadius:10,fontWeight:700}}>★ Alta Rent.</span>}
-                          </div>
-                        </td>
-                        {/* Categoría */}
-                        <td style={{padding:'8px 12px',whiteSpace:'nowrap'}}>
-                          <span style={{fontSize:11,background:`${S.purple}15`,color:S.purple,padding:'3px 10px',borderRadius:20}}>
-                            {EMOJIS_CAT[item.category]||'🍽️'} {item.category}
-                          </span>
-                        </td>
-                        {/* Descripción */}
-                        <td style={{padding:'8px 12px',color:S.text2,maxWidth:200,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                          {item.descripcion_comercial||<span style={{color:S.text3,fontStyle:'italic'}}>Sin descripción</span>}
-                        </td>
-                        {/* Estación */}
-                        <td style={{padding:'8px 12px',whiteSpace:'nowrap'}}>
-                          <span style={{fontSize:11,background:`${S.blue}15`,color:S.blue,padding:'3px 10px',borderRadius:20}}>{item.centro_preparacion}</span>
-                        </td>
-                        {/* Tiempo */}
-                        <td style={{padding:'8px 12px',textAlign:'center' as const,color:item.tiempo_preparacion>20?S.gold:S.green,fontWeight:700}}>
-                          {item.tiempo_preparacion}m
-                        </td>
-                        {/* Costo */}
-                        <td style={{padding:'8px 12px',fontWeight:700,color:S.red,whiteSpace:'nowrap'}}>{fmt(costo)}</td>
-                        {/* Precio venta */}
-                        <td style={{padding:'8px 12px',fontWeight:900,color:S.goldL,whiteSpace:'nowrap',fontFamily:"'Syne',sans-serif"}}>{fmt(item.precio_venta)}</td>
-                        {/* Margen */}
-                        <td style={{padding:'8px 12px'}}>
-                          <div style={{display:'flex',alignItems:'center',gap:8}}>
-                            <div style={{width:50,height:5,background:S.bg4,borderRadius:3,overflow:'hidden'}}>
-                              <div style={{height:'100%',background:margenColor(mg),width:`${Math.min(100,mg)}%`,borderRadius:3}}/>
-                            </div>
-                            <span style={{fontWeight:700,color:margenColor(mg),fontSize:11,whiteSpace:'nowrap'}}>{mg}%</span>
-                          </div>
-                        </td>
-                        {/* Tips flow */}
-                        <td style={{padding:'8px 12px',color:S.cyan,fontSize:11,maxWidth:160,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>
-                          {item.tips_flow||<span style={{color:S.text3}}>—</span>}
-                        </td>
-                        {/* Acciones */}
-                        <td style={{padding:'8px 12px'}}>
-                          <div style={{display:'flex',gap:6}}>
-                            <button onClick={e=>{e.stopPropagation();abrirDetalle(item);}}
-                              style={{...btn(`${S.blue}20`,S.blue),padding:'4px 10px',fontSize:10,border:`1px solid ${S.blue}30`}}>✏️</button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            )}
-            {!loading && filtrados.length===0 && (
-              <div style={{padding:60,textAlign:'center',color:S.text3}}>
-                <div style={{fontSize:40,marginBottom:12}}>🍽️</div>
-                <div style={{fontSize:14,fontWeight:700}}>Sin platos — crea el primero</div>
+          {platos.length > 0 && (
+            <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', gap: 12, padding: '8px 16px', fontSize: 9, color: C.t3, textTransform: 'uppercase', letterSpacing: 1, borderBottom: `1px solid ${C.border}` }}>
+                <span style={{ width: 22 }} /><span style={{ flex: 1 }}>Plato</span>
+                <span style={{ width: 90, textAlign: 'right' }}>Precio</span>
+                <span style={{ width: 90, textAlign: 'right' }}>Costo</span>
+                <span style={{ width: 70, textAlign: 'right' }}>Food cost</span>
+                <span style={{ width: 70, textAlign: 'center' }}>Disp.</span>
               </div>
-            )}
-          </div>
-        )}
-
-        {/* ── NUEVO / EDITAR ── */}
-        {(tab==='nuevo'||tab==='detalle') && (
-          <div style={{flex:1,overflowY:'auto',padding:16}}>
-            <div style={{maxWidth:900,display:'grid',gridTemplateColumns:'1fr 380px',gap:16,alignItems:'start'}}>
-
-              {/* Panel izquierdo */}
-              <div style={{display:'flex',flexDirection:'column',gap:14}}>
-
-                {/* Info básica */}
-                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:16,padding:20}}>
-                  <div style={{fontSize:11,color:S.gold,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:16}}>Información del plato</div>
-                  <div style={{display:'grid',gridTemplateColumns:'60px 1fr 200px',gap:10,marginBottom:10}}>
-                    {/* Emoji picker */}
-                    <div>
-                      <div style={{fontSize:10,color:S.text3,marginBottom:4}}>Emoji</div>
-                      <input style={{...inp,textAlign:'center',fontSize:24,padding:'6px'}} value={form.emoji} onChange={e=>setF('emoji',e.target.value)} maxLength={2}/>
-                    </div>
-                    <div>
-                      <div style={{fontSize:10,color:S.text3,marginBottom:4}}>Nombre del plato *</div>
-                      <input style={inp} placeholder="Ej: Burosu Shitake" value={form.name} onChange={e=>setF('name',e.target.value)} />
-                    </div>
-                    <div>
-                      <div style={{fontSize:10,color:S.text3,marginBottom:4}}>Categoría</div>
-                      <select style={inp} value={form.category} onChange={e=>setF('category',e.target.value)}>
-                        {CATEGORIAS.map(c=><option key={c}>{c}</option>)}
-                      </select>
-                    </div>
-                  </div>
-                  <div style={{marginBottom:10}}>
-                    <div style={{fontSize:10,color:S.text3,marginBottom:4}}>Descripción comercial (lo que ve el cliente)</div>
-                    <textarea style={{...inp,minHeight:64,resize:'vertical' as const}} placeholder="Ej: Delicado consomé de res con hongos shitake frescos, aceite de trufa y cebollín..." value={form.descripcion_comercial||''} onChange={e=>setF('descripcion_comercial',e.target.value)} />
-                  </div>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
-                    <div>
-                      <div style={{fontSize:10,color:S.text3,marginBottom:4}}>Estación de preparación</div>
-                      <select style={inp} value={form.centro_preparacion} onChange={e=>setF('centro_preparacion',e.target.value)}>
-                        {ESTACIONES.map(e=><option key={e}>{e}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <div style={{fontSize:10,color:S.text3,marginBottom:4}}>⏱ Tiempo (min)</div>
-                      <input type="number" style={inp} value={form.tiempo_preparacion} onChange={e=>setF('tiempo_preparacion',parseInt(e.target.value)||0)} />
-                    </div>
-                    <div>
-                      <div style={{fontSize:10,color:S.text3,marginBottom:4}}>Calorías (opcional)</div>
-                      <input type="number" style={inp} placeholder="320" value={form.calorias||''} onChange={e=>setF('calorias',parseInt(e.target.value)||null)} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Ingredientes y costos */}
-                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:16,padding:20}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:16}}>
-                    <div style={{fontSize:11,color:S.red,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.08em'}}>Receta e ingredientes</div>
-                    <div style={{fontSize:12,color:S.gold,fontWeight:700}}>Costo total: {fmt(costoIngredientes)}</div>
-                  </div>
-                  {/* Lista ingredientes */}
-                  {ingredientes.length>0 && (
-                    <div style={{marginBottom:12}}>
-                      <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:12}}>
-                        <thead>
-                          <tr style={{borderBottom:`1px solid ${S.border}`}}>
-                            {['Ingrediente','Cantidad','Unidad','Costo unit.','Costo total','Proveedor',''].map(h=>(
-                              <th key={h} style={{padding:'6px 8px',textAlign:'left' as const,fontSize:10,color:S.text3,fontWeight:700}}>{h}</th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {ingredientes.map((ing,i)=>(
-                            <tr key={i} style={{borderBottom:`1px solid ${S.border}`,background:i%2===0?S.bg3:'transparent'}}>
-                              <td style={{padding:'6px 8px',fontWeight:600}}>{ing.nombre}</td>
-                              <td style={{padding:'6px 8px',color:S.blue}}>{ing.cantidad}</td>
-                              <td style={{padding:'6px 8px',color:S.text3}}>{ing.unidad}</td>
-                              <td style={{padding:'6px 8px',color:S.gold}}>{fmt(ing.costo_unitario)}</td>
-                              <td style={{padding:'6px 8px',color:S.red,fontWeight:700}}>{fmt(ing.cantidad*ing.costo_unitario)}</td>
-                              <td style={{padding:'6px 8px',color:S.text3,fontSize:11}}>{ing.proveedor||'—'}</td>
-                              <td style={{padding:'6px 8px'}}>
-                                <button onClick={()=>setIngredientes(p=>p.filter((_,j)=>j!==i))}
-                                  style={{...btn(`${S.red}20`,S.red),padding:'3px 8px',fontSize:10,border:`1px solid ${S.red}30`}}>✕</button>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  )}
-                  {/* Agregar ingrediente */}
-                  <div style={{background:S.bg3,borderRadius:10,padding:14}}>
-                    <div style={{fontSize:10,color:S.text3,marginBottom:8,fontWeight:700}}>+ Agregar ingrediente</div>
-                    <div style={{display:'grid',gridTemplateColumns:'2fr 1fr 1fr 1fr 1fr auto',gap:8,alignItems:'end'}}>
-                      <div>
-                        <div style={{fontSize:9,color:S.text3,marginBottom:3}}>Nombre</div>
-                        <input style={{...inp,padding:'7px 10px',fontSize:12}} placeholder="Ej: Hongos shitake" value={newIng.nombre} onChange={e=>setNewIng(p=>({...p,nombre:e.target.value}))} />
+              {platosFiltrados.map((p, i) => {
+                const quejas = careFor(p.nombre);
+                return (
+                  <div key={p.id} onClick={() => abrirPlato(p)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: i ? `1px solid ${C.border}` : 'none', cursor: 'pointer' }}>
+                    <span style={{ fontSize: 22, width: 22 }}>{p.emoji}</span>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        {p.nombre}
+                        {p.food_cost_pct > 0 && p.food_cost_pct < 25 && <span style={{ fontSize: 9, color: C.purple }}>Alta rentabilidad 💎</span>}
+                        {quejas > 0 && <span style={{ fontSize: 9, background: `${C.red}22`, color: C.red, padding: '1px 6px', borderRadius: 6 }}>⚠️ Care {quejas}</span>}
                       </div>
-                      <div>
-                        <div style={{fontSize:9,color:S.text3,marginBottom:3}}>Cantidad</div>
-                        <input type="number" style={{...inp,padding:'7px 10px',fontSize:12}} value={newIng.cantidad||''} onChange={e=>setNewIng(p=>({...p,cantidad:parseFloat(e.target.value)||0}))} />
-                      </div>
-                      <div>
-                        <div style={{fontSize:9,color:S.text3,marginBottom:3}}>Unidad</div>
-                        <select style={{...inp,padding:'7px 8px',fontSize:12}} value={newIng.unidad} onChange={e=>setNewIng(p=>({...p,unidad:e.target.value}))}>
-                          {UNIDADES.map(u=><option key={u}>{u}</option>)}
-                        </select>
-                      </div>
-                      <div>
-                        <div style={{fontSize:9,color:S.text3,marginBottom:3}}>Costo/unidad $</div>
-                        <input type="number" style={{...inp,padding:'7px 10px',fontSize:12}} placeholder="0" value={newIng.costo_unitario||''} onChange={e=>setNewIng(p=>({...p,costo_unitario:parseFloat(e.target.value)||0}))} />
-                      </div>
-                      <div>
-                        <div style={{fontSize:9,color:S.text3,marginBottom:3}}>Proveedor</div>
-                        <input style={{...inp,padding:'7px 10px',fontSize:12}} placeholder="Opcional" value={newIng.proveedor||''} onChange={e=>setNewIng(p=>({...p,proveedor:e.target.value}))} />
-                      </div>
-                      <button onClick={()=>{
-                        if(!newIng.nombre) return;
-                        setIngredientes(p=>[...p,{...newIng}]);
-                        setNewIng({nombre:'',cantidad:0,unidad:'gr',costo_unitario:0});
-                      }} style={{...btn(S.green),padding:'8px 14px',height:36,fontSize:13}}>+</button>
+                      <div style={{ fontSize: 10, color: C.t3 }}>{titulo(p.categoria || '')} · {titulo(p.estacion)}</div>
                     </div>
-                  </div>
-                </div>
-
-                {/* Tips y notas */}
-                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:16,padding:20}}>
-                  <div style={{fontSize:11,color:S.cyan,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.08em',marginBottom:14}}>Tips para el Flow</div>
-                  <textarea style={{...inp,minHeight:70,resize:'vertical' as const}} placeholder="Ej: Servir en copa de martini helada. Mencionar el origen japonés del shitake. Maridaje recomendado: Sake G Joy." value={form.tips_flow||''} onChange={e=>setF('tips_flow',e.target.value)} />
-                </div>
-
-              </div>
-
-              {/* Panel derecho — preview y financiero */}
-              <div style={{display:'flex',flexDirection:'column',gap:14}}>
-
-                {/* Preview tarjeta */}
-                <div style={{background:`linear-gradient(135deg,${S.bg3},${S.bg4})`,border:`1px solid ${S.border}`,borderRadius:16,padding:20,position:'sticky',top:16}}>
-                  <div style={{fontSize:10,color:S.text3,fontWeight:700,marginBottom:12,textTransform:'uppercase' as const}}>Vista previa</div>
-                  <div style={{textAlign:'center',marginBottom:16}}>
-                    <div style={{fontSize:48,marginBottom:6}}>{form.emoji}</div>
-                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900}}>{form.name||'Nombre del plato'}</div>
-                    <div style={{fontSize:11,color:S.purple,marginTop:4}}>{EMOJIS_CAT[form.category]||'🍽️'} {form.category}</div>
-                    {form.descripcion_comercial && <div style={{fontSize:11,color:S.text2,marginTop:8,fontStyle:'italic',lineHeight:1.5}}>{form.descripcion_comercial}</div>}
-                  </div>
-
-                  {/* Financiero */}
-                  <div style={{background:S.bg,borderRadius:12,padding:14,marginBottom:14}}>
-                    <div style={{fontSize:10,color:S.text3,fontWeight:700,marginBottom:10,textTransform:'uppercase' as const}}>Análisis financiero</div>
-                    <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                      <div>
-                        <div style={{fontSize:10,color:S.text3,marginBottom:4}}>Precio de venta</div>
-                        <input type="number" style={{...inp,fontSize:16,fontWeight:900,color:S.goldL,textAlign:'center' as const}} placeholder="0" value={form.precio_venta||''} onChange={e=>setF('precio_venta',parseFloat(e.target.value)||0)} />
-                      </div>
-                      {costoIngredientes===0 && (
-                        <div>
-                          <div style={{fontSize:10,color:S.text3,marginBottom:4}}>Costo manual (sin ingredientes)</div>
-                          <input type="number" style={{...inp,fontSize:13}} placeholder="0" value={form.costo_produccion||''} onChange={e=>setF('costo_produccion',parseFloat(e.target.value)||0)} />
-                        </div>
-                      )}
+                    <div style={{ width: 90, textAlign: 'right', fontSize: 12, color: C.t2 }}>{fmt(p.precio_venta)}</div>
+                    <div style={{ width: 90, textAlign: 'right', fontSize: 12, color: C.t3 }}>{fmt(p.costo_total)}</div>
+                    <div style={{ width: 70, textAlign: 'right', fontSize: 13, fontWeight: 800, color: fcColor(p.food_cost_pct) }}>
+                      {p.food_cost_pct > 0 ? p.food_cost_pct + '%' : '—'}
                     </div>
-                    {/* Cálculo de margen */}
-                    {form.precio_venta>0 && (()=>{
-                      const costo = costoIngredientes>0 ? costoIngredientes : form.costo_produccion;
-                      const margen = Math.round(((form.precio_venta-costo)/form.precio_venta)*100);
-                      const ganancia = form.precio_venta - costo;
-                      return (
-                        <div style={{marginTop:12,background:S.bg3,borderRadius:10,padding:12}}>
-                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:10}}>
-                            <div style={{textAlign:'center' as const}}>
-                              <div style={{fontSize:9,color:S.text3}}>Costo</div>
-                              <div style={{fontSize:16,fontWeight:900,color:S.red}}>{fmt(costo)}</div>
-                            </div>
-                            <div style={{textAlign:'center' as const}}>
-                              <div style={{fontSize:9,color:S.text3}}>Ganancia</div>
-                              <div style={{fontSize:16,fontWeight:900,color:S.green}}>{fmt(ganancia)}</div>
-                            </div>
-                          </div>
-                          <div style={{textAlign:'center' as const}}>
-                            <div style={{fontSize:10,color:S.text3,marginBottom:4}}>Margen de contribución</div>
-                            <div style={{fontFamily:"'Syne',sans-serif",fontSize:28,fontWeight:900,color:margenColor(margen)}}>{margen}%</div>
-                            <div style={{fontSize:11,color:margenColor(margen)}}>{margenLabel(margen)}</div>
-                            <div style={{height:6,background:S.bg4,borderRadius:3,marginTop:8,overflow:'hidden'}}>
-                              <div style={{height:'100%',background:margenColor(margen),width:`${Math.min(100,Math.max(0,margen))}%`,borderRadius:3,transition:'width .3s'}}/>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                  </div>
-
-                  {/* Opciones */}
-                  <div style={{display:'flex',flexDirection:'column',gap:8,marginBottom:14}}>
-                    <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:12,color:S.text2}}>
-                      <input type="checkbox" checked={form.es_especial||false} onChange={e=>setF('es_especial',e.target.checked)} />
-                      ⭐ Plato especial de temporada
-                    </label>
-                    <label style={{display:'flex',alignItems:'center',gap:10,cursor:'pointer',fontSize:12,color:S.text2}}>
-                      <input type="checkbox" checked={form.disponible} onChange={e=>setF('disponible',e.target.checked)} />
-                      ✓ Disponible en carta
-                    </label>
-                  </div>
-
-                  {/* Alérgenos */}
-                  <div style={{marginBottom:14}}>
-                    <div style={{fontSize:10,color:S.red,fontWeight:700,marginBottom:6}}>⚠️ Alérgenos</div>
-                    <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
-                      {ALERGENOS_LISTA.map(a=>{
-                        const sel = (form.alergenos||[]).includes(a);
-                        return (
-                          <button key={a} onClick={()=>setF('alergenos',sel?(form.alergenos||[]).filter((x:string)=>x!==a):[...(form.alergenos||[]),a])}
-                            style={{padding:'3px 10px',borderRadius:20,border:`1px solid ${sel?S.red:S.border}`,background:sel?`${S.red}20`:'transparent',color:sel?S.red:S.text3,fontSize:10,cursor:'pointer'}}>
-                            {a}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Info estación */}
-                  <div style={{background:`${S.blue}10`,border:`1px solid ${S.blue}20`,borderRadius:10,padding:'8px 12px',marginBottom:14,fontSize:11,color:S.blue}}>
-                    🏪 {form.centro_preparacion} · ⏱ {form.tiempo_preparacion} min
-                  </div>
-
-                  <button onClick={guardar} disabled={saving}
-                    style={{...btn(`linear-gradient(135deg,${S.gold},${S.purple})`),width:'100%',padding:13,fontSize:13,fontFamily:"'Syne',sans-serif",opacity:saving?.7:1}}>
-                    {saving ? '⏳ Guardando...' : tab==='detalle' ? '✓ Actualizar plato' : '✓ Crear plato'}
-                  </button>
-                  {tab==='detalle' && (
-                    <button onClick={()=>{setTab('tabla');setForm({...PLATO_INICIAL});setIngredientes([]);}}
-                      style={{...btn('transparent',S.text3),width:'100%',marginTop:8,border:`1px solid ${S.border}`,padding:'9px'}}>
-                      Cancelar
+                    <button onClick={e => { e.stopPropagation(); toggleDisponible(p); }}
+                      style={{ width: 70, padding: '4px 0', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 10, fontWeight: 700, background: p.disponible ? `${C.green}22` : `${C.red}22`, color: p.disponible ? C.green : C.red }}>
+                      {p.disponible ? 'Disp.' : '86'}
                     </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── ANÁLISIS DE COSTOS ── */}
-        {tab==='costos' && (
-          <div style={{flex:1,overflowY:'auto',padding:16}}>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:14,marginBottom:20}}>
-              {/* Top rentables */}
-              <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:18}}>
-                <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,marginBottom:4,color:S.green}}>🏆 Más rentables</div>
-                <div style={{fontSize:11,color:S.text3,marginBottom:14}}>Mayor margen de contribución</div>
-                {[...items].sort((a,b)=>(b.margen_real||b.margen||0)-(a.margen_real||a.margen||0)).slice(0,5).map((item,i)=>{
-                  const mg = item.margen_real||item.margen||0;
-                  return (
-                    <div key={item.id||i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${S.border}`}}>
-                      <span style={{fontSize:18}}>{item.emoji}</span>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
-                        <div style={{fontSize:10,color:S.text3}}>{fmt(item.precio_venta)}</div>
-                      </div>
-                      <span style={{fontSize:13,fontWeight:900,color:margenColor(mg)}}>{mg}%</span>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Más lentos */}
-              <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:18}}>
-                <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,marginBottom:4,color:S.gold}}>⏱ Más tiempo de prep.</div>
-                <div style={{fontSize:11,color:S.text3,marginBottom:14}}>Platos que más demoran</div>
-                {[...items].sort((a,b)=>b.tiempo_preparacion-a.tiempo_preparacion).slice(0,5).map((item,i)=>(
-                  <div key={item.id||i} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 0',borderBottom:`1px solid ${S.border}`}}>
-                    <span style={{fontSize:18}}>{item.emoji}</span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,fontWeight:700,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{item.name}</div>
-                      <div style={{fontSize:10,color:S.text3}}>{item.centro_preparacion}</div>
-                    </div>
-                    <span style={{fontSize:13,fontWeight:900,color:item.tiempo_preparacion>20?S.red:S.goldL}}>{item.tiempo_preparacion}m</span>
                   </div>
-                ))}
-              </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
-              {/* Por estación */}
-              <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:18}}>
-                <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,marginBottom:4,color:S.blue}}>🏪 Por estación</div>
-                <div style={{fontSize:11,color:S.text3,marginBottom:14}}>Carga de trabajo por área</div>
-                {ESTACIONES.map(est=>{
-                  const count = items.filter(i=>i.centro_preparacion===est).length;
-                  if (!count) return null;
-                  const pct = Math.round(count/Math.max(items.length,1)*100);
-                  return (
-                    <div key={est} style={{marginBottom:10}}>
-                      <div style={{display:'flex',justifyContent:'space-between',fontSize:11,marginBottom:4}}>
-                        <span style={{color:S.text2}}>{est}</span>
-                        <span style={{color:S.blue,fontWeight:700}}>{count} platos</span>
-                      </div>
-                      <div style={{height:5,background:S.bg4,borderRadius:3,overflow:'hidden'}}>
-                        <div style={{height:'100%',background:S.blue,width:`${pct}%`,borderRadius:3}}/>
-                      </div>
-                    </div>
-                  );
-                })}
+      {/* ════ TAB NUEVO PLATO ════ */}
+      {tab === 'nuevo' && (
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+          {/* Sección 1 */}
+          <div style={{ ...card, flex: 1, minWidth: 320 }}>
+            <h3 style={{ fontFamily: "'Syne',sans-serif", fontSize: 15, margin: '0 0 14px' }}>1 · Datos del plato</h3>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
+              {EMOJIS.map(e => (
+                <button key={e} onClick={() => setNuevo({ ...nuevo, emoji: e })}
+                  style={{ fontSize: 18, padding: 4, borderRadius: 8, cursor: 'pointer', background: nuevo.emoji === e ? `${C.gold}22` : 'transparent', border: `1px solid ${nuevo.emoji === e ? C.gold : C.border}` }}>{e}</button>
+              ))}
+            </div>
+            <label style={{ fontSize: 10, color: C.t3 }}>Nombre del plato *</label>
+            <input value={nuevo.nombre} onChange={e => setNuevo({ ...nuevo, nombre: e.target.value })} style={{ ...inp, marginBottom: 10 }} />
+            <label style={{ fontSize: 10, color: C.t3 }}>Descripción</label>
+            <input value={nuevo.descripcion} onChange={e => setNuevo({ ...nuevo, descripcion: e.target.value })} style={{ ...inp, marginBottom: 10 }} />
+            <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>Categoría</label>
+                <select value={nuevo.categoria} onChange={e => setNuevo({ ...nuevo, categoria: e.target.value })} style={inp}>
+                  {CATEGORIAS.map(c => <option key={c} value={c}>{titulo(c)}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>Estación KDS</label>
+                <select value={nuevo.estacion} onChange={e => setNuevo({ ...nuevo, estacion: e.target.value })} style={inp}>
+                  {ESTACIONES.map(es => <option key={es} value={es}>{titulo(es)}</option>)}
+                </select>
               </div>
             </div>
+            <label style={{ fontSize: 10, color: C.t3 }}>Precio de venta *</label>
+            <input type="number" value={nuevo.precio_venta || ''} onChange={e => setNuevo({ ...nuevo, precio_venta: parseFloat(e.target.value) || 0 })} style={inp} />
+          </div>
 
-            {/* Tabla resumen por categoría */}
-            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
-              <div style={{padding:'14px 20px',borderBottom:`1px solid ${S.border}`}}>
-                <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900}}>Resumen por categoría</div>
+          {/* Sección 2 */}
+          <div style={{ ...card, flex: 1, minWidth: 320 }}>
+            <h3 style={{ fontFamily: "'Syne',sans-serif", fontSize: 15, margin: '0 0 14px' }}>2 · Receta / Ingredientes</h3>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+              <select value={supSel} onChange={e => {
+                setSupSel(e.target.value);
+                const s = supplies.find(x => x.id === e.target.value);
+                if (s) setUnidadIng(s.unidad);
+              }} style={{ ...inp, flex: 2 }}>
+                <option value="">Insumo…</option>
+                {supplies.map(s => <option key={s.id} value={s.id}>{s.nombre} ({s.unidad})</option>)}
+              </select>
+              <input type="number" placeholder="Cant." value={cant || ''} onChange={e => setCant(parseFloat(e.target.value) || 0)} style={{ ...inp, flex: 1 }} />
+              <select value={unidadIng} onChange={e => setUnidadIng(e.target.value)} style={{ ...inp, width: 80 }}>
+                {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </div>
+            <button onClick={agregarIng} style={{ width: '100%', padding: '8px', borderRadius: 8, border: `1px solid ${C.blue}`, background: `${C.blue}1a`, color: C.blue, fontSize: 12, fontWeight: 700, cursor: 'pointer', marginBottom: 12 }}>
+              + Agregar ingrediente
+            </button>
+            {ings.map((ig, idx) => (
+              <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+                <span style={{ flex: 1 }}>{ig.nombre}</span>
+                <span style={{ color: C.t3 }}>{ig.cantidad} {ig.unidad}</span>
+                <span style={{ color: C.t2, width: 70, textAlign: 'right' }}>{fmt(ig.cantidad * ig.precio_unidad)}</span>
+                <button onClick={() => setIngs(ings.filter((_, i) => i !== idx))} style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer' }}>✕</button>
               </div>
-              <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:12}}>
-                <thead>
-                  <tr style={{background:S.bg3}}>
-                    {['Categoría','Platos','Precio prom.','Costo prom.','Margen prom.','Tiempo prom.'].map(h=>(
-                      <th key={h} style={{padding:'10px 16px',textAlign:'left' as const,fontSize:10,color:S.text3,fontWeight:700,textTransform:'uppercase' as const}}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {CATEGORIAS.map((cat,idx)=>{
-                    const catItems = items.filter(i=>i.category===cat);
-                    if (!catItems.length) return null;
-                    const avgPrecio = catItems.reduce((a,i)=>a+i.precio_venta,0)/catItems.length;
-                    const avgCosto  = catItems.reduce((a,i)=>a+(i.costo_real||i.costo_produccion||0),0)/catItems.length;
-                    const avgMargen = catItems.reduce((a,i)=>a+(i.margen_real||i.margen||0),0)/catItems.length;
-                    const avgTiempo = catItems.reduce((a,i)=>a+i.tiempo_preparacion,0)/catItems.length;
-                    return (
-                      <tr key={cat} style={{background:idx%2===0?S.bg:S.bg2,borderBottom:`1px solid ${S.border}`}}>
-                        <td style={{padding:'10px 16px',fontWeight:700}}>{EMOJIS_CAT[cat]} {cat}</td>
-                        <td style={{padding:'10px 16px',color:S.blue,fontWeight:700}}>{catItems.length}</td>
-                        <td style={{padding:'10px 16px',color:S.goldL,fontWeight:700}}>{fmt(avgPrecio)}</td>
-                        <td style={{padding:'10px 16px',color:S.red}}>{fmt(avgCosto)}</td>
-                        <td style={{padding:'10px 16px'}}>
-                          <span style={{color:margenColor(avgMargen),fontWeight:700}}>{Math.round(avgMargen)}%</span>
-                        </td>
-                        <td style={{padding:'10px 16px',color:S.text2}}>{Math.round(avgTiempo)} min</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
+            ))}
+            <div style={{ marginTop: 14, padding: 12, borderRadius: 10, background: C.bg, border: `1px solid ${fcColor(fcNuevo)}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.t2 }}>
+                <span>Costo receta</span><span>{fmt(costoNuevo)}</span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 15, fontWeight: 800, marginTop: 4 }}>
+                <span>Food Cost</span><span style={{ color: fcColor(fcNuevo) }}>{fcNuevo.toFixed(1)}%</span>
+              </div>
+            </div>
+            <button onClick={guardarPlato} disabled={guardando}
+              style={{ width: '100%', marginTop: 12, padding: '11px', borderRadius: 10, border: 'none', background: C.gold, color: '#000', fontSize: 13, fontWeight: 800, cursor: 'pointer', opacity: guardando ? 0.5 : 1 }}>
+              {guardando ? 'Guardando…' : '✓ Guardar plato'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ════ TAB SUPPLY ════ */}
+      {tab === 'supply' && (
+        <div>
+          <div style={{ display: 'flex', marginBottom: 12 }}>
+            <button onClick={() => setFormSupOpen(o => !o)}
+              style={{ marginLeft: 'auto', padding: '8px 16px', borderRadius: 10, border: `1px solid ${C.blue}`, background: `${C.blue}1a`, color: C.blue, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+              {formSupOpen ? '✕ Cerrar' : '+ Agregar insumo'}
+            </button>
+          </div>
+          {formSupOpen && (
+            <div style={{ ...card, marginBottom: 14, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div style={{ flex: 2, minWidth: 160 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>Nombre</label>
+                <input value={nuevoSup.nombre} onChange={e => setNuevoSup({ ...nuevoSup, nombre: e.target.value })} style={inp} />
+              </div>
+              <div style={{ width: 130 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>Categoría</label>
+                <select value={nuevoSup.categoria} onChange={e => setNuevoSup({ ...nuevoSup, categoria: e.target.value })} style={inp}>
+                  {SUPPLY_CATS.map(c => <option key={c} value={c}>{titulo(c)}</option>)}
+                </select>
+              </div>
+              <div style={{ width: 80 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>Unidad</label>
+                <select value={nuevoSup.unidad} onChange={e => setNuevoSup({ ...nuevoSup, unidad: e.target.value })} style={inp}>
+                  {UNIDADES.map(u => <option key={u} value={u}>{u}</option>)}
+                </select>
+              </div>
+              <div style={{ width: 110 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>Precio/unidad</label>
+                <input type="number" value={nuevoSup.precio_unidad || ''} onChange={e => setNuevoSup({ ...nuevoSup, precio_unidad: parseFloat(e.target.value) || 0 })} style={inp} />
+              </div>
+              <div style={{ width: 100 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>Stock actual</label>
+                <input type="number" value={nuevoSup.stock_actual || ''} onChange={e => setNuevoSup({ ...nuevoSup, stock_actual: parseFloat(e.target.value) || 0 })} style={inp} />
+              </div>
+              <div style={{ width: 100 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>Stock mínimo</label>
+                <input type="number" value={nuevoSup.stock_minimo || ''} onChange={e => setNuevoSup({ ...nuevoSup, stock_minimo: parseFloat(e.target.value) || 0 })} style={inp} />
+              </div>
+              <div style={{ flex: 1, minWidth: 130 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>Proveedor</label>
+                <input value={nuevoSup.proveedor} onChange={e => setNuevoSup({ ...nuevoSup, proveedor: e.target.value })} style={inp} />
+              </div>
+              <button onClick={guardarSupply} style={{ padding: '8px 18px', borderRadius: 8, border: 'none', background: C.gold, color: '#000', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>Guardar</button>
+            </div>
+          )}
+          <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
+            {supplies.length === 0 && <div style={{ padding: 30, textAlign: 'center', color: C.t3, fontSize: 12 }}>Sin insumos. Agrega el primero.</div>}
+            {supplies.map((s, i) => {
+              const bajo = Number(s.stock_actual) < Number(s.stock_minimo);
+              return (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', borderTop: i ? `1px solid ${C.border}` : 'none', background: bajo ? `${C.red}12` : 'transparent' }}>
+                  <span style={{ fontSize: 18 }}>{CAT_EMOJI[s.categoria || 'otros'] || '📦'}</span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>{s.nombre} {bajo && <span style={{ fontSize: 9, color: C.red }}>⚠️ Stock bajo</span>}</div>
+                    <div style={{ fontSize: 10, color: C.t3 }}>{titulo(s.categoria || '')} · {s.proveedor || 'Sin proveedor'}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <label style={{ fontSize: 8, color: C.t3, display: 'block' }}>Precio/{s.unidad}</label>
+                    <input type="number" defaultValue={s.precio_unidad}
+                      onBlur={e => { const v = parseFloat(e.target.value) || 0; if (v !== Number(s.precio_unidad)) actualizarSupply(s.id, 'precio_unidad', v); }}
+                      style={{ ...inp, width: 90, padding: '4px 6px', textAlign: 'right' }} />
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <label style={{ fontSize: 8, color: C.t3, display: 'block' }}>Stock ({s.unidad})</label>
+                    <input type="number" defaultValue={s.stock_actual}
+                      onBlur={e => { const v = parseFloat(e.target.value) || 0; if (v !== Number(s.stock_actual)) actualizarSupply(s.id, 'stock_actual', v); }}
+                      style={{ ...inp, width: 90, padding: '4px 6px', textAlign: 'right', color: bajo ? C.red : C.t1 }} />
+                  </div>
+                  <div style={{ width: 70, textAlign: 'right', fontSize: 10, color: C.t3 }}>mín {s.stock_minimo}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ════ TAB ANÁLISIS ════ */}
+      {tab === 'analisis' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 12 }}>
+            {[
+              { l: 'Food cost promedio', v: analisis.fcProm.toFixed(1) + '%', c: fcColor(analisis.fcProm) },
+              { l: 'Alta rentabilidad (<25%)', v: String(analisis.altaRent), c: C.purple },
+              { l: 'Platos críticos (>40%)', v: String(analisis.criticos), c: C.red },
+              { l: 'Platos activos', v: String(analisis.activos), c: C.blue },
+            ].map(k => (
+              <div key={k.l} style={card}>
+                <div style={{ fontSize: 10, color: C.t3, textTransform: 'uppercase', letterSpacing: 1 }}>{k.l}</div>
+                <div style={{ fontSize: 26, fontWeight: 900, color: k.c, marginTop: 4 }}>{k.v}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={card}>
+              <h3 style={{ fontFamily: "'Syne',sans-serif", fontSize: 14, margin: '0 0 10px', color: C.green }}>💎 Top 5 más rentables</h3>
+              {analisis.topRent.map(p => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+                  <span>{p.emoji}</span><span style={{ flex: 1 }}>{p.nombre}</span>
+                  <span style={{ color: C.t3 }}>{fmt(p.precio_venta)}</span>
+                  <span style={{ fontWeight: 800, color: fcColor(p.food_cost_pct), width: 48, textAlign: 'right' }}>{p.food_cost_pct}%</span>
+                </div>
+              ))}
+              {analisis.topRent.length === 0 && <div style={{ color: C.t3, fontSize: 12 }}>Sin recetas cargadas todavía.</div>}
+            </div>
+            <div style={card}>
+              <h3 style={{ fontFamily: "'Syne',sans-serif", fontSize: 14, margin: '0 0 10px', color: C.red }}>⚠️ Top 5 menos rentables</h3>
+              {analisis.topMalo.map(p => (
+                <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+                  <span>{p.emoji}</span><span style={{ flex: 1 }}>{p.nombre}</span>
+                  {p.food_cost_pct > 40 && <span style={{ fontSize: 9, color: C.gold }}>↑ revisar precio</span>}
+                  <span style={{ fontWeight: 800, color: fcColor(p.food_cost_pct), width: 48, textAlign: 'right' }}>{p.food_cost_pct}%</span>
+                </div>
+              ))}
+              {analisis.topMalo.length === 0 && <div style={{ color: C.t3, fontSize: 12 }}>Sin recetas cargadas todavía.</div>}
             </div>
           </div>
-        )}
-      </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={card}>
+              <h3 style={{ fontFamily: "'Syne',sans-serif", fontSize: 14, margin: '0 0 10px', color: C.gold }}>📦 Insumos con stock bajo</h3>
+              {analisis.stockBajo.map(s => (
+                <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 0', borderBottom: `1px solid ${C.border}`, fontSize: 12 }}>
+                  <span>{CAT_EMOJI[s.categoria || 'otros']}</span><span style={{ flex: 1 }}>{s.nombre}</span>
+                  <span style={{ color: C.red }}>{s.stock_actual} / {s.stock_minimo} {s.unidad}</span>
+                </div>
+              ))}
+              {analisis.stockBajo.length === 0 && <div style={{ color: C.green, fontSize: 12 }}>✓ Todo el stock está sobre el mínimo.</div>}
+            </div>
+            <div style={card}>
+              <h3 style={{ fontFamily: "'Syne',sans-serif", fontSize: 14, margin: '0 0 10px' }}>📊 Food cost por categoría</h3>
+              {analisis.distrib.map(d => (
+                <div key={d.cat} style={{ marginBottom: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 3 }}>
+                    <span>{titulo(d.cat)}</span><span style={{ color: fcColor(d.pct), fontWeight: 700 }}>{d.pct.toFixed(1)}%</span>
+                  </div>
+                  <div style={{ height: 8, background: C.bg, borderRadius: 4, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: Math.min(100, d.pct) + '%', background: fcColor(d.pct) }} />
+                  </div>
+                </div>
+              ))}
+              {analisis.distrib.length === 0 && <div style={{ color: C.t3, fontSize: 12 }}>Sin datos todavía.</div>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ════ PANEL LATERAL — RECETA ════ */}
+      {sel && editP && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9000, display: 'flex', justifyContent: 'flex-end' }}>
+          <div onClick={() => setSel(null)} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)' }} />
+          <div style={{ position: 'relative', width: 380, maxWidth: '90vw', height: '100%', background: C.s1, borderLeft: `1px solid ${C.border}`, padding: 22, overflowY: 'auto' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <span style={{ fontSize: 32 }}>{sel.emoji}</span>
+              <button onClick={() => setSel(null)} style={{ background: 'none', border: 'none', color: C.t3, fontSize: 18, cursor: 'pointer' }}>✕</button>
+            </div>
+            <label style={{ fontSize: 10, color: C.t3 }}>Nombre</label>
+            <input value={editP.nombre || ''} onChange={e => setEditP({ ...editP, nombre: e.target.value })} style={{ ...inp, marginBottom: 10 }} />
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>Categoría</label>
+                <select value={editP.categoria || ''} onChange={e => setEditP({ ...editP, categoria: e.target.value })} style={inp}>
+                  {CATEGORIAS.map(c => <option key={c} value={c}>{titulo(c)}</option>)}
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>Estación</label>
+                <select value={editP.estacion || ''} onChange={e => setEditP({ ...editP, estacion: e.target.value })} style={inp}>
+                  {ESTACIONES.map(es => <option key={es} value={es}>{titulo(es)}</option>)}
+                </select>
+              </div>
+            </div>
+            <label style={{ fontSize: 10, color: C.t3 }}>Precio de venta</label>
+            <input type="number" value={editP.precio_venta || ''} onChange={e => setEditP({ ...editP, precio_venta: parseFloat(e.target.value) || 0 })} style={{ ...inp, marginBottom: 14 }} />
+
+            <div style={{ padding: 12, borderRadius: 10, background: C.bg, border: `1px solid ${fcColor(sel.food_cost_pct)}`, marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.t2 }}><span>Costo receta</span><span>{fmt(sel.costo_total)}</span></div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800, marginTop: 3 }}><span>Food Cost</span><span style={{ color: fcColor(sel.food_cost_pct) }}>{sel.food_cost_pct}%</span></div>
+            </div>
+
+            <h4 style={{ fontFamily: "'Syne',sans-serif", fontSize: 13, margin: '0 0 8px' }}>Ingredientes</h4>
+            {selRecetas.length === 0 && <div style={{ fontSize: 12, color: C.t3, marginBottom: 10 }}>Este plato no tiene receta cargada.</div>}
+            {selRecetas.map(r => (
+              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '5px 0', borderBottom: `1px solid ${C.border}` }}>
+                <span>{r.supply?.nombre || 'Insumo'}</span>
+                <span style={{ color: C.t3 }}>{r.cantidad} {r.unidad || r.supply?.unidad} · {fmt(r.cantidad * (r.supply?.precio_unidad || 0))}</span>
+              </div>
+            ))}
+
+            <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
+              <button onClick={guardarEdicion} style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: C.gold, color: '#000', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>Guardar cambios</button>
+              <button onClick={() => eliminarPlato(sel.id)} style={{ padding: '10px 16px', borderRadius: 10, border: `1px solid ${C.red}`, background: 'transparent', color: C.red, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>Eliminar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

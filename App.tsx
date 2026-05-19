@@ -129,6 +129,7 @@ const Dashboard: React.FC = () => {
           ModuleType.STAFF_HUB,
           ModuleType.PAYROLL,
           ModuleType.SUPPLY,
+          ModuleType.MENU,
           ModuleType.MARKETPLACE,
           ModuleType.FOOD_INTELLIGENCE,
           ModuleType.FLOW,
@@ -137,9 +138,10 @@ const Dashboard: React.FC = () => {
         ];
       case 'mesero':
         return [
-          ModuleType.SERVICE_OS, 
-          ModuleType.RESERVE, 
+          ModuleType.SERVICE_OS,
+          ModuleType.RESERVE,
           ModuleType.RELATIONSHIP,
+          ModuleType.MENU,
           ModuleType.MARKETPLACE,
           ModuleType.FOOD_INTELLIGENCE,
           ModuleType.STAFF_HUB,
@@ -291,7 +293,8 @@ const Dashboard: React.FC = () => {
               modules: [
                 { type: ModuleType.SUPPLY,    label: 'SUPPLY IA', sub: 'Abastecimiento', icon: <Truck size={18} /> },
                 { type: ModuleType.FOOD_INTELLIGENCE, label: 'FOOD INTEL™', sub: 'IA Gastronómica', icon: <Zap size={18} /> },
-                { type: ModuleType.MARKETPLACE, label: 'MARKETPLACE', sub: 'Mi Menú · Tienda', icon: <Store size={18} /> },
+                { type: ModuleType.MENU,      label: 'MI MENÚ',   sub: 'Carta · Recetas · Food Cost · Supply', icon: <span style={{ fontSize: 16 }}>🍽️</span> },
+                { type: ModuleType.MARKETPLACE, label: 'MARKETPLACE', sub: 'Tienda', icon: <Store size={18} /> },
                 { type: ModuleType.CARE,      label: 'CARE',      sub: 'SOPORTE CX',        icon: <HeartPulse size={18} /> },
                 // ── CAMBIO 2: Label y sub actualizados ──────────────────────
                 { type: ModuleType.STAFF_HUB, label: 'TEAM IQ™',  sub: 'HUMAN PERFORMANCE', icon: <Brain size={18} /> }
@@ -431,6 +434,7 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.MARKETPLACE    && <MarketplaceModule />}
                 {activeModule === ModuleType.FOOD_INTELLIGENCE && <FoodIntelligenceModule />}
                 {activeModule === ModuleType.METRICAS && <MetricasModule />}
+                {activeModule === ModuleType.MENU && <MenuModule />}
                 {activeModule === ModuleType.PROPINAS && <PropinasModule />}
               </div>
             )}
