@@ -58,6 +58,7 @@ export default function FlowModule() {
   const [statsHoy,   setStatsHoy]   = useState<any>(null);
   const [careMetrics,setCareMetrics] = useState<any>(null);
   const [careByMesa, setCareByMesa] = useState<Record<number,any>>({});
+  const [comentariosPlato, setComentariosPlato] = useState<any[]>([]);
   const [tick,       setTick]       = useState(0);
 
   useEffect(() => {
@@ -146,6 +147,21 @@ export default function FlowModule() {
     setCareByMesa(map);
   }, []);
 
+  // Feed en tiempo real de comentarios sobre el menú/platos (lado derecho)
+  const fetchComentariosPlato = useCallback(async () => {
+    const desde = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
+    const { data } = await supabase.from('xcare_encuestas')
+      .select('id,mesa_numero,estrellas,platos_problema,tags_negativos,tags_positivos,comentario,created_at')
+      .gte('created_at', desde)
+      .order('created_at', { ascending: false })
+      .limit(40);
+    const filt = (data || []).filter((e: any) =>
+      (Array.isArray(e.platos_problema) && e.platos_problema.length > 0) ||
+      (e.comentario && String(e.comentario).trim().length > 4)
+    );
+    setComentariosPlato(filt);
+  }, []);
+
   // Registrar una acción de gestión de conflicto en la encuesta
   const registrarGestion = useCallback(async (encuestaId:any, accion:string) => {
     if (!encuestaId) return;
@@ -159,14 +175,14 @@ export default function FlowModule() {
     fetchCareByMesa();
   }, [fetchCareByMesa]);
 
-  useEffect(() => { fetchLive(); fetchDia(); fetchCareMetrics(); fetchCareByMesa(); }, [fetchLive, fetchDia, fetchCareMetrics, fetchCareByMesa]);
+  useEffect(() => { fetchLive(); fetchDia(); fetchCareMetrics(); fetchCareByMesa(); fetchComentariosPlato(); }, [fetchLive, fetchDia, fetchCareMetrics, fetchCareByMesa, fetchComentariosPlato]);
   useEffect(() => { const t = setInterval(fetchLive, 15000); return () => clearInterval(t); }, [fetchLive]);
 
   useEffect(() => {
     const ch = supabase.channel('flow-kds')
       .on('postgres_changes',{event:'*',schema:'public',table:'order_items'},()=>{fetchLive();fetchDia();})
       .on('postgres_changes',{event:'*',schema:'public',table:'orders'},()=>{fetchLive();fetchDia();})
-      .on('postgres_changes',{event:'*',schema:'public',table:'xcare_encuestas'},()=>{fetchCareByMesa();fetchCareMetrics();})
+      .on('postgres_changes',{event:'*',schema:'public',table:'xcare_encuestas'},()=>{fetchCareByMesa();fetchCareMetrics();fetchComentariosPlato();})
       .subscribe();
     return () => { supabase.removeChannel(ch); };
   }, [fetchLive, fetchDia, fetchCareByMesa, fetchCareMetrics]);
@@ -306,7 +322,8 @@ export default function FlowModule() {
             </div>
 
             {/* Cards CUADRADAS por pedido, orden de llegada FIFO — grid responsive */}
-            <div style={{flex:1,overflowY:'auto',padding:12}}>
+            <div style={{flex:1,display:'flex',overflow:'hidden'}}>
+              <div style={{flex:1,overflowY:'auto',padding:12}}>
               {loading && <div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando...</div>}
               {!loading && pedidosOrdenados.length===0 && (
                 <div style={{textAlign:'center',padding:60,color:S.t3}}>
@@ -492,6 +509,52 @@ export default function FlowModule() {
               })}
               </div>
             </div>
+            {/* ── BARRA DERECHA: COMENTARIOS DEL MENÚ EN TIEMPO REAL ── */}
+            <aside style={{width:320,flexShrink:0,background:S.bg2,borderLeft:`1px solid ${S.border}`,overflowY:'auto',padding:14,display:'flex',flexDirection:'column',gap:10}}>
+              <div style={{display:'flex',alignItems:'center',gap:8,paddingBottom:10,borderBottom:`1px solid ${S.border}`}}>
+                <span style={{fontSize:16}}>💬</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:12,fontWeight:900}}>Comentarios del menú</div>
+                  <div style={{fontSize:9,color:S.t3,textTransform:'uppercase',letterSpacing:'.08em'}}>En vivo · X-CARE™</div>
+                </div>
+                <span style={{width:7,height:7,borderRadius:'50%',background:S.green,boxShadow:`0 0 6px ${S.green}`}}/>
+              </div>
+              {comentariosPlato.length === 0 && (
+                <div style={{textAlign:'center',padding:30,color:S.t3,fontSize:11}}>
+                  <div style={{fontSize:32,marginBottom:8}}>👨‍🍳</div>
+                  Sin comentarios de menú todavía
+                </div>
+              )}
+              {comentariosPlato.map((c:any) => {
+                const stars = c.estrellas || 0;
+                const col = stars <= 3 && stars > 0 ? S.red : stars >= 4 ? S.green : S.gold;
+                const neg = stars > 0 && stars <= 3;
+                return (
+                  <div key={c.id} style={{background:`${col}0d`,border:`1px solid ${col}33`,borderRadius:10,padding:'10px 12px',display:'flex',flexDirection:'column',gap:6}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6,fontSize:10,color:S.t3,flexWrap:'wrap'}}>
+                      <span style={{background:`${col}22`,color:col,padding:'1px 7px',borderRadius:10,fontWeight:800}}>M{c.mesa_numero ?? '?'}</span>
+                      <span style={{color:col,fontWeight:800,letterSpacing:1}}>{'★'.repeat(stars)}{'☆'.repeat(Math.max(0,5-stars))}</span>
+                      <span style={{marginLeft:'auto'}}>{new Date(c.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>
+                    </div>
+                    {Array.isArray(c.platos_problema) && c.platos_problema.length > 0 && (
+                      <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                        {c.platos_problema.map((p:string,i:number)=>(
+                          <span key={i} style={{fontSize:10,background:`${col}1f`,color:col,padding:'2px 7px',borderRadius:8,fontWeight:700}}>
+                            {neg?'⚠️':'⭐'} {p}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    {c.comentario && String(c.comentario).trim().length > 4 && (
+                      <div style={{fontSize:11,color:S.t1,fontStyle:'italic',lineHeight:1.4}}>
+                        "{String(c.comentario).trim()}"
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </aside>
+          </div>
           </div>
         )}
 
