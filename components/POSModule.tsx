@@ -5191,7 +5191,22 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 <div style={{fontSize:10,color:'#606060',marginTop:2}}>{mesasEstado.filter((m:any)=>m.estado==='ocupada').length} ocupadas · {mesasEstado.filter((m:any)=>m.estado==='asignada').length} sentadas · {mesasEstado.filter((m:any)=>!m.estado||m.estado==='libre').length} libres</div>
               </div>
               <div style={{display:'flex',gap:14,alignItems:'center'}}>
-                {[{c:'#5a6472',l:'Libre'},{c:'#3dba6f',l:'Sentada'},{c:'#d4943a',l:'Mi mesa'},{c:'#e05050',l:'Otro mesero'},{c:'#404040',l:'Bloqueada'}].map(l=>(
+                {[
+                  /* PDF NEXUM § 5 — Estados oficiales (paleta + visibilidad). Los marcados con * se derivan automáticamente de señales del POS; los demás están en implementación. */
+                  {c:'#5a6472',l:'Libre*'},
+                  {c:'#448AFF',l:'Reservada*'},
+                  {c:'#3dba6f',l:'Sentados*'},
+                  {c:'#22d3ee',l:'Orden tomada*'},
+                  {c:'#d4943a',l:'Mi mesa*'},
+                  {c:'#FFB547',l:'Comiendo'},
+                  {c:'#B388FF',l:'Postres'},
+                  {c:'#FF6B00',l:'Cuenta solicitada'},
+                  {c:'#FF2D78',l:'Cleaning'},
+                  {c:'#9b72ff',l:'Resetting'},
+                  {c:'#404040',l:'Bloqueada*'},
+                  {c:'#FFE600',l:'VIP Hold'},
+                  {c:'#e05050',l:'Otro mesero*'},
+                ].map(l=>(
                   <div key={l.l} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:'#a0a0a0'}}>
                     <span style={{width:7,height:7,borderRadius:'50%',background:l.c,display:'inline-block'}}/>
                     {l.l}
