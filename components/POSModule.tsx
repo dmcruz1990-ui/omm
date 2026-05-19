@@ -1389,7 +1389,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     if (mesaEnDisplay) setSelectedTableId(mesaEnDisplay.id);
     setShowMapaMesas(false);
     setFormAbrirMesa(null);
-    showToast(`✓ Mesa ${mesa.name} abierta`);
+    showToast(`🪑 Mesa ${mesa.name} — cliente sentado`);
     return true;
   };
 
@@ -5322,7 +5322,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       {formAbrirMesa && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
           <div style={{background:'#1c1c1c',border:'1px solid #2a2a2a',borderRadius:20,width:'100%',maxWidth:360,padding:24}}>
-            <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,marginBottom:3}}>Abrir Mesa {formAbrirMesa.mesa.name}</div>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,marginBottom:3}}>🪑 Sentar — Mesa {formAbrirMesa.mesa.name}</div>
             <div style={{fontSize:11,color:'#606060',marginBottom:20}}>{formAbrirMesa.mesa.zona||formAbrirMesa.mesa.zone||'Salón'} · máx {formAbrirMesa.mesa.capacidad||formAbrirMesa.mesa.seats}p</div>
             <div style={{fontSize:10,color:'#606060',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Número de personas</div>
             <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:6,marginBottom:14}}>
@@ -5342,7 +5342,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               <button onClick={()=>setFormAbrirMesa(null)} style={{flex:1,padding:'11px',borderRadius:10,border:'1px solid #2a2a2a',background:'transparent',color:'#606060',cursor:'pointer',fontSize:13}}>Cancelar</button>
               <button onClick={()=>abrirMesaDB(formAbrirMesa.mesa,formAbrirMesa.pax,formAbrirMesa.cliente||undefined)}
                 style={{flex:2,padding:'11px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#d4943a,#b07820)',color:'#000',fontWeight:700,cursor:'pointer',fontSize:13}}>
-                ✓ Abrir Mesa {formAbrirMesa.mesa.name}
+                ✓ Sentar cliente en Mesa {formAbrirMesa.mesa.name}
               </button>
             </div>
           </div>
