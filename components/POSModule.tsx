@@ -2289,6 +2289,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [chatIAOpen, setChatIAOpen]       = useState(false);
   const [mesasEstado, setMesasEstado] = useState<any[]>([]);
   const [formAbrirMesa, setFormAbrirMesa] = useState<{mesa:any,pax:number,cliente:string,telefono:string,email:string,vip:boolean}|null>(null);
+  const [clienteCRM, setClienteCRM] = useState<any>(null);
   const [pinDesbloqueo, setPinDesbloqueo] = useState('');
   const [mesaDesbloquear, setMesaDesbloquear] = useState<any>(null);
   const [dividirPax, setDividirPax] = useState(1);
@@ -5335,33 +5336,55 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       {/* ═══ MODAL ABRIR MESA ═══ */}
       {formAbrirMesa && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-          <div style={{background:'#1c1c1c',border:'1px solid #2a2a2a',borderRadius:20,width:'100%',maxWidth:360,padding:24}}>
+          <div style={{background:'#1c1c1c',border:'1px solid #2a2a2a',borderRadius:20,width:'100%',maxWidth:380,padding:24,maxHeight:'92vh',overflowY:'auto'}}>
             <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,marginBottom:3}}>🪑 Sentar — Mesa {formAbrirMesa.mesa.name}</div>
-            <div style={{fontSize:11,color:'#606060',marginBottom:20}}>{formAbrirMesa.mesa.zona||formAbrirMesa.mesa.zone||'Salón'} · máx {formAbrirMesa.mesa.capacidad||formAbrirMesa.mesa.seats}p</div>
-            <div style={{fontSize:10,color:'#606060',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Número de personas</div>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:6,marginBottom:14}}>
+            <div style={{fontSize:11,color:'#606060',marginBottom:18}}>{formAbrirMesa.mesa.zona||formAbrirMesa.mesa.zone||'Salón'} · máx {formAbrirMesa.mesa.capacidad||formAbrirMesa.mesa.seats}p</div>
+
+            <div style={{fontSize:10,color:'#606060',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>👥 Número de personas</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:6,marginBottom:16}}>
               {[1,2,3,4,5,6,7,8,10,12].map(n=>(
                 <button key={n} onClick={()=>setFormAbrirMesa((p:any)=>p?{...p,pax:n}:null)}
-                  style={{padding:'9px 4px',borderRadius:8,border:`1px solid ${formAbrirMesa.pax===n?'#d4943a':'#2a2a2a'}`,background:formAbrirMesa.pax===n?'rgba(212,148,58,0.15)':'#141414',color:formAbrirMesa.pax===n?'#d4943a':'#606060',fontSize:13,fontWeight:700,cursor:'pointer'}}>
-                  {n}
-                </button>
+                  style={{padding:'9px 4px',borderRadius:8,border:`1px solid ${formAbrirMesa.pax===n?'#d4943a':'#2a2a2a'}`,background:formAbrirMesa.pax===n?'rgba(212,148,58,0.15)':'#141414',color:formAbrirMesa.pax===n?'#d4943a':'#606060',fontSize:13,fontWeight:700,cursor:'pointer'}}>{n}</button>
               ))}
             </div>
-            <div style={{fontSize:10,color:'#606060',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Nombre del cliente</div>
+
+            <div style={{fontSize:10,color:'#d4943a',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>📱 Celular del cliente *</div>
+            <input value={formAbrirMesa.telefono}
+              onChange={e=>setFormAbrirMesa((p:any)=>p?{...p,telefono:e.target.value}:null)}
+              onBlur={async e=>{
+                const t = e.target.value.trim();
+                if (t.length < 7) { setClienteCRM(null); return; }
+                const { data } = await supabase.from('customers').select('id,name,email,vip_status,total_visits,total_spent').eq('phone', t).limit(1).maybeSingle();
+                if (data) {
+                  setClienteCRM(data);
+                  setFormAbrirMesa((p:any) => p ? { ...p, cliente: p.cliente || data.name || '', email: p.email || data.email || '', vip: p.vip || !!data.vip_status } : null);
+                } else setClienteCRM(null);
+              }}
+              placeholder="3001234567" inputMode="tel" autoFocus
+              style={{width:'100%',padding:'12px 14px',borderRadius:10,border:`1px solid ${formAbrirMesa.telefono?'#d4943a':'#2a2a2a'}`,background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:14,fontWeight:600,outline:'none',marginBottom:10}}/>
+
+            {clienteCRM && (
+              <div style={{background:'rgba(0,230,118,0.08)',border:'1px solid rgba(0,230,118,0.3)',borderRadius:10,padding:'10px 14px',marginBottom:12,display:'flex',alignItems:'center',gap:10}}>
+                <span style={{fontSize:20}}>{clienteCRM.vip_status?'⭐':'✓'}</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:12,fontWeight:700,color:'#00E676'}}>Cliente conocido{clienteCRM.vip_status?' · VIP':''}</div>
+                  <div style={{fontSize:10,color:'#a0a0a0'}}>{clienteCRM.name} · {clienteCRM.total_visits||0} visita(s)</div>
+                </div>
+              </div>
+            )}
+
+            <div style={{fontSize:10,color:'#d4943a',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Nombre *</div>
             <input value={formAbrirMesa.cliente}
               onChange={e=>setFormAbrirMesa((p:any)=>p?{...p,cliente:e.target.value}:null)}
-              placeholder="Ej: Familia García, Sr. López..."
+              placeholder="Nombre del cliente"
               style={{width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid #2a2a2a',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',marginBottom:10}}/>
-            <div style={{display:'flex',gap:8,marginBottom:10}}>
-              <input value={formAbrirMesa.telefono}
-                onChange={e=>setFormAbrirMesa((p:any)=>p?{...p,telefono:e.target.value}:null)}
-                placeholder="Teléfono" inputMode="tel"
-                style={{flex:1,padding:'10px 14px',borderRadius:10,border:'1px solid #2a2a2a',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none'}}/>
-              <input value={formAbrirMesa.email}
-                onChange={e=>setFormAbrirMesa((p:any)=>p?{...p,email:e.target.value}:null)}
-                placeholder="Email" inputMode="email"
-                style={{flex:1.4,padding:'10px 14px',borderRadius:10,border:'1px solid #2a2a2a',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none'}}/>
-            </div>
+
+            <div style={{fontSize:10,color:'#606060',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Email (opcional)</div>
+            <input value={formAbrirMesa.email}
+              onChange={e=>setFormAbrirMesa((p:any)=>p?{...p,email:e.target.value}:null)}
+              placeholder="correo@ejemplo.com" inputMode="email"
+              style={{width:'100%',padding:'10px 14px',borderRadius:10,border:'1px solid #2a2a2a',background:'rgba(255,255,255,0.05)',color:'#fff',fontSize:13,outline:'none',marginBottom:12}}/>
+
             <button onClick={()=>setFormAbrirMesa((p:any)=>p?{...p,vip:!p.vip}:null)}
               style={{width:'100%',padding:'10px 14px',borderRadius:10,marginBottom:16,cursor:'pointer',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:8,
                 border:`1px solid ${formAbrirMesa.vip?'#d4943a':'#2a2a2a'}`,
@@ -5370,9 +5393,16 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               <span style={{fontSize:14}}>{formAbrirMesa.vip?'⭐':'☆'}</span>
               {formAbrirMesa.vip?'Cliente VIP — marcado':'Marcar como cliente VIP'}
             </button>
+
             <div style={{display:'flex',gap:10}}>
-              <button onClick={()=>setFormAbrirMesa(null)} style={{flex:1,padding:'11px',borderRadius:10,border:'1px solid #2a2a2a',background:'transparent',color:'#606060',cursor:'pointer',fontSize:13}}>Cancelar</button>
-              <button onClick={()=>abrirMesaDB(formAbrirMesa.mesa,formAbrirMesa.pax,formAbrirMesa.cliente||undefined,{telefono:formAbrirMesa.telefono,email:formAbrirMesa.email,vip:formAbrirMesa.vip})}
+              <button onClick={()=>{ setFormAbrirMesa(null); setClienteCRM(null); }} style={{flex:1,padding:'11px',borderRadius:10,border:'1px solid #2a2a2a',background:'transparent',color:'#606060',cursor:'pointer',fontSize:13}}>Cancelar</button>
+              <button onClick={()=>{
+                  if (!formAbrirMesa.cliente.trim() || !formAbrirMesa.telefono.trim()) {
+                    showToast('⚠️ Nombre y celular son obligatorios'); return;
+                  }
+                  abrirMesaDB(formAbrirMesa.mesa,formAbrirMesa.pax,formAbrirMesa.cliente,{telefono:formAbrirMesa.telefono,email:formAbrirMesa.email,vip:formAbrirMesa.vip});
+                  setClienteCRM(null);
+                }}
                 style={{flex:2,padding:'11px',borderRadius:10,border:'none',background:'linear-gradient(135deg,#d4943a,#b07820)',color:'#000',fontWeight:700,cursor:'pointer',fontSize:13}}>
                 ✓ Sentar en Mesa {formAbrirMesa.mesa.name}
               </button>
@@ -5382,7 +5412,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   const mn = String(formAbrirMesa.mesa.name);
                   try { await supabase.from('tables').update({estado:'bloqueada',status:'blocked'}).eq('name',mn); } catch(e){ console.error('bloquear mesa:',e); }
                   showToast(`🔒 Mesa ${mn} bloqueada`);
-                  setFormAbrirMesa(null);
+                  setFormAbrirMesa(null); setClienteCRM(null);
                 }}
                 style={{width:'100%',marginTop:10,padding:'9px',borderRadius:10,border:'1px solid #e05050',background:'transparent',color:'#e05050',cursor:'pointer',fontSize:12,fontWeight:700}}>
                 🔒 Bloquear esta mesa (gerencia)

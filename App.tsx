@@ -379,13 +379,9 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
 
-          {/* Derecha: solo campana */}
+          {/* Derecha: indicador del sistema */}
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" title="System Online"/>
-            <button className="w-7 h-7 rounded-lg bg-[#1a1d24] border border-white/5 flex items-center justify-center text-gray-400 hover:text-white hover:border-yellow-500/40 transition-all relative">
-              <BellRing size={13} />
-              <span className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-red-500"/>
-            </button>
           </div>
         </header>
 

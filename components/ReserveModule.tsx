@@ -423,7 +423,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
       {/* Header */}
       <div style={{padding:'14px 24px',borderBottom:`1px solid ${S.border}`,background:S.bg2,display:'flex',alignItems:'center',gap:14,flexShrink:0,flexWrap:'wrap'}}>
         <div style={{display:'flex',alignItems:'center',gap:12}}>
-          <div style={{width:44,height:44,borderRadius:13,background:`linear-gradient(135deg,${S.purple},${S.blue})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>📅</div>
+          <div style={{width:44,height:44,borderRadius:13,background:`linear-gradient(135deg,${S.purple},${S.blue})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>🗓️</div>
           <div>
             <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900}}>RESERVE</div>
             <div style={{fontSize:10,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase'}}>Mapa · Reservas · Oh Yeah</div>
@@ -510,7 +510,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
       {loading && <div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando...</div>}
       {!loading && reservasHoy.length===0 && (
         <div style={{textAlign:'center',padding:60,color:S.t3}}>
-          <div style={{fontSize:48,marginBottom:12}}>📅</div>
+          <div style={{fontSize:48,marginBottom:12}}>🗓️</div>
           <div style={{fontSize:14,fontWeight:700}}>Sin reservas para hoy</div>
           <button onClick={()=>setTab('nueva')} style={{marginTop:16,padding:'10px 24px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.gold},#d4943a)`,color:'#000',fontWeight:700,fontSize:13,cursor:'pointer'}}>
             + Crear reserva
@@ -602,11 +602,11 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
 {tab==='lista' && (
         <div style={{flex:1,overflowY:'auto'}}>
           {loading&&<div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando...</div>}
-          {!loading&&reservas.length===0&&<div style={{textAlign:'center',padding:60,color:S.t3}}><div style={{fontSize:48,marginBottom:12}}>📅</div><div>Sin reservas para esta fecha</div></div>}
+          {!loading&&reservas.length===0&&<div style={{textAlign:'center',padding:60,color:S.t3}}><div style={{fontSize:48,marginBottom:12}}>🗓️</div><div>Sin reservas para esta fecha</div></div>}
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
             <thead>
               <tr style={{background:S.bg2,position:'sticky',top:0,zIndex:5}}>
-                {['Cliente','Fecha · Hora','Pax','Ocasión','Mesa','Estado','Origen','Acciones'].map(h=>(
+                {['Cliente','⏰ Hora','Pax','Ocasión','Mesa','Estado','Origen','Acciones'].map(h=>(
                   <th key={h} style={{padding:'9px 14px',textAlign:'left',fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',borderBottom:`1px solid ${S.border}`,whiteSpace:'nowrap'}}>{h}</th>
                 ))}
               </tr>
@@ -625,8 +625,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
                       <div style={{fontSize:10,color:S.t3}}>{r.cliente_email||''}</div>
                     </td>
                     <td style={{padding:'10px 14px'}}>
-                      <div style={{fontWeight:600}}>{fmt(r.fecha)}</div>
-                      <div style={{fontSize:11,color:S.gold,fontWeight:700}}>{r.hora}</div>
+                      <div style={{fontSize:17,fontWeight:900,color:S.gold,letterSpacing:'.02em'}}>{r.hora}</div>
+                      {r.fecha !== hoy && <div style={{fontSize:10,color:S.t3,marginTop:2}}>{fmt(r.fecha)}</div>}
                     </td>
                     <td style={{padding:'10px 14px',textAlign:'center'}}>
                       <span style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:S.blue}}>{r.pax}</span>
