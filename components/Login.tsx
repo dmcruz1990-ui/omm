@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext.tsx';
-import { Zap, Mail, Lock, Loader2, AlertCircle, ChevronRight, FlaskConical, ShieldCheck, Cpu, Briefcase, ShoppingCart, ChefHat } from 'lucide-react';
+import { Zap, Mail, Lock, Loader2, AlertCircle, ChevronRight, FlaskConical, ShieldCheck, Cpu, Briefcase, ShoppingCart, ChefHat, Users } from 'lucide-react';
 import { UserRole } from '../types.ts';
 
 const Login: React.FC = () => {
@@ -26,6 +26,29 @@ const Login: React.FC = () => {
       if (error) throw error;
     } catch (err: any) {
       setError(err.message || 'Error al iniciar sesión. Verifica tus credenciales.');
+      setLoading(false);
+    }
+  };
+
+  // Acceso rápido — cuentas reales del equipo (pruebas en vivo)
+  const equipo = [
+    { email: 'admin.jairo@seratta.com',      nombre: 'Jairo',         rol: 'Admin',    color: 'bg-red-600' },
+    { email: 'gerencia.diego@seratta.com',   nombre: 'Diego',         rol: 'Gerencia', color: 'bg-blue-600' },
+    { email: 'gerencia.juliana@seratta.com', nombre: 'Juliana',       rol: 'Gerencia', color: 'bg-blue-600' },
+    { email: 'mesero.camilo@seratta.com',    nombre: 'Camilo',        rol: 'Mesero',   color: 'bg-green-600' },
+    { email: 'mesero.uno@seratta.com',       nombre: 'Mesero Uno',    rol: 'Mesero',   color: 'bg-green-600' },
+    { email: 'cocina.uno@seratta.com',       nombre: 'Cocina Uno',    rol: 'Cocina',   color: 'bg-orange-600' },
+    { email: 'cocina.sommelier@seratta.com', nombre: 'Sommelier Uno', rol: 'Cocina',   color: 'bg-orange-600' },
+  ];
+
+  const quickLogin = async (correo: string) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: correo, password: 'Seratta2026' });
+      if (error) throw error;
+    } catch (err: any) {
+      setError(err.message || 'Error al iniciar sesión.');
       setLoading(false);
     }
   };
@@ -101,6 +124,34 @@ const Login: React.FC = () => {
             {loading ? <Loader2 size={20} className="animate-spin" /> : <>ACCEDER AL NÚCLEO <ChevronRight size={18} /></>}
           </button>
         </form>
+
+        {/* ACCESO RÁPIDO — EQUIPO SERATTA */}
+        <div className="space-y-4 pt-6 border-t border-white/5">
+           <div className="flex items-center gap-3 px-4">
+              <div className="p-2 bg-blue-500/10 rounded-lg text-blue-400">
+                 <Users size={16} />
+              </div>
+              <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-[0.3em] italic">Equipo Seratta · Acceso Rápido</h3>
+           </div>
+           <div className="grid grid-cols-2 gap-3 px-2">
+              {equipo.map((m) => (
+                <button
+                  key={m.email}
+                  onClick={() => quickLogin(m.email)}
+                  disabled={loading}
+                  className="flex items-center gap-3 p-3 rounded-2xl bg-white/5 border border-white/5 hover:border-white/20 hover:bg-white/10 transition-all active:scale-95 disabled:opacity-40"
+                >
+                   <div className={`w-8 h-8 ${m.color} rounded-lg flex items-center justify-center text-white text-[12px] font-black shrink-0`}>
+                      {m.nombre.charAt(0)}
+                   </div>
+                   <div className="text-left overflow-hidden">
+                      <p className="text-[11px] font-black text-white truncate">{m.nombre}</p>
+                      <p className="text-[8px] font-bold text-gray-500 uppercase tracking-wider">{m.rol}</p>
+                   </div>
+                </button>
+              ))}
+           </div>
+        </div>
 
         {/* SECCIÓN DE PRUEBAS / QA ACCESS */}
         <div className="space-y-6 pt-6 border-t border-white/5">

@@ -176,6 +176,7 @@ export default function FlowModule() {
     const item = items.find(i=>i.id===id);
     const updates:any = {status, updated_at:new Date().toISOString()};
     if (status==='preparing') updates.tiempo_inicio = new Date().toISOString();
+    if (status==='ready') updates.tiempo_listo = new Date().toISOString();
     if (status==='served' && item?.tiempo_inicio)
       updates.duracion_seg = tsec(item.tiempo_inicio);
     await supabase.from('order_items').update(updates).eq('id',id);
@@ -188,7 +189,8 @@ export default function FlowModule() {
           restaurante_id:6, tipo:status==='ready'?'plato_casi_listo':'plato_listo',
           titulo:msg,
           mensaje:`Mesa ${item.table_id} · ${fmtT(item.tiempo_inicio?tsec(item.tiempo_inicio):0)} producción`,
-          urgente:status==='served', leida:false, destinatario_nombre:item.mesero||null,
+          mesa_numero:item.table_id, item_nombre:getNombre(item),
+          prioridad:status==='served'?'alta':'normal', leida:false, creado_por:item.mesero||null,
         }).then(()=>{}).catch(()=>{});
         if (status==='served') {
           await supabase.from('flow_alertas').insert({

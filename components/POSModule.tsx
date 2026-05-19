@@ -1251,14 +1251,17 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   };
 
   // ── Guardar factura en BD ────────────────────────────────────────────
+  const cobrandoRef = useRef(false);
   const guardarFactura = async (metodoPago: string) => {
+    if (cobrandoRef.current) return; // evita doble cobro por doble-tap
+    cobrandoRef.current = true;
     try {
       const ahora = new Date();
       const itemsData = itemsCliente.map((it:any) => ({
         nombre: it.nombre, precio: it.precio, estado: it.estado
       }));
-      const desc = Math.round(totalCliente * (posDescuento||0) / 100);
-      const totalFinal = totalCliente - desc + propinaCliente;
+      // totalCliente ya incluye neto + IVA + propina (ver definición). No volver a sumar propina ni descuento.
+      const totalFinal = totalCliente;
       const meseroNombre = profile?.nombre_completo || 'Mesero';
       
       // Guardar datos de factura según tipo
@@ -1272,7 +1275,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           await supabase.from('facturas_electronicas').insert({
             restaurante_id:6, mesa_num:mesaCliente?.num??0,
             nombre:n, correo:em, cedula_nit:cc, telefono:tel, direccion:dir,
-            total:Math.round(totalCliente+propinaCliente),
+            total:Math.round(totalCliente),
             estado:'pendiente',
           }).then(()=>{}).catch(()=>{});
         }
@@ -1336,10 +1339,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         mesa_num: mesaCliente?.num ?? 0,
         mesero: meseroNombre,
         items: itemsData,
-        subtotal: Math.round(totalCliente),
-        iva: Math.round(totalCliente * 0.08),
+        subtotal: Math.round(netoCliente),
+        iva: Math.round(ivaCliente),
         propina: Math.round(propinaCliente),
-        descuento: desc,
+        descuento: descuentoCliente,
         total: Math.round(totalFinal),
         metodo_pago: metodoPago,
         factura_tipo: facturaTipo,
@@ -1358,7 +1361,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         await supabase.from('order_items').update({ status:'served' })
           .eq('order_id', ordenes[0].id).neq('status','cancelled');
       }
+      // Liberar la mesa: estado 'libre' + cierre de orden (RPC cerrar_mesa)
+      if (mesaCliente?.num != null) {
+        await supabase.rpc('cerrar_mesa', { p_mesa_name: String(mesaCliente.num) });
+      }
     } catch(e) { console.error('guardarFactura error:', e); }
+    finally { cobrandoRef.current = false; }
   };
 
   // ── ABRIR MESA — llama la función de Supabase ──────────────────────
@@ -5067,7 +5075,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                       const msg = chatMessage.trim();
                       setChatHistory(prev => [...prev, { sender: chatRol, msg, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
                       setChatMessage(''); playAlert();
-                      supabase.from('nexum_notificaciones').insert({ restaurante_id:6, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, urgente:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k)), leida:false }).then(()=>{});
+                      supabase.from('nexum_notificaciones').insert({ restaurante_id:6, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, prioridad:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k))?'alta':'normal', leida:false }).then(()=>{});
                     }
                   }}
                   placeholder={`Mensaje como ${chatRol}...`}
@@ -5077,7 +5085,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     const msg = chatMessage.trim();
                     setChatHistory(prev => [...prev, { sender: chatRol, msg, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
                     setChatMessage(''); playAlert();
-                    supabase.from('nexum_notificaciones').insert({ restaurante_id:6, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, urgente:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k)), leida:false }).then(()=>{});
+                    supabase.from('nexum_notificaciones').insert({ restaurante_id:6, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, prioridad:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k))?'alta':'normal', leida:false }).then(()=>{});
                   }}}
                   className="w-9 h-9 rounded-lg bg-[#4a8fd4] text-white flex items-center justify-center hover:bg-[#3d7fc4] transition-all active:scale-95">
                   <MessageSquare size={14} />
