@@ -99,13 +99,15 @@ export default function ReserveModule() {
 
   const show = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
 
-  // Sobreventa — el restaurante decide cuánto cupo extra permite (0-20%)
+  // Sobreventa VIP — máx 10% (hard stop al 110%). Solo La Crème, Grand Gourmand,
+  // socios y clientes estratégicos pueden tomar el cupo extra.
   const cambiarSobreventa = async (pct:number) => {
-    setSobreventa(pct);
+    const safe = Math.max(0, Math.min(10, pct));
+    setSobreventa(safe);
     await supabase.from('reservas_config').upsert(
-      { restaurante_id:6, sobreventa_pct:pct, updated_at:new Date().toISOString() },
+      { restaurante_id:6, sobreventa_pct:safe, updated_at:new Date().toISOString() },
       { onConflict:'restaurante_id' });
-    show(pct>0 ? `✓ Sobreventa activada: ${pct}%` : '✓ Sobreventa desactivada');
+    show(safe>0 ? `⭐ Sobreventa VIP: ${safe}% (hard stop 110%)` : '✓ Sobreventa VIP desactivada');
   };
   const setF = (k:string,v:any) => setForm(p=>({...p,[k]:v}));
 
@@ -114,7 +116,7 @@ export default function ReserveModule() {
     const { data: planta } = await supabase.from('planta_mesas').select('*').eq('restaurante_id',6).eq('activa',true).order('num');
     if (planta && planta.length > 0) setPlantaDB(planta);
     supabase.from('reservas_config').select('sobreventa_pct').eq('restaurante_id',6).maybeSingle()
-      .then(({data})=>{ if(data) setSobreventa(data.sobreventa_pct||0); });
+      .then(({data})=>{ if(data) setSobreventa(Math.min(10, data.sobreventa_pct||0)); });
     const [rv, ms, ohyeah] = await Promise.all([
       supabase.from('reservations').select('*').eq('restaurante_id',6).eq('fecha',fechaFiltro).order('hora'),
       supabase.from('tables').select('*').order('name'),
@@ -441,10 +443,10 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
           </div>
         ))}
         <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-          {/* Sobreventa — cupo extra que el restaurante decide permitir */}
-          <div style={{display:'flex',alignItems:'center',gap:4,background:'rgba(255,255,255,0.04)',border:`1px solid ${sobreventa>0?S.gold:S.border2}`,borderRadius:10,padding:'3px 6px 3px 10px'}}>
-            <span style={{fontSize:10,color:sobreventa>0?S.gold:S.t3,fontWeight:700,textTransform:'uppercase'}}>📈 Sobreventa</span>
-            {[0,5,10,15,20].map(p=>(
+          {/* Sobreventa VIP — solo La Crème · Grand Gourmand · socios · estratégicos. Hard stop al 110%. */}
+          <div style={{display:'flex',alignItems:'center',gap:4,background:'rgba(255,255,255,0.04)',border:`1px solid ${sobreventa>0?S.gold:S.border2}`,borderRadius:10,padding:'3px 6px 3px 10px'}} title="Sobreventa exclusiva para VIPs · La Crème, Grand Gourmand, socios y clientes estratégicos. Máx 10% — hard stop al 110%.">
+            <span style={{fontSize:10,color:sobreventa>0?S.gold:S.t3,fontWeight:700,textTransform:'uppercase'}}>⭐ Sobreventa VIP</span>
+            {[0,5,10].map(p=>(
               <button key={p} onClick={()=>cambiarSobreventa(p)}
                 style={{padding:'4px 8px',borderRadius:7,border:'none',cursor:'pointer',fontSize:11,fontWeight:800,
                   background:sobreventa===p?(p>0?S.gold:S.t3):'transparent',
