@@ -1745,7 +1745,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     const m = displayTables.find(x => x.id === tableId);
     if (!m) return;
     const items = order.filter(o => o.mesa === m.num);
-    const subtotal = m.ticket + items.reduce((s, o) => s + parsePrecio(o.precio), 0);
+    // m.ticket ya incluye el pedido local (ver displayTables); no re-sumar items.
+    const subtotal = m.ticket;
     const descuento = Math.round(subtotal * (posDescuento / 100));
     const subtotalNeto = Math.max(0, subtotal - descuento - posCorte);
     const impoconsumo = Math.round(subtotalNeto * 0.08); // Impoconsumo 8% — restaurantes no responsables IVA
@@ -2498,7 +2499,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
   const mesaCliente = displayTables.find(x => x.id === clienteTableId) || displayTables[0];
   const itemsCliente = order.filter(o => o.mesa === mesaCliente?.num);
-  const subtotalCliente = (mesaCliente?.ticket || 0) + itemsCliente.reduce((s, o) => s + parsePrecio(o.precio), 0);
+  // mesaCliente.ticket ya incluye el pedido local (ver displayTables); no re-sumar.
+  const subtotalCliente = (mesaCliente?.ticket || 0);
   const descuentoCliente = Math.round(subtotalCliente * (posDescuento / 100));
   const corteCliente = posCorte;
   const netoCliente = Math.max(0, subtotalCliente - descuentoCliente - corteCliente);

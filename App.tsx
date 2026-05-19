@@ -110,7 +110,8 @@ const Dashboard: React.FC = () => {
   }, [isAdmin]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, activeModule === ModuleType.SERVICE_OS);
+  // Cámara desactivada — evita pedir permiso en cada entrada y libera memoria.
+  const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, false);
 
   const getVisibleModules = (role: UserRole = 'mesero'): ModuleType[] => {
     switch (role) {
@@ -281,8 +282,7 @@ const Dashboard: React.FC = () => {
               modules: [
                 { type: ModuleType.SERVICE_OS,   label: 'SMART POS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
                 { type: ModuleType.PROPINAS,    label: 'PROPINAS',     sub: 'Bolsa del turno',  icon: <DollarSign size={18} /> },
-                { type: ModuleType.FLOW,        label: 'MÉTRICAS',     sub: 'En Flow · Tiempos', icon: <BarChart3 size={18} /> },
-                { type: ModuleType.FLOW,        label: 'FLOW',         sub: 'ESTACIONES',       icon: <ChefHat size={18} /> },
+                { type: ModuleType.FLOW,        label: 'FLOW',         sub: 'ESTACIONES · TIEMPOS', icon: <ChefHat size={18} /> },
               ]
             },
             {
