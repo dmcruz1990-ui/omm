@@ -1173,6 +1173,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         const nivel = perfil?.nivel || '';
         map[mesa] = {
           nombre, nombreCompleto: nombre,
+          email: email || '', telefono: _tel || '',
           desc: nivel ? `${nivel} · ${visitas} visita${visitas===1?'':'s'}` : (extra.primera ? 'Primera visita ★' : 'Cliente'),
           avatar: (nombre||'?').charAt(0).toUpperCase(),
           ocasion: oc.includes('cumple') ? 'cumpleanos' : oc.includes('aniversar') ? 'aniversario' : null,
@@ -2358,10 +2359,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setClienteMode(true);
     closeModal();
 
-    // Pre-cargar email del cliente registrado en Oh Yeah para esta mesa
+    // Pre-cargar datos del cliente sentado en esta mesa (factura por correo)
     const mesa = displayTables.find(x => x.id === tableId);
     const mesaNum = mesa?.num;
     if (!mesaNum) return;
+    // 1) Fuente primaria: cliente ya cargado en memoria para la mesa.
+    const cliMem = clientesPorMesa[mesaNum];
+    if (cliMem?.email) { setFacturaCorreo(cliMem.email); return; }
+    // 2) Respaldo: consultar reservas si no hay email en memoria.
     const hoy = new Date().toISOString().split('T')[0];
     try {
       const [{ data: rv }, { data: oy }] = await Promise.all([
@@ -2540,6 +2545,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   };
 
   const mesaCliente = displayTables.find(x => x.id === clienteTableId) || displayTables[0];
+  // Datos del cliente sentado en la mesa (para la factura).
+  const clienteSentado = clientesPorMesa[mesaCliente?.num] || {};
+  const emailClienteSentado = clienteSentado.email || '';
   const itemsCliente = order.filter(o => o.mesa === mesaCliente?.num);
   // mesaCliente.ticket ya incluye el pedido local (ver displayTables); no re-sumar.
   // Restar los platos que el Maître haya eliminado de la cuenta.
@@ -2763,17 +2771,17 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 <div style={{fontSize:10,color:S.text3,fontWeight:700,marginBottom:5}}>Email del cliente</div>
                 <div style={{position:'relative'}}>
                   <input value={facturaCorreo} onChange={e=>setFacturaCorreo(e.target.value)}
-                    placeholder={mesaCliente?.email || 'correo@email.com'}
+                    placeholder={emailClienteSentado || 'correo@email.com'}
                     type={facturaCorreoOculto?'password':'email'}
                     style={{ width:'100%', padding:'10px 44px 10px 14px', borderRadius:10, border:'1px solid #ddd', fontSize:13, outline:'none' }}/>
                   <button onClick={()=>setFacturaCorreoOculto(p=>!p)} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',cursor:'pointer',fontSize:16}}>
                     {facturaCorreoOculto?'👁️':'🙈'}
                   </button>
                 </div>
-                {mesaCliente?.email && !facturaCorreo && (
-                  <button onClick={()=>setFacturaCorreo(mesaCliente.email)}
+                {emailClienteSentado && !facturaCorreo && (
+                  <button onClick={()=>setFacturaCorreo(emailClienteSentado)}
                     style={{marginTop:6,fontSize:10,color:'#448AFF',background:'none',border:'none',cursor:'pointer',padding:0}}>
-                    ↳ Usar email registrado: {mesaCliente.email}
+                    ↳ Usar email registrado: {emailClienteSentado}
                   </button>
                 )}
                 <div style={{fontSize:11,color:'#999',marginTop:6,display:'flex',alignItems:'center',gap:6}}>
@@ -2790,10 +2798,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   Completa los datos para la factura electrónica DIAN
                 </div>
                 {[
-                  {k:'facElNombre',   l:'Nombre / Razón social *', ph: mesaCliente?.nombre || 'Empresa o persona natural'},
+                  {k:'facElNombre',   l:'Nombre / Razón social *', ph: clienteSentado.nombre || 'Empresa o persona natural'},
                   {k:'facElNit',      l:'Cédula o NIT *',          ph:'123456789-0'},
-                  {k:'facElCorreo',   l:'Correo electrónico',       ph: mesaCliente?.email || 'facturacion@empresa.com'},
-                  {k:'facElTel',      l:'Teléfono',                 ph: mesaCliente?.telefono || '+57 300 000 0000'},
+                  {k:'facElCorreo',   l:'Correo electrónico',       ph: emailClienteSentado || 'facturacion@empresa.com'},
+                  {k:'facElTel',      l:'Teléfono',                 ph: clienteSentado.telefono || '+57 300 000 0000'},
                   {k:'facElDir',      l:'Dirección',                ph:'Calle 123 # 45-67, Bogotá'},
                 ].map(f=>(
                   <div key={f.k}>
