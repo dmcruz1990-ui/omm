@@ -450,6 +450,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const isGerencia = ['admin','gerencia','desarrollo'].includes(profile?.role || '');
   // Identidad única del mesero — debe coincidir con lo que el Maître asigna.
   const miNombre = profile?.nombre_completo || profile?.full_name || 'Mesero';
+  // Acceso total al salón: Maître, capitán, sommelier y gerencia ven todo.
+  const accesoSalon = isGerencia || ['maitre','maître','capitan','capitán','sommelier'].includes(profile?.role || '');
 
   // PIN para ajustes gerente
   const [pinModal, setPinModal] = useState(false);
@@ -718,14 +720,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // Cada mesero solo ve lo de SUS pedidos; gerencia ve todo; los avisos
   // sin mesa (chat, generales, 86) son broadcast para todo el equipo.
   const esMiaNotif = useCallback((meseroField:any) => {
-    if (isGerencia) return true;
+    if (accesoSalon) return true;
     const yo = String(profile?.nombre_completo || profile?.full_name || '').trim().toLowerCase();
     if (!yo) return false;
     const yoCorto = yo.split(' ')[0];
     const s = String(meseroField||'').trim().toLowerCase();
     if (!s) return false;
     return s === yo || s === yoCorto || s.split(' ')[0] === yoCorto;
-  }, [isGerencia, profile]);
+  }, [accesoSalon, profile]);
   const esMiaRef = useRef(esMiaNotif);
   useEffect(() => { esMiaRef.current = esMiaNotif; }, [esMiaNotif]);
   // Platos listos: solo el mesero dueño + gerencia (broadcast si no hay mesero)

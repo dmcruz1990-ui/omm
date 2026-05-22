@@ -815,6 +815,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // Identidad única del mesero — debe coincidir con lo que el Maître asigna
   // (profiles.nombre_completo, o full_name si el primero está vacío).
   const miNombre = profile?.nombre_completo || profile?.full_name || 'Mesero';
+  // Acceso total al salón: ve y entra a TODAS las mesas y ve todas las
+  // notificaciones (Maître, capitán, sommelier y gerencia). No otorga
+  // poderes financieros de gerencia (eso sigue en isGerencia).
+  const accesoSalon = isGerencia || ['maitre','maître','capitan','capitán','sommelier'].includes(profile?.role || '');
 
   // PIN para ajustes gerente
   const [pinModal, setPinModal] = useState(false);
@@ -2400,7 +2404,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // Cada mesero solo ve lo de SUS mesas/pedidos; gerencia ve todo; los
   // avisos sin mesa (chat, generales, 86) son broadcast para todo el equipo.
   const esMiaNotif = useCallback((mesaNum:any, meseroField:any) => {
-    if (isGerencia) return true;
+    if (accesoSalon) return true;
     const yo = String(profile?.nombre_completo || profile?.full_name || '').trim().toLowerCase();
     if (!yo) return false;
     const yoCorto = yo.split(' ')[0];
@@ -2419,7 +2423,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       }
     }
     return false;
-  }, [isGerencia, profile, mesasEstado]);
+  }, [accesoSalon, profile, mesasEstado]);
   const esMiaRef = useRef(esMiaNotif);
   useEffect(() => { esMiaRef.current = esMiaNotif; }, [esMiaNotif]);
   // Home del mesero: al entrar al POS abre el mapa con sus mesas asignadas.
@@ -2427,9 +2431,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   useEffect(() => {
     if (homeAbiertoRef.current || !profile?.role) return;
     homeAbiertoRef.current = true;
-    const privilegiado = ['admin','gerencia','desarrollo','capitan','capitán','sommelier'].includes(profile.role);
-    if (!privilegiado) setShowMapaMesas(true);
-  }, [profile?.role]);
+    if (!accesoSalon) setShowMapaMesas(true);
+  }, [profile?.role, accesoSalon]);
   // Platos listos: siempre tienen mesa/mesero → solo el dueño + gerencia
   const flowAlertasVisibles = flowAlertas.filter((a:any)=> (a.mesa_num==null && !a.mesero) ? true : esMiaNotif(a.mesa_num, a.mesero));
   // Notificaciones: con mesa → dueño + gerencia; sin mesa → broadcast a todos
@@ -5487,7 +5490,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             {(() => {
               const meseroActual = miNombre;
               const esMiaMesa = (m:any) => m.mesero_nombre===meseroActual || (Array.isArray(m.meseros_compartidos)&&m.meseros_compartidos.includes(meseroActual));
-              const misMesas = mesasEstado.filter((m:any)=>(m.estado==='asignada'||m.estado==='ocupada') && (isGerencia ? true : esMiaMesa(m)));
+              const misMesas = mesasEstado.filter((m:any)=>(m.estado==='asignada'||m.estado==='ocupada') && (accesoSalon ? true : esMiaMesa(m)));
               const libres   = mesasEstado.filter((m:any)=>m.estado==='asignada' && !m.mesero_nombre);
               if (misMesas.length===0 && libres.length===0) return null;
               const irAMesa = (m:any) => {
@@ -5517,7 +5520,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               return (
                 <div style={{padding:'12px 16px',borderBottom:'1px solid #2a2a2a',flexShrink:0}}>
                   {misMesas.length>0 && (<>
-                    <div style={{fontSize:10,color:'#d4943a',fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:7}}>🪑 {isGerencia?'Mesas en servicio':'Mis mesas'} ({misMesas.length})</div>
+                    <div style={{fontSize:10,color:'#d4943a',fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:7}}>🪑 {accesoSalon?'Mesas en servicio':'Mis mesas'} ({misMesas.length})</div>
                     <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:4,marginBottom:libres.length>0?12:0}}>
                       {misMesas.map((m:any)=><Card key={m.name} m={m} libre={false}/>)}
                     </div>
@@ -5605,7 +5608,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   {/* Mesas */}
                   {(() => {
                     const meseroActual = miNombre;
-                    const privilegiado = ['admin','gerencia','desarrollo','capitan','capitán','sommelier'].includes(profile?.role||'');
+                    const privilegiado = accesoSalon;
                     return Object.entries(PLANTA_OMM).map(([key,mesa])=>{
                       const est = mesasEstado.find((m:any)=>String(m.name)===String(mesa.num));
                       const estado    = est?.estado || 'libre';
