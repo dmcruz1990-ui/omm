@@ -3406,6 +3406,15 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         const todosItems = order.filter(o=>o.mesa===mesaCliente?.num);
         const platosOrden  = Array.from(new Set(todosItems.filter(o=>clasificarItem(o.nombre)==='comida').map(o=>o.nombre))).slice(0,6);
         const bebidasOrden = Array.from(new Set(todosItems.filter(o=>clasificarItem(o.nombre)==='bebida').map(o=>o.nombre))).slice(0,6);
+        // Lista por instancia: si hay 10 platos iguales, el cliente elige cuáles
+        // (Sushi #1 … Sushi #10) en vez de un solo botón agrupado.
+        const instanciasDe = (tipo:'comida'|'bebida'):string[] => {
+          const conteo:Record<string,number> = {};
+          todosItems.filter(o=>clasificarItem(o.nombre)===tipo).forEach(o=>{ conteo[o.nombre]=(conteo[o.nombre]||0)+1; });
+          return Object.entries(conteo).flatMap(([n,q]) => q>1 ? Array.from({length:q},(_,k)=>`${n} #${k+1}`) : [n]).slice(0,20);
+        };
+        const platosInstancias  = instanciasDe('comida');
+        const bebidasInstancias = instanciasDe('bebida');
 
         // ── Cola de sub-pantallas según categorías elegidas ──
         const buildQueue = (tags:string[]):string[] => {
@@ -3435,10 +3444,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           'pos-bebida':   {titulo:'¿Qué bebida te gustó más?', sub:'Toca tu favorita', opciones:bebidasOrden.map(b=>({e:'🍸',l:b}))},
           'pos-ambiente': {titulo:'¿Qué fue lo que más te gustó?', sub:'Del ambiente', opciones:[{e:'🎵',l:'Música'},{e:'🛋️',l:'Decoración'},{e:'✨',l:'Energía'},{e:'🎭',l:'Shows'},{e:'💡',l:'Iluminación'}]},
           'pos-rapidez':  {titulo:'¿Qué estuvo más ágil?', sub:'Lo que más te sorprendió', opciones:[{e:'🤝',l:'Atención inicial'},{e:'🍸',l:'Bebidas'},{e:'🍽️',l:'Cocina'},{e:'💳',l:'La cuenta'}]},
-          'neg-comida-que':  {titulo:'¿Qué pasó con la comida?', sub:'Ayúdanos a entender', opciones:[{e:'🥩',l:'Sabor'},{e:'🔥',l:'Temperatura'},{e:'🍽️',l:'Calidad'},{e:'❌',l:'Otro'}]},
-          'neg-comida-item': {titulo:'¿Con cuál plato?', sub:'Toca el plato', opciones:platosOrden.map(p=>({e:'🍽️',l:p}))},
-          'neg-bebida-que':  {titulo:'¿Qué pasó con la bebida?', sub:'Ayúdanos a entender', opciones:[{e:'🍬',l:'Muy dulce'},{e:'🥃',l:'Muy fuerte'},{e:'❄️',l:'Temperatura'},{e:'❌',l:'Otro'}]},
-          'neg-bebida-item': {titulo:'¿Cuál bebida fue?', sub:'Toca la bebida', opciones:bebidasOrden.map(b=>({e:'🍸',l:b}))},
+          'neg-comida-que':  {titulo:'¿Qué pasó con la comida?', sub:'Toca los que apliquen', opciones:[{e:'🥩',l:'Sabor'},{e:'🔥',l:'Temperatura'},{e:'🍽️',l:'Calidad'},{e:'❌',l:'Otro'}]},
+          'neg-comida-item': {titulo:'¿Con cuál plato?', sub:'Toca los que apliquen', opciones:platosInstancias.map(p=>({e:'🍽️',l:p}))},
+          'neg-bebida-que':  {titulo:'¿Qué pasó con la bebida?', sub:'Toca los que apliquen', opciones:[{e:'🍬',l:'Muy dulce'},{e:'🥃',l:'Muy fuerte'},{e:'❄️',l:'Temperatura'},{e:'❌',l:'Otro'}]},
+          'neg-bebida-item': {titulo:'¿Cuál bebida fue?', sub:'Toca las que apliquen', opciones:bebidasInstancias.map(b=>({e:'🍸',l:b}))},
           'neg-servicio-que':{titulo:'¿Qué pasó con el servicio?', sub:'Tu respuesta es confidencial', opciones:[{e:'😐',l:'Empatía'},{e:'🧠',l:'Capacitación'},{e:'⏳',l:'Demoras'},{e:'❌',l:'Otro'}]},
           'neg-tiempo':      {titulo:'¿Dónde hubo demora?', sub:'Lo que más te hizo esperar', opciones:[{e:'🍽️',l:'Cocina'},{e:'🍸',l:'Bebidas'},{e:'🪑',l:'En la mesa'},{e:'💳',l:'La cuenta'}]},
         };
@@ -3503,12 +3512,16 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             encTimerRef.current = window.setTimeout(()=>irADetalle(next), delay);
           }
         };
-        const tapSub = (value:string) => {
-          setXcareSel(prev=>({...prev,[subScreen]:[value]}));
+        // Multi-selección en sub-pantallas: alterna el valor, sin auto-avanzar
+        // (el cliente confirma con el botón Continuar).
+        const tapSubMulti = (value:string) => {
           if (encTimerRef.current) clearTimeout(encTimerRef.current);
-          encTimerRef.current = window.setTimeout(siguienteSub, 380);
+          setXcareSel(prev=>{
+            const cur = prev[subScreen]||[];
+            const next = cur.includes(value) ? cur.filter(v=>v!==value) : [...cur, value];
+            return {...prev, [subScreen]: next};
+          });
         };
-
         const omitir = () => {
           if (encTimerRef.current) clearTimeout(encTimerRef.current);
           setClienteMode(false);
@@ -3567,7 +3580,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     {isPositive ? '¿Qué fue lo mejor de tu experiencia?' : 'Queremos mejorar tu experiencia'}
                   </div>
                   <div style={{fontSize:12.5,color:XC.t2}}>
-                    {isPositive ? 'Selecciona máximo 2 ✨' : '¿Qué salió mal? Toca lo que aplique'}
+                    {isPositive ? 'Selecciona máximo 2 ✨' : '¿Qué salió mal?'}
                   </div>
                 </div>
 
@@ -3628,21 +3641,28 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   {SUBS[subScreen].opciones.map((op,i)=>{
                     const sel = (xcareSel[subScreen]||[]).includes(op.l);
                     return (
-                      <button key={op.l} onClick={()=>tapSub(op.l)}
+                      <button key={op.l} onClick={()=>tapSubMulti(op.l)}
                         style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',borderRadius:16,
                           border:`2px solid ${sel?accent:XC.line}`,background:sel?XC.cardSel:XC.card,
                           cursor:'pointer',transition:'all .16s',textAlign:'left',outline:'none',
                           animation:`nxFade .28s ease ${i*0.04}s both`}}>
                         {op.e && <span style={{fontSize:24}}>{op.e}</span>}
                         <span style={{flex:1,fontFamily:"'Syne',sans-serif",fontSize:15.5,fontWeight:800,color:XC.t1}}>{op.l}</span>
-                        {sel && <span style={{color:accent,fontSize:18,fontWeight:900}}>✓</span>}
+                        <span style={{width:24,height:24,borderRadius:8,border:`2px solid ${sel?accent:XC.t3}`,background:sel?accent:'transparent',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,color:'#000',fontWeight:900}}>{sel?'✓':''}</span>
                       </button>
                     );
                   })}
                 </div>
 
+                <button onClick={siguienteSub} disabled={(xcareSel[subScreen]||[]).length===0}
+                  style={{marginTop:'auto',width:'100%',padding:'17px',borderRadius:50,border:'none',
+                    background:(xcareSel[subScreen]||[]).length?`linear-gradient(135deg,${accent},${accent}cc)`:'rgba(255,255,255,0.06)',
+                    color:'#fff',fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,
+                    cursor:(xcareSel[subScreen]||[]).length?'pointer':'not-allowed'}}>
+                  {xcareSubIdx+1<queue.length ? 'Continuar →' : 'Finalizar'}
+                </button>
                 <button onClick={()=>{ if(xcareSubIdx>0) setXcareSubIdx(xcareSubIdx-1); else setXcareStep('cat'); }}
-                  style={{marginTop:20,background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12,alignSelf:'center'}}>
+                  style={{marginTop:12,background:'none',border:'none',color:XC.t3,cursor:'pointer',fontSize:12,alignSelf:'center'}}>
                   ← Volver
                 </button>
               </div>
