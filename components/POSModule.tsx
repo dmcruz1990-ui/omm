@@ -2351,6 +2351,40 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [divClientePax, setDivClientePax] = useState(1);
   const [platosDia, setPlatosDia]         = useState<any[]>([]);
   const [reservasHoy, setReservasHoy] = useState<any[]>([]);
+
+  // ── Cobro Gerencia — ventana propia (PIN → descuentos hasta 100% + bonos) ──
+  const [gerOpen, setGerOpen] = useState(false);
+  const [gerPinOk, setGerPinOk] = useState(false);
+  const [gerPin, setGerPin] = useState('');
+  const [gerPinErr, setGerPinErr] = useState('');
+  const [gerDescPct, setGerDescPct] = useState(0);
+  const [gerDescMotivo, setGerDescMotivo] = useState('');
+  const [gerBonoCode, setGerBonoCode] = useState('');
+  const [gerBono, setGerBono] = useState<any>(null);
+  const [gerBonoMsg, setGerBonoMsg] = useState('');
+  const [gerMetodo, setGerMetodo] = useState('Datafono');
+
+  const abrirGerencia = (tableId: number) => {
+    setSelectedTableId(tableId);
+    setGerOpen(true); setGerPinOk(false); setGerPin(''); setGerPinErr('');
+    setGerDescPct(0); setGerDescMotivo(''); setGerBonoCode(''); setGerBono(null); setGerBonoMsg(''); setGerMetodo('Datafono');
+  };
+
+  const validarBonoGer = async () => {
+    const code = gerBonoCode.trim().toUpperCase();
+    if (!code) return;
+    const { data } = await supabase.from('bonos_regalo').select('*').eq('codigo', code).eq('activo', true).eq('usado', false).limit(1);
+    const b = data?.[0];
+    if (!b) { setGerBonoMsg('❌ Bono no válido o ya usado'); setGerBono(null); return; }
+    const texto = `${b.beneficio || ''} ${b.descripcion || ''}`;
+    const pctM = texto.match(/(\d{1,3})\s*%/);
+    const montoM = texto.match(/\$\s*([\d.,]+)/);
+    const pct = pctM ? Math.min(100, parseInt(pctM[1])) : 0;
+    const monto = !pct && montoM ? parseInt(montoM[1].replace(/[.,]/g, '')) : 0;
+    setGerBono({ ...b, pct, monto });
+    setGerBonoMsg(`✓ ${b.beneficio || b.descripcion || 'Bono aplicado'}`);
+  };
+
   // ── Mapa de mesas ──────────────────────────────────────────────────────
   const [showMapaMesas, setShowMapaMesas] = useState(false);
   const [chatIAOpen, setChatIAOpen]       = useState(false);
@@ -3844,6 +3878,131 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         </div>
       )}
 
+      {/* ═══ COBRO GERENCIA — ventana propia: PIN → descuentos 100% + bonos ═══ */}
+      {gerOpen && (() => {
+        const items = order.filter(o => o.mesa === selectedTable?.num);
+        const subtotal = selectedTable?.ticket || 0;
+        const descMonto = Math.round(subtotal * gerDescPct / 100);
+        const baseTrasDesc = Math.max(0, subtotal - descMonto);
+        const bonoMonto = gerBono ? (gerBono.pct ? Math.round(baseTrasDesc * gerBono.pct / 100) : Math.min(gerBono.monto || 0, baseTrasDesc)) : 0;
+        const neto = Math.max(0, baseTrasDesc - bonoMonto);
+        const iva = Math.round(neto * 0.08);
+        const total = neto + iva;
+        const fmt = (n: number) => new Intl.NumberFormat('es-CO').format(n);
+        const cobrar = async () => {
+          await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:selectedTable?.num, mesero:profile?.nombre_completo||'Gerencia', total, propina:0, propina_pct:0, metodo_pago:gerMetodo, platos_servidos:items.length, factura_tipo:'gerencia', factura_email:null }).then(()=>{}).catch(()=>{});
+          if (gerDescPct>0 || gerBono) {
+            await supabase.from('cuenta_ediciones').insert({ restaurante_id:6, mesa_numero:selectedTable?.num, tipo:'descuento_gerencia', plato_nombre:`Descuento ${gerDescPct}%${gerBono?` + bono ${gerBono.codigo}`:''}`, motivo:gerDescMotivo||'Cobro gerencia', autorizado_por:profile?.nombre_completo||'Gerencia', mesero:profile?.nombre_completo||'Gerencia', estado:'aprobado', notificado_caja:true }).then(()=>{}).catch(()=>{});
+          }
+          if (gerBono?.id) { await supabase.from('bonos_regalo').update({ usado:true, usado_at:new Date().toISOString(), usado_por:'gerencia' }).eq('id', gerBono.id).then(()=>{}).catch(()=>{}); }
+          const mesaName = String((selectedTable as any)?.name ?? selectedTable?.num ?? '');
+          if (mesaName) { try { await supabase.rpc('cerrar_mesa', { p_mesa_name: mesaName }); } catch {} }
+          limpiarMesaCerrada(selectedTable?.num);
+          setGerOpen(false);
+          showToast(`✓ Mesa ${selectedTable?.num} cobrada (gerencia) · $${fmt(total)}`);
+        };
+        return (
+          <div className="fixed inset-0 bg-black/80 z-[650] flex items-center justify-center p-4">
+            <div className="bg-[#1c1c1c] border border-[#d4943a]/40 rounded-2xl w-full max-w-[420px] max-h-[92vh] overflow-y-auto">
+              {!gerPinOk ? (
+                /* ── Fase 1: PIN de gerencia ── */
+                <div className="p-6">
+                  <div className="text-center mb-5">
+                    <div className="w-12 h-12 rounded-xl bg-[#d4943a]/10 border border-[#d4943a]/30 flex items-center justify-center mx-auto mb-3">
+                      <Lock size={22} className="text-[#d4943a]" />
+                    </div>
+                    <div className="text-[16px] font-black text-[#f0f0f0]">Cobro Gerencia</div>
+                    <div className="text-[12px] text-[#909090] mt-1">Mesa {selectedTable?.num} · Ingresa el PIN de gerencia</div>
+                  </div>
+                  <input type="password" value={gerPin} maxLength={4} autoFocus
+                    onChange={e => { setGerPin(e.target.value.replace(/\D/g,'')); setGerPinErr(''); }}
+                    onKeyDown={e => { if (e.key==='Enter') { if (gerPin===PIN_GERENTE) setGerPinOk(true); else { setGerPinErr('PIN incorrecto'); setGerPin(''); } } }}
+                    placeholder="••••"
+                    className="w-full bg-[#0a0a0a] border border-[#2a2a2a] rounded-xl px-4 py-3 text-center text-[24px] tracking-[8px] text-[#f0f0f0] outline-none focus:border-[#d4943a]" />
+                  {gerPinErr && <div className="text-[11px] text-[#e05050] text-center mt-2">{gerPinErr}</div>}
+                  <div className="flex gap-2 mt-5">
+                    <button onClick={() => setGerOpen(false)} className="flex-1 py-3 rounded-xl border border-[#2a2a2a] text-[#909090] text-[13px] font-bold">Cancelar</button>
+                    <button onClick={() => { if (gerPin===PIN_GERENTE) setGerPinOk(true); else { setGerPinErr('PIN incorrecto'); setGerPin(''); } }}
+                      className="flex-1 py-3 rounded-xl bg-[#d4943a] text-black text-[13px] font-black">Entrar</button>
+                  </div>
+                </div>
+              ) : (
+                /* ── Fase 2: cobro con ajustes de gerencia ── */
+                <div className="p-5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div>
+                      <div className="text-[15px] font-black text-[#f0f0f0]">👔 Cobro Gerencia</div>
+                      <div className="text-[11px] text-[#909090]">Mesa {selectedTable?.num} · {items.length} ítem{items.length===1?'':'s'}</div>
+                    </div>
+                    <button onClick={() => setGerOpen(false)} className="w-8 h-8 rounded-full bg-[#0a0a0a] border border-[#2a2a2a] text-[#909090] flex items-center justify-center"><X size={16}/></button>
+                  </div>
+
+                  {/* Descuento por gerencia / influencer — hasta 100% */}
+                  <div className="bg-[#0a0a0a] rounded-xl p-3 mb-3">
+                    <div className="text-[10px] text-[#606060] font-bold uppercase tracking-wider mb-2">Descuento (hasta 100%)</div>
+                    <div className="flex flex-wrap gap-1.5 mb-2">
+                      {[0,10,25,50,100].map(p => (
+                        <button key={p} onClick={() => setGerDescPct(p)}
+                          className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${gerDescPct===p ? 'border-[#3dba6f] bg-[#3dba6f]/15 text-[#3dba6f]' : 'border-[#2a2a2a] text-[#909090]'}`}>
+                          {p===0?'—':`${p}%`}
+                        </button>
+                      ))}
+                      <button onClick={() => { setGerDescPct(100); setGerDescMotivo('Influencer'); }}
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${gerDescPct===100 && gerDescMotivo==='Influencer' ? 'border-[#9b72ff] bg-[#9b72ff]/15 text-[#b388ff]' : 'border-[#2a2a2a] text-[#909090]'}`}>
+                        ⭐ Influencer 100%
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input type="number" min={0} max={100} value={gerDescPct||''} placeholder="% manual"
+                        onChange={e => { const v = Math.max(0, Math.min(100, parseInt(e.target.value)||0)); setGerDescPct(v); }}
+                        className="w-20 bg-[#141414] border border-[#2a2a2a] rounded-md px-2 py-1.5 text-[12px] text-[#f0f0f0] outline-none focus:border-[#d4943a]" />
+                      <input value={gerDescMotivo} onChange={e => setGerDescMotivo(e.target.value)} placeholder="Motivo (influencer, cortesía…)"
+                        className="flex-1 bg-[#141414] border border-[#2a2a2a] rounded-md px-2 py-1.5 text-[12px] text-[#f0f0f0] outline-none focus:border-[#d4943a]" />
+                    </div>
+                  </div>
+
+                  {/* Bono */}
+                  <div className="bg-[#0a0a0a] rounded-xl p-3 mb-3">
+                    <div className="text-[10px] text-[#606060] font-bold uppercase tracking-wider mb-2">Aplicar bono</div>
+                    <div className="flex gap-2">
+                      <input value={gerBonoCode} onChange={e => setGerBonoCode(e.target.value.toUpperCase())} placeholder="CÓDIGO"
+                        className="flex-1 bg-[#141414] border border-[#2a2a2a] rounded-md px-2 py-1.5 text-[12px] text-[#f0f0f0] outline-none focus:border-[#9b72ff] uppercase" />
+                      <button onClick={validarBonoGer} className="px-3 py-1.5 rounded-md bg-[#9b72ff] text-white text-[12px] font-bold">Validar</button>
+                    </div>
+                    {gerBonoMsg && <div className={`text-[11px] mt-2 ${gerBono?'text-[#3dba6f]':'text-[#e05050]'}`}>{gerBonoMsg}</div>}
+                  </div>
+
+                  {/* Totales */}
+                  <div className="bg-[#0a0a0a] rounded-xl p-3 mb-3 flex flex-col gap-1.5">
+                    <div className="flex justify-between text-[12px] text-[#a0a0a0]"><span>Subtotal</span><span>${fmt(subtotal)}</span></div>
+                    {gerDescPct>0 && <div className="flex justify-between text-[12px] text-[#3dba6f]"><span>Descuento ({gerDescPct}%){gerDescMotivo?` · ${gerDescMotivo}`:''}</span><span>-${fmt(descMonto)}</span></div>}
+                    {bonoMonto>0 && <div className="flex justify-between text-[12px] text-[#b388ff]"><span>Bono {gerBono?.codigo}</span><span>-${fmt(bonoMonto)}</span></div>}
+                    <div className="flex justify-between text-[12px] text-[#a0a0a0]"><span>Impoconsumo (8%)</span><span>${fmt(iva)}</span></div>
+                    <div className="flex justify-between text-[17px] font-black pt-2 border-t border-[#2a2a2a] mt-1"><span className="text-[#f0f0f0]">Total</span><span className="text-[#f0b45a]">${fmt(total)}</span></div>
+                  </div>
+
+                  {/* Método de pago */}
+                  <div className="text-[10px] text-[#606060] font-bold uppercase tracking-wider mb-2">Método de pago</div>
+                  <div className="grid grid-cols-3 gap-1.5 mb-4">
+                    {['Datafono','Efectivo','Transferencia','Bono','Cortesía','Empleado'].map(m => (
+                      <button key={m} onClick={() => setGerMetodo(m)}
+                        className={`py-2 rounded-lg text-[11px] font-bold border transition-all ${gerMetodo===m ? 'border-[#d4943a] bg-[#d4943a]/15 text-[#f0b45a]' : 'border-[#2a2a2a] text-[#909090]'}`}>
+                        {m}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button onClick={cobrar}
+                    className="w-full py-3.5 rounded-xl bg-[#3dba6f] text-black text-[14px] font-black hover:bg-[#4dca7f] transition-all">
+                    Cobrar ${fmt(total)} y cerrar mesa
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* MODAL PIN GERENTE */}
       {pinModal && (
         <div className="fixed inset-0 bg-black/80 z-[600] flex items-center justify-center p-4">
@@ -4965,13 +5124,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               </div>
 
               <div className="flex flex-col gap-1.5 mt-auto">
-                {/* Cobrar Gerencia — acceso completo con ajustes */}
-                <button onClick={() => {
-                    if (isGerencia || pinUnlocked) { abrirModoCliente(selectedTableId); }
-                    else { requirePin(() => abrirModoCliente(selectedTableId)); }
-                  }}
+                {/* Cobrar Gerencia — ventana propia: PIN → descuentos hasta 100% + bonos */}
+                <button onClick={() => abrirGerencia(selectedTableId)}
                   className="w-full py-2.5 rounded-xl text-[12px] font-black transition-all bg-[#d4943a] text-black hover:bg-[#f0b45a] active:bg-[#3dba6f] flex items-center justify-center gap-2">
-                  {isGerencia || pinUnlocked ? '👔 Cobrar Gerencia' : '🔐 Cobrar Gerencia'}
+                  🔐 Cobrar Gerencia
                 </button>
                 {/* Cobrar Xpress — rápido sin ajustes (requiere clave de gerencia) */}
                 <button onClick={() => {
