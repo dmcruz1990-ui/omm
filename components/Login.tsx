@@ -35,6 +35,7 @@ const Login: React.FC = () => {
     { email: 'admin.jairo@seratta.com',      nombre: 'Jairo',         rol: 'Admin',    color: 'bg-red-600' },
     { email: 'gerencia.diego@seratta.com',   nombre: 'Diego',         rol: 'Gerencia', color: 'bg-blue-600' },
     { email: 'gerencia.juliana@seratta.com', nombre: 'Juliana',       rol: 'Gerencia', color: 'bg-blue-600' },
+    { email: 'maitre.laura@seratta.com',     nombre: 'Laura',         rol: 'Maître',   color: 'bg-amber-600' },
     { email: 'mesero.camilo@seratta.com',    nombre: 'Camilo',        rol: 'Mesero',   color: 'bg-green-600' },
     { email: 'mesero.uno@seratta.com',       nombre: 'Mesero Uno',    rol: 'Mesero',   color: 'bg-green-600' },
     { email: 'cocina.uno@seratta.com',       nombre: 'Cocina Uno',    rol: 'Cocina',   color: 'bg-orange-600' },
