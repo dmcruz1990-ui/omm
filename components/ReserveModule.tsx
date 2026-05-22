@@ -87,6 +87,8 @@ export default function ReserveModule() {
   const [plantaDB, setPlantaDB] = useState<any[]>([]);
   const [editMesa, setEditMesa] = useState<any|null>(null);
   const [busquedaMesa, setBusquedaMesa] = useState('');
+  const [meserosLista, setMeserosLista] = useState<any[]>([]);
+  const [meseroAsignar, setMeseroAsignar] = useState('');
   const [now, setNow] = useState(Date.now());
   useEffect(()=>{ const t=setInterval(()=>setNow(Date.now()),30000); return ()=>clearInterval(t); },[]);
   const [form, setForm]         = useState({
@@ -149,6 +151,8 @@ export default function ReserveModule() {
     ].sort((a:any,b:any)=>(a.fecha||'').localeCompare(b.fecha||'')||(a.hora||'').localeCompare(b.hora||''));
     setReservas(todas);
     if (ms.data) setMesas(ms.data);
+    supabase.from('staff_nexum').select('*').eq('restaurante_id',6).eq('activo',true).eq('rol','mesero')
+      .then(({data})=>{ if(data) setMeserosLista(data); });
     setLoading(false);
   },[fechaFiltro]);
 
@@ -289,26 +293,28 @@ const sentarWalkin = async () => {
   fetchData();
 };
 
-const asignarMesa = async (reservaId:any, mesaNum:number) => {
+const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) => {
   const esOhYeah = typeof reservaId === 'string' && reservaId.includes('-');
   const reserva = reservas.find((r:any)=>String(r.id)===String(reservaId));
+  const mesero = (meseroNombre||'').trim() || null;
   if (esOhYeah) {
     await supabase.from('ohyeah_reservas')
-      .update({ status:'seated', mesa_num:mesaNum, mesa_asignada_at:new Date().toISOString() })
+      .update({ status:'seated', mesa_num:mesaNum, mesa_asignada_at:new Date().toISOString(), mesa_asignada_por: mesero })
       .eq('id',reservaId);
   } else {
     await supabase.from('reservations').update({ mesa_num:mesaNum, estado:'sentada', sentado_at:new Date().toISOString() }).eq('id',reservaId);
   }
-  // Sentar al cliente: la mesa queda VERDE (asignada) en el mapa del POS,
-  // esperando que un mesero la tome. No se asigna mesero todavía.
+  // Sentar al cliente: la mesa queda VERDE (asignada) en el mapa del POS.
+  // Si el Maître eligió mesero, queda dirigida a él (aparece en SU home);
+  // si no, queda en el pool para que cualquier mesero la tome.
   await supabase.from('tables').update({
     estado:'asignada',
     cliente_nombre: reserva?.cliente_nombre || null,
     pax_actual: reserva?.pax || 0,
-    mesero_nombre: null,
+    mesero_nombre: mesero,
     abierta_en: new Date().toISOString(),
   }).eq('name', String(mesaNum));
-  show(`✓ Mesa ${mesaNum} asignada — visible en POS`);
+  show(mesero ? `✓ Mesa ${mesaNum} asignada a ${mesero}` : `✓ Mesa ${mesaNum} asignada — libre para tomar`);
   fetchData();
 };
 
@@ -507,6 +513,21 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
                     </div>
                   </div>
                 ) : (<>
+                {/* Maître elige el mesero que atenderá la mesa */}
+                <div style={{marginBottom:16,padding:'12px 14px',borderRadius:12,background:`${S.blue}0d`,border:`1px solid ${S.blue}30`}}>
+                  <div style={{fontSize:10,color:S.blue,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:7}}>👤 Mesero a cargo</div>
+                  <select value={meseroAsignar} onChange={e=>setMeseroAsignar(e.target.value)}
+                    style={{width:'100%',background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 12px',color:'#fff',fontSize:13,outline:'none'}}>
+                    <option value="">Sin asignar — libre para tomar</option>
+                    {meserosLista.map((ms:any)=>{
+                      const nombre = ms.nombre_completo || ms.nombre || '';
+                      return <option key={ms.id||nombre} value={nombre}>{nombre}</option>;
+                    })}
+                  </select>
+                  <div style={{fontSize:10,color:S.t3,marginTop:6}}>
+                    {meseroAsignar ? `La mesa aparecerá en el home de ${meseroAsignar}.` : 'Cualquier mesero podrá tomarla desde su home.'}
+                  </div>
+                </div>
                 <div style={{fontSize:11,color:S.t3,marginBottom:14}}>
                   {libres.length} mesa{libres.length===1?'':'s'} libre{libres.length===1?'':'s'} ·
                   <span style={{color:S.green,marginLeft:5}}>● apta para {pax}p</span>
@@ -532,7 +553,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number) => {
                           const col = !libre ? S.t3 : t.vip ? S.gold : apta ? S.green : '#FFB547';
                           return (
                             <button key={t.num} disabled={!seleccionable}
-                              onClick={()=>{ asignarMesa(r.id, t.num); setAsignandoMesa(null); }}
+                              onClick={()=>{ asignarMesa(r.id, t.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
                               style={{
                                 padding:'12px 6px',borderRadius:12,position:'relative',
                                 border:`2px solid ${seleccionable?col:'rgba(255,255,255,0.06)'}`,

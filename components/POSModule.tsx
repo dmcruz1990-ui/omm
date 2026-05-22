@@ -2419,6 +2419,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   }, [isGerencia, profile, mesasEstado]);
   const esMiaRef = useRef(esMiaNotif);
   useEffect(() => { esMiaRef.current = esMiaNotif; }, [esMiaNotif]);
+  // Home del mesero: al entrar al POS abre el mapa con sus mesas asignadas.
+  const homeAbiertoRef = useRef(false);
+  useEffect(() => {
+    if (homeAbiertoRef.current || !profile?.role) return;
+    homeAbiertoRef.current = true;
+    const privilegiado = ['admin','gerencia','desarrollo','capitan','capitán','sommelier'].includes(profile.role);
+    if (!privilegiado) setShowMapaMesas(true);
+  }, [profile?.role]);
   // Platos listos: siempre tienen mesa/mesero → solo el dueño + gerencia
   const flowAlertasVisibles = flowAlertas.filter((a:any)=> (a.mesa_num==null && !a.mesero) ? true : esMiaNotif(a.mesa_num, a.mesero));
   // Notificaciones: con mesa → dueño + gerencia; sin mesa → broadcast a todos
@@ -5472,6 +5480,54 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 <button onClick={()=>setShowMapaMesas(false)} style={{width:28,height:28,borderRadius:8,border:'1px solid #2a2a2a',background:'#1c1c1c',color:'#a0a0a0',cursor:'pointer',fontSize:14}}>✕</button>
               </div>
             </div>
+            {/* ── HOME DEL MESERO: mis mesas + libres para tomar ── */}
+            {(() => {
+              const meseroActual = profile?.nombre_completo || 'Mesero';
+              const esMiaMesa = (m:any) => m.mesero_nombre===meseroActual || (Array.isArray(m.meseros_compartidos)&&m.meseros_compartidos.includes(meseroActual));
+              const misMesas = mesasEstado.filter((m:any)=>(m.estado==='asignada'||m.estado==='ocupada') && (isGerencia ? true : esMiaMesa(m)));
+              const libres   = mesasEstado.filter((m:any)=>m.estado==='asignada' && !m.mesero_nombre);
+              if (misMesas.length===0 && libres.length===0) return null;
+              const irAMesa = (m:any) => {
+                const num = m.name;
+                if (m.estado==='ocupada') {
+                  const enDisplay = displayTables.find((t:any)=>String(t.num)===String(num));
+                  if (enDisplay) { setSelectedTableId(enDisplay.id); setShowMapaMesas(false); }
+                } else {
+                  const mesaPlano:any = Object.values(PLANTA_OMM).find((p:any)=>String(p.num)===String(num)) || {num:Number(num),cap:m.pax_actual||2};
+                  tomarMesaAsignada(mesaPlano, m);
+                }
+              };
+              const Card = ({m,libre}:{m:any,libre:boolean}) => {
+                const cli = (clientesPorMesa as any)[Number(m.name)];
+                const col = libre ? '#3dba6f' : (m.estado==='ocupada' ? '#d4943a' : '#3dba6f');
+                return (
+                  <div onClick={()=>irAMesa(m)} style={{minWidth:128,background:`${col}12`,border:`1px solid ${col}55`,borderRadius:12,padding:'9px 11px',cursor:'pointer',flexShrink:0}}>
+                    <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                      <span style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,color:col}}>M{m.name}</span>
+                      <span style={{fontSize:8,fontWeight:800,color:col,textTransform:'uppercase',background:`${col}22`,padding:'1px 6px',borderRadius:8}}>{libre?'Tomar':m.estado==='ocupada'?'Abrir':'Mía'}</span>
+                    </div>
+                    <div style={{fontSize:11,color:'#f0f0f0',fontWeight:700,marginTop:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{m.cliente_nombre||cli?.nombre||'Mesa'}</div>
+                    <div style={{fontSize:9,color:'#a0a0a0',marginTop:1}}>👥 {m.pax_actual||cli?.reserva?.pax||2}{cli?.reserva?.hora?` · 🕐 ${cli.reserva.hora}`:''}</div>
+                  </div>
+                );
+              };
+              return (
+                <div style={{padding:'12px 16px',borderBottom:'1px solid #2a2a2a',flexShrink:0}}>
+                  {misMesas.length>0 && (<>
+                    <div style={{fontSize:10,color:'#d4943a',fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:7}}>🪑 {isGerencia?'Mesas en servicio':'Mis mesas'} ({misMesas.length})</div>
+                    <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:4,marginBottom:libres.length>0?12:0}}>
+                      {misMesas.map((m:any)=><Card key={m.name} m={m} libre={false}/>)}
+                    </div>
+                  </>)}
+                  {libres.length>0 && (<>
+                    <div style={{fontSize:10,color:'#3dba6f',fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:7}}>🟢 Libres para tomar ({libres.length})</div>
+                    <div style={{display:'flex',gap:8,overflowX:'auto',paddingBottom:4}}>
+                      {libres.map((m:any)=><Card key={m.name} m={m} libre={true}/>)}
+                    </div>
+                  </>)}
+                </div>
+              );
+            })()}
             {/* ── CANVAS VISUAL DEL PLANO — igual que Reserve ── */}
             <div style={{flex:1,overflow:'auto',padding:16}}>
               <div style={{position:'relative',width:'100%',paddingBottom:'70%',background:'#0a0a12',borderRadius:18,border:'1px solid rgba(255,255,255,0.07)',overflow:'hidden',boxShadow:'inset 0 0 80px rgba(0,0,0,0.6)'}}>
@@ -5555,12 +5611,18 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                       const ocupada   = estado==='ocupada';
                       const bloqueada = estado==='bloqueada';
                       const enDisplay = displayTables.find((t:any)=>String(t.num)===String(mesa.num));
-                      // ¿la mesa ocupada es de este mesero, o se la compartieron?
+                      // ¿la mesa es de este mesero, o se la compartieron?
                       const compartida = Array.isArray(est?.meseros_compartidos) && est.meseros_compartidos.includes(meseroActual);
-                      const esMia = ocupada && (!est?.mesero_nombre || est.mesero_nombre===meseroActual || compartida);
+                      const meseroDeMesa = est?.mesero_nombre || '';
+                      // Maître asigna mesa + mesero: mía / pool (libre para tomar) / de otro
+                      const asignadaMia    = asignada && (meseroDeMesa===meseroActual || compartida);
+                      const asignadaPool   = asignada && !meseroDeMesa;
+                      const asignadaDeOtro = asignada && !!meseroDeMesa && meseroDeMesa!==meseroActual && !compartida;
+                      const esMia = (ocupada || asignada) && (!meseroDeMesa || meseroDeMesa===meseroActual || compartida);
                       const puedeEntrar = esMia || privilegiado;
-                      // color: verde=asignada · gris=libre · dorado=mía · rojo=de otro mesero · gris oscuro=bloqueada
-                      const col = asignada ? '#3dba6f'
+                      // color: verde=mi asignada/pool · rojo=de otro · dorado=mía ocupada · gris=libre · oscuro=bloqueada
+                      const col = asignadaDeOtro ? (privilegiado ? '#3dba6f' : '#e05050')
+                        : asignada ? '#3dba6f'
                         : ocupada ? (puedeEntrar ? '#d4943a' : '#e05050')
                         : bloqueada ? '#404040'
                         : '#5a6472';
@@ -5568,7 +5630,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                         <div key={key}
                           onClick={()=>{
                             if (bloqueada) { setMesaDesbloquear(est); }
-                            else if (asignada) { tomarMesaAsignada(mesa, est); }
+                            else if (asignada) {
+                              if (asignadaDeOtro && !privilegiado) { showToast(`🔒 Mesa ${mesa.num} asignada a ${meseroDeMesa}`); return; }
+                              tomarMesaAsignada(mesa, est);
+                            }
                             else if (libre) { setFormAbrirMesa({mesa:{...mesa,name:String(mesa.num)},pax:mesa.cap,cliente:'',telefono:'',email:'',vip:false}); }
                             else if (ocupada && enDisplay) {
                               if (!puedeEntrar) {
