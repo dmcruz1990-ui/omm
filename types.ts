@@ -33,7 +33,7 @@ export enum ModuleType {
   PROPINAS = 'PROPINAS'
 }
 
-export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo';
+export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo' | 'maitre';
 
 /* Genesis Internal Scoring Types */
 export interface GenesisSignalScore {

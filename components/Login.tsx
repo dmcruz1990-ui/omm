@@ -57,6 +57,7 @@ const Login: React.FC = () => {
     { role: 'admin', icon: <ShieldCheck size={16} />, color: 'bg-red-600', label: 'Admin' },
     { role: 'desarrollo', icon: <Cpu size={16} />, color: 'bg-purple-600', label: 'Dev' },
     { role: 'gerencia', icon: <Briefcase size={16} />, color: 'bg-blue-600', label: 'Gerente' },
+    { role: 'maitre', icon: <Briefcase size={16} />, color: 'bg-amber-600', label: 'Maître' },
     { role: 'mesero', icon: <ShoppingCart size={16} />, color: 'bg-green-600', label: 'Mesero' },
     { role: 'cocina', icon: <ChefHat size={16} />, color: 'bg-orange-600', label: 'Cocina' },
   ];

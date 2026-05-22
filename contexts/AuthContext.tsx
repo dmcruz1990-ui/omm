@@ -30,6 +30,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (email.startsWith('admin')) assignedRole = 'admin';
       else if (email.startsWith('dev') || email.startsWith('desarrollo')) assignedRole = 'desarrollo';
       else if (email.startsWith('gerente') || email.startsWith('gerencia')) assignedRole = 'gerencia';
+      else if (email.startsWith('maitre') || email.startsWith('maître') || email.startsWith('capitan')) assignedRole = 'maitre';
       else if (email.startsWith('cocina') || email.startsWith('chef')) assignedRole = 'cocina';
       else if (email.startsWith('mesero')) assignedRole = 'mesero';
       

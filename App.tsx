@@ -136,6 +136,13 @@ const Dashboard: React.FC = () => {
           ModuleType.MOBILE_MGR,
           ModuleType.OH_YEAH
         ];
+      case 'maitre':
+        return [
+          ModuleType.SERVICE_OS,
+          ModuleType.RESERVE,
+          ModuleType.RELATIONSHIP,
+          ModuleType.CARE,
+        ];
       case 'mesero':
         return [
           ModuleType.SERVICE_OS,
