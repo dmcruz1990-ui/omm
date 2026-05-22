@@ -296,6 +296,20 @@ const PREMIOS_RULETA = [
   { emoji:'🍸', label:'Cóctel Firma',  color:'#448AFF', bg:'#001440', desc:'Cóctel insignia OMM de cortesía' },
 ];
 
+// Cartas especiales — nunca están en el pool de premios; solo salen al picar
+// con probabilidad muy baja: pierde todo 0.01%, intenta otra vez 0.5%.
+const PREMIO_PIERDE  = { emoji:'💀', label:'Pierde todo',      color:'#ff5252', bg:'#2a0808', desc:'Esta vez no hubo suerte — ¡vuelve pronto!', special:'pierde' as const };
+const PREMIO_REINTENTO = { emoji:'🔄', label:'Intenta otra vez', color:'#FFB547', bg:'#2a1f00', desc:'¡Casi! Pica de nuevo', special:'reintento' as const };
+const PROB_PIERDE = 0.0001;   // 0.01%
+const PROB_REINTENTO = 0.005; // 0.5%
+
+// Baraja una copia del arreglo (Fisher–Yates).
+const barajar = <T,>(a: T[]): T[] => {
+  const b = [...a];
+  for (let i = b.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [b[i], b[j]] = [b[j], b[i]]; }
+  return b;
+};
+
 const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: number }> = ({ onClose, mesaNum, rating }) => {
   const [spinning, setSpinning] = useState(false);
   const [selected, setSelected] = useState<number|null>(null);
@@ -476,9 +490,12 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
 // ── 6 CARTAS — mira los premios, se barajan, picas el tuyo ──
 const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: number }> = ({ onClose, mesaNum, rating }) => {
   const [cartas] = useState(() => [...PREMIOS_RULETA].sort(() => Math.random() - 0.5).slice(0, 6));
+  // slots[posiciónEnGrid] = índice de carta — se baraja para que cambien de lugar
+  const [slots, setSlots] = useState<number[]>(() => cartas.map((_, i) => i));
   // Fases: preview (premios visibles) → flip (voltear) → shuffle (barajar) → pick → done
   const [phase, setPhase] = useState<'preview'|'flip'|'shuffle'|'pick'|'done'>('preview');
   const [picked, setPicked] = useState<number|null>(null);
+  const [resultado, setResultado] = useState<any>(null);
   const [offsets, setOffsets] = useState(()=>cartas.map(()=>({x:0,y:0,r:0,z:0})));
   const [particles, setParticles] = useState<{x:number;y:number;c:string;id:number;angle:number;dist:number}[]>([]);
   const [correoEnvio, setCorreoEnvio] = useState('');
@@ -490,15 +507,17 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
     const t: number[] = [];
     t.push(window.setTimeout(()=>setPhase('flip'), 2800));
     t.push(window.setTimeout(()=>setPhase('shuffle'), 3600));
-    // 4 tandas de barajado: las cartas se mueven a posiciones aleatorias y vuelven
-    [0,1,2,3].forEach(k=>{
+    // 5 tandas de barajado: las cartas saltan de posición y, sobre todo,
+    // intercambian su lugar real (slots) para que ya no se sepa cuál es cuál.
+    [0,1,2,3,4].forEach(k=>{
       t.push(window.setTimeout(()=>{
-        setOffsets(cartas.map(()=> k===3
+        setSlots(prev => barajar(prev));
+        setOffsets(cartas.map(()=> k===4
           ? {x:0,y:0,r:0,z:0}
-          : {x:(Math.random()-0.5)*150, y:(Math.random()-0.5)*70, r:(Math.random()-0.5)*40, z:Math.floor(Math.random()*6)}));
+          : {x:(Math.random()-0.5)*160, y:(Math.random()-0.5)*80, r:(Math.random()-0.5)*45, z:Math.floor(Math.random()*6)}));
       }, 3800 + k*430));
     });
-    t.push(window.setTimeout(()=>setPhase('pick'), 3800 + 4*430));
+    t.push(window.setTimeout(()=>setPhase('pick'), 3800 + 5*430));
     return ()=>t.forEach(clearTimeout);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -514,20 +533,30 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
     setTimeout(()=>setParticles([]),2000);
   };
 
-  const pickCard = (i: number) => {
+  const pickCard = (cardIdx: number) => {
     if (phase !== 'pick') return;
-    setPicked(i);
+    // Tirada: cartas especiales con probabilidad baja, si no el premio de la carta.
+    const r = Math.random();
+    let outcome: any;
+    if (r < PROB_PIERDE) outcome = PREMIO_PIERDE;
+    else if (r < PROB_PIERDE + PROB_REINTENTO) outcome = PREMIO_REINTENTO;
+    else outcome = cartas[cardIdx];
+    setPicked(cardIdx);
+    setResultado(outcome);
     setPhase('done');
-    setTimeout(spawnConfetti, 650);
+    if (!outcome.special) setTimeout(spawnConfetti, 650);
   };
 
-  const premio = picked !== null ? cartas[picked] : null;
+  // Volver a picar tras "Intenta otra vez".
+  const reintentar = () => { setPicked(null); setResultado(null); setPhase('pick'); };
+
+  const premio = resultado;
   const headerTxt = {
     preview: 'Estos son los premios',
     flip:    'Memoriza bien...',
     shuffle: '🔀 Barajando...',
     pick:    'Pica tu carta',
-    done:    '¡Ganaste!',
+    done:    resultado?.special==='pierde' ? '¡Oh no!' : resultado?.special==='reintento' ? '¡Casi!' : '¡Ganaste!',
   }[phase];
   const headerSub = {
     preview: 'Míralos bien — en un momento se barajan',
@@ -580,14 +609,17 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
         marginBottom:24,
         zIndex:5,
       }}>
-        {cartas.map((c, i) => {
+        {slots.map((cardIdx, pos) => {
+          const c = cartas[cardIdx];
+          // En la carta elegida y revelada se muestra el resultado (premio o especial).
+          const face = (phase==='done' && picked===cardIdx && resultado) ? resultado : c;
           // Premio visible si: estamos en preview, o esta carta es la elegida ya revelada
-          const showPrize = phase==='preview' || (phase==='done' && picked===i);
-          const isOther = phase==='done' && picked!==i;
-          const off = offsets[i] || {x:0,y:0,r:0,z:0};
+          const showPrize = phase==='preview' || (phase==='done' && picked===cardIdx);
+          const isOther = phase==='done' && picked!==cardIdx;
+          const off = offsets[pos] || {x:0,y:0,r:0,z:0};
           return (
-            <div key={i}
-              onClick={() => pickCard(i)}
+            <div key={cardIdx}
+              onClick={() => pickCard(cardIdx)}
               style={{
                 aspectRatio:'2/3',
                 perspective:'1000px',
@@ -596,7 +628,7 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
                 zIndex: off.z,
                 transform: `translate(${off.x}px,${off.y}px) rotate(${off.r}deg) scale(${isOther?0.9:1})`,
                 transition: phase==='shuffle' ? 'transform .4s cubic-bezier(.5,.05,.5,.95)' : 'transform .45s ease, opacity .4s',
-                animation: phase==='pick' ? `cardFloat 3s ease-in-out ${i*0.2}s infinite` : 'none',
+                animation: phase==='pick' ? `cardFloat 3s ease-in-out ${pos*0.2}s infinite` : 'none',
               }}>
               <div style={{
                 position:'relative',
@@ -629,20 +661,20 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
                     letterSpacing:'.02em', zIndex:2,
                   }}>✦</div>
                 </div>
-                {/* Anverso (premio) */}
+                {/* Anverso (premio o resultado especial en la carta elegida) */}
                 <div style={{
                   position:'absolute', inset:0,
                   borderRadius:14,
-                  background:`linear-gradient(135deg,${c.color}40 0%,${c.color}15 100%)`,
-                  border:`2px solid ${c.color}`,
-                  boxShadow:`0 6px 24px ${c.color}50`,
+                  background:`linear-gradient(135deg,${face.color}40 0%,${face.color}15 100%)`,
+                  border:`2px solid ${face.color}`,
+                  boxShadow:`0 6px 24px ${face.color}50`,
                   backfaceVisibility:'hidden',
                   transform:'rotateY(180deg)',
                   display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
                   padding:6,
                 }}>
-                  <div style={{fontSize:42, filter:`drop-shadow(0 0 12px ${c.color})`, marginBottom:4}}>{c.emoji}</div>
-                  <div style={{fontFamily:"'Syne',sans-serif", fontSize:12, fontWeight:900, color:c.color, textAlign:'center', lineHeight:1.1}}>{c.label}</div>
+                  <div style={{fontSize:42, filter:`drop-shadow(0 0 12px ${face.color})`, marginBottom:4}}>{face.emoji}</div>
+                  <div style={{fontFamily:"'Syne',sans-serif", fontSize:12, fontWeight:900, color:face.color, textAlign:'center', lineHeight:1.1}}>{face.label}</div>
                 </div>
               </div>
             </div>
@@ -656,6 +688,7 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
           <div style={{ fontSize:72, marginBottom:8, filter:`drop-shadow(0 0 20px ${premio.color})` }}>{premio.emoji}</div>
           <div style={{ fontFamily:"'Syne',sans-serif", fontSize:24, fontWeight:900, color:premio.color, marginBottom:6 }}>{premio.label}</div>
           <div style={{ fontSize:14, color:'rgba(255,255,255,.7)', marginBottom:10 }}>{premio.desc}</div>
+          {!premio.special && (<>
           <div style={{ fontSize:11, color:'rgba(255,255,255,.35)', background:'rgba(255,255,255,.05)', borderRadius:8, padding:'6px 12px', marginBottom:10 }}>Muéstrale esta pantalla a tu mesero · Válido 30 días</div>
           {/* Card para mesero */}
           <div style={{background:`linear-gradient(135deg,${premio.color}30,${premio.color}10)`,border:`2px dashed ${premio.color}60`,borderRadius:14,padding:'14px 16px',marginBottom:12,textAlign:'center'}}>
@@ -687,14 +720,20 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
               ✓ Premio enviado a {correoEnvio} — revisa tu Oh Yeah
             </div>
           )}
+          </>)}
         </div>
       )}
 
       {/* Botones */}
-      {phase==='done' ? (
+      {phase==='done' && resultado?.special==='reintento' ? (
+        <button onClick={reintentar}
+          style={{ padding:'16px 56px', borderRadius:50, background:`linear-gradient(135deg,${premio!.color},${premio!.color}cc)`, color:'#fff', fontSize:17, fontWeight:900, border:'none', cursor:'pointer', boxShadow:`0 6px 30px ${premio!.color}60`, fontFamily:"'Syne',sans-serif", zIndex:5, position:'relative' }}>
+          🔄 Volver a intentar
+        </button>
+      ) : phase==='done' ? (
         <button onClick={onClose}
           style={{ padding:'16px 56px', borderRadius:50, background:`linear-gradient(135deg,${premio!.color},${premio!.color}cc)`, color:'#fff', fontSize:17, fontWeight:900, border:'none', cursor:'pointer', boxShadow:`0 6px 30px ${premio!.color}60`, fontFamily:"'Syne',sans-serif", zIndex:5, position:'relative' }}>
-          🎉 ¡Genial! Cerrar
+          {resultado?.special==='pierde' ? 'Cerrar' : '🎉 ¡Genial! Cerrar'}
         </button>
       ) : (
         <button onClick={onClose} style={{ background:'none', border:'none', fontSize:12, color:'rgba(255,255,255,.2)', cursor:'pointer', marginTop:6, zIndex:5, position:'relative' }}>
