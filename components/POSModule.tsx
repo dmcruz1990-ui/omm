@@ -2325,7 +2325,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [pinMaitre, setPinMaitre] = useState('');
   const [pinMaitreError, setPinMaitreError] = useState('');
   const [pinMaitreOk, setPinMaitreOk] = useState(false);
-  const [itemsEliminados, setItemsEliminados] = useState<string[]>([]);
+  // Índices (en itemsCliente) de los platos eliminados — por instancia, no por nombre,
+  // para que al borrar 1 de 10 platos iguales solo se elimine ese.
+  const [itemsEliminados, setItemsEliminados] = useState<number[]>([]);
   const [motivoEdicion, setMotivoEdicion] = useState('');
   // Factura
   const [facturaCorreo, setFacturaCorreo] = useState('');
@@ -2542,7 +2544,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // mesaCliente.ticket ya incluye el pedido local (ver displayTables); no re-sumar.
   // Restar los platos que el Maître haya eliminado de la cuenta.
   const totalEliminadoCliente = itemsCliente
-    .filter(i => itemsEliminados.includes(i.nombre))
+    .filter((_, idx) => itemsEliminados.includes(idx))
     .reduce((s, i) => s + parsePrecio(i.precio), 0);
   const subtotalCliente = Math.max(0, (mesaCliente?.ticket || 0) - totalEliminadoCliente);
   const descuentoCliente = Math.round(subtotalCliente * (posDescuento / 100));
@@ -2666,14 +2668,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               <div style={{ background:'rgba(61,186,111,0.06)', border:'1px solid rgba(61,186,111,0.3)', borderRadius:14, padding:'12px 14px' }}>
                 <div style={{ fontSize:11, color:'#3dba6f', fontWeight:700, marginBottom:8 }}>✓ Maître autorizado — Selecciona platos a eliminar</div>
                 <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
-                  {itemsCliente.filter(i=>!itemsEliminados.includes(i.nombre)).map((item,i)=>(
-                    <div key={i} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 10px', background:'#fff', borderRadius:8, border:'1px solid #eee' }}>
+                  {itemsCliente.map((item,idx)=> itemsEliminados.includes(idx) ? null : (
+                    <div key={idx} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 10px', background:'#fff', borderRadius:8, border:'1px solid #eee' }}>
                       <span style={{ fontSize:13 }}>{item.nombre}</span>
-                      <button onClick={()=>setItemsEliminados(p=>[...p,item.nombre])} style={{ background:'rgba(224,80,80,0.1)', border:'1px solid rgba(224,80,80,0.3)', color:'#e05050', fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:6, cursor:'pointer' }}>✕ Eliminar</button>
+                      <button onClick={()=>setItemsEliminados(p=>[...p,idx])} style={{ background:'rgba(224,80,80,0.1)', border:'1px solid rgba(224,80,80,0.3)', color:'#e05050', fontSize:11, fontWeight:700, padding:'3px 10px', borderRadius:6, cursor:'pointer' }}>✕ Eliminar</button>
                     </div>
                   ))}
                   {itemsEliminados.length>0&&(
-                    <div style={{ fontSize:11, color:'#e05050' }}>Eliminados: {itemsEliminados.join(', ')} — guardado en facturas pendientes</div>
+                    <div style={{ fontSize:11, color:'#e05050' }}>Eliminados: {itemsEliminados.map(idx=>itemsCliente[idx]?.nombre).filter(Boolean).join(', ')} — guardado en facturas pendientes</div>
                   )}
                 </div>
                 <input value={motivoEdicion} onChange={e=>setMotivoEdicion(e.target.value)} placeholder="Motivo de la edición..." style={{ width:'100%', padding:'8px 12px', borderRadius:8, border:'1px solid #ddd', fontSize:12, outline:'none', marginBottom:8 }}/>
@@ -2681,7 +2683,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   if(itemsEliminados.length&&motivoEdicion){
                     await supabase.from('cuenta_ediciones').insert({
                       restaurante_id:6, mesa_numero:mesaCliente.num, tipo:'eliminar_plato',
-                      plato_nombre:itemsEliminados.join(', '), motivo:motivoEdicion,
+                      plato_nombre:itemsEliminados.map(idx=>itemsCliente[idx]?.nombre).filter(Boolean).join(', '), motivo:motivoEdicion,
                       autorizado_por:'Maître', mesero:profile?.nombre_completo||'Mesero', estado:'aprobado', notificado_caja:true,
                     });
                     showToast('✓ Editado — Guardado en facturas pendientes · Caja notificada');
@@ -2704,8 +2706,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 </div>
               </div>
             )}
-            {itemsCliente.filter(i=>!itemsEliminados.includes(i.nombre)).map((item, i) => (
-              <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${S.border}`, opacity: itemsEliminados.includes(item.nombre) ? 0.3 : 1 }}>
+            {itemsCliente.map((item, i) => itemsEliminados.includes(i) ? null : (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', padding: '14px 0', borderBottom: `1px solid ${S.border}` }}>
                 <div style={{ width: 28, height: 28, borderRadius: '50%', background: S.bg2, border: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, flexShrink: 0, marginRight: 12 }}>{item.emoji||'🍽️'}</div>
                 <span style={{ flex: 1, fontSize: 15, color: S.text }}>{item.nombre}</span>
                 <div style={{ display:'flex', alignItems:'center', gap:6 }}>
