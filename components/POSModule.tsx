@@ -2934,22 +2934,26 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <div style={{ textAlign:'center', fontSize:34, fontWeight:900, color:N.ink, marginBottom:14, minHeight:44, letterSpacing:'-0.02em', fontFamily:"'Syne',sans-serif" }}>
               {customPropina > 0 ? `$${customPropina.toLocaleString('es-CO')}` : '$ —'}
             </div>
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:10 }}>
+            {/* % sugeridos — arriba */}
+            <div style={{ fontSize:10, color:N.ink3, marginBottom:6, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em' }}>Sugerencias</div>
+            <div style={{ display:'flex', gap:6, marginBottom:14 }}>
+              {sugeridos.map(p=>(
+                <button key={p} onClick={()=>setCustomPropina(Math.round(baseCliente*p/100))}
+                  style={{ flex:1, padding:'11px 8px', borderRadius:12, border:`1px solid ${N.violet}30`, background:N.violetL, fontSize:11, fontWeight:700, color:N.violet, cursor:'pointer', outline:'none' }}>
+                  {p}% · ${Math.round(baseCliente*p/100).toLocaleString('es-CO')}
+                </button>
+              ))}
+            </div>
+            {/* Calculadora — abajo */}
+            <div style={{ fontSize:10, color:N.ink3, marginBottom:6, fontWeight:700, textTransform:'uppercase', letterSpacing:'.06em' }}>Monto manual</div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:8, marginBottom:12 }}>
               {['1','2','3','4','5','6','7','8','9','000','0','⌫'].map(k=>(
                 <button key={k} onClick={()=>{
                   if (k==='⌫') { setCustomPropina(p=>Math.floor(p/10)); return; }
                   setCustomPropina(p=>{ const n=p*(k==='000'?1000:10)+(k==='000'?0:parseInt(k)); return n<=9999999?n:p; });
                 }}
-                  style={{ padding:'16px 8px', borderRadius:12, border:`1px solid ${k==='⌫'?'rgba(239,68,68,0.3)':N.border}`, background:k==='⌫'?'rgba(239,68,68,0.06)':'#fff', fontSize:k==='⌫'?18:18, fontWeight:800, cursor:'pointer', color:k==='⌫'?'#ef4444':N.ink, outline:'none' }}>
+                  style={{ padding:'16px 8px', borderRadius:12, border:`1px solid ${k==='⌫'?'rgba(239,68,68,0.3)':N.border}`, background:k==='⌫'?'rgba(239,68,68,0.06)':'#fff', fontSize:18, fontWeight:800, cursor:'pointer', color:k==='⌫'?'#ef4444':N.ink, outline:'none' }}>
                   {k}
-                </button>
-              ))}
-            </div>
-            <div style={{ display:'flex', gap:6, marginBottom:12 }}>
-              {sugeridos.map(p=>(
-                <button key={p} onClick={()=>setCustomPropina(Math.round(baseCliente*p/100))}
-                  style={{ flex:1, padding:'8px', borderRadius:10, border:`1px solid ${N.violet}30`, background:N.violetL, fontSize:10, fontWeight:700, color:N.violet, cursor:'pointer', outline:'none' }}>
-                  {p}% · ${Math.round(baseCliente*p/100).toLocaleString('es-CO')}
                 </button>
               ))}
             </div>
