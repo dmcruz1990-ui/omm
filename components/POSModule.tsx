@@ -4,6 +4,19 @@ import { Table, RitualTask } from '../types.ts';
 import { BellRing, Settings, MonitorPlay, MessageSquare, Sparkles, Receipt, X, ShoppingCart, Lock, Zap, BarChart3, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 
+// ── Cerebro POS: persistencia de las 15 mesas ────────────────────────
+// Conserva pedidos (enviados + pendientes), cliente y notas por mesa
+// aunque se refresque la página o se cambie de módulo. Una mesa solo se
+// limpia cuando se termina su cobro.
+const POS_STATE_KEY = 'nexum_pos_state_v1';
+const loadPosState = (): any => {
+  try { return JSON.parse(localStorage.getItem(POS_STATE_KEY) || '{}') || {}; }
+  catch { return {}; }
+};
+const savePosState = (data: any) => {
+  try { localStorage.setItem(POS_STATE_KEY, JSON.stringify(data)); } catch {}
+};
+
 // ══ PLANTA OMM — constantes globales del mapa de mesas ══════════════
 // ── PLANO OMM — layout fiel al plano arquitectónico ──────────────────────
 // 15 mesas reales distribuidas en: Barra Sushi · Salón · Ventanal · Torre Bar
@@ -847,7 +860,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [selectedTableId, setSelectedTableId] = useState<number>(1);
   const [currentCat, setCurrentCat] = useState('Compartir');
   // Datos reales del cliente sentado, por número de mesa (desde las reservas)
-  const [clientesPorMesa, setClientesPorMesa] = useState<Record<number, any>>({});
+  const [clientesPorMesa, setClientesPorMesa] = useState<Record<number, any>>(() => loadPosState().clientesPorMesa || {});
   const [rightTab, setRightTab] = useState<'IA' | 'Cuenta' | 'Chat' | 'Intel'>('IA');
   // Ticket del día y cuentas por cobrar
   const [ticketDia, setTicketDia] = useState<any>({ ventas:0, ordenes:0, pendientes:0, porCobrar:0, propinaTotal:0, total_ventas:0, total_ordenes:0, total_items:0, mesas_atendidas:0 });
@@ -871,9 +884,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [miMenu, setMiMenu] = useState<any[]>([]);
   const [miMenuFormOpen, setMiMenuFormOpen] = useState(false);
   const [miMenuForm, setMiMenuForm] = useState({ nombre:'', precio:'', emoji:'🍽️', categoria:'Compartir', badge:'recomendado', carne: false });
-  const [order, setOrder] = useState<OrderItem[]>([]);
+  const [order, setOrder] = useState<OrderItem[]>(() => loadPosState().order || []);
   // Pedido pendiente de enviar a cocina (agregar a la orden)
-  const [pendingOrder, setPendingOrder] = useState<OrderItem[]>([]);
+  const [pendingOrder, setPendingOrder] = useState<OrderItem[]>(() => loadPosState().pendingOrder || []);
   const [toast, setToast] = useState('');
   const [modal, setModal] = useState<POSModal>({ open: false, title: '', content: null });
   const [chatMessage, setChatMessage] = useState('');
@@ -941,8 +954,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [posCorte, setPosCorte] = useState(0);
   const [posCategDesc, setPosCategDesc] = useState('');
   const [posObsDesc, setPosObsDesc] = useState('');
-  const [notasMesero, setNotasMesero] = useState<Record<number, string[]>>({});
+  const [notasMesero, setNotasMesero] = useState<Record<number, string[]>>(() => loadPosState().notasMesero || {});
   const [ritualState, setRitualState] = useState<Record<number, string[]>>(mesaRitualState);
+
+  // ── Cerebro POS: guardar el estado de las mesas en cada cambio ──────
+  useEffect(() => {
+    savePosState({ order, pendingOrder, clientesPorMesa, notasMesero, selectedTableId });
+  }, [order, pendingOrder, clientesPorMesa, notasMesero, selectedTableId]);
 
   // ── Progreso del ritual por mesa ─────────────────────────────────────
   const getRitualProgress = (mesaId: number): number => {
@@ -1720,6 +1738,15 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   };
 
   const clearOrder = () => { setOrder([]); showToast('Pedido limpiado'); };
+
+  // Limpia por completo una mesa tras cerrar su cobro (cerebro POS).
+  const limpiarMesaCerrada = (num?: number | null) => {
+    if (num == null) return;
+    setOrder(prev => prev.filter(o => o.mesa !== num));
+    setPendingOrder(prev => prev.filter(o => o.mesa !== num));
+    setClientesPorMesa(prev => { const n = { ...prev }; delete n[num]; return n; });
+    setNotasMesero(prev => { const n = { ...prev }; delete n[num]; return n; });
+  };
 
   const sendOrder = () => {
     if (order.length === 0) { showToast('⚠️ Agrega productos primero'); return; }
@@ -3444,7 +3471,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         const omitir = () => {
           if (encTimerRef.current) clearTimeout(encTimerRef.current);
           setClienteMode(false);
-          setOrder(prev=>prev.filter(o=>o.mesa!==mesaCliente?.num));
+          limpiarMesaCerrada(mesaCliente?.num);
           showToast(`Mesa ${mesaCliente?.num} cerrada`);
         };
 
@@ -3668,7 +3695,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             catch (e) { console.error('cerrar_mesa error:', e); }
           }
           setClienteMode(false);
-          setOrder(prev => prev.filter(o => o.mesa !== mesaCliente?.num));
+          limpiarMesaCerrada(mesaCliente?.num);
           setClientePaso('cuenta');
           setXcareStep('sentiment');
           setJuegoPremio(null);
