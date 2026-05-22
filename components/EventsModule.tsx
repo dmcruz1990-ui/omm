@@ -711,6 +711,26 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
   // ── Flow alertas (platos listos) ─────────────────────────────────────
   const [flowAlertas, setFlowAlertas] = useState<any[]>([]);
+
+  // ── Filtrado de notificaciones por mesero ────────────────────────────
+  // Cada mesero solo ve lo de SUS pedidos; gerencia ve todo; los avisos
+  // sin mesa (chat, generales, 86) son broadcast para todo el equipo.
+  const esMiaNotif = useCallback((meseroField:any) => {
+    if (isGerencia) return true;
+    const yo = String(profile?.nombre_completo || profile?.full_name || '').trim().toLowerCase();
+    if (!yo) return false;
+    const yoCorto = yo.split(' ')[0];
+    const s = String(meseroField||'').trim().toLowerCase();
+    if (!s) return false;
+    return s === yo || s === yoCorto || s.split(' ')[0] === yoCorto;
+  }, [isGerencia, profile]);
+  const esMiaRef = useRef(esMiaNotif);
+  useEffect(() => { esMiaRef.current = esMiaNotif; }, [esMiaNotif]);
+  // Platos listos: solo el mesero dueño + gerencia (broadcast si no hay mesero)
+  const flowAlertasVisibles = flowAlertasVisibles.filter((a:any)=> (a.mesa_num==null && !a.mesero) ? true : esMiaNotif(a.mesero));
+  // Notificaciones: con mesa → dueño + gerencia; sin mesa → broadcast a todos
+  const notifsVisibles = notifs.filter((n:any)=> n.mesa_numero == null ? true : esMiaNotif(n.creado_por));
+
   const [historialPedidos, setHistorialPedidos] = useState<any[]>([]);
   const [showHistorial, setShowHistorial] = useState(false);
   // 🛎️ Timbre real — 2.5 segundos, resonante como campana de hotel
@@ -788,7 +808,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       if (data && data.length > 0) {
         const prevLen = flowAlertas.length;
         setFlowAlertas(data);
-        if (data.length > prevLen) playAlert();
+        if (data.length > prevLen && data.some((a:any)=>esMiaRef.current(a.mesero))) playAlert();
       } else {
         setFlowAlertas([]);
       }
@@ -796,9 +816,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     fetchAlertas();
     const ch = supabase.channel('flow-alertas-pos')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'flow_alertas' }, (payload) => {
-        setFlowAlertas(p => [payload.new, ...p]);
-        playAlert();
-        showToast(`🍽️ ${(payload.new as any).plato} — Mesa ${(payload.new as any).mesa_num} listo para entrega`);
+        const a = payload.new as any;
+        setFlowAlertas(p => [a, ...p]);
+        if (esMiaRef.current(a.mesero)) {
+          playAlert();
+          showToast(`🍽️ ${a.plato} — Mesa ${a.mesa_num} listo para entrega`);
+        }
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
@@ -2939,36 +2962,37 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
             </div>
             {/* Campana Flow — alertas platos listos */}
             <div onClick={() => setShowNotifications(!showNotifications)}
-              className={`w-[28px] h-[28px] rounded-lg border flex items-center justify-center cursor-pointer transition-all relative ${flowAlertas.length > 0 ? 'bg-[#3dba6f]/15 border-[#3dba6f] text-[#3dba6f] animate-pulse' : showNotifications ? 'bg-[#d4943a]/10 border-[#d4943a] text-[#d4943a]' : 'bg-[#1c1c1c] border-[#2a2a2a] text-[#a0a0a0] hover:text-[#3dba6f] hover:border-[#3dba6f]'}`}
+              className={`w-[28px] h-[28px] rounded-lg border flex items-center justify-center cursor-pointer transition-all relative ${flowAlertasVisibles.length > 0 ? 'bg-[#3dba6f]/15 border-[#3dba6f] text-[#3dba6f] animate-pulse' : showNotifications ? 'bg-[#d4943a]/10 border-[#d4943a] text-[#d4943a]' : 'bg-[#1c1c1c] border-[#2a2a2a] text-[#a0a0a0] hover:text-[#3dba6f] hover:border-[#3dba6f]'}`}
               title="Alertas platos listos">
               <BellRing size={13} />
-              {flowAlertas.length > 0 && <div className="absolute -top-1 -right-1 w-[14px] h-[14px] rounded-full bg-[#3dba6f] flex items-center justify-center text-[8px] font-black text-black">{flowAlertas.length}</div>}
+              {flowAlertasVisibles.length > 0 && <div className="absolute -top-1 -right-1 w-[14px] h-[14px] rounded-full bg-[#3dba6f] flex items-center justify-center text-[8px] font-black text-black">{flowAlertasVisibles.length}</div>}
             </div>
           </div>
           {showNotifications && (
             <div className="absolute top-[44px] left-2 w-[310px] bg-[#1c1c1c] border border-[#2a2a2a] rounded-xl shadow-2xl z-50 overflow-hidden" style={{maxHeight:420,overflowY:'auto'}}>
               <div className="p-3 border-b border-[#2a2a2a] flex justify-between items-center bg-[#141414]">
                 <div className="flex items-center gap-2">
-                  <span className={`w-2 h-2 rounded-full inline-block ${flowAlertas.length>0?'bg-[#3dba6f] animate-pulse':'bg-[#606060]'}`}/>
+                  <span className={`w-2 h-2 rounded-full inline-block ${flowAlertasVisibles.length>0?'bg-[#3dba6f] animate-pulse':'bg-[#606060]'}`}/>
                   <span className="font-['Syne'] text-[12px] font-bold">🍽️ Platos Listos para Entrega</span>
-                  {flowAlertas.length>0 && <span className="bg-[#3dba6f] text-black text-[9px] font-black px-1.5 rounded-full">{flowAlertas.length}</span>}
+                  {flowAlertasVisibles.length>0 && <span className="bg-[#3dba6f] text-black text-[9px] font-black px-1.5 rounded-full">{flowAlertasVisibles.length}</span>}
                 </div>
                 <div className="flex gap-2 items-center">
                   <button onClick={async()=>{
-                    await supabase.from('nexum_notificaciones').update({leida:true}).eq('leida',false).eq('restaurante_id',6);
-                    setNotifsBadge(0); setNotifs((p:any[])=>p.map((n:any)=>({...n,leida:true})));
+                    const idsNotif = notifsVisibles.filter((n:any)=>!n.leida).map((n:any)=>n.id);
+                    if (idsNotif.length) await supabase.from('nexum_notificaciones').update({leida:true}).in('id', idsNotif);
+                    setNotifsBadge(0); setNotifs((p:any[])=>p.map((n:any)=>idsNotif.includes(n.id)?{...n,leida:true}:n));
                   }} className="text-[9px] text-[#d4943a] hover:underline cursor-pointer">✓ Todo leído</button>
                   <span onClick={() => setShowNotifications(false)} className="text-[10px] text-[#606060] cursor-pointer hover:text-white">✕</span>
                 </div>
               </div>
               {/* Platos listos de Flow */}
-              {flowAlertas.length === 0 && (
+              {flowAlertasVisibles.length === 0 && (
                 <div className="p-5 text-center text-[11px] text-[#606060]">
                   <div className="text-2xl mb-2">✅</div>
                   <div>Todas las entregas al día</div>
                 </div>
               )}
-              {flowAlertas.map((a:any) => (
+              {flowAlertasVisibles.map((a:any) => (
                 <div key={a.id} className="p-3 border-b border-[#1a1a1a] hover:bg-[#222] cursor-pointer flex gap-2.5"
                   style={{background:'rgba(61,186,111,0.04)'}}>
                   <span className="text-[18px] shrink-0">🍽️</span>
@@ -3514,7 +3538,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
           {/* Badge notificaciones */}
           <button onClick={()=>setShowNotifPanel(p=>!p)} style={{position:'relative',background:'none',border:'none',cursor:'pointer',padding:4}}>
             <span style={{fontSize:18}}>🔔</span>
-            {notifsBadge>0&&<span style={{position:'absolute',top:0,right:0,background:'#e05050',color:'#fff',fontSize:9,fontWeight:900,borderRadius:'50%',width:14,height:14,display:'flex',alignItems:'center',justifyContent:'center'}}>{notifsBadge}</span>}
+            {notifsVisibles.length>0&&<span style={{position:'absolute',top:0,right:0,background:'#e05050',color:'#fff',fontSize:9,fontWeight:900,borderRadius:'50%',width:14,height:14,display:'flex',alignItems:'center',justifyContent:'center'}}>{notifsVisibles.length}</span>}
           </button>
           {/* Cuentas por cobrar */}
           <button onClick={()=>setRightTab('Intel')} style={{background:'rgba(212,148,58,0.15)',border:'1px solid rgba(212,148,58,0.3)',borderRadius:8,padding:'4px 8px',cursor:'pointer'}}>
@@ -3528,13 +3552,15 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
             <div style={{padding:'10px 14px',borderBottom:'1px solid #2a2a2a',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
               <span style={{fontSize:12,fontWeight:700,color:'#f0f0f0'}}>🔔 Notificaciones</span>
               <button onClick={async()=>{
-                await supabase.from('nexum_notificaciones').update({leida:true}).eq('leida',false).eq('restaurante_id',6);
-                await supabase.from('flow_alertas').update({leida:true}).eq('leida',false).eq('restaurante_id',6);
-                setNotifsBadge(0); setNotifs(p=>p.map(n=>({...n,leida:true}))); setFlowAlertas([]);
+                const idsNotif = notifsVisibles.filter((n:any)=>!n.leida).map((n:any)=>n.id);
+                const idsFlow = flowAlertasVisibles.map((a:any)=>a.id);
+                if (idsNotif.length) await supabase.from('nexum_notificaciones').update({leida:true}).in('id', idsNotif);
+                if (idsFlow.length) await supabase.from('flow_alertas').update({leida:true}).in('id', idsFlow);
+                setNotifsBadge(0); setNotifs(p=>p.map(n=>idsNotif.includes(n.id)?{...n,leida:true}:n)); setFlowAlertas((p:any[])=>p.filter((a:any)=>!idsFlow.includes(a.id)));
               }} style={{fontSize:10,color:'#606060',background:'none',border:'none',cursor:'pointer'}}>Marcar leídas</button>
             </div>
-            {notifs.length===0&&<div style={{padding:20,textAlign:'center',color:'#606060',fontSize:12}}>Sin notificaciones</div>}
-            {notifs.map((n:any)=>(
+            {notifsVisibles.length===0&&<div style={{padding:20,textAlign:'center',color:'#606060',fontSize:12}}>Sin notificaciones</div>}
+            {notifsVisibles.map((n:any)=>(
               <div key={n.id} style={{padding:'10px 14px',borderBottom:'1px solid #1a1a1a',background:n.leida?'transparent':'rgba(212,148,58,0.05)'}}>
                 <div style={{display:'flex',gap:8,alignItems:'flex-start'}}>
                   <span style={{fontSize:16,flexShrink:0}}>{n.tipo==='stock_86'?'⚠️':n.tipo==='alerta_patio'?'🏠':n.tipo==='maître'?'👔':'🔔'}</span>
@@ -3723,7 +3749,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                     {slug:'cava',            emoji:'🍷', label:'Cava',    color:'#FFB547'},
                   ].map(est=>{
                     // Contar pedidos pendientes y en fuego de esta estación
-                    const pendientes = flowAlertas.filter((a:any)=>a.estacion===est.slug&&!a.leida).length;
+                    const pendientes = flowAlertasVisibles.filter((a:any)=>a.estacion===est.slug&&!a.leida).length;
                     const semaforo = pendientes === 0 ? 'libre' : pendientes <= 2 ? 'activo' : 'fuego';
                     const sColor = semaforo==='libre'?'#3dba6f':semaforo==='activo'?'#f0b45a':'#e05050';
                     return (
@@ -3752,11 +3778,11 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                       </div>
                     </div>
                   )}
-                  {flowAlertas.filter((a:any)=>!a.leida).length > 0 && (
+                  {flowAlertasVisibles.filter((a:any)=>!a.leida).length > 0 && (
                     <div className="flex items-center gap-2.5 px-3 py-2 border-b border-[#1a1a1a]">
                       <span className="text-[14px]">🍽️</span>
                       <div className="flex-1">
-                        <div className="text-[10px] font-bold text-[#3dba6f]">{flowAlertas.filter((a:any)=>!a.leida).length} platos listos para entregar</div>
+                        <div className="text-[10px] font-bold text-[#3dba6f]">{flowAlertasVisibles.filter((a:any)=>!a.leida).length} platos listos para entregar</div>
                         <div className="text-[9px] text-[#606060]">Revisar campana de notificaciones</div>
                       </div>
                     </div>
@@ -3770,7 +3796,7 @@ ${mesaCliente.cliente.split(' ')[0]}?`:'¿Cómo se sintió tu experiencia hoy?'}
                       </div>
                     </div>
                   )}
-                  {(ticketDia?.pendientes||0)<=4 && flowAlertas.filter((a:any)=>!a.leida).length===0 && (
+                  {(ticketDia?.pendientes||0)<=4 && flowAlertasVisibles.filter((a:any)=>!a.leida).length===0 && (
                     <div className="px-3 py-2 text-[10px] text-[#3dba6f] flex items-center gap-2">
                       <span>✓</span> Servicio estable — sin alertas
                     </div>
