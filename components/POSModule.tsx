@@ -4125,32 +4125,6 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   </div>
                 </div>
 
-                {/* BRIEF — Stock en 86 — dinámico desde stockFlow */}
-                <div className="mt-3 pt-3 border-t border-[#2a2a2a]">
-                  <div className="text-[10px] font-semibold uppercase tracking-[0.8px] text-[#606060] mb-2 flex items-center gap-1.5">
-                    En <span className="text-[#e05050] font-black">86</span> · Stock bajo
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    {Object.entries(stockFlow)
-                      .filter(([, qty]) => qty <= 6)
-                      .sort(([, a], [, b]) => a - b)
-                      .map(([name, qty]) => (
-                        <div key={name} className="flex items-center gap-2 py-1 border-b border-[#1a1a1a] last:border-0">
-                          <div className="w-2 h-2 rounded-full shrink-0" style={{ background: qty <= 0 ? '#e05050' : qty <= 3 ? '#e05050' : '#f0b45a' }}></div>
-                          <span className="flex-1 text-[10px] text-[#a0a0a0] truncate">{name}</span>
-                          <span className="text-[10px] font-black shrink-0" style={{ color: qty <= 0 ? '#e05050' : '#f0b45a' }}>
-                            {qty <= 0 ? '86' : qty}
-                          </span>
-                          <button onClick={() => { setStockFlow(prev => ({ ...prev, [name]: 10 })); showToast(`✓ ${name} repuesto`); }}
-                            className="w-[20px] h-[20px] rounded-md bg-[#1a1a1a] border border-[#2a2a2a] flex items-center justify-center hover:bg-[#3dba6f] hover:text-black hover:border-[#3dba6f] transition-all text-[10px] shrink-0">+</button>
-                        </div>
-                    ))}
-                    {Object.values(stockFlow).every(v => v > 6) && (
-                      <div className="text-[10px] text-[#3dba6f]">✓ Todo disponible</div>
-                    )}
-                  </div>
-                </div>
-
                 {/* TRASPASO DE MESA */}
                 <div className="mt-3 pt-3 border-t border-[#2a2a2a]">
                   <button onClick={() => setMostrarTraspaso(p => !p)}
