@@ -151,8 +151,10 @@ export default function ReserveModule() {
     ].sort((a:any,b:any)=>(a.fecha||'').localeCompare(b.fecha||'')||(a.hora||'').localeCompare(b.hora||''));
     setReservas(todas);
     if (ms.data) setMesas(ms.data);
-    supabase.from('staff_nexum').select('*').eq('restaurante_id',6).eq('activo',true).eq('rol','mesero')
-      .then(({data})=>{ if(data) setMeserosLista(data); });
+    // Meseros = usuarios reales que hacen login (profiles role='mesero').
+    // La identidad debe coincidir con la del POS: nombre_completo || full_name.
+    supabase.from('profiles').select('id,nombre_completo,full_name,role').eq('role','mesero')
+      .then(({data})=>{ if(data) setMeserosLista((data||[]).filter((m:any)=>m.nombre_completo||m.full_name)); });
     setLoading(false);
   },[fechaFiltro]);
 
@@ -520,7 +522,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                     style={{width:'100%',background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 12px',color:'#fff',fontSize:13,outline:'none'}}>
                     <option value="">Sin asignar — libre para tomar</option>
                     {meserosLista.map((ms:any)=>{
-                      const nombre = ms.nombre_completo || ms.nombre || '';
+                      const nombre = ms.nombre_completo || ms.full_name || '';
                       return <option key={ms.id||nombre} value={nombre}>{nombre}</option>;
                     })}
                   </select>

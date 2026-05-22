@@ -812,6 +812,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { profile } = useAuth();
   const isGerencia = ['admin','gerencia','desarrollo'].includes(profile?.role || '');
+  // Identidad única del mesero — debe coincidir con lo que el Maître asigna
+  // (profiles.nombre_completo, o full_name si el primero está vacío).
+  const miNombre = profile?.nombre_completo || profile?.full_name || 'Mesero';
 
   // PIN para ajustes gerente
   const [pinModal, setPinModal] = useState(false);
@@ -1323,7 +1326,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       }));
       // totalCliente ya incluye neto + IVA + propina (ver definición). No volver a sumar propina ni descuento.
       const totalFinal = totalCliente;
-      const meseroNombre = profile?.nombre_completo || 'Mesero';
+      const meseroNombre = miNombre;
       
       // Guardar datos de factura según tipo
       if (facturaTipo === 'electronica') {
@@ -1434,7 +1437,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
   // ── ABRIR MESA — llama la función de Supabase ──────────────────────
   const abrirMesaDB = async (mesa: any, pax: number, clienteNombre?: string, extra?: { telefono?: string; email?: string; vip?: boolean }) => {
-    const meseroActivo = profile?.nombre_completo || 'Mesero';
+    const meseroActivo = miNombre;
     const { data, error } = await supabase.rpc('abrir_mesa', {
       p_mesa_name: mesa.name,
       p_mesero_nombre: meseroActivo,
@@ -1466,7 +1469,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
   // ── TOMAR MESA ASIGNADA (verde → ocupada, bloqueada al mesero) ────────
   const tomarMesaAsignada = async (mesa: any, est: any) => {
-    const meseroActivo = profile?.nombre_completo || 'Mesero';
+    const meseroActivo = miNombre;
     const { data, error } = await supabase.rpc('abrir_mesa', {
       p_mesa_name: String(mesa.num),
       p_mesero_nombre: meseroActivo,
@@ -1506,7 +1509,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       await supabase.from('feedback_servicio').insert({
         restaurante_id: 6,
         mesa_num: mesaCliente.num,
-        mesero: profile?.nombre_completo || 'Mesero',
+        mesero: miNombre,
         tipo: feedbackTipo,
         comentario: feedbackMesa,
         fecha: new Date().toISOString().split('T')[0],
@@ -1522,7 +1525,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               tipo: feedbackTipo,
               comentario: feedbackMesa,
               mesa: mesaCliente.num,
-              mesero: profile?.nombre_completo || 'Mesero',
+              mesero: miNombre,
             }]
           }).eq('id', mesaCliente.clienteId);
         }
@@ -1571,7 +1574,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       mesa: selectedTable.num,
       plato: p.nombre,
       emoji: p.emoji ?? '🍽️',
-      mesero: profile?.nombre_completo?.split(' ')[0] ?? 'Mesero',
+      mesero: miNombre,
       etapa: 'cocina',
       urgente: false,
     });
@@ -1581,7 +1584,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // ── Insertar pedido en Supabase → Flow lo ve en tiempo real ──
   const insertarPedidoFlow = async (nombrePlato: string, categoria: string, mesaNum: number, precio?: number) => {
     try {
-      const meseroActivo = profile?.nombre_completo || profile?.full_name || 'Mesero';
+      const meseroActivo = miNombre;
 
       // Determinar estación por categoría/nombre del plato
       const inferirEstacion = (nombre: string, cat: string): string => {
@@ -1680,7 +1683,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       mesa: selectedTable?.num ?? 0,
       plato: productoFinal.nombre,
       emoji: p.emoji ?? '🍽️',
-      mesero: profile?.nombre_completo?.split(' ')[0] ?? 'Mesero',
+      mesero: miNombre,
       etapa: 'cocina',
       urgente: totalEnCocina >= 10,
       termino: termino,
@@ -1750,7 +1753,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     mesa: selectedTable.num,
                     plato: item.nombre,
                     emoji: item.emoji ?? '🍽️',
-                    mesero: profile?.nombre_completo?.split(' ')[0] ?? 'Mesero',
+                    mesero: miNombre,
                     etapa: 'cocina',
                     urgente: false,
                   });
@@ -2808,7 +2811,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     await supabase.from('cuenta_ediciones').insert({
                       restaurante_id:6, mesa_numero:mesaCliente.num, tipo:'eliminar_plato',
                       plato_nombre:itemsEliminados.map(idx=>itemsCliente[idx]?.nombre).filter(Boolean).join(', '), motivo:motivoEdicion,
-                      autorizado_por:'Maître', mesero:profile?.nombre_completo||'Mesero', estado:'aprobado', notificado_caja:true,
+                      autorizado_por:'Maître', mesero:miNombre, estado:'aprobado', notificado_caja:true,
                     });
                     showToast('✓ Editado — Guardado en facturas pendientes · Caja notificada');
                     setEditCuenta(false); setPinMaitreOk(false); setPinMaitre('');
@@ -3231,7 +3234,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
           {/* Datafono con mesero */}
           <button onClick={async()=>{
-              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:profile?.nombre_completo||'Mesero', total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Datafono', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:miNombre, total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Datafono', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
               await guardarFactura('Datafono');
               setClientePaso('encuesta');
             }}
@@ -3246,7 +3249,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
           {/* Efectivo */}
           <button onClick={async()=>{
-              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:profile?.nombre_completo||'Mesero', total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Efectivo', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null });
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:miNombre, total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Efectivo', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null });
               await guardarFactura('Efectivo');
               setClientePaso('encuesta');
             }} style={{ width: '100%', padding: '18px 20px', borderRadius: 16, border: `1px solid ${S.border}`, background: '#fff', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
@@ -3382,7 +3385,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           </div>
 
           <button onClick={async()=>{
-              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:profile?.nombre_completo||'Mesero', total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Bono', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:miNombre, total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Bono', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
               await guardarFactura('Bono');
               setClientePaso('encuesta');
             }}
@@ -3432,7 +3435,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           </p>
 
           <button onClick={async()=>{
-              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:profile?.nombre_completo||'Mesero', total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Tarjeta', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:miNombre, total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Tarjeta', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
               await guardarFactura('Tarjeta');
               setClientePaso('encuesta');
             }}
@@ -4395,7 +4398,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 {(() => {
                   const estMesa = mesasEstado.find((mm:any)=>String(mm.name)===String(m.num));
                   const compartidos: string[] = Array.isArray(estMesa?.meseros_compartidos) ? estMesa.meseros_compartidos : [];
-                  const owner = estMesa?.mesero_nombre || profile?.nombre_completo || 'Mesero';
+                  const owner = estMesa?.mesero_nombre || miNombre;
                   return (
                     <div className="mt-3 pt-3 border-t border-[#2a2a2a]">
                       <button onClick={() => setMostrarCompartir(p => !p)}
@@ -4477,7 +4480,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                             mesa: selectedTable.num,
                             plato: item.nombre,
                             emoji: item.emoji ?? '🍽️',
-                            mesero: profile?.nombre_completo?.split(' ')[0] ?? 'Mesero',
+                            mesero: miNombre,
                             etapa: 'cocina',
                             urgente: items.length >= 10,
                           });
@@ -5482,7 +5485,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             </div>
             {/* ── HOME DEL MESERO: mis mesas + libres para tomar ── */}
             {(() => {
-              const meseroActual = profile?.nombre_completo || 'Mesero';
+              const meseroActual = miNombre;
               const esMiaMesa = (m:any) => m.mesero_nombre===meseroActual || (Array.isArray(m.meseros_compartidos)&&m.meseros_compartidos.includes(meseroActual));
               const misMesas = mesasEstado.filter((m:any)=>(m.estado==='asignada'||m.estado==='ocupada') && (isGerencia ? true : esMiaMesa(m)));
               const libres   = mesasEstado.filter((m:any)=>m.estado==='asignada' && !m.mesero_nombre);
@@ -5601,7 +5604,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
                   {/* Mesas */}
                   {(() => {
-                    const meseroActual = profile?.nombre_completo || 'Mesero';
+                    const meseroActual = miNombre;
                     const privilegiado = ['admin','gerencia','desarrollo','capitan','capitán','sommelier'].includes(profile?.role||'');
                     return Object.entries(PLANTA_OMM).map(([key,mesa])=>{
                       const est = mesasEstado.find((m:any)=>String(m.name)===String(mesa.num));
