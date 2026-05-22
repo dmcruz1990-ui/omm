@@ -2846,33 +2846,21 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           ? Math.round((customPropina / Math.max(baseCliente,1)) * 100)
           : clientePropina;
 
-        // ── Mascota Nexum (SVG inline) ───────────────────────────────
+        // ── Logo Nexum + mesa que se está cobrando ───────────────────
         const NexumMascot = () => (
-          <svg width="118" height="118" viewBox="0 0 118 118" fill="none" xmlns="http://www.w3.org/2000/svg">
-            {/* Sparkles */}
-            <g fill={N.violet}>
-              <path d="M22 32 l1.5 4 l4 1.5 l-4 1.5 l-1.5 4 l-1.5 -4 l-4 -1.5 l4 -1.5 z" opacity="0.9"/>
-              <path d="M96 56 l1.2 3.2 l3.2 1.2 l-3.2 1.2 l-1.2 3.2 l-1.2 -3.2 l-3.2 -1.2 l3.2 -1.2 z" opacity="0.7"/>
-              <circle cx="32" cy="62" r="2" opacity="0.5"/>
-              <circle cx="89" cy="86" r="1.8" opacity="0.6"/>
-              <circle cx="26" cy="84" r="1.5" opacity="0.4"/>
-            </g>
-            {/* Leaf */}
-            <path d="M76 22 Q86 18 89 28 Q83 30 76 22 Z" fill={N.violet} opacity="0.9"/>
-            <path d="M82 24 Q84 22 86 26" stroke="#fff" strokeWidth="0.8" fill="none" opacity="0.7"/>
-            {/* Heart */}
-            <path d="M95 26 c-2 -3 -6 -3 -7 0 c-1 -3 -5 -3 -7 0 c-2 4 7 10 7 10 s9 -6 7 -10 z" fill={N.violet}/>
-            {/* Face — rounded square */}
-            <rect x="30" y="36" width="58" height="58" rx="16" stroke={N.ink} strokeWidth="3.2" fill="#fff"/>
-            {/* Cheeks tint */}
-            <circle cx="46" cy="74" r="4" fill={N.violet} opacity="0.18"/>
-            <circle cx="72" cy="74" r="4" fill={N.violet} opacity="0.18"/>
-            {/* Eyes */}
-            <circle cx="48" cy="60" r="2.6" fill={N.ink}/>
-            <circle cx="70" cy="60" r="2.6" fill={N.ink}/>
-            {/* Smile */}
-            <path d="M48 76 Q59 84 70 76" stroke={N.ink} strokeWidth="3" fill="none" strokeLinecap="round"/>
-          </svg>
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
+            {/* Logo NEXUM oficial */}
+            <div style={{ fontFamily:"'Syne',sans-serif", fontSize:42, fontWeight:900, color:N.ink, letterSpacing:'-0.02em', display:'flex', alignItems:'center', gap:1 }}>
+              NE<span style={{ display:'inline-flex', alignItems:'center', justifyContent:'center', width:40, height:40 }}>
+                <svg width="40" height="40" viewBox="0 0 22 22" fill="none"><path d="M3 4 L11 11 L3 18 M19 4 L11 11 L19 18" stroke={N.violet} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
+              </span>UM
+            </div>
+            {/* Mesa que se está cobrando */}
+            <div style={{ display:'inline-flex', alignItems:'center', gap:7, padding:'6px 16px', borderRadius:50, background:N.violetL, border:`1px solid ${N.border}` }}>
+              <span style={{ fontSize:13 }}>🪑</span>
+              <span style={{ fontSize:12.5, fontWeight:800, color:N.violet, letterSpacing:'0.02em' }}>Cobrando · Mesa {mesaCliente?.num ?? '—'}</span>
+            </div>
+          </div>
         );
 
         // ── Header común (logo NEXUM + back) ─────────────────────────
