@@ -2396,6 +2396,36 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [gerBono, setGerBono] = useState<any>(null);
   const [gerBonoMsg, setGerBonoMsg] = useState('');
   const [gerMetodo, setGerMetodo] = useState('Datafono');
+  // Historial del cliente para el Cobro Gerencia: gasto total, ticket promedio
+  // y última encuesta (estrellas). Clave para decidir cortesías/descuentos.
+  const [gerCliente, setGerCliente] = useState<any>(null);
+  useEffect(() => {
+    if (!gerOpen || !gerPinOk) { setGerCliente(null); return; }
+    const num = selectedTable?.num;
+    const tel = String((selectedTable as any)?.cliente_telefono || clientesPorMesa[num as number]?.telefono || '').trim();
+    const nombre = String((selectedTable as any)?.cliente_nombre || clientesPorMesa[num as number]?.nombreCompleto || selectedTable?.cliente || '').trim();
+    (async () => {
+      try {
+        let cust:any = null;
+        if (tel.length >= 7) {
+          const { data } = await supabase.from('customers').select('id,name,total_visits,total_spent,promedio_ticket,score,vip_status').eq('phone', tel).limit(1).maybeSingle();
+          cust = data;
+        }
+        if (!cust && nombre && !['mesa','cliente','mesa sin reserva'].includes(nombre.toLowerCase())) {
+          const { data } = await supabase.from('customers').select('id,name,total_visits,total_spent,promedio_ticket,score,vip_status').ilike('name', nombre).limit(1).maybeSingle();
+          cust = data;
+        }
+        if (!cust) { setGerCliente(null); return; }
+        let estrellas:any = null, comentario = '';
+        if (tel.length >= 7) {
+          const { data: enc } = await supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_telefono', tel).order('created_at',{ascending:false}).limit(1).maybeSingle();
+          if (enc) { estrellas = enc.estrellas; comentario = enc.comentario || ''; }
+        }
+        const ticketProm = cust.promedio_ticket || (cust.total_visits ? Math.round((cust.total_spent||0)/cust.total_visits) : 0);
+        setGerCliente({ ...cust, ticketProm, ultimaEstrellas: estrellas, ultimoComentario: comentario });
+      } catch { setGerCliente(null); }
+    })();
+  }, [gerOpen, gerPinOk, selectedTable?.num]);
 
   const abrirGerencia = (tableId: number) => {
     setSelectedTableId(tableId);
@@ -4008,6 +4038,28 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     </div>
                     <button onClick={() => setGerOpen(false)} className="w-8 h-8 rounded-full bg-[#0a0a0a] border border-[#2a2a2a] text-[#909090] flex items-center justify-center"><X size={16}/></button>
                   </div>
+
+                  {/* Historial del cliente — gasto total, ticket promedio, última encuesta */}
+                  {gerCliente && (
+                    <div className="bg-[#0a0a0a] border border-[#3dba6f]/30 rounded-xl p-3 mb-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[16px]">{gerCliente.vip_status?'⭐':'✓'}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[12px] font-bold text-[#3dba6f] truncate">{gerCliente.name}{gerCliente.vip_status?' · VIP':''}</div>
+                          <div className="text-[10px] text-[#909090]">{gerCliente.total_visits||0} visita(s)</div>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        <span className="text-[10px] font-bold bg-[#3dba6f]/15 text-[#3dba6f] px-2 py-0.5 rounded-md">💰 Gasto total ${fmt(Number(gerCliente.total_spent||0))}</span>
+                        <span className="text-[10px] font-bold bg-[#4a8fd4]/15 text-[#4a8fd4] px-2 py-0.5 rounded-md">🎟️ Ticket prom. ${fmt(Number(gerCliente.ticketProm||0))}</span>
+                        {gerCliente.ultimaEstrellas!=null && <span className="text-[10px] font-bold bg-[#d4943a]/15 text-[#d4943a] px-2 py-0.5 rounded-md">{'★'.repeat(gerCliente.ultimaEstrellas)}{'☆'.repeat(Math.max(0,5-gerCliente.ultimaEstrellas))} última encuesta</span>}
+                        {gerCliente.score>0 && <span className="text-[10px] font-bold bg-[#3dba6f]/15 text-[#3dba6f] px-2 py-0.5 rounded-md">📊 Score {gerCliente.score}</span>}
+                      </div>
+                      {gerCliente.ultimaEstrellas!=null && gerCliente.ultimoComentario && (
+                        <div className="text-[10px] text-[#808080] italic mt-1.5">"{gerCliente.ultimoComentario}"</div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Descuento por gerencia / influencer — hasta 100% */}
                   <div className="bg-[#0a0a0a] rounded-xl p-3 mb-3">

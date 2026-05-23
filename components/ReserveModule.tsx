@@ -758,7 +758,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         </div>
       )}
       <div style={{display:'flex',flexDirection:'column',gap:8}}>
-        {reservasHoy.map((r:any)=>{
+        {reservasHoy.filter((r:any)=>!['completada','cancelada'].includes(r.estado)).map((r:any)=>{
           const est     = ESTADOS[r.estado]||{c:S.t3,l:r.estado};
           const esOhYeah = r.origen==='ohyeah';
           const sinMesa  = !r.mesa_num && r.estado!=='cancelada' && r.estado!=='completada';
@@ -839,7 +839,11 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
   </div>
 )}
 
-{tab==='lista' && (
+{tab==='lista' && (()=>{
+        const activas = reservas.filter((r:any)=>!['completada','cancelada'].includes(r.estado));
+        const anteriores = reservas.filter((r:any)=>['completada','cancelada'].includes(r.estado));
+        const ordenadas = [...activas, ...anteriores];
+        return (
         <div style={{flex:1,overflowY:'auto'}}>
           {loading&&<div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando...</div>}
           {!loading&&reservas.length===0&&<div style={{textAlign:'center',padding:60,color:S.t3}}><div style={{fontSize:48,marginBottom:12}}>🗓️</div><div>Sin reservas para esta fecha</div></div>}
@@ -852,11 +856,16 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
               </tr>
             </thead>
             <tbody>
-              {reservas.map((r,i)=>{
+              {ordenadas.map((r,i)=>{
                 const est = ESTADOS[r.estado]||{c:S.t3,l:r.estado};
                 const esOhYeah = r.origen==='ohyeah';
+                const mostrarDivisor = anteriores.length>0 && i===activas.length;
                 return (
-                  <tr key={r.id} style={{background:i%2===0?S.bg:S.bg2,borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                  <React.Fragment key={r.id}>
+                  {mostrarDivisor && (
+                    <tr><td colSpan={8} style={{padding:'10px 14px',background:S.bg2,color:S.t3,fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',borderTop:`1px solid ${S.border}`,borderBottom:`1px solid ${S.border}`}}>📁 Reservas anteriores ({anteriores.length})</td></tr>
+                  )}
+                  <tr style={{background:i%2===0?S.bg:S.bg2,borderBottom:'1px solid rgba(255,255,255,0.03)',opacity:['completada','cancelada'].includes(r.estado)?0.6:1}}>
                     <td style={{padding:'10px 14px'}}>
                       <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:6}}>
                         {r.cliente_nombre}
@@ -905,12 +914,14 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                       </div>
                     </td>
                   </tr>
+                  </React.Fragment>
                 );
               })}
             </tbody>
           </table>
         </div>
-      )}
+        );
+      })()}
 
       {/* ── MAPA ── */}
       {tab==='mapa' && (
