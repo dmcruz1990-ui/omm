@@ -39,9 +39,38 @@ const SettingsModule: React.FC = () => {
     notifications_enabled: true
   });
 
+  // Reservas: Sobreventa VIP (config) + Shift Pacing (lectura en vivo)
+  const [sobreventa, setSobreventa] = useState(0);
+  const [pacing, setPacing] = useState<{cocina:number;barra:number;servicio:number;pico:number;actual:number}>({cocina:0,barra:0,servicio:0,pico:0,actual:0});
+
   useEffect(() => {
     fetchConfig();
+    const hoy = new Date().toISOString().split('T')[0];
+    (async () => {
+      try {
+        const [cfg, rv, tb] = await Promise.all([
+          supabase.from('reservas_config').select('sobreventa_pct').eq('restaurante_id',6).maybeSingle(),
+          supabase.from('reservations').select('hora,estado').eq('restaurante_id',6).eq('fecha',hoy),
+          supabase.from('tables').select('estado'),
+        ]);
+        if (cfg.data) setSobreventa(Math.min(10, cfg.data.sobreventa_pct||0));
+        const activas = (rv.data||[]).filter((r:any)=>!['cancelada','completada'].includes(r.estado));
+        const mesasN = Math.max(1, (tb.data||[]).length || 15);
+        const horaActual = String(new Date().getHours()).padStart(2,'0');
+        const actual = activas.filter((r:any)=>String(r.hora||'').startsWith(horaActual)).length;
+        const pico = Math.max(1, ...Array.from({length:24},(_,h)=>{ const hh=String(h).padStart(2,'0'); return activas.filter((r:any)=>String(r.hora||'').startsWith(hh)).length; }));
+        const ocupacion = Math.round((tb.data||[]).filter((m:any)=>m.estado==='ocupada'||m.estado==='asignada').length / mesasN * 100);
+        const cocina = Math.min(100, Math.round(actual / mesasN * 200));
+        setPacing({ cocina, barra: Math.min(100,cocina), servicio: ocupacion, pico, actual });
+      } catch { /* noop */ }
+    })();
   }, []);
+
+  const cambiarSobreventa = async (pct:number) => {
+    const safe = Math.max(0, Math.min(10, pct));
+    setSobreventa(safe);
+    try { await supabase.from('reservas_config').upsert({ restaurante_id:6, sobreventa_pct:safe, updated_at:new Date().toISOString() }, { onConflict:'restaurante_id' }); } catch {}
+  };
 
   const fetchConfig = async () => {
     setLoading(true);
@@ -252,6 +281,61 @@ const SettingsModule: React.FC = () => {
                 Al activar las notificaciones, el sistema enviará reportes de cierre y alertas de anomalías financieras directamente a la gerencia registrada.
               </p>
            </div>
+        </div>
+
+        {/* RESERVAS · Sobreventa VIP + Shift Pacing (movido desde Reserve) */}
+        <div className="lg:col-span-12">
+           <section className="bg-[#111114] border border-white/5 rounded-[3rem] p-10 shadow-2xl">
+              <h3 className="text-[11px] font-black text-gray-500 uppercase tracking-widest flex items-center gap-3 mb-8">
+                <Target size={18} className="text-blue-500" /> Reservas · Sobreventa &amp; Pacing
+              </h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                {/* Sobreventa VIP */}
+                <div>
+                   <div className="flex items-center gap-2 mb-3">
+                      <Star size={15} className={sobreventa>0?'text-yellow-500':'text-gray-600'} />
+                      <span className="text-[11px] font-black uppercase tracking-widest text-white">Sobreventa VIP</span>
+                   </div>
+                   <p className="text-[10px] text-gray-500 mb-4 leading-relaxed">Cupo extra exclusivo para La Crème, Grand Gourmand, socios y clientes estratégicos. Máx 10% · hard stop al 110%.</p>
+                   <div className="flex gap-2">
+                      {[0,5,10].map(p => (
+                        <button key={p} onClick={() => cambiarSobreventa(p)}
+                          className={`px-5 py-2.5 rounded-xl text-[12px] font-black border transition-all ${sobreventa===p ? (p>0?'bg-yellow-500 border-yellow-500 text-black':'bg-white/10 border-white/20 text-white') : 'bg-black/40 border-white/5 text-gray-500 hover:border-white/15'}`}>
+                          {p===0?'Off':`${p}%`}
+                        </button>
+                      ))}
+                   </div>
+                </div>
+                {/* Shift Pacing */}
+                <div>
+                   <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                         <ShieldCheck size={15} className="text-blue-500" />
+                         <span className="text-[11px] font-black uppercase tracking-widest text-white">Shift Pacing</span>
+                      </div>
+                      <span className="text-[9px] text-gray-500 font-bold uppercase">Pico {pacing.pico}r · Actual {pacing.actual}r</span>
+                   </div>
+                   <div className="flex flex-col gap-2.5">
+                      {[
+                        {l:'Cocina',v:pacing.cocina},
+                        {l:'Barra',v:pacing.barra},
+                        {l:'Servicio',v:pacing.servicio},
+                      ].map(b => {
+                        const c = b.v>80?'#FF5252':b.v>50?'#FFB547':'#3dba6f';
+                        return (
+                          <div key={b.l} className="flex items-center gap-3">
+                            <span className="text-[10px] font-bold w-16" style={{color:c}}>{b.l}</span>
+                            <div className="flex-1 h-1.5 rounded-full bg-white/5 overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{width:`${b.v}%`,background:c}} />
+                            </div>
+                            <span className="text-[10px] font-black w-9 text-right" style={{color:c}}>{b.v}%</span>
+                          </div>
+                        );
+                      })}
+                   </div>
+                </div>
+              </div>
+           </section>
         </div>
 
       </div>

@@ -662,18 +662,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             </div>
           )}
 
-          {/* Sobreventa VIP — solo La Crème · Grand Gourmand · socios · estratégicos. Hard stop al 110%. */}
-          <div style={{display:'flex',alignItems:'center',gap:4,background:'rgba(255,255,255,0.04)',border:`1px solid ${sobreventa>0?S.gold:S.border2}`,borderRadius:10,padding:'3px 6px 3px 10px'}} title="Sobreventa exclusiva para VIPs · La Crème, Grand Gourmand, socios y clientes estratégicos. Máx 10% — hard stop al 110%.">
-            <span style={{fontSize:10,color:sobreventa>0?S.gold:S.t3,fontWeight:700,textTransform:'uppercase'}}>⭐ Sobreventa VIP</span>
-            {[0,5,10].map(p=>(
-              <button key={p} onClick={()=>cambiarSobreventa(p)}
-                style={{padding:'4px 8px',borderRadius:7,border:'none',cursor:'pointer',fontSize:11,fontWeight:800,
-                  background:sobreventa===p?(p>0?S.gold:S.t3):'transparent',
-                  color:sobreventa===p?'#000':S.t3}}>
-                {p}%
-              </button>
-            ))}
-          </div>
+          {/* Sobreventa VIP y Shift Pacing se configuran/ven en el Cerebro. */}
           <input type="date" value={fechaFiltro} onChange={e=>setFechaFiltro(e.target.value)}
             style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:8,padding:'7px 12px',color:'#fff',fontSize:12,outline:'none'}}/>
           <button onClick={()=>setWalkin({nombre:'',pax:2,mesa:0,telefono:'',email:'',vip:false})}
@@ -687,24 +676,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         </div>
       </div>
 
-      {/* PDF NEXUM Roadmap 7 — Shift Pacing Intelligence™ (saturación por área) */}
-      <div style={{display:'flex',gap:14,padding:'8px 24px',background:S.bg2,borderBottom:`1px solid ${S.border}`,fontSize:10,flexWrap:'wrap',alignItems:'center'}}>
-        <span style={{color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em'}}>🛡️ Shift Pacing</span>
-        {[
-          {l:'Cocina', v:cocinaSat, c:cocinaSat>80?S.red:cocinaSat>50?S.gold:S.green},
-          {l:'Barra',  v:barraSat,  c:barraSat>80?S.red:barraSat>50?S.gold:S.green},
-          {l:'Servicio', v:servicioSat, c:servicioSat>80?S.red:servicioSat>50?S.gold:S.green},
-        ].map(b=>(
-          <div key={b.l} style={{display:'flex',alignItems:'center',gap:6,flex:'1 1 140px',maxWidth:240}}>
-            <span style={{color:b.c,fontWeight:700,minWidth:54}}>{b.l}</span>
-            <div style={{flex:1,height:6,background:'rgba(255,255,255,0.06)',borderRadius:3,overflow:'hidden'}}>
-              <div style={{height:'100%',width:`${b.v}%`,background:b.c,transition:'width .4s'}}/>
-            </div>
-            <span style={{color:b.c,fontWeight:800,minWidth:32,textAlign:'right'}}>{b.v}%</span>
-          </div>
-        ))}
-        <span style={{marginLeft:'auto',color:S.t3,fontSize:9}}>Pico/hora: {pacingPico}r · Actual: {pacingHoraActual}r</span>
-      </div>
+      {/* Shift Pacing y Sobreventa VIP movidos al Cerebro (Settings). */}
 
       {/* Tabs */}
       <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg2,padding:'0 24px',flexShrink:0}}>
