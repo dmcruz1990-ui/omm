@@ -2427,6 +2427,59 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     })();
   }, [gerOpen, gerPinOk, selectedTable?.num]);
 
+  // ── Bandeja de Cobros Pendientes (pasar la cuenta a otra tablet/caja) ──
+  const [cobrosPendientes, setCobrosPendientes] = useState<any[]>([]);
+  const [showCaja, setShowCaja] = useState(false);
+  const [cajaCobro, setCajaCobro] = useState<any>(null);
+  const [cajaMetodo, setCajaMetodo] = useState('Datafono');
+  useEffect(() => {
+    const fetchPend = async () => {
+      const { data } = await supabase.from('cobros_pendientes')
+        .select('*').eq('restaurante_id',6).eq('estado','pendiente')
+        .order('solicitado_at',{ascending:false});
+      setCobrosPendientes(data || []);
+    };
+    fetchPend();
+    const ch = supabase.channel('cobros-pendientes-live')
+      .on('postgres_changes',{event:'*',schema:'public',table:'cobros_pendientes'}, fetchPend)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, []);
+
+  // Mesero envía la cuenta a caja: toma una foto de la cuenta y la comparte.
+  const enviarACaja = async () => {
+    const num = selectedTable?.num;
+    if (num == null) { showToast('Selecciona una mesa'); return; }
+    const items = [...pendingOrder, ...order].filter((o:any)=>o.mesa===num).map((o:any)=>({ nombre:o.nombre, precio:o.precio, emoji:o.emoji||'🍽️' }));
+    if (items.length === 0 && !mesaSubtotal) { showToast('⚠️ La cuenta está vacía'); return; }
+    const cli = clientesPorMesa[num as number];
+    try {
+      await supabase.from('cobros_pendientes').update({ estado:'cancelado' }).eq('restaurante_id',6).eq('mesa_num',num).eq('estado','pendiente');
+      await supabase.from('cobros_pendientes').insert({
+        restaurante_id:6, mesa_num:num, mesa_name:String((selectedTable as any)?.name ?? num),
+        cliente_nombre: (selectedTable as any)?.cliente_nombre || cli?.nombreCompleto || selectedTable?.cliente || '',
+        cliente_telefono: (selectedTable as any)?.cliente_telefono || cli?.telefono || '',
+        total: mesaSubtotal + Math.round(mesaSubtotal*0.08),
+        propina: Math.round(mesaSubtotal*0.10),
+        items, mesero: miNombre, estado:'pendiente', solicitado_at: new Date().toISOString(),
+      });
+      showToast(`📤 Cuenta de Mesa ${num} enviada a caja`);
+    } catch(e){ console.error('enviar a caja', e); showToast('Error al enviar a caja'); }
+  };
+
+  // Caja cobra una cuenta pendiente desde otra tablet.
+  const cobrarPendiente = async (p:any, metodo:string) => {
+    try {
+      await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:p.mesa_num, mesero:miNombre, total:p.total, propina:p.propina||0, propina_pct:0, metodo_pago:metodo, platos_servidos:(p.items||[]).length, factura_tipo:'caja', factura_email:null }).then(()=>{}).catch(()=>{});
+      await supabase.from('cobros_pendientes').update({ estado:'cobrado', cobrado_por:miNombre, metodo_pago:metodo, cobrado_at:new Date().toISOString() }).eq('id', p.id);
+      const mesaName = String(p.mesa_name ?? p.mesa_num ?? '');
+      if (mesaName) { try { await supabase.rpc('cerrar_mesa', { p_mesa_name: mesaName }); } catch {} }
+      await limpiarMesaCerrada(p.mesa_num);
+      setCajaCobro(null);
+      showToast(`✓ Mesa ${p.mesa_num} cobrada en caja · $${formatPrecio(p.total)} · ${metodo}`);
+    } catch(e){ console.error('cobrar pendiente', e); showToast('Error al cobrar'); }
+  };
+
   const abrirGerencia = (tableId: number) => {
     setSelectedTableId(tableId);
     setGerOpen(true); setGerPinOk(false); setGerPin(''); setGerPinErr('');
@@ -3963,6 +4016,78 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         </div>
       )}
 
+      {/* ═══ BANDEJA DE COBROS PENDIENTES — cuentas enviadas a caja ═══ */}
+      {showCaja && (
+        <div className="fixed inset-0 bg-black/80 z-[640] flex items-center justify-center p-4" onClick={(e)=>{ if(e.target===e.currentTarget) setShowCaja(false); }}>
+          <div className="bg-[#1c1c1c] border border-[#3dba6f]/30 rounded-2xl w-full max-w-[440px] max-h-[88vh] overflow-y-auto">
+            <div className="p-4 border-b border-[#2a2a2a] flex items-center justify-between sticky top-0 bg-[#1c1c1c]">
+              <div className="flex items-center gap-2">
+                <span className="text-[16px]">💳</span>
+                <div className="font-['Syne'] text-[15px] font-black">Cobros pendientes</div>
+                {cobrosPendientes.length>0 && <span className="bg-[#3dba6f] text-black text-[10px] font-black px-1.5 rounded-full">{cobrosPendientes.length}</span>}
+              </div>
+              <button onClick={()=>setShowCaja(false)} className="w-8 h-8 rounded-full bg-[#0a0a0a] border border-[#2a2a2a] text-[#909090] flex items-center justify-center"><X size={16}/></button>
+            </div>
+            <div className="p-3 flex flex-col gap-2">
+              {cobrosPendientes.length===0 && (
+                <div className="text-center py-12 text-[#606060] text-[12px]">No hay cuentas enviadas a caja.</div>
+              )}
+              {cobrosPendientes.map((p:any)=>(
+                <button key={p.id} onClick={()=>{ setCajaCobro(p); setCajaMetodo('Datafono'); }}
+                  className="text-left bg-[#141414] border border-[#2a2a2a] rounded-xl p-3 hover:border-[#3dba6f]/50 transition-all active:scale-[0.99]">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="font-['Syne'] text-[16px] font-black text-[#f0b45a]">M{p.mesa_num}</span>
+                    <span className="text-[15px] font-black text-[#3dba6f]">${formatPrecio(Number(p.total||0))}</span>
+                  </div>
+                  <div className="text-[11px] text-[#a0a0a0] truncate">{p.cliente_nombre || 'Mesa'} · {(p.items||[]).length} ítem(s)</div>
+                  <div className="text-[10px] text-[#606060] mt-0.5">👤 {p.mesero||'—'} · {p.solicitado_at ? new Date(p.solicitado_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}) : ''}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de cobro de una cuenta pendiente (caja) */}
+      {cajaCobro && (
+        <div className="fixed inset-0 bg-black/85 z-[660] flex items-center justify-center p-4" onClick={(e)=>{ if(e.target===e.currentTarget) setCajaCobro(null); }}>
+          <div className="bg-[#1c1c1c] border border-[#3dba6f]/40 rounded-2xl w-full max-w-[400px] max-h-[90vh] overflow-y-auto p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <div className="text-[15px] font-black text-[#f0f0f0]">💳 Cobrar Mesa {cajaCobro.mesa_num}</div>
+                <div className="text-[11px] text-[#909090]">{cajaCobro.cliente_nombre || 'Mesa'} · enviada por {cajaCobro.mesero||'—'}</div>
+              </div>
+              <button onClick={()=>setCajaCobro(null)} className="w-8 h-8 rounded-full bg-[#0a0a0a] border border-[#2a2a2a] text-[#909090] flex items-center justify-center"><X size={16}/></button>
+            </div>
+            <div className="bg-[#0a0a0a] rounded-xl p-3 mb-3 max-h-[200px] overflow-y-auto flex flex-col gap-1">
+              {(cajaCobro.items||[]).map((it:any,i:number)=>(
+                <div key={i} className="flex justify-between text-[12px] py-1 border-b border-[#1f1f1f] last:border-0">
+                  <span className="text-[#d0d0d0]">{it.emoji||'🍽️'} {it.nombre}</span>
+                  <span className="text-[#d4943a] font-semibold">{it.precio}</span>
+                </div>
+              ))}
+              {(cajaCobro.items||[]).length===0 && <div className="text-[11px] text-[#606060] text-center py-2">Sin detalle de ítems</div>}
+            </div>
+            <div className="flex justify-between text-[17px] font-black mb-3">
+              <span className="text-[#f0f0f0]">Total</span><span className="text-[#f0b45a]">${formatPrecio(Number(cajaCobro.total||0))}</span>
+            </div>
+            <div className="text-[10px] text-[#606060] font-bold uppercase tracking-wider mb-2">Método de pago</div>
+            <div className="flex gap-2 mb-4">
+              {['Datafono','Efectivo','Tarjeta'].map(m=>(
+                <button key={m} onClick={()=>setCajaMetodo(m)}
+                  className={`flex-1 py-2 rounded-lg text-[11px] font-bold border transition-all ${cajaMetodo===m ? 'border-[#3dba6f] bg-[#3dba6f]/15 text-[#3dba6f]' : 'border-[#2a2a2a] text-[#909090]'}`}>
+                  {m}
+                </button>
+              ))}
+            </div>
+            <button onClick={()=>cobrarPendiente(cajaCobro, cajaMetodo)}
+              className="w-full py-3 rounded-xl bg-[#3dba6f] text-black text-[13px] font-black hover:bg-[#4dca7f] active:scale-95 transition-all">
+              ✓ Cobrar ${formatPrecio(Number(cajaCobro.total||0))} y cerrar mesa
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* TOAST */}
       {toast && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-[#222] border border-[#2a2a2a] text-[#f0f0f0] px-5 py-2.5 rounded-lg text-[13px] z-[9999] whitespace-nowrap shadow-2xl">
@@ -4262,6 +4387,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           <button onClick={() => setShowMapaMesas(true)}
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#d4943a]/15 border border-[#d4943a]/40 text-[#d4943a] text-[13px] font-black hover:bg-[#d4943a]/25 active:scale-95 transition-all">
             🗺️ <span>Mapa de Mesas</span>
+          </button>
+          {/* Bandeja de cobros pendientes (cuentas enviadas desde otras tablets) */}
+          <button onClick={() => setShowCaja(true)}
+            className={`relative flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[13px] font-black transition-all active:scale-95 ${cobrosPendientes.length>0 ? 'bg-[#3dba6f]/15 border border-[#3dba6f]/50 text-[#3dba6f] animate-pulse' : 'bg-[#1c1c1c] border border-[#2a2a2a] text-[#a0a0a0] hover:text-[#3dba6f] hover:border-[#3dba6f]'}`}>
+            💳 <span>Caja</span>
+            {cobrosPendientes.length>0 && <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#3dba6f] flex items-center justify-center text-[9px] font-black text-black">{cobrosPendientes.length}</span>}
           </button>
           <div className="flex gap-1.5 ml-auto shrink-0">
             {/* Cerebro */}
@@ -5263,6 +5394,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   }}
                   className="w-full py-2.5 rounded-xl text-[12px] font-black transition-all bg-[#3dba6f] text-black hover:bg-[#4dca7f] active:bg-[#d4943a] flex items-center justify-center gap-2">
                   {isGerencia || pinUnlocked ? '⚡ Cobrar Xpress' : '🔐 Cobrar Xpress'}
+                </button>
+                {/* Pasar la cuenta a otra tablet / caja */}
+                <button onClick={enviarACaja}
+                  className="w-full py-2.5 rounded-xl text-[12px] font-black transition-all bg-[#4a8fd4]/15 border border-[#4a8fd4]/40 text-[#4a8fd4] hover:bg-[#4a8fd4]/25 active:scale-95 flex items-center justify-center gap-2">
+                  📤 Enviar a caja (otra tablet)
                 </button>
               </div>
               <div className="flex gap-2 flex-wrap">
