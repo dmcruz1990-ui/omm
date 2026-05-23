@@ -98,6 +98,25 @@ export default function ReserveModule() {
   });
   const [walkin, setWalkin] = useState<{nombre:string;pax:number;mesa:number;telefono:string;email:string;vip:boolean}|null>(null);
   const [walkinCRM, setWalkinCRM] = useState<any>(null);
+  // Cliente del sistema cargado en "Nueva reserva" (por celular):
+  // gasto total, ticket promedio y última encuesta (estrellas) — clave para
+  // la atención y para el pago por gerencia.
+  const [reservaCRM, setReservaCRM] = useState<any>(null);
+  const buscarClienteReserva = async (telRaw?:string) => {
+    const t = (telRaw ?? form.cliente_telefono).trim();
+    if (t.length < 7) { setReservaCRM(null); show('Ingresa un celular válido (mín. 7 dígitos)'); return; }
+    const [c1, c2, enc] = await Promise.all([
+      supabase.from('customers').select('id,name,email,vip_status,total_visits,total_spent,promedio_ticket,score,puntos,origen_captacion').eq('phone', t).limit(1).maybeSingle(),
+      supabase.from('nexum_clientes_ohyeah').select('id,nombre,email,nivel,visitas,total_reservas').eq('telefono', t).limit(1).maybeSingle(),
+      supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_telefono', t).order('created_at',{ascending:false}).limit(1).maybeSingle(),
+    ]);
+    const base = c1.data || (c2.data ? { name:c2.data.nombre, email:c2.data.email, total_visits:c2.data.visitas, total_spent:0, nivel:c2.data.nivel, vip_status:String(c2.data.nivel||'').toUpperCase()==='VIP', origen_captacion:'oh_yeah' } : null);
+    if (!base) { setReservaCRM(null); show('Cliente nuevo — no está en el sistema'); return; }
+    const ticketProm = base.promedio_ticket || (base.total_visits ? Math.round((base.total_spent||0)/base.total_visits) : 0);
+    setReservaCRM({ ...base, ticketProm, ultimaEstrellas: enc.data?.estrellas ?? null, ultimoComentario: enc.data?.comentario || '' });
+    setForm(p=>({ ...p, cliente_nombre: p.cliente_nombre || base.name || '', cliente_email: p.cliente_email || base.email || '' }));
+    show(`✓ Datos cargados: ${base.name||'cliente'}`);
+  };
   const [sugerenciasHora, setSugerenciasHora] = useState<{hora:string,libres:number}[]>([]);
   const [sobreventa, setSobreventa] = useState(0);
   // PDF NEXUM § Roadmap 1 — Modos dinámicos (Base / Smart Peak / Evento Especial)
@@ -661,7 +680,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             style={{padding:'8px 16px',borderRadius:10,border:`1px solid ${S.green}`,background:`${S.green}18`,color:S.green,fontSize:12,fontWeight:700,cursor:'pointer'}}>
             🚶 Walk-in
           </button>
-          <button onClick={()=>{setSelected(null);setForm({cliente_nombre:'',cliente_email:'',cliente_telefono:'',fecha:hoy,hora:'20:00',pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0});setTab('nueva');}}
+          <button onClick={()=>{setSelected(null);setReservaCRM(null);setForm({cliente_nombre:'',cliente_email:'',cliente_telefono:'',fecha:hoy,hora:'20:00',pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0});setTab('nueva');}}
             style={{padding:'8px 20px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.purple},${S.blue})`,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>
             + Nueva reserva
           </button>
@@ -932,6 +951,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
           editMesa={editMesa}
           setEditMesa={setEditMesa}
           show={show}
+          mesas={mesas}
+          onToggleVip={async(num:number,vip:boolean)=>{ await supabase.from('tables').update({vip}).eq('name',String(num)); show(vip?`⭐ Mesa ${num} marcada VIP`:`Mesa ${num} ya no es VIP`); fetchData(); }}
         />
       )}
 
@@ -941,17 +962,41 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
           <div style={{maxWidth:680,margin:'0 auto'}}>
             <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,marginBottom:20}}>{selected?'Editar reserva':'Nueva reserva'}</div>
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
+              {/* CELULAR primero — carga datos del sistema (CRM + última encuesta) */}
+              <div style={{gridColumn:'1/-1'}}>
+                <div style={{fontSize:10,color:S.gold,fontWeight:700,marginBottom:5,textTransform:'uppercase'}}>📱 Teléfono — busca en el sistema</div>
+                <div style={{display:'flex',gap:8}}>
+                  <input style={{flex:1,background:'rgba(255,255,255,0.05)',border:`1px solid ${form.cliente_telefono?S.gold:S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none'}} value={form.cliente_telefono} onChange={e=>setF('cliente_telefono',e.target.value)} onBlur={e=>{const t=e.target.value.trim(); if(t.length>=7) buscarClienteReserva(t);}} placeholder="+57 300 000 0000" inputMode="tel"/>
+                  <button type="button" onClick={()=>buscarClienteReserva()} style={{whiteSpace:'nowrap',padding:'10px 16px',borderRadius:10,border:`1px solid ${S.blue}`,background:`${S.blue}18`,color:S.blue,fontSize:12,fontWeight:800,cursor:'pointer'}}>🔎 Cargar datos</button>
+                </div>
+              </div>
+              {reservaCRM && (
+                <div style={{gridColumn:'1/-1',background:`${S.green}10`,border:`1px solid ${S.green}40`,borderRadius:12,padding:'12px 16px',display:'flex',flexDirection:'column',gap:8}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10}}>
+                    <span style={{fontSize:22}}>{reservaCRM.vip_status?'⭐':reservaCRM.origen_captacion==='oh_yeah'?'🦉':'✓'}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:800,color:S.green}}>Cliente conocido{reservaCRM.vip_status?' · VIP':''}{reservaCRM.origen_captacion==='oh_yeah'?' · Oh Yeah':''}</div>
+                      <div style={{fontSize:11,color:S.t3}}>{reservaCRM.name} · {reservaCRM.total_visits||0} visita(s)</div>
+                    </div>
+                  </div>
+                  <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                    <span style={{fontSize:10,background:`${S.green}1f`,color:S.green,padding:'3px 9px',borderRadius:8,fontWeight:800}}>💰 Gasto total ${Number(reservaCRM.total_spent||0).toLocaleString('es-CO')}</span>
+                    <span style={{fontSize:10,background:`${S.blue}1f`,color:S.blue,padding:'3px 9px',borderRadius:8,fontWeight:800}}>🎟️ Ticket prom. ${Number(reservaCRM.ticketProm||0).toLocaleString('es-CO')}</span>
+                    {reservaCRM.ultimaEstrellas!=null && <span style={{fontSize:10,background:`${S.gold}1f`,color:S.gold,padding:'3px 9px',borderRadius:8,fontWeight:800}}>{'★'.repeat(reservaCRM.ultimaEstrellas)}{'☆'.repeat(Math.max(0,5-reservaCRM.ultimaEstrellas))} última encuesta</span>}
+                    {reservaCRM.score>0 && <span style={{fontSize:10,background:`${S.green}1f`,color:S.green,padding:'3px 9px',borderRadius:8,fontWeight:800}}>📊 Score {reservaCRM.score}</span>}
+                  </div>
+                  {reservaCRM.ultimaEstrellas!=null && reservaCRM.ultimoComentario && (
+                    <div style={{fontSize:10,color:S.t3,fontStyle:'italic'}}>"{reservaCRM.ultimoComentario}"</div>
+                  )}
+                </div>
+              )}
               <div style={{gridColumn:'1/-1'}}>
                 <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>NOMBRE *</div>
                 <input style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.cliente_nombre} onChange={e=>setF('cliente_nombre',e.target.value)} placeholder="Nombre completo"/>
               </div>
-              <div>
+              <div style={{gridColumn:'1/-1'}}>
                 <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>EMAIL</div>
                 <input style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.cliente_email} onChange={e=>setF('cliente_email',e.target.value)} placeholder="correo@email.com"/>
-              </div>
-              <div>
-                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>TELÉFONO</div>
-                <input style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.cliente_telefono} onChange={e=>setF('cliente_telefono',e.target.value)} placeholder="+57 300 000 0000"/>
               </div>
               <div>
                 <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>FECHA *</div>
@@ -1204,19 +1249,13 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, 
                     {/* Punto pulsante */}
                     {reserva?.estado==='sentada' && <div style={{position:'absolute',top:2,right:2,width:6,height:6,borderRadius:'50%',background:mesaColor,boxShadow:enAlerta?`0 0 6px ${mesaColor}`:'none'}}/>}
                     {enAlerta && <div style={{position:'absolute',top:-4,left:'50%',transform:'translateX(-50%)',fontSize:9,whiteSpace:'nowrap'}}>⚠️</div>}
-                    {/* Botón VIP — siempre visible en cada mesa, click toggle */}
-                    <button onClick={(e)=>{e.stopPropagation(); onToggleVip && onToggleVip(mesa.num, !vipPorNum.has(mesa.num));}}
-                      title={vipPorNum.has(mesa.num)?`Mesa ${mesa.num} — Quitar VIP`:`Mesa ${mesa.num} — Marcar como VIP`}
-                      style={{position:'absolute',top:-7,left:-5,width:18,height:18,display:'flex',alignItems:'center',justifyContent:'center',
-                        background:vipPorNum.has(mesa.num)?'rgba(255,181,71,0.95)':'rgba(20,20,30,0.85)',
-                        border:`1.5px solid ${vipPorNum.has(mesa.num)?'#FFB547':'rgba(255,255,255,0.25)'}`,
-                        borderRadius:'50%',cursor:'pointer',padding:0,
-                        fontSize:'clamp(7px,0.9vw,11px)',
-                        color:vipPorNum.has(mesa.num)?'#000':'#a0a0b8',
-                        boxShadow:vipPorNum.has(mesa.num)?'0 0 8px rgba(255,181,71,0.7)':'0 1px 4px rgba(0,0,0,0.4)',
-                        transition:'all .15s',zIndex:4}}>
-                      {vipPorNum.has(mesa.num)?'⭐':'☆'}
-                    </button>
+                    {/* Indicador VIP (solo lectura — la mesa se marca VIP en el Editor de planta) */}
+                    {vipPorNum.has(mesa.num) && (
+                      <div title={`Mesa ${mesa.num} · VIP`}
+                        style={{position:'absolute',top:-7,left:-5,width:18,height:18,display:'flex',alignItems:'center',justifyContent:'center',
+                          background:'rgba(255,181,71,0.95)',border:'1.5px solid #FFB547',borderRadius:'50%',
+                          fontSize:'clamp(7px,0.9vw,11px)',color:'#000',boxShadow:'0 0 8px rgba(255,181,71,0.7)',zIndex:4}}>⭐</div>
+                    )}
                   </div>
                 );
               })}
@@ -1245,14 +1284,13 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, 
                   <div style={{fontSize:10,color:'#50506A'}}>{mesaSel.cap||mesaSel.capacidad} personas</div>
                 </div>
               </div>
-              {/* Marcar mesa VIP — mejor vista / cerca del DJ */}
-              <button onClick={()=>onToggleVip && onToggleVip(mesaSel.num, !vipPorNum.has(mesaSel.num))}
-                style={{width:'100%',marginBottom:12,padding:'9px',borderRadius:9,cursor:'pointer',fontSize:12,fontWeight:700,
-                  border:`1px solid ${vipPorNum.has(mesaSel.num)?'#FFB547':'rgba(255,255,255,0.12)'}`,
-                  background:vipPorNum.has(mesaSel.num)?'rgba(255,181,71,0.15)':'transparent',
-                  color:vipPorNum.has(mesaSel.num)?'#FFB547':'#A0A0B8'}}>
-                {vipPorNum.has(mesaSel.num)?'⭐ Mesa VIP — quitar estrella':'☆ Marcar como mesa VIP'}
-              </button>
+              {/* VIP se marca en el Editor de planta — aquí solo se muestra el estado */}
+              {vipPorNum.has(mesaSel.num) && (
+                <div style={{width:'100%',marginBottom:12,padding:'9px',borderRadius:9,fontSize:12,fontWeight:700,textAlign:'center',
+                  border:'1px solid #FFB547',background:'rgba(255,181,71,0.15)',color:'#FFB547'}}>
+                  ⭐ Mesa VIP
+                </div>
+              )}
               {!mesaSel.reserva?(
                 <div style={{padding:'12px 14px',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:10}}>
                   <div style={{fontSize:11,color:'#3dba6f',fontWeight:700,marginBottom:4}}>✓ Mesa libre</div>
@@ -1298,7 +1336,8 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, 
 // ═══════════════════════════════════════════════════════════════════════
 // EDITOR DE PLANTA
 // ═══════════════════════════════════════════════════════════════════════
-function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show }:any) {
+function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesas, onToggleVip }:any) {
+  const esVip = editMesa ? (mesas||[]).some((m:any)=>Number(m.name)===Number(editMesa.num) && m.vip) : false;
   const inp: React.CSSProperties = {width:'100%',padding:'7px 10px',borderRadius:7,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:12,outline:'none'};
 
   const agregarMesa = async () => {
@@ -1429,6 +1468,17 @@ function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show }:any
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div style={{marginBottom:12}}>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Mesa VIP</div>
+                <button onClick={()=>onToggleVip && onToggleVip(editMesa.num, !esVip)}
+                  style={{width:'100%',padding:'9px',borderRadius:9,cursor:'pointer',fontSize:12,fontWeight:700,
+                    border:`1px solid ${esVip?'#FFB547':'rgba(255,255,255,0.12)'}`,
+                    background:esVip?'rgba(255,181,71,0.15)':'transparent',
+                    color:esVip?'#FFB547':'#A0A0B8'}}>
+                  {esVip?'⭐ Mesa VIP — quitar estrella':'☆ Marcar como mesa VIP'}
+                </button>
               </div>
 
               <div style={{marginBottom:14}}>
