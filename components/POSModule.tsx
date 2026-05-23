@@ -1033,7 +1033,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // ── Mesas dinámicas — enriquecidas con platos locales en tiempo real ──
   // Fallback: si aún no llegan las mesas reales, se usa el plano OMM en
   // estado libre (sin clientes falsos), no datos de prueba.
-  const displayTables = (tables && tables.length > 0 ? tables :
+  const displayTablesAll = (tables && tables.length > 0 ? tables :
     Object.values(PLANTA_OMM).map((p:any) => ({
       id: p.num, num: p.num, cliente: '', pax: 0, time: '00:00',
       ticket: 0, meta: 120, status: 'libre', vip: false, bday: false, alert: false,
@@ -1055,6 +1055,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       bday: m.bday || m.es_cumpleanos || false,
       alert: m.alert || (ticketLocal > 0 && platosLocales.some((p:any) => !p.marchado)),
     };
+  });
+
+  // El mesero solo ve SUS mesas: asignadas a él, compartidas, o abiertas por él
+  // (tiene pedido local). Gerencia / Maître / capitanes ven todas (accesoSalon).
+  const displayTables = accesoSalon ? displayTablesAll : displayTablesAll.filter((m:any) => {
+    const mia = m.mesero_nombre === miNombre || (Array.isArray(m.meseros_compartidos) && m.meseros_compartidos.includes(miNombre));
+    const tengoPedido = [...pendingOrder, ...order].some((o:any) => o.mesa === m.num);
+    return mia || tengoPedido;
   });
 
   const selectedTable = displayTables.find((t: any) => t.id === selectedTableId) ?? displayTables[0];
@@ -1790,12 +1798,27 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const clearOrder = () => { setOrder([]); showToast('Pedido limpiado'); };
 
   // Limpia por completo una mesa tras cerrar su cobro (cerebro POS).
-  const limpiarMesaCerrada = (num?: number | null) => {
+  const limpiarMesaCerrada = async (num?: number | null) => {
     if (num == null) return;
     setOrder(prev => prev.filter(o => o.mesa !== num));
     setPendingOrder(prev => prev.filter(o => o.mesa !== num));
     setClientesPorMesa(prev => { const n = { ...prev }; delete n[num]; return n; });
     setNotasMesero(prev => { const n = { ...prev }; delete n[num]; return n; });
+    // Liberar la mesa en DB y finalizar su reserva del día → desaparece de
+    // "Mesas en servicio" y la reserva pasa al historial (reservas anteriores).
+    try {
+      await supabase.from('tables').update({
+        estado: 'libre', mesero_nombre: null, cliente_nombre: null,
+        cliente_telefono: null, cliente_email: null, pax_actual: 0,
+        order_id_activo: null, abierta_en: null, meseros_compartidos: [],
+      }).eq('name', String(num));
+      await supabase.from('reservations').update({ estado: 'completada' })
+        .eq('mesa_num', num)
+        .eq('fecha', new Date().toISOString().split('T')[0])
+        .neq('estado', 'completada');
+    } catch (e) { console.warn('liberar mesa error', e); }
+    // Volver al Home de Mesas (mapa)
+    setShowMapaMesas(true);
   };
 
   const sendOrder = () => {
@@ -4183,12 +4206,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       {/* LEFT PANEL */}
       <div className="bg-[#141414] border-r border-[#2a2a2a] flex flex-col shrink-0" style={{ width: 200 }}>
         <div className="p-2 px-3 pb-2 flex items-center gap-2 border-b border-[#2a2a2a] shrink-0 relative">
-          {/* Botón mapa de mesas */}
+          {/* Botón mapa de mesas — grande, acción principal del POS */}
           <button onClick={() => setShowMapaMesas(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#d4943a]/10 border border-[#d4943a]/30 text-[#d4943a] text-[10px] font-bold hover:bg-[#d4943a]/20 transition-all">
-            🗺️ <span>Mesas</span>
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#d4943a]/15 border border-[#d4943a]/40 text-[#d4943a] text-[13px] font-black hover:bg-[#d4943a]/25 active:scale-95 transition-all">
+            🗺️ <span>Mapa de Mesas</span>
           </button>
-          <span className="text-[11px] font-bold text-[#a0a0a0]">🪑 Mesas</span>
           <div className="flex gap-1.5 ml-auto shrink-0">
             {/* Cerebro */}
             <div onClick={() => { setRightTab('IA'); onOpenVisionAI?.(); }}
