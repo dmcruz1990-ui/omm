@@ -30,7 +30,8 @@ export enum ModuleType {
   FOOD_INTELLIGENCE = 'FOOD_INTELLIGENCE',
   METRICAS = 'METRICAS',
   MENU = 'MENU',
-  PROPINAS = 'PROPINAS'
+  PROPINAS = 'PROPINAS',
+  WORKFORCE = 'WORKFORCE'
 }
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo' | 'maitre';

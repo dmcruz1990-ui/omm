@@ -43,6 +43,7 @@ const SurveillanceModule = lazy(() => import('./components/SurveillanceModule.ts
 const TeamIQ = lazy(() => import('./components/TeamIQ.tsx'));
 const SettingsModule = lazy(() => import('./components/SettingsModule.tsx'));
 const PayrollModule = lazy(() => import('./components/PayrollModule.tsx'));
+const WorkforceModule = lazy(() => import('./components/WorkforceModule.tsx'));
 const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'));
 const DIANModule = lazy(() => import('./components/DIANModule.tsx'));
 const ContabilidadModule = lazy(() => import('./components/ContabilidadModule.tsx'));
@@ -127,6 +128,7 @@ const Dashboard: React.FC = () => {
           ModuleType.FINANCE_HUB,
           ModuleType.COMMAND,
           ModuleType.STAFF_HUB,
+          ModuleType.WORKFORCE,
           ModuleType.PAYROLL,
           ModuleType.SUPPLY,
           ModuleType.MENU,
@@ -304,7 +306,8 @@ const Dashboard: React.FC = () => {
                 { type: ModuleType.MARKETPLACE, label: 'MARKETPLACE', sub: 'Tienda', icon: <Store size={18} /> },
                 { type: ModuleType.CARE,      label: 'CARE',      sub: 'SOPORTE CX',        icon: <HeartPulse size={18} /> },
                 // ── CAMBIO 2: Label y sub actualizados ──────────────────────
-                { type: ModuleType.STAFF_HUB, label: 'TEAM IQ™',  sub: 'HUMAN PERFORMANCE', icon: <Brain size={18} /> }
+                { type: ModuleType.STAFF_HUB, label: 'TEAM IQ™',  sub: 'HUMAN PERFORMANCE', icon: <Brain size={18} /> },
+                { type: ModuleType.WORKFORCE, label: 'WORKFORCE', sub: 'HORARIOS · ASISTENCIA · NÓMINA', icon: <CalendarDays size={18} /> }
               ]
             },
             {
@@ -423,6 +426,7 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.RESERVE       && <ReserveModule />}
                 {activeModule === ModuleType.FINANCE_HUB   && <FinanceHub />}
                 {activeModule === ModuleType.PAYROLL        && <PayrollModule />}
+                {activeModule === ModuleType.WORKFORCE      && <WorkforceModule />}
                 {activeModule === ModuleType.COMMAND        && <CommandModule onSimulateEvent={() => {}} />}
                 {activeModule === ModuleType.RELATIONSHIP   && <RelationshipModule />}
                 {activeModule === ModuleType.SUPPLY        && <SupplyModule />}
