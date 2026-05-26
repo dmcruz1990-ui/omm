@@ -3,7 +3,7 @@ import {
   Home, TrendingUp, Users, Zap, Wine, UserCheck, CalendarDays, Settings,
   DollarSign, Receipt, Heart, Bell, ChevronRight, Star, Cake, AlertTriangle,
   Coffee, Utensils, Clock, CheckCircle2, XCircle, Package, ShieldCheck,
-  Crown, UserPlus, UserX, Flame, Award,
+  Crown, UserPlus, UserX, Flame, Award, TrendingDown, PiggyBank,
 } from 'lucide-react';
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -12,7 +12,7 @@ import {
 
 interface CommandModuleProps { onSimulateEvent?: (type: 'hand'|'task'|'finance'|'reserve') => void; }
 
-type ViewId = 'inicio'|'ventas'|'clientes'|'operaciones'|'barra'|'equipo'|'reservas'|'config';
+type ViewId = 'inicio'|'ventas'|'clientes'|'operaciones'|'barra'|'equipo'|'reservas'|'egresos'|'config';
 
 const SIDE: { id:ViewId, label:string, icon:any }[] = [
   { id:'inicio',       label:'INICIO',         icon: Home },
@@ -22,6 +22,7 @@ const SIDE: { id:ViewId, label:string, icon:any }[] = [
   { id:'barra',        label:'BARRA',          icon: Wine },
   { id:'equipo',       label:'EQUIPO',         icon: UserCheck },
   { id:'reservas',     label:'RESERVAS',       icon: CalendarDays },
+  { id:'egresos',      label:'EGRESOS',        icon: TrendingDown },
   { id:'config',       label:'CONFIGURACIÓN',  icon: Settings },
 ];
 
@@ -251,6 +252,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
     barra:'BARRA · Coctelería · Vinos · Inventario',
     equipo:'EQUIPO · Roster del día',
     reservas:'RESERVAS · Hoy y próximos días',
+    egresos:'EGRESOS Y UTILIDAD · Costos, gastos y P&G',
     config:'CONFIGURACIÓN · Restaurante y sistema',
   };
 
@@ -662,6 +664,157 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
               <div className="mt-2 pt-2 border-t border-[#1a2030] text-[10px] text-[#f0a050]">⚑ Preparar cortesía especial · activar protocolo VIP</div>
             </Section>
           </div>
+        </>)}
+
+        {/* ═══════════════ EGRESOS Y UTILIDAD ═══════════════ */}
+        {active==='egresos' && (<>
+          {/* KPIs principales */}
+          <div className="grid grid-cols-4 gap-3 mb-3">
+            <KPI label="EGRESOS HOY"      value="$28.0M"  color="#e05050" icon={TrendingDown} iconColor="#e05050" sub={<><div>66% de ventas hoy</div><div>vs ayer: <span className="text-[#3dba6f]">-3%</span></div></>}/>
+            <KPI label="EGRESOS MES"      value="$520M"   color="#e05050" icon={TrendingDown} iconColor="#e05050" sub={<><div>66.7% de ventas mes</div><div>Meta: &lt; 70%</div></>}/>
+            <KPI label="UTILIDAD HOY"     value="$14.5M"  color="#3dba6f" icon={PiggyBank}    iconColor="#3dba6f" sub={<><div>Margen: <span className="text-[#3dba6f]">34%</span></div><div>Meta: &gt; 30%</div></>}/>
+            <KPI label="UTILIDAD MES"     value="$260M"   color="#3dba6f" icon={PiggyBank}    iconColor="#3dba6f" sub={<><div>Margen: <span className="text-[#3dba6f]">33.3%</span></div><div>Proyección cierre: $330M</div></>}/>
+          </div>
+
+          {/* Bloque grande UTILIDAD = VENTAS - EGRESOS */}
+          <div className="rounded-2xl p-5 mb-3 relative overflow-hidden" style={{background:'linear-gradient(135deg, #0e1424 0%, #14241c 100%)', border:'1px solid #1a3a2a'}}>
+            <div className="text-[10px] font-black tracking-[0.15em] text-[#3dba6f] mb-3">P&G DEL MES · UTILIDAD NETA</div>
+            <div className="grid grid-cols-7 items-center gap-3">
+              <div className="col-span-2 text-center">
+                <div className="text-[9px] text-[#7a8499] uppercase tracking-wider mb-1">Ventas</div>
+                <div className="text-[28px] font-black text-white leading-none">$780M</div>
+                <div className="text-[10px] text-[#7a8499] mt-1">100%</div>
+              </div>
+              <div className="text-center text-[24px] text-[#5a6478] font-black">−</div>
+              <div className="col-span-2 text-center">
+                <div className="text-[9px] text-[#7a8499] uppercase tracking-wider mb-1">Egresos</div>
+                <div className="text-[28px] font-black text-[#e05050] leading-none">$520M</div>
+                <div className="text-[10px] text-[#7a8499] mt-1">66.7%</div>
+              </div>
+              <div className="text-center text-[24px] text-[#5a6478] font-black">=</div>
+              <div className="col-span-1 text-center">
+                <div className="text-[9px] text-[#7a8499] uppercase tracking-wider mb-1">Utilidad</div>
+                <div className="text-[28px] font-black text-[#3dba6f] leading-none">$260M</div>
+                <div className="text-[10px] text-[#3dba6f] mt-1 font-bold">33.3% margen</div>
+              </div>
+            </div>
+            {/* Barra visual */}
+            <div className="mt-4 h-3 rounded-full bg-[#0a0e1a] overflow-hidden flex">
+              <div className="bg-[#e05050]" style={{width:'66.7%'}}/>
+              <div className="bg-[#3dba6f]" style={{width:'33.3%'}}/>
+            </div>
+            <div className="flex justify-between text-[9px] text-[#7a8499] mt-1"><span>Egresos 66.7%</span><span>Utilidad 33.3%</span></div>
+          </div>
+
+          {/* Desglose por categoría */}
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <Section title="DESGLOSE DE EGRESOS · MES" color="#e05050" icon={TrendingDown}>
+              <ul className="space-y-2">
+                {[
+                  { l:'Compras alimentos',    v:'$203M', pct:26.0, c:'#e05050' },
+                  { l:'Compras bebidas',      v:'$42M',  pct:5.4,  c:'#f0a050' },
+                  { l:'Nómina y prestaciones',v:'$172M', pct:22.0, c:'#c66de8' },
+                  { l:'Arriendo',             v:'$47M',  pct:6.0,  c:'#4a9fff' },
+                  { l:'Servicios públicos',   v:'$16M',  pct:2.1,  c:'#3dba6f' },
+                  { l:'Marketing',            v:'$12M',  pct:1.5,  c:'#d4943a' },
+                  { l:'Mantenimiento',        v:'$8M',   pct:1.0,  c:'#7a8499' },
+                  { l:'Suministros y otros',  v:'$20M',  pct:2.7,  c:'#5a6478' },
+                ].map(e=>(
+                  <li key={e.l}>
+                    <div className="flex justify-between text-[11px] mb-0.5">
+                      <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-sm" style={{background:e.c}}/>{e.l}</span>
+                      <span><span className="font-bold">{e.v}</span> <span className="text-[10px] text-[#7a8499]">· {e.pct}%</span></span>
+                    </div>
+                    <Bar pct={e.pct*3.5} color={e.c}/>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 pt-2 border-t border-[#1a2030] flex justify-between text-[12px]"><span className="text-[#7a8499]">TOTAL EGRESOS</span><span className="font-black text-[#e05050]">$520M · 66.7%</span></div>
+            </Section>
+
+            <Section title="EVOLUCIÓN ÚLTIMOS 6 MESES" color="#4a9fff" icon={TrendingUp}>
+              <div className="flex items-end gap-2 h-44 mt-2">
+                {[
+                  { m:'Dic 25', v:680, e:480, u:200 },
+                  { m:'Ene 26', v:640, e:460, u:180 },
+                  { m:'Feb 26', v:700, e:490, u:210 },
+                  { m:'Mar 26', v:740, e:505, u:235 },
+                  { m:'Abr 26', v:760, e:512, u:248 },
+                  { m:'May 26', v:780, e:520, u:260 },
+                ].map(d=>{
+                  const max = 800;
+                  return (
+                    <div key={d.m} className="flex-1 flex flex-col items-center gap-1">
+                      <div className="text-[8px] font-bold text-[#3dba6f]">${d.u}M</div>
+                      <div className="w-full flex flex-col-reverse" style={{height:'85%'}}>
+                        <div style={{height:`${(d.e/max)*100}%`, background:'#e05050'}} title={`Egresos $${d.e}M`}/>
+                        <div style={{height:`${(d.u/max)*100}%`, background:'#3dba6f'}} title={`Utilidad $${d.u}M`}/>
+                      </div>
+                      <div className="text-[8px] text-[#5a6478]">{d.m}</div>
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex gap-3 justify-center mt-2 text-[10px]">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-[#3dba6f]"/>Utilidad</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-[#e05050]"/>Egresos</span>
+              </div>
+            </Section>
+          </div>
+
+          {/* Proveedores + Costos clave */}
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <Section title="TOP PROVEEDORES · MES" color="#7a8499" icon={Receipt}>
+              <table className="w-full text-[11px]">
+                <thead><tr className="text-[9px] text-[#7a8499]"><th className="text-left pb-1">Proveedor</th><th className="text-left pb-1">Categoría</th><th className="text-right pb-1">Monto</th><th className="text-right pb-1">% mes</th></tr></thead>
+                <tbody>{[
+                  { n:'Pescadería del Pacífico', c:'Pescados',  v:'$58M', p:'7.4%' },
+                  { n:'Carnes Premium SAS',      c:'Proteínas', v:'$42M', p:'5.4%' },
+                  { n:'Distrigourmet',           c:'Abarrotes', v:'$36M', p:'4.6%' },
+                  { n:'Frutas y verduras Plaza', c:'Frescos',   v:'$22M', p:'2.8%' },
+                  { n:'Diageo Colombia',         c:'Licores',   v:'$18M', p:'2.3%' },
+                  { n:'Vinos del Mundo',         c:'Vinos',     v:'$14M', p:'1.8%' },
+                ].map(p=>(
+                  <tr key={p.n} className="border-t border-[#1a2030]"><td className="py-1.5 truncate">{p.n}</td><td className="py-1.5 text-[#a0a9bd]">{p.c}</td><td className="py-1.5 text-right font-bold">{p.v}</td><td className="py-1.5 text-right text-[#7a8499]">{p.p}</td></tr>
+                ))}</tbody>
+              </table>
+            </Section>
+            <Section title="RATIOS CLAVE · OPERACIÓN" color="#d4943a" icon={ShieldCheck}>
+              <ul className="space-y-2">
+                {[
+                  { l:'Food cost',           v:'26.0%', meta:'≤ 28%', ok:true },
+                  { l:'Beverage cost',       v:'18.0%', meta:'≤ 22%', ok:true },
+                  { l:'Labor cost',          v:'22.0%', meta:'≤ 25%', ok:true },
+                  { l:'Prime cost (FC+LC)',  v:'48.0%', meta:'≤ 60%', ok:true },
+                  { l:'Ocupación local',     v:'6.0%',  meta:'≤ 8%',  ok:true },
+                  { l:'EBITDA estimado',     v:'30.5%', meta:'≥ 25%', ok:true },
+                  { l:'Utilidad neta',       v:'33.3%', meta:'≥ 30%', ok:true },
+                ].map(r=>(
+                  <li key={r.l} className="flex items-center justify-between text-[11px] border-b border-[#1a2030] pb-1.5 last:border-0">
+                    <span className="flex items-center gap-2">{r.ok?<CheckCircle2 size={13} className="text-[#3dba6f]"/>:<XCircle size={13} className="text-[#e05050]"/>}{r.l}</span>
+                    <span><span className="font-bold">{r.v}</span> <span className="text-[10px] text-[#7a8499]">· {r.meta}</span></span>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          </div>
+
+          {/* Egresos pendientes / por pagar */}
+          <Section title="POR PAGAR ESTA SEMANA" color="#f0a050" icon={AlertTriangle}>
+            <table className="w-full text-[11px]">
+              <thead><tr className="text-[9px] text-[#7a8499]"><th className="text-left pb-1">Vencimiento</th><th className="text-left pb-1">Concepto</th><th className="text-left pb-1">Proveedor</th><th className="text-right pb-1">Monto</th><th className="text-right pb-1">Estado</th></tr></thead>
+              <tbody>{[
+                { d:'27 may', c:'Factura semanal pescados', p:'Pescadería del Pacífico', v:'$14.2M', s:'pendiente', sc:'#f0a050' },
+                { d:'28 may', c:'Arriendo mensual',          p:'Inmobiliaria Andina',    v:'$47.0M', s:'programado', sc:'#3dba6f' },
+                { d:'29 may', c:'Servicios públicos',         p:'EAAB · ENEL · Vanti',    v:'$5.4M',  s:'pendiente', sc:'#f0a050' },
+                { d:'30 may', c:'Compra licores quincenal',  p:'Diageo Colombia',        v:'$9.8M',  s:'aprobado',  sc:'#4a9fff' },
+                { d:'31 may', c:'Nómina quincena',            p:'NEXUM Payroll',          v:'$86.0M', s:'programado', sc:'#3dba6f' },
+              ].map((t,i)=>(
+                <tr key={i} className="border-t border-[#1a2030]"><td className="py-1.5 font-bold">{t.d}</td><td className="py-1.5">{t.c}</td><td className="py-1.5 text-[#a0a9bd]">{t.p}</td><td className="py-1.5 text-right font-bold">{t.v}</td><td className="py-1.5 text-right"><span className="text-[10px] px-1.5 py-0.5 rounded-full uppercase font-bold" style={{background:`${t.sc}26`,color:t.sc}}>{t.s}</span></td></tr>
+              ))}</tbody>
+            </table>
+            <div className="mt-2 pt-2 border-t border-[#1a2030] flex justify-between text-[12px]"><span className="text-[#7a8499]">Total compromisos semana</span><span className="font-black text-[#f0a050]">$162.4M</span></div>
+          </Section>
         </>)}
 
         {/* ═══════════════ CONFIGURACIÓN ═══════════════ */}
