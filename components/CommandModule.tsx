@@ -1,198 +1,397 @@
-
 import React, { useState } from 'react';
-import { 
-  Zap, 
-  TrendingUp, 
-  ShieldCheck, 
-  Activity,
-  Users,
-  DollarSign,
-  Info,
-  Hand,
-  ChefHat,
-  AlertTriangle
+import {
+  Home, TrendingUp, Users, Zap, Wine, UserCheck, CalendarDays, Settings,
+  DollarSign, Receipt, Heart, Bell, ChevronRight,
 } from 'lucide-react';
-import { GoogleGenAI } from "@google/genai";
 
-interface CommandModuleProps {
-  onSimulateEvent?: (type: 'hand' | 'task' | 'finance' | 'reserve') => void;
+/* ──────────────────────────────────────────────────────────────────────────
+   NEXUM COMMAND CENTER — vista réplica del mockup
+   ────────────────────────────────────────────────────────────────────────── */
+
+interface CommandModuleProps { onSimulateEvent?: (type: 'hand'|'task'|'finance'|'reserve') => void; }
+
+const SIDE = [
+  { id:'inicio', label:'INICIO', icon: Home },
+  { id:'ventas', label:'VENTAS', icon: TrendingUp },
+  { id:'clientes', label:'CLIENTES', icon: Users },
+  { id:'operaciones', label:'OPERACIONES', icon: Zap },
+  { id:'barra', label:'BARRA', icon: Wine },
+  { id:'equipo', label:'EQUIPO', icon: UserCheck },
+  { id:'reservas', label:'RESERVAS', icon: CalendarDays },
+  { id:'config', label:'CONFIGURACIÓN', icon: Settings },
+];
+
+const cocina = [
+  { l:'Robata',   v:85, c:'#4a8fd4' },
+  { l:'Sushi',    v:92, c:'#3dba6f' },
+  { l:'Caliente', v:74, c:'#f0a050' },
+  { l:'Postres',  v:89, c:'#3dba6f' },
+];
+const barra = [
+  { l:'Coctelería', v:78, c:'#f0a050' },
+  { l:'Vinos',      v:95, c:'#3dba6f' },
+];
+
+const acciones = [
+  'Reforzar barra de autor',
+  'Confirmar 12 reservas de 8:30 p.m.',
+  'Empujar productos foco',
+  'Revisar demoras en cocina caliente',
+  'Activar base VIP para segundo turno',
+];
+
+const quejas = [
+  { l:'Demora en comida', n:4 },
+  { l:'Cócteles lentos',   n:3 },
+  { l:'Mesa no lista',     n:2 },
+  { l:'Servicio lento',    n:2 },
+  { l:'Cuenta demorada',   n:1 },
+];
+
+const mix = [
+  { l:'Comida',   p:39, c:'#3dba6f' },
+  { l:'Bebidas',  p:28, c:'#4a8fd4' },
+  { l:'Postres',  p:15, c:'#f0a050' },
+  { l:'Cócteles', p:14, c:'#c66de8' },
+];
+
+const ayer = [
+  { l:'Venta ayer',         v:'$58.4M', sub:'9% sobre meta' },
+  { l:'Ticket promedio',    v:'$179K' },
+  { l:'Personas atendidas', v:'286' },
+  { l:'Ocupación',          v:'88%' },
+  { l:'Satisfacción',       v:'92%' },
+  { l:'Número de quejas',   v:'6' },
+  { l:'Cuello de botella',  v:'cocina caliente' },
+  { l:'Mejor empleado',     v:'Laura M.' },
+];
+
+const topEmp = [
+  { n:'Laura',   s:96 },
+  { n:'Andrés',  s:93 },
+  { n:'Camila',  s:91 },
+];
+const alertaEmp = [
+  { n:'Pedro',   s:58, m:'Errores' },
+  { n:'María',   s:61, m:'Bajo ticket' },
+  { n:'Carlos',  s:64, m:'Quejas' },
+];
+const topPlatos = [
+  { n:'Dumplings Trufados', v:48 },
+  { n:'Tiradito Hamachi',   v:36 },
+  { n:'Robata Lobster',     v:29 },
+];
+const topBebidas = [
+  { n:'Negroni Sakura', v:41 },
+  { n:'Lychee Martini', v:37 },
+  { n:'Spritz Yuzu',    v:30 },
+];
+
+function PieMix({ data }:{ data:{l:string,p:number,c:string}[] }){
+  let acc = 0;
+  const stops = data.map(d=>{ const from=acc; acc+=d.p; return `${d.c} ${from}% ${acc}%`; }).join(', ');
+  return <div className="w-[110px] h-[110px] rounded-full" style={{background:`conic-gradient(${stops})`, boxShadow:'inset 0 0 0 2px #0a0e1a'}}/>;
 }
 
-const CommandModule: React.FC<CommandModuleProps> = ({ onSimulateEvent }) => {
-  const [aiReport, setAiReport] = useState<string | null>(null);
+function Card({ children, className='' }:{ children:React.ReactNode, className?:string }){
+  return <div className={`rounded-2xl bg-[#0e1424] border border-[#1a2030] p-4 ${className}`}>{children}</div>;
+}
 
-  const getOmmStrategicReport = async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Analiza los KPIs actuales de OMM (Autopista Norte Bogota): Ocupación 85%, Ticket Promedio $245k, Mermas 3.2%. El plato más vendido es Kaori Lobster. Genera un plan táctico de 3 puntos para maximizar el turno de la noche con concepto espiritual/Zen.`,
-      });
-      setAiReport(response.text || "");
-    } catch {
-      setAiReport("Análisis Estratégico OMM: Se detecta oportunidad de Upsell en la Pagoda (Terraza). Acción: Lanzar 'Noche de Robata & Sakes' para elevar el ticket promedio a $280k.");
-    }
-  };
+function Bar({ pct, color }:{ pct:number, color:string }){
+  return <div className="h-1.5 rounded-full bg-[#1a2030] overflow-hidden"><div className="h-full rounded-full" style={{width:`${pct}%`, background:color}}/></div>;
+}
+
+const CommandModule: React.FC<CommandModuleProps> = () => {
+  const [active, setActive] = useState('inicio');
 
   return (
-    <div className="space-y-12 animate-in fade-in duration-1000">
-      
-      {/* Guía Funcional Rápida */}
-      <div className="bg-blue-600/5 border border-blue-500/20 rounded-[2.5rem] p-8 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-           <Info className="text-blue-500" />
-           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest leading-relaxed">
-             <span className="text-blue-500">PRUEBAS DE ECO-SISTEMA:</span> Usa el panel de simulación a la derecha para disparar eventos IA, tareas de cocina y alertas financieras en todo el ecosistema Nexum.
-           </p>
+    <div className="-m-6 bg-[#06080f] text-white min-h-[calc(100vh-64px)] flex" style={{fontFamily:'Inter, system-ui, sans-serif'}}>
+      {/* ═══ SIDEBAR ═══ */}
+      <aside className="w-[90px] shrink-0 bg-[#0a0e1a] border-r border-[#141b2c] flex flex-col items-center py-4">
+        <div className="text-center mb-6">
+          <div className="text-[10px] font-black tracking-[0.15em]">NEXUM</div>
+          <div className="text-[8px] tracking-[0.3em] text-[#5a6478]">COMMAND</div>
         </div>
-      </div>
+        <div className="flex-1 flex flex-col gap-1 w-full px-2">
+          {SIDE.map(item=>{
+            const Icon = item.icon; const isActive = active===item.id;
+            return (
+              <button key={item.id} onClick={()=>setActive(item.id)}
+                className={`flex flex-col items-center gap-1 py-3 rounded-lg transition-all ${isActive ? 'bg-[#142a4a] text-[#4a9fff]' : 'text-[#5a6478] hover:text-[#a0a9bd]'}`}>
+                <Icon size={18}/>
+                <span className="text-[8px] font-bold tracking-wider">{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="mt-2 w-9 h-9 rounded-lg bg-[#142a4a] text-[#4a9fff] flex items-center justify-center font-black text-[14px]">N</div>
+      </aside>
 
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
-         <MetricCard label="RevPASH OMM" value="$210k" trend="+14.2%" icon={<TrendingUp size={24} />} />
-         <MetricCard label="Ocupación" value="85%" trend="+5.8%" icon={<Users size={24} />} />
-         <MetricCard label="Ticket Prom." value="$245k" trend="-1.5%" icon={<DollarSign size={24} />} />
-         <MetricCard label="SLA Servicio" value="98.8%" trend="Optimal" icon={<ShieldCheck size={24} />} />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
-        <div className="lg:col-span-2 space-y-10">
-           {/* Monitor Operativo NEXUM */}
-           <div className="bg-[#16161a] rounded-[3.5rem] p-12 border border-white/5 shadow-2xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-12 opacity-5">
-                <Activity size={180} className="text-[#2563eb]" />
-              </div>
-              <h3 className="text-xs font-black text-gray-500 uppercase tracking-[0.5em] mb-12 flex items-center gap-3">
-                 <Activity size={18} className="text-[#2563eb]" /> MONITOR_OPERATIVO_OMM_LIVE
-              </h3>
-              <div className="space-y-12">
-                 <ProgressRow label="Cocina Robata (Fuego)" value={85} color="bg-orange-600 shadow-[0_0_15px_rgba(234,88,12,0.4)]" />
-                 <ProgressRow label="Mesa OMM (Kaiseki)" value={62} color="bg-[#2563eb] shadow-[0_0_15px_rgba(37,99,235,0.4)]" />
-                 <ProgressRow label="Terraza Pagoda (Vibe)" value={94} color="bg-[#22c55e] shadow-[0_0_15px_rgba(34,197,94,0.4)]" />
-              </div>
-           </div>
-
-           {/* Simulación Maestro */}
-           <div className="bg-[#16161a] rounded-[3.5rem] p-12 border border-white/5 shadow-2xl">
-              <h3 className="text-[11px] font-black text-gray-500 uppercase tracking-[0.4em] mb-10">CONSOLA DE SIMULACIÓN PARA PRUEBAS</h3>
-              <div className="grid grid-cols-2 gap-4">
-                 <SimButton 
-                  icon={<Hand size={16} />} 
-                  label="Simular Gesto IA" 
-                  desc="Activa alerta de ayuda en Mesa 01" 
-                  onClick={() => onSimulateEvent?.('hand')} 
-                 />
-                 <SimButton 
-                  icon={<ChefHat size={16} />} 
-                  label="Simular Comanda" 
-                  desc="Envía tarea ritual al Bar" 
-                  onClick={() => onSimulateEvent?.('task')} 
-                 />
-                 <SimButton 
-                  icon={<AlertTriangle size={16} />} 
-                  label="Fuga de Inventario" 
-                  desc="Genera alerta de merma crítica" 
-                  onClick={() => {}} 
-                 />
-                 <SimButton 
-                  icon={<DollarSign size={16} />} 
-                  label="Anomalía Financiera" 
-                  desc="Dispara error de conciliación POS" 
-                  onClick={() => {}} 
-                 />
-              </div>
-           </div>
+      {/* ═══ MAIN ═══ */}
+      <main className="flex-1 p-5 overflow-y-auto">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h1 className="text-[18px] font-black tracking-tight">NEXUM COMMAND CENTER</h1>
+            <div className="flex items-center gap-2 text-[11px] text-[#7a8499]">
+              <span>Robata 114</span>
+              <span>·</span>
+              <span className="flex items-center gap-1">En vivo <span className="w-1.5 h-1.5 rounded-full bg-[#3dba6f] inline-block animate-pulse"/></span>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 text-right">
+            <div>
+              <div className="text-[13px] font-bold">8:28 p.m.</div>
+              <div className="text-[10px] text-[#7a8499]">24 de mayo, 2025</div>
+            </div>
+            <button className="w-8 h-8 rounded-full bg-[#0e1424] border border-[#1a2030] flex items-center justify-center text-[#7a8499]"><Bell size={14}/></button>
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#0e1424] border border-[#1a2030]">
+              <div className="w-6 h-6 rounded-full bg-[#4a9fff] flex items-center justify-center text-[10px] font-black text-black">GM</div>
+              <ChevronRight size={12} className="text-[#5a6478] rotate-90"/>
+            </div>
+          </div>
         </div>
 
-        {/* AI Control Center Sidebar */}
-        <div className="space-y-10">
-           <div className="bg-[#2563eb] rounded-[3.5rem] p-12 relative overflow-hidden shadow-[0_20px_50px_rgba(37,99,235,0.3)] group transition-all">
-              <div className="absolute top-0 right-0 p-10 opacity-10 group-hover:scale-110 transition-transform">
-                 <Zap size={140} className="text-white" fill="currentColor" />
-              </div>
-              <h3 className="text-[11px] font-black text-white/80 uppercase tracking-[0.4em] mb-10 flex items-center gap-3 italic">
-                 <Zap size={18} fill="currentColor" /> NEXUM_BRAIN_OMM
-              </h3>
-              
-              {!aiReport ? (
-                <div className="space-y-8 flex flex-col items-center text-center">
-                   <p className="text-sm text-white/90 italic font-medium leading-relaxed tracking-tight">
-                     Analizando flujos de Autopista 114 y tiempos de Robata para optimizar el turno noche...
-                   </p>
-                   <button 
-                    onClick={getOmmStrategicReport}
-                    className="w-full bg-white text-[#2563eb] py-6 rounded-[2.2rem] text-[11px] font-black uppercase tracking-[0.3em] shadow-2xl hover:bg-blue-50 transition-all active:scale-95"
-                   >
-                     GENERAR PLAN MAESTRO
-                   </button>
+        {/* ═══ 5 KPI CARDS ═══ */}
+        <div className="grid grid-cols-5 gap-3 mb-3">
+          <Card>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[9px] tracking-[0.15em] text-[#7a8499] font-bold">VENTA HOY</div>
+              <div className="w-7 h-7 rounded-full bg-[#3dba6f]/15 flex items-center justify-center"><DollarSign size={14} className="text-[#3dba6f]"/></div>
+            </div>
+            <div className="text-[28px] font-black tracking-tight leading-none mb-2">$42.5M</div>
+            <div className="space-y-0.5 text-[10px] text-[#7a8499]">
+              <div>● Meta: $50M</div>
+              <div>● Cumplimiento: 85%</div>
+              <div>● Costo día: 32% · $13.8M</div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[9px] tracking-[0.15em] text-[#7a8499] font-bold">VENTA MES</div>
+              <div className="w-7 h-7 rounded-full bg-[#3dba6f]/15 flex items-center justify-center"><TrendingUp size={14} className="text-[#3dba6f]"/></div>
+            </div>
+            <div className="text-[28px] font-black tracking-tight leading-none mb-2">$780M</div>
+            <div className="space-y-0.5 text-[10px] text-[#7a8499]">
+              <div>● Meta: $1.2B</div>
+              <div>● Cumplimiento: 85%</div>
+              <div>● Costo mes: 31.8% · $248M</div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[9px] tracking-[0.15em] text-[#7a8499] font-bold">TICKET PROMEDIO</div>
+              <div className="w-7 h-7 rounded-full bg-[#c66de8]/15 flex items-center justify-center"><Receipt size={14} className="text-[#c66de8]"/></div>
+            </div>
+            <div className="text-[28px] font-black tracking-tight leading-none mb-2">$185K</div>
+            <div className="text-[10px] text-[#7a8499]">Mes: $172K</div>
+          </Card>
+          <Card>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[9px] tracking-[0.15em] text-[#7a8499] font-bold">COMENSALES</div>
+              <div className="w-7 h-7 rounded-full bg-[#f0a050]/15 flex items-center justify-center"><Users size={14} className="text-[#f0a050]"/></div>
+            </div>
+            <div className="text-[28px] font-black tracking-tight leading-none mb-2 text-[#f0a050]">238</div>
+            <div className="space-y-0.5 text-[10px] text-[#7a8499]">
+              <div>Mes: 6,820</div>
+              <div>Esperados hoy: 310</div>
+            </div>
+          </Card>
+          <Card>
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[9px] tracking-[0.15em] text-[#7a8499] font-bold">HEALTH SCORE</div>
+              <div className="w-7 h-7 rounded-full bg-[#3dba6f]/15 flex items-center justify-center"><Heart size={14} className="text-[#3dba6f]"/></div>
+            </div>
+            <div className="text-[28px] font-black tracking-tight leading-none mb-1">87/100</div>
+            <div className="text-[10px] text-[#f0a050] mb-1.5">Sano, revisar cocina</div>
+            <div className="flex gap-2 text-[9px] text-[#7a8499] flex-wrap">
+              <span>Ventas:<span className="text-white font-bold">88</span></span>
+              <span>Clientes:<span className="text-white font-bold">84</span></span>
+              <span>Op:<span className="text-white font-bold">81</span></span>
+              <span>Equipo:<span className="text-white font-bold">89</span></span>
+            </div>
+          </Card>
+        </div>
+
+        {/* ═══ ROW 2: GUEST PULSE · OPERATION FLOW · NEXUM BRAIN ═══ */}
+        <div className="grid grid-cols-3 gap-3 mb-3">
+          <Card>
+            <div className="flex items-center gap-2 mb-3">
+              <Users size={14} className="text-[#4a9fff]"/>
+              <div className="text-[11px] font-black tracking-[0.15em] text-[#4a9fff]">GUEST PULSE</div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-[9px] text-[#7a8499] mb-1">OCUPACIÓN</div>
+                <div className="text-[26px] font-black text-[#3dba6f] leading-none mb-2">82%</div>
+                <div className="space-y-0.5 text-[10px] text-[#7a8499]">
+                  <div>Hora pico: 8:30 pm</div>
+                  <div>Mesas libres: 6</div>
+                  <div>Reservas pendientes: 12</div>
+                  <div>Rotación mesas: 1.8x</div>
                 </div>
-              ) : (
-                <div className="space-y-8 animate-in fade-in duration-500">
-                   <p className="text-sm text-white italic leading-relaxed font-medium tracking-tight">"{aiReport}"</p>
-                   <button 
-                    onClick={() => setAiReport(null)}
-                    className="w-full bg-white/10 hover:bg-white/20 border border-white/20 py-4 rounded-[1.8rem] text-[9px] font-black uppercase tracking-widest text-white transition-all"
-                   >
-                     RESET ANALYTICS
-                   </button>
-                </div>
-              )}
-           </div>
-
-           <div className="bg-[#16161a] rounded-[3.5rem] p-12 border border-white/5 shadow-2xl">
-              <h3 className="text-[11px] font-black text-gray-500 uppercase tracking-[0.4em] mb-8">CRITICAL_ALERTS_OMM</h3>
-              <div className="space-y-6">
-                 <AlertRow label="Delay Kaori Lobster" value="!" color="text-red-500" />
-                 <AlertRow label="Stock Robata Charcoal" value="Low" color="text-orange-500" />
-                 <AlertRow label="VIP Reservation (Duque)" value="Near" color="text-[#2563eb]" />
               </div>
-           </div>
+              <div>
+                <div className="text-[9px] text-[#7a8499] mb-1">SATISFACCIÓN CLIENTE</div>
+                <div className="text-[26px] font-black text-[#3dba6f] leading-none mb-2">94%</div>
+                <div className="space-y-0.5 text-[10px] text-[#7a8499]">
+                  <div>hoy / actual</div>
+                  <div>Mes: 91%</div>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="flex items-center gap-2 mb-3">
+              <Zap size={14} className="text-[#4a9fff]"/>
+              <div className="text-[11px] font-black tracking-[0.15em] text-[#4a9fff]">OPERATION FLOW</div>
+            </div>
+            <div className="text-[9px] text-[#7a8499] mb-1.5 font-bold tracking-wider">EFICIENCIA COCINA</div>
+            <div className="space-y-1.5 mb-2">
+              {cocina.map(r=>(
+                <div key={r.l}>
+                  <div className="flex justify-between text-[10px] mb-0.5"><span>{r.l}</span><span className="text-[#a0a9bd] font-bold">{r.v}%</span></div>
+                  <Bar pct={r.v} color={r.c}/>
+                </div>
+              ))}
+            </div>
+            <div className="text-[9px] text-[#7a8499] mb-2">Primer plato: <span className="text-white">18 min</span> · Pedidos atrasados: <span className="text-[#e05050]">6</span></div>
+            <div className="text-[9px] text-[#7a8499] mb-1.5 font-bold tracking-wider">EFICIENCIA BARRA</div>
+            <div className="space-y-1.5 mb-2">
+              {barra.map(r=>(
+                <div key={r.l}>
+                  <div className="flex justify-between text-[10px] mb-0.5"><span>{r.l}</span><span className="text-[#a0a9bd] font-bold">{r.v}%</span></div>
+                  <Bar pct={r.v} color={r.c}/>
+                </div>
+              ))}
+            </div>
+            <div className="text-[9px] text-[#7a8499]">Primera bebida: <span className="text-white">7 min</span> · Bebidas atrasadas: <span className="text-[#e05050]">4</span></div>
+          </Card>
+
+          <div className="rounded-2xl p-4 relative overflow-hidden" style={{background:'linear-gradient(135deg, #1f2454 0%, #3a2a6e 50%, #5a3a7e 100%)', border:'1px solid #4a3a78'}}>
+            <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full" style={{background:'radial-gradient(circle, rgba(150,100,220,0.3), transparent)'}}/>
+            <div className="flex items-center gap-2 mb-2 relative">
+              <Zap size={16} className="text-[#c0a8ff]"/>
+              <div className="text-[12px] font-black tracking-[0.15em] text-white">NEXUM BRAIN</div>
+            </div>
+            <div className="text-[10px] text-[#c0b8e8] tracking-wider mb-3 font-bold">QUÉ HACER AHORA</div>
+            <ol className="space-y-1.5 mb-4 relative">
+              {acciones.map((a,i)=>(
+                <li key={i} className="flex items-start gap-2 text-[11px] text-white/95">
+                  <span className="w-4 h-4 rounded-full bg-white/15 flex items-center justify-center text-[9px] font-black shrink-0 mt-0.5">{i+1}</span>
+                  <span>{a}</span>
+                </li>
+              ))}
+            </ol>
+            <button className="w-full py-2 rounded-lg text-[11px] font-black text-white relative" style={{background:'linear-gradient(90deg, #4a4ae8, #6a4ad8)'}}>VER PLAN</button>
+          </div>
         </div>
-      </div>
+
+        {/* ═══ ROW 3 ═══ */}
+        <div className="grid grid-cols-2 gap-3 mb-3">
+          <Card>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-[10px] font-black tracking-[0.15em] text-[#e05050] mb-2">PRINCIPALES QUEJAS HOY</div>
+                <ul className="space-y-1.5">
+                  {quejas.map((q,i)=>(
+                    <li key={i} className="flex items-center justify-between text-[11px]">
+                      <span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#e05050]"/>{q.l}</span>
+                      <span className="text-[#a0a9bd] font-bold">{q.n}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <div className="text-[10px] font-black tracking-[0.15em] text-[#7a8499] mb-2">MIX VENTAS HOY</div>
+                <div className="flex items-center gap-3">
+                  <PieMix data={mix}/>
+                  <ul className="space-y-1">
+                    {mix.map(m=>(
+                      <li key={m.l} className="flex items-center gap-1.5 text-[10px]">
+                        <span className="w-2 h-2 rounded-sm" style={{background:m.c}}/>
+                        <span className="text-[#a0a9bd]">{m.l}</span>
+                        <span className="text-white font-bold">{m.p}%</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
+            <div className="text-[10px] font-black tracking-[0.15em] text-[#7a8499] mb-2">QUÉ PASÓ AYER</div>
+            <ul className="space-y-1">
+              {ayer.map((a,i)=>(
+                <li key={i} className="flex justify-between text-[11px]">
+                  <span className="text-[#a0a9bd]">{a.l}</span>
+                  <span className="text-white font-bold">{a.v}{a.sub?<span className="text-[#3dba6f] ml-1 font-normal">{a.sub}</span>:null}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="mt-2 pt-2 border-t border-[#1a2030] text-[10px] text-[#f0a050]">
+              ⚑ Recomendación hoy: <span className="italic">reforzar cocina caliente 8:00–9:30 p.m.</span>
+            </div>
+          </Card>
+        </div>
+
+        {/* ═══ ROW 4 ═══ */}
+        <div className="grid grid-cols-3 gap-3">
+          <Card>
+            <div className="text-[10px] font-black tracking-[0.15em] text-[#3dba6f] mb-2">TOP EMPLEADOS</div>
+            <ul className="space-y-1.5">
+              {topEmp.map((e,i)=>(
+                <li key={e.n} className="flex items-center justify-between text-[12px]">
+                  <span className="flex items-center gap-2"><span className="w-4 text-[#7a8499] text-[10px]">{i+1}</span>{e.n}</span>
+                  <span className="font-black text-[#3dba6f]">{e.s}</span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+          <Card>
+            <div className="text-[10px] font-black tracking-[0.15em] text-[#e05050] mb-2">TALENTO EN ALERTA</div>
+            <ul className="space-y-1.5">
+              {alertaEmp.map((e,i)=>(
+                <li key={e.n} className="flex items-center justify-between text-[12px]">
+                  <span className="flex items-center gap-2"><span className="w-4 text-[#7a8499] text-[10px]">{i+1}</span>{e.n}</span>
+                  <span className="flex items-center gap-2"><span className="font-black text-[#e05050]">{e.s}</span><span className="text-[10px] text-[#7a8499]">{e.m}</span></span>
+                </li>
+              ))}
+            </ul>
+          </Card>
+          <Card>
+            <div className="text-[10px] font-black tracking-[0.15em] text-[#7a8499] mb-2">TOP VENTAS HOY</div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <div className="text-[9px] text-[#7a8499] mb-1 tracking-wider font-bold">TOP 3 PLATOS</div>
+                <ul className="space-y-1">
+                  {topPlatos.map((p,i)=>(
+                    <li key={p.n} className="flex items-center justify-between text-[10px]">
+                      <span className="flex items-center gap-1.5 truncate"><span className="text-[#7a8499]">{i+1}</span>{p.n}</span>
+                      <span className="font-black text-white">{p.v}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <div className="text-[9px] text-[#7a8499] mb-1 tracking-wider font-bold">TOP 3 BEBIDAS</div>
+                <ul className="space-y-1">
+                  {topBebidas.map((p,i)=>(
+                    <li key={p.n} className="flex items-center justify-between text-[10px]">
+                      <span className="flex items-center gap-1.5 truncate"><span className="text-[#7a8499]">{i+1}</span>{p.n}</span>
+                      <span className="font-black text-white">{p.v}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </Card>
+        </div>
+      </main>
     </div>
   );
 };
-
-const SimButton = ({ icon, label, desc, onClick }: { icon: React.ReactNode, label: string, desc: string, onClick: () => void }) => (
-  <button 
-    onClick={onClick}
-    className="bg-white/5 border border-white/5 p-6 rounded-3xl text-left hover:bg-blue-600 transition-all group"
-  >
-    <div className="bg-blue-600/20 w-10 h-10 rounded-xl flex items-center justify-center text-blue-500 mb-4 group-hover:bg-white group-hover:text-blue-600">
-      {icon}
-    </div>
-    <span className="text-[10px] font-black uppercase tracking-widest block mb-1">{label}</span>
-    <span className="text-[8px] text-gray-500 font-bold uppercase tracking-tighter group-hover:text-white/70">{desc}</span>
-  </button>
-);
-
-const MetricCard = ({ label, value, trend, icon }: { label: string, value: string, trend: string, icon: React.ReactNode }) => (
-  <div className="bg-[#16161a] p-10 rounded-[3.5rem] border border-white/5 flex flex-col items-center text-center group hover:border-[#2563eb]/30 transition-all shadow-xl hover:shadow-[#2563eb]/5">
-     <div className="p-4 bg-white/5 rounded-2xl mb-6 group-hover:bg-[#2563eb]/20 transition-all text-[#2563eb]">
-        {icon}
-     </div>
-     <span className="text-[10px] text-gray-600 font-black uppercase tracking-[0.4em] mb-2 leading-none">{label}</span>
-     <span className="text-4xl font-black italic text-white mb-2 tracking-tighter leading-none">{value}</span>
-     <span className={`text-[10px] font-black tracking-widest ${trend.includes('+') ? 'text-[#22c55e]' : 'text-red-500'}`}>{trend}</span>
-  </div>
-);
-
-const ProgressRow = ({ label, value, color }: { label: string, value: number, color: string }) => (
-  <div className="space-y-3">
-     <div className="flex justify-between text-[11px] font-black uppercase tracking-[0.3em]">
-        <span className="text-gray-400 italic">{label}</span>
-        <span className="text-white">{value}%</span>
-     </div>
-     <div className="h-2.5 bg-black/50 rounded-full overflow-hidden border border-white/5">
-        <div className={`h-full ${color} transition-all duration-1000 ease-out`} style={{ width: `${value}%` }}></div>
-     </div>
-  </div>
-);
-
-const AlertRow = ({ label, value, color }: { label: string, value: string, color: string }) => (
-  <div className="flex justify-between items-center border-b border-white/5 pb-4 last:border-0 last:pb-0">
-     <span className="text-[10px] font-black text-gray-500 uppercase tracking-widest italic">{label}</span>
-     <span className={`text-xs font-black italic tracking-tighter ${color} animate-pulse`}>{value}</span>
-  </div>
-);
 
 export default CommandModule;
