@@ -110,7 +110,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
       <aside className="w-[90px] shrink-0 bg-[#0a0e1a] border-r border-[#141b2c] flex flex-col items-center py-4">
         <div className="text-center mb-6">
           <div className="text-[10px] font-black tracking-[0.15em]">NEXUM</div>
-          <div className="text-[8px] tracking-[0.3em] text-[#5a6478]">COMMAND</div>
+          <div className="text-[8px] tracking-[0.3em] text-[#5a6478]">COMANDANTE</div>
         </div>
         <div className="flex-1 flex flex-col gap-1 w-full px-2">
           {SIDE.map(item=>{
@@ -132,7 +132,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
-            <h1 className="text-[18px] font-black tracking-tight">NEXUM COMMAND CENTER</h1>
+            <h1 className="text-[18px] font-black tracking-tight">NEXUM COMANDANTE</h1>
             <div className="flex items-center gap-2 text-[11px] text-[#7a8499]">
               <span>Robata 114</span>
               <span>·</span>

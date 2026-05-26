@@ -314,7 +314,7 @@ const Dashboard: React.FC = () => {
               id: 'estrategia', label: 'ESTRATEGIA & ADMIN',
               icon: <Globe size={14} className="text-purple-500" />,
               modules: [
-                { type: ModuleType.COMMAND,       label: 'COMMAND',      sub: 'ESTRATEGIA IA',        icon: <Globe size={18} /> },
+                { type: ModuleType.COMMAND,       label: 'COMANDANTE',   sub: 'ESTRATEGIA IA',        icon: <Globe size={18} /> },
                 { type: ModuleType.PROPINAS, label: 'PROPINAS ADMIN', sub: 'Team & Config', icon: <DollarSign size={18} /> },
                  { type: ModuleType.FINANCE_HUB,  label: 'FINANCE HUB',  sub: 'DINERO & KPI',         icon: <DollarSign size={18} /> },
                 { type: ModuleType.PAYROLL,       label: 'NÓMINA DIAN',  sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
