@@ -1161,11 +1161,21 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // ── Mesas dinámicas — enriquecidas con platos locales en tiempo real ──
   // Fallback: si aún no llegan las mesas reales, se usa el plano OMM en
   // estado libre (sin clientes falsos), no datos de prueba.
-  const displayTablesAll = (tables && tables.length > 0 ? tables :
-    Object.values(PLANTA_OMM).map((p:any) => ({
-      id: p.num, num: p.num, cliente: '', pax: 0, time: '00:00',
-      ticket: 0, meta: 120, status: 'libre', vip: false, bday: false, alert: false,
-    }))
+  // Fallback de mesas cuando el wrapper aún no entregó `tables` (carga inicial).
+  // OMM usa su plano hardcoded; Gallo y futuros usan un set genérico de 20
+  // mesas para que la barra izquierda no se vea vacía mientras carga BD.
+  const fallbackMesas = restauranteId === 6
+    ? Object.values(PLANTA_OMM).map((p:any) => ({
+        id: p.num, num: p.num, cliente: '', pax: 0, time: '00:00',
+        ticket: 0, meta: 120, status: 'libre', vip: false, bday: false, alert: false,
+        zona: p.zona,
+      }))
+    : Array.from({ length: 20 }, (_, i) => ({
+        id: i + 1, num: i + 1, cliente: '', pax: 0, time: '00:00',
+        ticket: 0, meta: 120, status: 'libre', vip: false, bday: false, alert: false,
+        zona: 'Salón',
+      }));
+  const displayTablesAll = (tables && tables.length > 0 ? tables : fallbackMesas
   ).map((m: any) => {
     const mesaNum = m.num ?? m.numero ?? m.id;
     const platosLocales = [...pendingOrder, ...order].filter(o => o.mesa === mesaNum);
