@@ -1,8 +1,18 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../contexts/AuthContext';
 import { useRestaurant } from '../contexts/RestaurantContext';
-import { CATALOGO_CONTABLE, IMPACTO_PG_LABELS, CENTROS_COSTO, buscarConcepto } from '../lib/catalogoContable';
+import {
+  cargarCatalogoEgresos,
+  conceptosDeCategoria,
+  buscarConcepto,
+  centrosCostoDisponibles,
+  explicarImpacto,
+  CATEGORIAS_OPERATIVAS_UI,
+  ORIGENES_EGRESO,
+  GRUPO_PYG_COLORS,
+  type ConceptoCatalogo,
+} from '../lib/catalogoContable';
 
 const S = {
   bg:'#08080f', bg2:'#0f0f1a', bg3:'#161624', bg4:'#1e1e2e',
@@ -19,18 +29,11 @@ const lbl: React.CSSProperties = { fontSize:10, color:S.t3, fontWeight:700, marg
 const fmt = (n:number) => `$${Math.round(n).toLocaleString('es-CO')}`;
 const fmtDate = (d:string) => new Date(d).toLocaleDateString('es-CO',{day:'numeric',month:'short'});
 
-type Tab = 'egresos' | 'arqueo' | 'historial' | 'ocr';
+type Tab = 'egresos' | 'arqueo' | 'historial' | 'ocr' | 'pyg';
 
-const CATEGORIAS_EGRESO = [
-  { id:'propina_efectivo', label:'💵 Propina Efectivo', color:S.green,   desc:'Liquidar propinas recaudadas al personal' },
-  { id:'compra_menor',     label:'🛒 Compra Menor',    color:S.blue,    desc:'Mercado rápido, insumos urgentes' },
-  { id:'mantenimiento',    label:'🔧 Mantenimiento',   color:S.gold,    desc:'Reparaciones y servicios' },
-  { id:'transporte',       label:'🚗 Transporte',      color:S.cyan,    desc:'Domicilios, mensajería' },
-  { id:'otro',             label:'📋 Otro',            color:S.t2,      desc:'Gastos varios etiquetados' },
-];
-
-// El catálogo de conceptos (cuenta contable + centro de costo + impacto P&G)
-// vive en lib/catalogoContable.ts para que pueda crecer sin tocar este módulo.
+// El catálogo (~413 conceptos, 16 categorías operativas, mapeo NIIF +
+// centro de costo + impacto P&G) vive en BD: tabla catalogo_egresos.
+// Se carga via cargarCatalogoEgresos() en lib/catalogoContable.ts.
 
 export default function FinanceHub() {
   const { profile } = useAuth();
@@ -41,16 +44,29 @@ export default function FinanceHub() {
   const [facturasOcr, setFacturasOcr] = useState<any[]>([]);
   const [toast, setToast] = useState('');
   const [loading, setLoading] = useState(false);
-  // Form egresos: el usuario elige categoría + conceptoId (catálogo controlado).
-  // centroCostoOverride permite cambiar el centro de costo default del concepto
-  // (ej: compra de cocina pero para un evento → cambia a Eventos).
+  // Catálogo controlado (~413 conceptos) cargado desde BD.
+  const [catalogo, setCatalogo] = useState<ConceptoCatalogo[]>([]);
+  useEffect(() => { cargarCatalogoEgresos().then(setCatalogo); }, []);
+
+  // Form egresos según los 8 pasos del PDF NEXUM Finance Hub:
+  // 1. origen, 2. categoría operativa, 3. concepto (catálogo),
+  // 4. detalle libre, 5. soporte (foto), 6/7 reglas automáticas y aprobación.
   const [formEgreso, setFormEgreso] = useState({
-    categoria: 'propina_efectivo',
+    origen: 'efectivo',
+    categoriaOp: 'costos_directos',  // categoría operativa del PDF (16 visibles)
     conceptoId: '',
     centroCostoOverride: '',
     valor: '',
     responsable: '',
-    notas: '',
+    detalle: '',                     // texto libre descriptivo, NO clasificador
+    // Datos de la factura (Punto 6 del PDF — preparar terreno para OCR)
+    proveedor: '',
+    nitProveedor: '',
+    facturaNumero: '',
+    subtotal: '',
+    iva: '',
+    impoconsumo: '',
+    retencionFuente: '',
   });
   const [guardandoEgreso, setGuardandoEgreso] = useState(false);
   // Foto comprobante (factura/recibo)
@@ -87,11 +103,26 @@ export default function FinanceHub() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // Concepto contable resuelto desde el catálogo + centro de costo final
-  const conceptoSel = formEgreso.conceptoId ? buscarConcepto(formEgreso.categoria, formEgreso.conceptoId) : undefined;
-  const centroCostoFinal = formEgreso.centroCostoOverride || conceptoSel?.centroCosto || '';
-  const requiereNotaObligatoria = !!conceptoSel?.requiereNota;
-  const requiereAprobacion = !!conceptoSel?.requiereAprobacion;
+  // Concepto resuelto desde el catálogo. La clasificación contable
+  // (cuenta NIIF + centro de costo + grupo P&G + tipo financiero +
+  // banderas CAPEX/propina/etc.) sale automáticamente del catálogo.
+  const conceptosCategoria = useMemo(
+    () => conceptosDeCategoria(catalogo, formEgreso.categoriaOp),
+    [catalogo, formEgreso.categoriaOp]
+  );
+  const conceptoSel = useMemo(
+    () => formEgreso.conceptoId ? buscarConcepto(catalogo, formEgreso.conceptoId) : undefined,
+    [catalogo, formEgreso.conceptoId]
+  );
+  const centroCostoFinal = formEgreso.centroCostoOverride || conceptoSel?.centro_costo_default || '';
+  const requiereAprobacion = !!conceptoSel?.requiere_aprobacion;
+  const requiereFactura = !!conceptoSel?.requiere_factura;
+  const montoNumero = Number(formEgreso.valor) || 0;
+  // Umbral: si supera monto_aprobacion del catálogo, también requiere aprobación
+  const aprobacionPorMonto = conceptoSel && montoNumero > 0 && (conceptoSel.monto_aprobacion || 0) > 0 && montoNumero >= conceptoSel.monto_aprobacion;
+  const requiereAprobacionFinal = requiereAprobacion || aprobacionPorMonto;
+  // Centros de costo disponibles para el override
+  const centrosCostoOpts = useMemo(() => centrosCostoDisponibles(catalogo), [catalogo]);
 
   const onSelectComprobante = (file: File | null) => {
     setComprobanteFile(file);
@@ -105,13 +136,12 @@ export default function FinanceHub() {
   const guardarEgreso = async () => {
     if (!conceptoSel) { show('⚠️ Elige un tipo de egreso del catálogo'); return; }
     if (!formEgreso.valor || isNaN(Number(formEgreso.valor))) { show('⚠️ Valor requerido'); return; }
-    if (requiereNotaObligatoria && !formEgreso.notas.trim()) {
-      show('⚠️ Este concepto requiere una nota explicando el detalle');
+    if (requiereFactura && !comprobanteFile && !formEgreso.facturaNumero) {
+      show('⚠️ Este concepto requiere factura o número de soporte');
       return;
     }
     setGuardandoEgreso(true);
     let comprobanteUrl: string | null = null;
-    // Subir foto si la hay
     if (comprobanteFile) {
       setSubiendoFoto(true);
       const ext = comprobanteFile.name.split('.').pop() || 'jpg';
@@ -126,20 +156,44 @@ export default function FinanceHub() {
       setSubiendoFoto(false);
     }
     const ahora = new Date();
+    const valor = Number(formEgreso.valor);
     const { error: insErr } = await supabase.from('egresos').insert({
       restaurante_id: restauranteId,
-      categoria: formEgreso.categoria,
-      concepto: conceptoSel.label,
+      // Categoría operativa (lo que ve el usuario)
+      categoria: formEgreso.categoriaOp,
+      // Mapeo del catálogo (clasificación contable)
+      concepto: conceptoSel.nombre_usuario,
       concepto_id: conceptoSel.id,
-      cuenta_contable: conceptoSel.cuenta,
+      cuenta_contable: conceptoSel.cuenta_niif_interna,
       centro_costo: centroCostoFinal,
-      impacto_pg: conceptoSel.impacto,
-      requiere_aprobacion: requiereAprobacion,
-      aprobado: requiereAprobacion ? null : true,
-      valor: Number(formEgreso.valor),
+      grupo_pyg: conceptoSel.grupo_pyg,
+      subgrupo_pyg: conceptoSel.subgrupo_pyg,
+      tipo_financiero: conceptoSel.tipo_financiero,
+      impacto_pg: conceptoSel.impacta_pyg,
+      // Banderas
+      es_capex: conceptoSel.es_capex,
+      es_propina: conceptoSel.es_propina,
+      es_caja_menor: conceptoSel.es_caja_menor || formEgreso.origen === 'caja_menor',
+      es_impuesto_recaudado: conceptoSel.es_impuesto_recaudado,
+      es_recurrente: conceptoSel.es_recurrente,
+      // Flujo
+      origen: formEgreso.origen,
+      requiere_aprobacion: requiereAprobacionFinal,
+      aprobado: requiereAprobacionFinal ? null : true,
+      // Importes y proveedor
+      valor,
+      subtotal: formEgreso.subtotal ? Number(formEgreso.subtotal) : null,
+      iva: formEgreso.iva ? Number(formEgreso.iva) : null,
+      impoconsumo: formEgreso.impoconsumo ? Number(formEgreso.impoconsumo) : null,
+      retencion_fuente: formEgreso.retencionFuente ? Number(formEgreso.retencionFuente) : null,
+      proveedor: formEgreso.proveedor || null,
+      nit_proveedor: formEgreso.nitProveedor || null,
+      factura_numero: formEgreso.facturaNumero || null,
+      // Texto libre / responsable
       responsable: formEgreso.responsable || profile?.nombre_completo || 'Staff',
-      notas: formEgreso.notas,
+      notas: formEgreso.detalle,
       factura_foto: comprobanteUrl,
+      fuente_registro: 'manual',
       fecha: ahora.toISOString().split('T')[0],
       hora: ahora.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),
     });
@@ -148,10 +202,15 @@ export default function FinanceHub() {
       setGuardandoEgreso(false);
       return;
     }
-    show(requiereAprobacion
-      ? '✓ Egreso registrado · queda PENDIENTE de aprobación'
-      : `✓ Egreso registrado → ${conceptoSel.cuenta}`);
-    setFormEgreso({ categoria:'propina_efectivo', conceptoId:'', centroCostoOverride:'', valor:'', responsable:'', notas:'' });
+    show(requiereAprobacionFinal
+      ? '✓ Registrado · queda PENDIENTE de aprobación'
+      : `✓ ${conceptoSel.nombre_usuario} → ${conceptoSel.cuenta_niif_interna}`);
+    setFormEgreso({
+      origen:'efectivo', categoriaOp:formEgreso.categoriaOp, conceptoId:'',
+      centroCostoOverride:'', valor:'', responsable:'', detalle:'',
+      proveedor:'', nitProveedor:'', facturaNumero:'',
+      subtotal:'', iva:'', impoconsumo:'', retencionFuente:'',
+    });
     onSelectComprobante(null);
     setGuardandoEgreso(false);
     fetchData();
@@ -271,8 +330,10 @@ export default function FinanceHub() {
     setProcesandoOcr(false);
   };
 
-  const egresosHoy = egresos.reduce((s,e) => s+(e.valor||0), 0);
-  const catActiva = CATEGORIAS_EGRESO.find(c => c.id === formEgreso.categoria);
+  const egresosHoy = egresos
+    .filter(e => e.tipo_financiero === 'costo' || e.tipo_financiero === 'gasto')
+    .reduce((s,e) => s+(e.valor||0), 0);
+  const catActivaUI = CATEGORIAS_OPERATIVAS_UI.find(c => c.id === formEgreso.categoriaOp);
 
   return (
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:S.bg,color:S.t1,fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
@@ -283,7 +344,7 @@ export default function FinanceHub() {
         <div style={{width:44,height:44,borderRadius:13,background:`linear-gradient(135deg,${S.gold},#d4943a)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>💰</div>
         <div>
           <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900}}>FINANCE HUB</div>
-          <div style={{fontSize:10,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase'}}>Egresos · Arqueo · OCR Facturas</div>
+          <div style={{fontSize:10,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase'}}>Egresos · P&G · Arqueo · OCR</div>
         </div>
         <div style={{marginLeft:'auto',display:'flex',gap:12}}>
           <div style={{textAlign:'center'}}>
@@ -301,6 +362,7 @@ export default function FinanceHub() {
       <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg2,padding:'0 24px',flexShrink:0}}>
         {[
           {id:'egresos',  label:'💸 Egresos'},
+          {id:'pyg',      label:'📊 P&G'},
           {id:'arqueo',   label:'🏦 Arqueo de Caja'},
           {id:'ocr',      label:'📷 OCR Facturas'},
           {id:'historial',label:'📋 Historial'},
@@ -319,79 +381,144 @@ export default function FinanceHub() {
           <div style={{flex:1,overflow:'hidden',display:'flex',gap:0}}>
             {/* Form izquierda */}
             <div style={{width:360,borderRight:`1px solid ${S.border}`,padding:24,overflowY:'auto',flexShrink:0}}>
-              <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:16}}>Registrar egreso</div>
-              {/* Categoría */}
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:4}}>Registrar egreso</div>
+              <div style={{fontSize:10,color:S.t3,marginBottom:14}}>{catalogo.length} conceptos NIIF · clasificación automática</div>
+
+              {/* PASO 1 — Origen del egreso */}
               <div style={{marginBottom:14}}>
-                <div style={lbl}>Categoría</div>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  {CATEGORIAS_EGRESO.map(cat=>(
-                    <button key={cat.id} onClick={()=>setFE('categoria',cat.id)}
-                      style={{padding:'10px 14px',borderRadius:10,border:`1px solid ${formEgreso.categoria===cat.id?cat.color:S.border}`,background:formEgreso.categoria===cat.id?`${cat.color}15`:'transparent',color:formEgreso.categoria===cat.id?cat.color:S.t2,cursor:'pointer',display:'flex',alignItems:'center',gap:10,fontSize:13,fontWeight:formEgreso.categoria===cat.id?700:400,transition:'all .15s',textAlign:'left'}}>
-                      <span style={{flex:1}}>{cat.label}</span>
-                      <span style={{fontSize:10,color:S.t3}}>{cat.desc}</span>
+                <div style={lbl}>1 · Origen del egreso</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:4}}>
+                  {ORIGENES_EGRESO.map(o=>(
+                    <button key={o.id} onClick={()=>setFE('origen',o.id)}
+                      style={{padding:'7px 10px',borderRadius:8,border:`1px solid ${formEgreso.origen===o.id?S.gold:S.border}`,background:formEgreso.origen===o.id?`${S.gold}15`:'transparent',color:formEgreso.origen===o.id?S.gold:S.t2,cursor:'pointer',fontSize:11,fontWeight:formEgreso.origen===o.id?700:500,transition:'all .12s'}}>
+                      {o.emoji} {o.label}
                     </button>
                   ))}
                 </div>
               </div>
+
+              {/* PASO 2 — Categoría operativa */}
               <div style={{marginBottom:12}}>
-                <div style={lbl}>Tipo de egreso *</div>
-                <select style={inp} value={formEgreso.conceptoId} onChange={e=>setFE('conceptoId',e.target.value)}>
-                  <option value="">— Elige tipo del catálogo —</option>
-                  {(CATALOGO_CONTABLE[formEgreso.categoria] || []).map(c => (
-                    <option key={c.id} value={c.id}>{c.label}{c.requiereAprobacion ? ' · requiere aprobación' : ''}</option>
+                <div style={lbl}>2 · Categoría</div>
+                <select style={inp} value={formEgreso.categoriaOp}
+                  onChange={e=>{ setFE('categoriaOp', e.target.value); setFE('conceptoId',''); }}>
+                  {CATEGORIAS_OPERATIVAS_UI.map(c => (
+                    <option key={c.id} value={c.id}>{c.emoji} {c.label} — {c.desc}</option>
                   ))}
                 </select>
-                {/* Chip resumen contable de lo que se está clasificando */}
+              </div>
+
+              {/* PASO 3 — Tipo de egreso (concepto del catálogo) */}
+              <div style={{marginBottom:12}}>
+                <div style={lbl}>3 · Tipo de egreso *</div>
+                <select style={inp} value={formEgreso.conceptoId} onChange={e=>setFE('conceptoId',e.target.value)}>
+                  <option value="">— Elige tipo del catálogo ({conceptosCategoria.length} opciones) —</option>
+                  {conceptosCategoria.map(c => (
+                    <option key={c.id} value={c.id}>
+                      {c.nombre_usuario}
+                      {c.requiere_aprobacion ? ' · requiere aprobación' : ''}
+                      {c.es_capex ? ' · CAPEX' : ''}
+                      {c.es_propina ? ' · propina' : ''}
+                    </option>
+                  ))}
+                </select>
+
+                {/* PASO 6 — Chip de la clasificación automática */}
                 {conceptoSel && (
-                  <div style={{marginTop:8, padding:'8px 10px', borderRadius:8, background:'rgba(255,255,255,0.04)', border:`1px solid ${IMPACTO_PG_LABELS[conceptoSel.impacto].color}30`}}>
-                    <div style={{fontSize:10, color:S.t3, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4}}>Clasificación contable</div>
+                  <div style={{marginTop:8, padding:'8px 10px', borderRadius:8, background:'rgba(255,255,255,0.04)', border:`1px solid ${(GRUPO_PYG_COLORS[conceptoSel.grupo_pyg]||S.gold)}30`}}>
+                    <div style={{fontSize:10, color:S.t3, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4}}>Clasificación automática</div>
                     <div style={{display:'flex', flexWrap:'wrap', gap:6, alignItems:'center'}}>
-                      <span style={{fontSize:11, fontWeight:700, color:S.t1}}>{conceptoSel.cuenta}</span>
-                      <span style={{fontSize:10, padding:'2px 8px', borderRadius:6, background:`${IMPACTO_PG_LABELS[conceptoSel.impacto].color}20`, color:IMPACTO_PG_LABELS[conceptoSel.impacto].color, fontWeight:700}}>
-                        {IMPACTO_PG_LABELS[conceptoSel.impacto].label}
+                      <span style={{fontSize:11, fontWeight:700, color:S.t1}}>{conceptoSel.cuenta_niif_interna}</span>
+                      <span style={{fontSize:10, padding:'2px 8px', borderRadius:6, background:`${(GRUPO_PYG_COLORS[conceptoSel.grupo_pyg]||S.gold)}20`, color:(GRUPO_PYG_COLORS[conceptoSel.grupo_pyg]||S.gold), fontWeight:700}}>
+                        {conceptoSel.grupo_pyg}
                       </span>
                       <span style={{fontSize:10, padding:'2px 8px', borderRadius:6, background:'rgba(255,255,255,0.06)', color:S.t2, fontWeight:600}}>
                         📍 {centroCostoFinal}
                       </span>
                     </div>
-                    {conceptoSel.requiereAprobacion && (
-                      <div style={{marginTop:6, fontSize:10, color:S.gold}}>
-                        ⚠ Este egreso quedará PENDIENTE hasta que un gerente lo apruebe
+                    <div style={{marginTop:6, fontSize:10, color:S.t2, fontStyle:'italic'}}>
+                      {explicarImpacto(conceptoSel)}
+                    </div>
+                    {conceptoSel.notas_contables && (
+                      <div style={{marginTop:4, fontSize:10, color:S.gold}}>💡 {conceptoSel.notas_contables}</div>
+                    )}
+                    {requiereAprobacionFinal && (
+                      <div style={{marginTop:6, fontSize:10, color:S.gold, fontWeight:700}}>
+                        ⚠ {aprobacionPorMonto ? `Supera umbral de ${fmt(conceptoSel.monto_aprobacion)} — ` : ''}Queda PENDIENTE hasta aprobación
                       </div>
                     )}
                   </div>
                 )}
               </div>
 
-              {/* Centro de costo override — solo visible si ya eligió concepto */}
+              {/* Centro de costo override */}
               {conceptoSel && (
                 <div style={{marginBottom:12}}>
                   <div style={lbl}>Centro de costo</div>
                   <select style={inp} value={formEgreso.centroCostoOverride}
                     onChange={e=>setFE('centroCostoOverride', e.target.value)}>
-                    <option value="">Default ({conceptoSel.centroCosto})</option>
-                    {CENTROS_COSTO.filter(cc => cc !== conceptoSel.centroCosto).map(cc => (
+                    <option value="">Default ({conceptoSel.centro_costo_default})</option>
+                    {centrosCostoOpts.filter(cc => cc !== conceptoSel.centro_costo_default).map(cc => (
                       <option key={cc} value={cc}>Cambiar a {cc}</option>
                     ))}
                   </select>
                 </div>
               )}
+
               <div style={{marginBottom:12}}>
-                <div style={lbl}>Valor (COP) *</div>
+                <div style={lbl}>Valor total (COP) *</div>
                 <input style={inp} type="number" value={formEgreso.valor} onChange={e=>setFE('valor',e.target.value)} placeholder="0"/>
                 {formEgreso.valor && <div style={{fontSize:11,color:S.gold,marginTop:4}}>{fmt(Number(formEgreso.valor))}</div>}
               </div>
+
+              {/* Datos de la factura — proveedor + impuestos (Punto 6: prep OCR) */}
+              <details style={{marginBottom:12, padding:'10px 12px', background:'rgba(255,255,255,0.02)', border:`1px solid ${S.border}`, borderRadius:10}}>
+                <summary style={{cursor:'pointer', fontSize:11, fontWeight:700, color:S.t2}}>📄 Datos de la factura {requiereFactura && <span style={{color:S.gold}}>· requeridos</span>}</summary>
+                <div style={{marginTop:10, display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+                  <div>
+                    <div style={lbl}>Proveedor</div>
+                    <input style={inp} value={formEgreso.proveedor} onChange={e=>setFE('proveedor',e.target.value)} placeholder="Razón social"/>
+                  </div>
+                  <div>
+                    <div style={lbl}>NIT</div>
+                    <input style={inp} value={formEgreso.nitProveedor} onChange={e=>setFE('nitProveedor',e.target.value)} placeholder="900.123.456-7"/>
+                  </div>
+                  <div style={{gridColumn:'span 2'}}>
+                    <div style={lbl}>N° factura</div>
+                    <input style={inp} value={formEgreso.facturaNumero} onChange={e=>setFE('facturaNumero',e.target.value)} placeholder="FE-12345"/>
+                  </div>
+                  <div>
+                    <div style={lbl}>Subtotal</div>
+                    <input style={inp} type="number" value={formEgreso.subtotal} onChange={e=>setFE('subtotal',e.target.value)} placeholder="0"/>
+                  </div>
+                  <div>
+                    <div style={lbl}>IVA</div>
+                    <input style={inp} type="number" value={formEgreso.iva} onChange={e=>setFE('iva',e.target.value)} placeholder="0"/>
+                  </div>
+                  <div>
+                    <div style={lbl}>Impoconsumo</div>
+                    <input style={inp} type="number" value={formEgreso.impoconsumo} onChange={e=>setFE('impoconsumo',e.target.value)} placeholder="0"/>
+                  </div>
+                  <div>
+                    <div style={lbl}>Retefuente</div>
+                    <input style={inp} type="number" value={formEgreso.retencionFuente} onChange={e=>setFE('retencionFuente',e.target.value)} placeholder="0"/>
+                  </div>
+                </div>
+              </details>
+
               <div style={{marginBottom:12}}>
                 <div style={lbl}>Responsable</div>
                 <input style={inp} value={formEgreso.responsable} onChange={e=>setFE('responsable',e.target.value)} placeholder={profile?.nombre_completo||'Staff'}/>
               </div>
+
+              {/* PASO 5 — Soporte: foto del comprobante */}
               <div style={{marginBottom:12}}>
-                <div style={lbl}>Comprobante de pago (foto)</div>
+                <div style={lbl}>4 · Comprobante (foto) {requiereFactura && <span style={{color:S.gold}}>*</span>}</div>
                 <input ref={comprobanteRef} type="file" accept="image/*" capture="environment"
                   onChange={e=>onSelectComprobante(e.target.files?.[0]||null)} style={{display:'none'}}/>
                 {!comprobantePreview ? (
                   <button onClick={()=>comprobanteRef.current?.click()}
-                    style={{width:'100%',padding:'14px 12px',borderRadius:10,border:`1px dashed ${S.border2}`,background:'rgba(255,255,255,0.03)',color:S.t2,fontSize:12,fontWeight:600,cursor:'pointer',textAlign:'center'}}>
+                    style={{width:'100%',padding:'14px 12px',borderRadius:10,border:`1px dashed ${requiereFactura?S.gold+'80':S.border2}`,background:'rgba(255,255,255,0.03)',color:requiereFactura?S.gold:S.t2,fontSize:12,fontWeight:600,cursor:'pointer',textAlign:'center'}}>
                     📷 Subir foto del recibo / comprobante
                   </button>
                 ) : (
@@ -406,21 +533,17 @@ export default function FinanceHub() {
                   </div>
                 )}
               </div>
+
+              {/* PASO 4 — Detalle libre (descriptivo, no clasificador) */}
               <div style={{marginBottom:16}}>
-                <div style={lbl}>
-                  Notas {requiereNotaObligatoria ? <span style={{color:S.red}}>*</span> : '(opcional)'}
-                </div>
-                <textarea style={{
-                  ...inp, height:60, resize:'vertical',
-                  border: requiereNotaObligatoria && !formEgreso.notas.trim()
-                    ? `1px solid ${S.red}50` : inp.border,
-                }}
-                  value={formEgreso.notas}
-                  onChange={e=>setFE('notas',e.target.value)}
-                  placeholder={requiereNotaObligatoria
-                    ? 'Obligatorio: explica el detalle de este egreso...'
-                    : 'Observaciones adicionales...'}/>
+                <div style={lbl}>5 · Detalle (opcional)</div>
+                <textarea style={{...inp, height:60, resize:'vertical'}}
+                  value={formEgreso.detalle}
+                  onChange={e=>setFE('detalle',e.target.value)}
+                  placeholder='Aclaración descriptiva: "DJ viernes Atlantis", "arreglo nevera sushi", etc.'/>
+                <div style={{fontSize:9,color:S.t3,marginTop:3}}>El detalle NO reemplaza la clasificación oficial del catálogo.</div>
               </div>
+
               <button onClick={guardarEgreso} disabled={guardandoEgreso}
                 style={{width:'100%',padding:13,borderRadius:12,border:'none',background:guardandoEgreso?S.bg3:`linear-gradient(135deg,${S.red},#c02020)`,color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>
                 {subiendoFoto ? 'Subiendo foto...' : (guardandoEgreso?'Guardando...':'✓ Registrar egreso')}
@@ -436,30 +559,39 @@ export default function FinanceHub() {
               {egresos.length===0 && <div style={{textAlign:'center',padding:40,color:S.t3}}><div style={{fontSize:40,marginBottom:12}}>💸</div><div>Sin egresos hoy</div></div>}
               <div style={{display:'flex',flexDirection:'column',gap:8}}>
                 {egresos.map(e=>{
-                  const cat = CATEGORIAS_EGRESO.find(c=>c.id===e.categoria)||CATEGORIAS_EGRESO[4];
-                  const impactoInfo = e.impacto_pg ? IMPACTO_PG_LABELS[e.impacto_pg as keyof typeof IMPACTO_PG_LABELS] : null;
+                  const catUI = CATEGORIAS_OPERATIVAS_UI.find(c=>c.id===e.categoria) || CATEGORIAS_OPERATIVAS_UI[15];
+                  const grupoColor = e.grupo_pyg ? (GRUPO_PYG_COLORS[e.grupo_pyg] || S.t2) : S.t2;
                   const pendiente = e.requiere_aprobacion && e.aprobado === null;
+                  const origenInfo = ORIGENES_EGRESO.find(o=>o.id===e.origen);
+                  // Egresos que NO impactan P&G (balance, propinas, anticipos, impuestos recaudados, CAPEX)
+                  const enBalance = e.tipo_financiero && !['costo','gasto'].includes(e.tipo_financiero);
                   return (
                     <div key={e.id} style={{background:S.bg2,border:`1px solid ${pendiente ? S.gold+'50' : S.border}`,borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-                      <div style={{width:36,height:36,borderRadius:10,background:`${cat.color}15`,border:`1px solid ${cat.color}30`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>
-                        {cat.label.split(' ')[0]}
+                      <div style={{width:36,height:36,borderRadius:10,background:`${grupoColor}15`,border:`1px solid ${grupoColor}30`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>
+                        {catUI.emoji}
                       </div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontSize:13,fontWeight:700,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
                           {e.concepto}
                           {pendiente && <span style={{fontSize:9,padding:'1px 6px',borderRadius:5,background:`${S.gold}25`,color:S.gold,fontWeight:800}}>PENDIENTE APROBAR</span>}
+                          {enBalance && <span style={{fontSize:9,padding:'1px 6px',borderRadius:5,background:`${S.green}20`,color:S.green,fontWeight:800}}>BALANCE</span>}
+                          {e.es_capex && <span style={{fontSize:9,padding:'1px 6px',borderRadius:5,background:`${S.cyan}20`,color:S.cyan,fontWeight:800}}>CAPEX</span>}
                           {e.factura_foto && <a href={e.factura_foto} target="_blank" rel="noopener" title="Ver comprobante" style={{fontSize:11,color:S.cyan,textDecoration:'none'}}>📎</a>}
                         </div>
-                        {(e.cuenta_contable || e.centro_costo || impactoInfo) && (
+                        {(e.cuenta_contable || e.centro_costo || e.grupo_pyg) && (
                           <div style={{fontSize:9,color:S.t2,marginTop:2,display:'flex',gap:8,flexWrap:'wrap'}}>
                             {e.cuenta_contable && <span>📒 {e.cuenta_contable}</span>}
                             {e.centro_costo && <span>📍 {e.centro_costo}</span>}
-                            {impactoInfo && <span style={{color:impactoInfo.color}}>● {impactoInfo.label}</span>}
+                            {e.grupo_pyg && <span style={{color:grupoColor}}>● {e.grupo_pyg}</span>}
                           </div>
                         )}
-                        <div style={{fontSize:10,color:S.t3,marginTop:2}}>{e.responsable} · {e.hora}</div>
+                        <div style={{fontSize:10,color:S.t3,marginTop:2}}>
+                          {origenInfo && <span>{origenInfo.emoji} {origenInfo.label} · </span>}
+                          {e.responsable} · {e.hora}
+                          {e.proveedor && <span> · 🚚 {e.proveedor}</span>}
+                        </div>
                       </div>
-                      <div style={{fontSize:15,fontWeight:900,color:S.red}}>{fmt(e.valor)}</div>
+                      <div style={{fontSize:15,fontWeight:900,color:enBalance ? S.green : S.red}}>{fmt(e.valor)}</div>
                     </div>
                   );
                 })}
@@ -473,6 +605,9 @@ export default function FinanceHub() {
             </div>
           </div>
         )}
+
+        {/* ── P&G ESTRUCTURADO (Punto 9 del PDF) ── */}
+        {tab==='pyg' && <PyGView restauranteId={restauranteId} fmt={fmt} S={S} />}
 
         {/* ── ARQUEO ── */}
         {tab==='arqueo' && (
@@ -640,6 +775,171 @@ export default function FinanceHub() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// P&G ESTRUCTURADO (Punto 9 del PDF NEXUM Finance Hub)
+// Suma ventas (cobros_trazabilidad + facturacion) menos egresos por línea:
+//   Ventas netas → Costos directos → Margen bruto → Gastos operacionales
+//   → EBITDA → No recurrentes / financieros → Utilidad antes de impuestos
+// ═══════════════════════════════════════════════════════════════════════
+function PyGView({ restauranteId, fmt, S }: { restauranteId: number, fmt: (n:number)=>string, S: any }) {
+  const [periodo, setPeriodo] = useState<'dia'|'semana'|'mes'>('mes');
+  const [data, setData] = useState<{ ventasBrutas: number, descuentos: number, egresos: any[], loading: boolean }>({
+    ventasBrutas: 0, descuentos: 0, egresos: [], loading: true,
+  });
+
+  useEffect(() => {
+    (async () => {
+      setData(d => ({ ...d, loading: true }));
+      const hoy = new Date();
+      const desde = new Date(hoy);
+      if (periodo === 'dia') desde.setHours(0,0,0,0);
+      else if (periodo === 'semana') desde.setDate(hoy.getDate() - 6);
+      else desde.setDate(1);
+      const desdeStr = desde.toISOString().split('T')[0];
+
+      const [cobros, eg] = await Promise.all([
+        supabase.from('cobros_trazabilidad').select('total')
+          .eq('restaurante_id', restauranteId).gte('created_at', desdeStr+'T00:00:00'),
+        supabase.from('egresos').select('*')
+          .eq('restaurante_id', restauranteId).gte('fecha', desdeStr),
+      ]);
+      const ventasBrutas = (cobros.data||[]).reduce((s:number,r:any)=>s+Number(r.total||0),0);
+      const egresos = (eg.data||[]).filter(e => e.aprobado !== false);
+      setData({ ventasBrutas, descuentos: 0, egresos, loading: false });
+    })();
+  }, [restauranteId, periodo]);
+
+  // Agregaciones por grupo P&G
+  const sumGrupo = (...grupos: string[]) => data.egresos
+    .filter(e => grupos.includes(e.grupo_pyg))
+    .reduce((s, e) => s + Number(e.valor || 0), 0);
+
+  const sumSubgrupo = (sub: string) => data.egresos
+    .filter(e => e.subgrupo_pyg === sub)
+    .reduce((s, e) => s + Number(e.valor || 0), 0);
+
+  const ventasNetas        = data.ventasBrutas - data.descuentos;
+  const costoAlimentos     = sumSubgrupo('Costo de alimentos');
+  const costoBebidas       = sumSubgrupo('Costo de bebidas');
+  const costoBar           = sumSubgrupo('Costo de bar');
+  const empaques           = sumSubgrupo('Empaques delivery');
+  const totalCostos        = costoAlimentos + costoBebidas + costoBar + empaques;
+  const margenBruto        = ventasNetas - totalCostos;
+  const manoObra           = sumSubgrupo('Mano de obra directa') + sumSubgrupo('Mano de obra servicio');
+  const ocupacion          = sumSubgrupo('Gastos de ocupación');
+  const serviciosPublicos  = sumSubgrupo('Servicios públicos');
+  const mantenimiento      = sumSubgrupo('Mantenimiento');
+  const aseoSeguridad      = sumSubgrupo('Aseo y limpieza') + sumSubgrupo('Menaje y dotación') + sumSubgrupo('Uniformes y dotación') + sumSubgrupo('Seguridad') + sumSubgrupo('Ambientación');
+  const marketing          = sumGrupo('Gasto comercial');
+  const administracion     = sumSubgrupo('Administración') + sumSubgrupo('Honorarios') + sumSubgrupo('Papelería') + sumSubgrupo('Tecnología') + sumSubgrupo('Impuestos y permisos') + sumSubgrupo('Transporte y logística');
+  const totalGastosOp      = manoObra + ocupacion + serviciosPublicos + mantenimiento + aseoSeguridad + marketing + administracion;
+  const ebitda             = margenBruto - totalGastosOp;
+  const gastosFinancieros  = sumGrupo('Gasto financiero');
+  const noRecurrentes      = sumGrupo('No recurrente');
+  const utilidadAntesImp   = ebitda - gastosFinancieros - noRecurrentes;
+
+  // Líneas del P&G (Punto 9 del PDF)
+  type Linea = { label: string, valor: number, esTotal?: boolean, signo?: 'mas'|'menos'|'igual', sub?: string };
+  const lineas: Linea[] = [
+    { label: 'Ventas brutas',                       valor: data.ventasBrutas, signo: 'mas' },
+    { label: '(-) Descuentos y cortesías',          valor: -data.descuentos,  signo: 'menos' },
+    { label: 'VENTAS NETAS',                        valor: ventasNetas,       esTotal: true, signo: 'igual' },
+    { label: '(-) Costo de alimentos',              valor: -costoAlimentos,   signo: 'menos', sub: 'Costos directos' },
+    { label: '(-) Costo de bebidas',                valor: -costoBebidas,     signo: 'menos', sub: 'Costos directos' },
+    { label: '(-) Costo de bar y coctelería',       valor: -costoBar,         signo: 'menos', sub: 'Costos directos' },
+    { label: '(-) Empaques y delivery',             valor: -empaques,         signo: 'menos', sub: 'Costos directos' },
+    { label: 'MARGEN BRUTO',                        valor: margenBruto,       esTotal: true, signo: 'igual' },
+    { label: '(-) Mano de obra operativa',          valor: -manoObra,         signo: 'menos', sub: 'Gastos op.' },
+    { label: '(-) Gastos de ocupación',             valor: -ocupacion,        signo: 'menos', sub: 'Gastos op.' },
+    { label: '(-) Servicios públicos',              valor: -serviciosPublicos,signo: 'menos', sub: 'Gastos op.' },
+    { label: '(-) Mantenimiento',                   valor: -mantenimiento,    signo: 'menos', sub: 'Gastos op.' },
+    { label: '(-) Aseo, menaje, seguridad, dotación',valor: -aseoSeguridad,   signo: 'menos', sub: 'Gastos op.' },
+    { label: '(-) Marketing y ventas',              valor: -marketing,        signo: 'menos', sub: 'Gastos op.' },
+    { label: '(-) Administración',                  valor: -administracion,   signo: 'menos', sub: 'Gastos op.' },
+    { label: 'EBITDA OPERATIVO',                    valor: ebitda,            esTotal: true, signo: 'igual' },
+    { label: '(-) Gastos financieros',              valor: -gastosFinancieros,signo: 'menos' },
+    { label: '(-) No recurrentes',                  valor: -noRecurrentes,    signo: 'menos' },
+    { label: 'UTILIDAD ANTES DE IMPUESTOS',         valor: utilidadAntesImp,  esTotal: true, signo: 'igual' },
+  ];
+
+  const margenPct = ventasNetas > 0 ? (utilidadAntesImp / ventasNetas) * 100 : 0;
+
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:24}}>
+      <div style={{maxWidth:760, margin:'0 auto'}}>
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:16, flexWrap:'wrap', gap:12}}>
+          <div>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900}}>P&G Estructurado</div>
+            <div style={{fontSize:11,color:S.t3}}>Punto 9 NEXUM Finance Hub · Construido desde ventas + egresos clasificados</div>
+          </div>
+          <div style={{display:'flex', gap:4, padding:4, background:S.bg2, border:`1px solid ${S.border}`, borderRadius:10}}>
+            {(['dia','semana','mes'] as const).map(p => (
+              <button key={p} onClick={()=>setPeriodo(p)}
+                style={{padding:'6px 14px', borderRadius:7, fontSize:11, fontWeight:700, cursor:'pointer',
+                  background: periodo===p ? S.gold : 'transparent',
+                  color: periodo===p ? '#000' : S.t2,
+                  border:'none', textTransform:'uppercase', letterSpacing:'.05em'}}>
+                {p === 'dia' ? 'Hoy' : p === 'semana' ? '7 días' : 'Este mes'}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {data.loading ? (
+          <div style={{textAlign:'center',padding:60,color:S.t3}}>Calculando P&G…</div>
+        ) : (
+          <div style={{background:S.bg2, border:`1px solid ${S.border}`, borderRadius:12, overflow:'hidden'}}>
+            {/* Header */}
+            <div style={{padding:'10px 18px', background:S.bg3, fontSize:10, fontWeight:700, color:S.t3, textTransform:'uppercase', letterSpacing:'.08em', display:'flex', justifyContent:'space-between'}}>
+              <span>Línea P&G</span>
+              <span>Valor</span>
+            </div>
+            {lineas.map((l, i) => {
+              const esCero = l.valor === 0;
+              const negativo = l.valor < 0;
+              return (
+                <div key={i} style={{
+                  padding: l.esTotal ? '14px 18px' : '8px 18px',
+                  background: l.esTotal ? `${S.gold}10` : (i % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.015)'),
+                  borderTop: l.esTotal ? `1px solid ${S.gold}40` : 'none',
+                  borderBottom: l.esTotal ? `1px solid ${S.gold}40` : `1px solid ${S.border}`,
+                  display:'flex', justifyContent:'space-between', alignItems:'center',
+                }}>
+                  <div>
+                    <div style={{fontSize: l.esTotal ? 13 : 12, fontWeight: l.esTotal ? 900 : 500,
+                      color: l.esTotal ? S.gold : S.t1,
+                      paddingLeft: l.sub && !l.esTotal ? 16 : 0}}>
+                      {l.label}
+                    </div>
+                    {l.sub && !l.esTotal && <div style={{fontSize:9, color:S.t3, paddingLeft:16}}>{l.sub}</div>}
+                  </div>
+                  <div style={{fontFamily:"'Syne',sans-serif", fontSize: l.esTotal ? 14 : 12, fontWeight:900,
+                    color: l.esTotal ? (l.valor >= 0 ? S.green : S.red)
+                         : esCero ? S.t3
+                         : negativo ? S.red : S.t1}}>
+                    {fmt(Math.abs(l.valor))}{negativo ? ' ' : ''}
+                  </div>
+                </div>
+              );
+            })}
+            {/* Margen */}
+            <div style={{padding:'14px 18px', background:`${margenPct>=0?S.green:S.red}10`, display:'flex', justifyContent:'space-between'}}>
+              <span style={{fontSize:11, color:S.t3, textTransform:'uppercase', letterSpacing:'.06em'}}>Margen neto</span>
+              <span style={{fontSize:14, fontWeight:900, color: margenPct >= 0 ? S.green : S.red}}>
+                {margenPct.toFixed(1)}%
+              </span>
+            </div>
+          </div>
+        )}
+
+        <div style={{marginTop:14, padding:'10px 14px', background:'rgba(68,138,255,0.07)', border:'1px solid rgba(68,138,255,0.25)', borderRadius:10, fontSize:11, color:S.t2}}>
+          <strong style={{color:S.blue}}>ℹ Cómo se construye:</strong> ventas brutas vienen de <code>cobros_trazabilidad</code>; costos y gastos vienen de <code>egresos</code> agrupados por <code>subgrupo_pyg</code>. Propinas, impuestos recaudados, anticipos, abonos a capital y CAPEX <strong>NO</strong> entran al P&G (van a Balance). Egresos pendientes de aprobación tampoco se incluyen.
+        </div>
       </div>
     </div>
   );
