@@ -194,7 +194,7 @@ export default function ReserveModule() {
 const cancelarOhYeah = async (id:string, guestName:string) => {
   await supabase.from('ohyeah_reservas').update({ status: 'cancelled' }).eq('id', id);
   await supabase.from('nexum_notificaciones').insert({
-    restaurante_id: 6, tipo: 'reserva_cancelada',
+    restaurante_id: restauranteIdActivo, tipo: 'reserva_cancelada',
     titulo: `❌ Reserva cancelada — ${guestName}`,
     mensaje: `La reserva de ${guestName} fue cancelada desde NEXUM`,
     prioridad: 'normal', leida: false,
@@ -1327,7 +1327,7 @@ function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesa
 
   const agregarMesa = async () => {
     const newNum = Math.max(...(plantaDB.map((m:any)=>m.num)||[0]),0)+1;
-    const newMesa = {restaurante_id:6,mesa_key:`X${newNum}`,num:newNum,zona:'Salón',shape:'round',capacidad:4,x:45,y:45,w:10,h:10,activa:true};
+    const newMesa = {restaurante_id: restauranteIdActivo,mesa_key:`X${newNum}`,num:newNum,zona:'Salón',shape:'round',capacidad:4,x:45,y:45,w:10,h:10,activa:true};
     const {data} = await supabase.from('planta_mesas').insert(newMesa).select().single();
     if (data) setPlantaDB((p:any)=>[...p,data]);
     show(`✓ Mesa ${newNum} agregada`);

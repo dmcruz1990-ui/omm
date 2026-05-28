@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase.ts';
 import { Table, RitualTask } from '../types.ts';
 import { BellRing, Settings, MonitorPlay, MessageSquare, Sparkles, Receipt, X, ShoppingCart, Lock, Zap, BarChart3, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { useRestaurant } from '../contexts/RestaurantContext';
 
 // ── Cerebro POS: persistencia de las 15 mesas ────────────────────────
 // Conserva pedidos (enviados + pendientes), cliente y notas por mesa
@@ -77,12 +78,14 @@ interface POSModal {
   content: React.ReactNode;
 }
 
-const categorias = ['Compartir','Robata','Wok','Makis','Sashimis','Nigiris','Geishas','Temakis','Postres','Cocteles','Sin Alcohol','Jugos','Café','Cervezas','Sakes'];
+// Fallback OMM si BD no responde — el POS carga la carta dinámica
+// desde menu_platos según el restaurante activo (ver useEffect cargarCarta).
+const CATEGORIAS_OMM_FALLBACK = ['Compartir','Robata','Wok','Makis','Sashimis','Nigiris','Geishas','Temakis','Postres','Cocteles','Sin Alcohol','Jugos','Café','Cervezas','Sakes'];
 
 // Términos de cocción disponibles
 const TERMINOS_COCCION = ['3/4', 'Término Medio', 'Bien Cocido', 'Poco Cocido', 'Azul'];
 
-const productos: Record<string, any[]> = {
+const PRODUCTOS_OMM_FALLBACK: Record<string, any[]> = {
   Compartir: [
     { nombre:'Burosu Shitake', precio:'$39.900', emoji:'🍜', badge:'recomendado' },
     { nombre:'Otosan de Kani x2', precio:'$33.600', emoji:'🦀', badge:'recomendado' },
@@ -267,10 +270,13 @@ function getBadgeLabel(b: string): string {
 }
 
 // ── Clasificador comida vs bebida usando el menú real ───────────
-const CATEGORIAS_BEBIDA = ['Cocteles','Sin Alcohol','Jugos','Café','Cervezas','Sakes'];
+// Cubre categorías de OMM y Gallo Colorado.
+const CATEGORIAS_BEBIDA = ['Cocteles','Sin Alcohol','Jugos','Café','Cervezas','Sakes',
+  'Cocteles de Autor','Margaritas de Autor','Mezcalería','Micheladas','Jarras','Aguas Frescas',
+  'Tequila y Mezcal','Blend & Bourbon','Vodka','Aguardiente','Gin','Single Malt','Ron','Otros Licores'];
 const _ITEM_INDEX: Record<string, 'comida'|'bebida'> = (() => {
   const idx: Record<string, 'comida'|'bebida'> = {};
-  Object.entries(productos).forEach(([cat, items]) => {
+  Object.entries(PRODUCTOS_OMM_FALLBACK).forEach(([cat, items]) => {
     const tipo: 'comida'|'bebida' = CATEGORIAS_BEBIDA.includes(cat) ? 'bebida' : 'comida';
     (items as any[]).forEach(p => { idx[p.nombre.toLowerCase()] = tipo; });
   });
@@ -280,7 +286,9 @@ const clasificarItem = (nombre: string): 'comida'|'bebida' => {
   const k = nombre.toLowerCase();
   if (_ITEM_INDEX[k]) return _ITEM_INDEX[k];
   // Fallback heurístico cuando el plato no está en el menú base
-  const bebidaHints = ['cóctel','coctel','vino','copa','sake','cerveza','heineken','corona','stella','club colombia','café','espresso','americano','capuccino','latte','té ','limonada','jugo','agua','gin','whisky','old fashion','infinito','samhain','mojito','yin peng','moscow mule','flor de sakura','raito','haku'];
+  const bebidaHints = ['cóctel','coctel','vino','copa','sake','cerveza','heineken','corona','stella','club colombia','café','espresso','americano','capuccino','latte','té ','limonada','jugo','agua','gin','whisky','old fashion','infinito','samhain','mojito','yin peng','moscow mule','flor de sakura','raito','haku',
+    // Gallo Colorado: cocteles, tequila, mezcal, ron, etc.
+    'tequila','mezcal','margarita','michelada','jarra','ron','vodka','aguardiente','jagermeister','baileys','frangelico','licor','amaretto','limoncello','jimador','patrón','jw ','dewars','buchanans','jack daniels','grey goose','skyy','bacardi','santa teresa','macallan','tanqueray','bombay','hendricks','paloma','pitaya','hibiscus','gulupa','penicilina','chipote','cántaro','cactus','gallo','agua de jamaica','agua de tamarindo','agua de mango'];
   return bebidaHints.some(h => k.includes(h)) ? 'bebida' : 'comida';
 };
 
@@ -811,7 +819,47 @@ const PremioPicker: React.FC<{ onPick: (juego:'ruleta'|'cartas')=>void; onSkip: 
 const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisionAI }) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { profile } = useAuth();
+  const { activeId: restauranteId, activeRestaurant } = useRestaurant();
   const isGerencia = ['admin','gerencia','desarrollo'].includes(profile?.role || '');
+
+  // ── Carta dinámica multi-restaurante: se carga desde menu_platos.
+  // OMM (id 6) cae al fallback hardcoded si la BD no tiene los items.
+  // Gallo (id 23) y futuros restaurantes leen 100% de BD.
+  const [productos, setProductos] = useState<Record<string, any[]>>(
+    restauranteId === 6 ? PRODUCTOS_OMM_FALLBACK : {}
+  );
+  const categorias = React.useMemo(() => Object.keys(productos), [productos]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data } = await supabase.from('menu_platos')
+        .select('nombre,descripcion,categoria,estacion,emoji,precio_venta,disponible,featured')
+        .eq('restaurante_id', restauranteId).eq('activo', true).eq('disponible', true)
+        .order('categoria').order('nombre');
+      if (!alive) return;
+      if (!data || data.length === 0) {
+        // BD vacía → fallback (solo aplica a OMM)
+        setProductos(restauranteId === 6 ? PRODUCTOS_OMM_FALLBACK : {});
+        return;
+      }
+      const grouped: Record<string, any[]> = {};
+      data.forEach((p: any) => {
+        const cat = p.categoria || 'Otros';
+        if (!grouped[cat]) grouped[cat] = [];
+        grouped[cat].push({
+          nombre: p.nombre,
+          precio: `$${Number(p.precio_venta || 0).toLocaleString('es-CO')}`,
+          emoji: p.emoji || '🍽️',
+          badge: p.featured ? 'gold' : 'recomendado',
+          descripcion: p.descripcion,
+          estacion: p.estacion,
+          categoria: cat,
+        });
+      });
+      setProductos(grouped);
+    })();
+    return () => { alive = false; };
+  }, [restauranteId]);
   // Identidad única del mesero — debe coincidir con lo que el Maître asigna
   // (profiles.nombre_completo, o full_name si el primero está vacío).
   const miNombre = profile?.nombre_completo || profile?.full_name || 'Mesero';
@@ -1095,7 +1143,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         setCuentasCobrar(ords?.length||0);
         setTicketDia((prev:any) => ({...prev, pendientes: ords?.length||0}));
         // Notificaciones no leídas
-        const { data: nf } = await supabase.from('nexum_notificaciones').select('*').eq('leida',false).eq('restaurante_id',6).order('created_at',{ascending:false}).limit(20);
+        const { data: nf } = await supabase.from('nexum_notificaciones').select('*').eq('leida',false).eq('restaurante_id', restauranteId).order('created_at',{ascending:false}).limit(20);
         if (nf) { setNotifs(nf); setNotifsBadge(nf.length); }
         // Tips de venta
         const { data: mi } = await supabase.from('menu_items').select('id,name,emoji,category,precio_venta,stock_actual,alerta_stock,disponible').eq('disponible',true).order('stock_actual',{ascending:false}).limit(6);
@@ -1186,7 +1234,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   useEffect(() => {
     const fetchAlertas = async () => {
       const { data } = await supabase.from('flow_alertas')
-        .select('*').eq('leida', false).eq('restaurante_id', 6)
+        .select('*').eq('leida', false).eq('restaurante_id', restauranteId)
         .order('created_at', { ascending: false });
       if (data && data.length > 0) {
         const prevLen = flowAlertas.length;
@@ -1268,7 +1316,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     // Platos del día desde Supabase (actualizados desde Flow)
     const fetchPlatosDia = async () => {
       const { data } = await supabase.from('platos_dia')
-        .select('*').eq('restaurante_id',6).eq('activo',true)
+        .select('*').eq('restaurante_id', restauranteId).eq('activo',true)
         .eq('fecha', new Date().toISOString().split('T')[0])
         .order('created_at',{ascending:false});
       if (data) setPlatosDia(data);
@@ -1282,7 +1330,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       }).subscribe();
 
     // Meseros para traspaso
-    supabase.from('staff_nexum').select('*').eq('restaurante_id',6).eq('activo',true).eq('rol','mesero')
+    supabase.from('staff_nexum').select('*').eq('restaurante_id', restauranteId).eq('activo',true).eq('rol','mesero')
       .then(({data})=>{ if(data) setMeserosTodas(data); });
 
     const fetchReservasOhYeah = async () => {
@@ -1321,7 +1369,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // ── Historial de facturas del mesero ──────────────────────────────────
   const fetchHistorial = async () => {
     const { data } = await supabase.from('facturacion')
-      .select('*').eq('restaurante_id', 6)
+      .select('*').eq('restaurante_id', restauranteId)
       .order('cerrada_en', { ascending: false }).limit(50);
     if (data) setHistorialPedidos(data);
   };
@@ -1349,7 +1397,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         const dir= (window as any).__facEl_facElDir     || '';
         if (cc) {
           await supabase.from('facturas_electronicas').insert({
-            restaurante_id:6, mesa_num:mesaCliente?.num??0,
+            restaurante_id: restauranteId, mesa_num:mesaCliente?.num??0,
             nombre:n, correo:em, cedula_nit:cc, telefono:tel, direccion:dir,
             total:Math.round(totalCliente),
             estado:'pendiente',
@@ -1372,7 +1420,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         // 1. Registrar al mesero como participante principal de la factura
         await supabase.from('ticket_participants').insert({
           factura_id: facturaId,
-          restaurante_id: 6,
+          restaurante_id: restauranteId,
           empleado_nombre: meseroNombre,
           tag_code: 'MESA_OWNER',
           rol_en_factura: 'MESA_OWNER',
@@ -1396,7 +1444,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
         // 3. Mantener compatibilidad con tabla propinas legacy
         await supabase.from('propinas').insert({
-          restaurante_id: 6,
+          restaurante_id: restauranteId,
           mesa_num:       mesaCliente?.num ?? 0,
           mesero_nombre:  meseroNombre,
           monto_cuenta:   Math.round(totalCliente),
@@ -1412,7 +1460,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       // Guardar en facturacion — no debe bloquear el cierre de mesa si falla
       try {
         await supabase.from('facturacion').insert({
-          restaurante_id: 6,
+          restaurante_id: restauranteId,
           mesa_num: mesaCliente?.num ?? 0,
           mesero: meseroNombre,
           items: itemsData,
@@ -1519,7 +1567,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     if (!feedbackMesa.trim() || !mesaCliente) return;
     try {
       await supabase.from('feedback_servicio').insert({
-        restaurante_id: 6,
+        restaurante_id: restauranteId,
         mesa_num: mesaCliente.num,
         mesero: miNombre,
         tipo: feedbackTipo,
@@ -1548,7 +1596,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
   const fetchTicketDia = async () => {
     try {
-      const { data: cobros } = await supabase.from('cobros_trazabilidad').select('total,propina').eq('restaurante_id',6);
+      const { data: cobros } = await supabase.from('cobros_trazabilidad').select('total,propina').eq('restaurante_id', restauranteId);
       const { data: ordAbiertas } = await supabase.from('orders').select('id,table_id').eq('status','open');
       const { data: ois } = await supabase.from('order_items').select('price_at_time,quantity,order_id').neq('status','cancelled');
       const ventasTotal = cobros?.reduce((a:number,cc:any)=>a+Number(cc.total||0),0)||0;
@@ -1598,26 +1646,41 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     try {
       const meseroActivo = miNombre;
 
-      // Determinar estación por categoría/nombre del plato
+      // Determinar estación por categoría/nombre del plato.
+      // Cubre vocabulario OMM (japonés-latino) + Gallo Colorado (mexicano).
       const inferirEstacion = (nombre: string, cat: string): string => {
         const n = (nombre + ' ' + cat).toUpperCase();
         if (['ROBATA','YAKITORI','BRASA'].some(k => n.includes(k))) return 'robata';
-        if (['COCTEL','GIN','RUM','WHISKY','VODKA','SAKE','CERVEZA','JUGO','LIMONADA','CAFÉ','LATTE','AMERICANO'].some(k => n.includes(k))) return 'bar';
+        if (['COCTEL','CÓCTEL','GIN','RUM','WHISKY','VODKA','SAKE','CERVEZA','JUGO','LIMONADA','CAFÉ','LATTE','AMERICANO',
+             // Gallo:
+             'TEQUILA','MEZCAL','MARGARITA','MICHELADA','JARRA','MEZCALERÍA','PALOMA','CACTUS','AGUARDIENTE','RON ','BACARDI',
+             'JAGERMEISTER','BAILEYS','FRANGELICO','AMARETTO','LIMONCELLO','JIMADOR','PATRÓN','MACALLAN','BUCHANANS','TANQUERAY','BOMBAY','HENDRICKS','SKYY','GREY GOOSE','PARCE','SANTA TERESA','DEWARS','JW ','JACK DANIELS','LICOR','AGUA DE'].some(k => n.includes(k))) return 'bar';
         if (['VINO','COPA','CAVA','CHAMPAGNE','PROSECCO'].some(k => n.includes(k))) return 'cava';
-        if (['POSTRE','CHEESECAKE','MOCHI','HELADO','YOROKOBI','KYOTO','PIE'].some(k => n.includes(k))) return 'postres';
-        if (['MAKI','SUSHI','NIGIRI','SASHIMI','TEMAKI','TIRADITO','CEVICHE','TATAKI','CARPACCIO'].some(k => n.includes(k))) return 'cocina_fria';
+        if (['POSTRE','CHEESECAKE','MOCHI','HELADO','YOROKOBI','KYOTO','PIE','TARTA','FLAN','QUESADILLA DULCE','CHURRO'].some(k => n.includes(k))) return 'postres';
+        if (['MAKI','SUSHI','NIGIRI','SASHIMI','TEMAKI','TIRADITO','CEVICHE','TATAKI','CARPACCIO',
+             // Gallo frío:
+             'GUACAMOLE','TOSTA','AGUACHILE','ENSALADA','DEL CAMPO'].some(k => n.includes(k))) return 'cocina_fria';
         return 'cocina_caliente';
       };
 
-      // Cocinero por estación
-      const COCINEROS: Record<string, string> = {
-        cocina_caliente: 'Chef Pablo Gómez',
-        cocina_fria:     'Chef Ricardo Soto',
-        robata:          'Chef María Castro',
-        postres:         'Chef Jorge Suárez',
-        bar:             'Bartender Mateo Díaz',
-        cava:            'Somelier Juan Reyes',
+      // Cocinero por estación (depende del restaurante activo)
+      const COCINEROS_POR_REST: Record<number, Record<string, string>> = {
+        6: {
+          cocina_caliente: 'Chef Pablo Gómez',
+          cocina_fria:     'Chef Ricardo Soto',
+          robata:          'Chef María Castro',
+          postres:         'Chef Jorge Suárez',
+          bar:             'Bartender Mateo Díaz',
+          cava:            'Somelier Juan Reyes',
+        },
+        23: {
+          cocina_caliente: 'Chef Parrillero Gallo',
+          cocina_fria:     'Chef Frío Gallo',
+          postres:         'Chef Pastelería Gallo',
+          bar:             'Bartender Gallo',
+        },
       };
+      const COCINEROS = COCINEROS_POR_REST[restauranteId] || COCINEROS_POR_REST[6];
 
       const estacion = inferirEstacion(nombrePlato, categoria);
       const cocinero = COCINEROS[estacion] || 'Chef Pablo Gómez';
@@ -1638,7 +1701,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       } else {
         const { data: nuevaOrden } = await supabase
           .from('orders')
-          .insert({ table_id: mesaNum, status: 'open', mesero_nombre: meseroActivo, restaurante_id: 6 })
+          .insert({ table_id: mesaNum, status: 'open', mesero_nombre: meseroActivo, restaurante_id: restauranteId })
           .select('id')
           .single();
         if (!nuevaOrden) return;
@@ -1667,7 +1730,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         mesero:          meseroActivo,
         cocinero:        cocinero,
         price_at_time:   precioFinal,
-        restaurante_id:  6,
+        restaurante_id: restauranteId,
         created_at:      new Date().toISOString(),
         updated_at:      new Date().toISOString(),
       });
@@ -2435,7 +2498,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   useEffect(() => {
     const fetchPend = async () => {
       const { data } = await supabase.from('cobros_pendientes')
-        .select('*').eq('restaurante_id',6).eq('estado','pendiente')
+        .select('*').eq('restaurante_id', restauranteId).eq('estado','pendiente')
         .order('solicitado_at',{ascending:false});
       setCobrosPendientes(data || []);
     };
@@ -2454,9 +2517,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     if (items.length === 0 && !mesaSubtotal) { showToast('⚠️ La cuenta está vacía'); return; }
     const cli = clientesPorMesa[num as number];
     try {
-      await supabase.from('cobros_pendientes').update({ estado:'cancelado' }).eq('restaurante_id',6).eq('mesa_num',num).eq('estado','pendiente');
+      await supabase.from('cobros_pendientes').update({ estado:'cancelado' }).eq('restaurante_id', restauranteId).eq('mesa_num',num).eq('estado','pendiente');
       await supabase.from('cobros_pendientes').insert({
-        restaurante_id:6, mesa_num:num, mesa_name:String((selectedTable as any)?.name ?? num),
+        restaurante_id: restauranteId, mesa_num:num, mesa_name:String((selectedTable as any)?.name ?? num),
         cliente_nombre: (selectedTable as any)?.cliente_nombre || cli?.nombreCompleto || selectedTable?.cliente || '',
         cliente_telefono: (selectedTable as any)?.cliente_telefono || cli?.telefono || '',
         total: mesaSubtotal + Math.round(mesaSubtotal*0.08),
@@ -2470,7 +2533,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // Caja cobra una cuenta pendiente desde otra tablet.
   const cobrarPendiente = async (p:any, metodo:string) => {
     try {
-      await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:p.mesa_num, mesero:miNombre, total:p.total, propina:p.propina||0, propina_pct:0, metodo_pago:metodo, platos_servidos:(p.items||[]).length, factura_tipo:'caja', factura_email:null }).then(()=>{}).catch(()=>{});
+      await supabase.from('cobros_trazabilidad').insert({ restaurante_id: restauranteId, mesa_numero:p.mesa_num, mesero:miNombre, total:p.total, propina:p.propina||0, propina_pct:0, metodo_pago:metodo, platos_servidos:(p.items||[]).length, factura_tipo:'caja', factura_email:null }).then(()=>{}).catch(()=>{});
       await supabase.from('cobros_pendientes').update({ estado:'cobrado', cobrado_por:miNombre, metodo_pago:metodo, cobrado_at:new Date().toISOString() }).eq('id', p.id);
       const mesaName = String(p.mesa_name ?? p.mesa_num ?? '');
       if (mesaName) { try { await supabase.rpc('cerrar_mesa', { p_mesa_name: mesaName }); } catch {} }
@@ -2599,7 +2662,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     try {
       const [{ data: rv }, { data: oy }] = await Promise.all([
         supabase.from('reservations').select('cliente_email,cliente_nombre,cliente_telefono')
-          .eq('restaurante_id',6).eq('fecha',hoy).eq('mesa_num',mesaNum)
+          .eq('restaurante_id', restauranteId).eq('fecha',hoy).eq('mesa_num',mesaNum)
           .in('estado',['sentada','confirmada']).limit(1),
         supabase.from('ohyeah_reservas').select('guest_email,guest_name,guest_phone')
           .eq('date',hoy).in('status',['seated','sentada','confirmed','confirmada'])
@@ -2918,7 +2981,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 <button onClick={async()=>{
                   if(itemsEliminados.length&&motivoEdicion){
                     await supabase.from('cuenta_ediciones').insert({
-                      restaurante_id:6, mesa_numero:mesaCliente.num, tipo:'eliminar_plato',
+                      restaurante_id: restauranteId, mesa_numero:mesaCliente.num, tipo:'eliminar_plato',
                       plato_nombre:itemsEliminados.map(idx=>itemsCliente[idx]?.nombre).filter(Boolean).join(', '), motivo:motivoEdicion,
                       autorizado_por:'Maître', mesero:miNombre, estado:'aprobado', notificado_caja:true,
                     });
@@ -3343,7 +3406,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
           {/* Datafono con mesero */}
           <button onClick={async()=>{
-              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:miNombre, total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Datafono', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id: restauranteId, mesa_numero:mesaCliente.num, mesero:miNombre, total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Datafono', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
               await guardarFactura('Datafono');
               setClientePaso('encuesta');
             }}
@@ -3358,7 +3421,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
           {/* Efectivo */}
           <button onClick={async()=>{
-              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:miNombre, total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Efectivo', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null });
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id: restauranteId, mesa_numero:mesaCliente.num, mesero:miNombre, total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Efectivo', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null });
               await guardarFactura('Efectivo');
               setClientePaso('encuesta');
             }} style={{ width: '100%', padding: '18px 20px', borderRadius: 16, border: `1px solid ${S.border}`, background: '#fff', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
@@ -3494,7 +3557,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           </div>
 
           <button onClick={async()=>{
-              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:miNombre, total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Bono', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id: restauranteId, mesa_numero:mesaCliente.num, mesero:miNombre, total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Bono', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
               await guardarFactura('Bono');
               setClientePaso('encuesta');
             }}
@@ -3544,7 +3607,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           </p>
 
           <button onClick={async()=>{
-              await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:mesaCliente.num, mesero:miNombre, total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Tarjeta', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
+              await supabase.from('cobros_trazabilidad').insert({ restaurante_id: restauranteId, mesa_numero:mesaCliente.num, mesero:miNombre, total:totalCliente, propina:propinaCliente, propina_pct:clientePropina, metodo_pago:'Tarjeta', platos_servidos:itemsCliente.length, factura_tipo:facturaTipo, factura_email:facturaCorreo||null }).then(()=>{}).catch(()=>{});
               await guardarFactura('Tarjeta');
               setClientePaso('encuesta');
             }}
@@ -3650,7 +3713,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             else detalles.push(...vals);
           });
           await supabase.from('xcare_encuestas').insert({
-            restaurante_id:6, mesa_numero:mesaCliente?.num, nombre_cliente:mesaCliente?.cliente||null,
+            restaurante_id: restauranteId, mesa_numero:mesaCliente?.num, nombre_cliente:mesaCliente?.cliente||null,
             estrellas:clienteRating,
             tags_positivos:isPositive?xcareTags:null,
             tags_negativos:!isPositive?[...xcareTags,...detalles]:null,
@@ -3661,7 +3724,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           }).then(()=>{}).catch(()=>{});
           if (!isPositive) {
             await supabase.from('xcare_alertas').insert({
-              restaurante_id:6, mesa_numero:mesaCliente?.num, tipo:'experiencia_negativa',
+              restaurante_id: restauranteId, mesa_numero:mesaCliente?.num, tipo:'experiencia_negativa',
               descripcion:`${mesaCliente?.cliente||'Cliente'} — ${CARITAS[clienteRating-1]?.label||''} — ${xcareTags.join(', ')||'Sin categoría'}${detalles.length?` · ${detalles.join(', ')}`:''}${items.length?` · ${items.join(', ')}`:''}${xcareComentario?` — "${xcareComentario}"`:''}`,
               activa:true,
             }).then(()=>{}).catch(()=>{});
@@ -4117,9 +4180,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         const total = neto + iva;
         const fmt = (n: number) => new Intl.NumberFormat('es-CO').format(n);
         const cobrar = async () => {
-          await supabase.from('cobros_trazabilidad').insert({ restaurante_id:6, mesa_numero:selectedTable?.num, mesero:profile?.nombre_completo||'Gerencia', total, propina:0, propina_pct:0, metodo_pago:gerMetodo, platos_servidos:items.length, factura_tipo:'gerencia', factura_email:null }).then(()=>{}).catch(()=>{});
+          await supabase.from('cobros_trazabilidad').insert({ restaurante_id: restauranteId, mesa_numero:selectedTable?.num, mesero:profile?.nombre_completo||'Gerencia', total, propina:0, propina_pct:0, metodo_pago:gerMetodo, platos_servidos:items.length, factura_tipo:'gerencia', factura_email:null }).then(()=>{}).catch(()=>{});
           if (gerDescPct>0 || gerBono) {
-            await supabase.from('cuenta_ediciones').insert({ restaurante_id:6, mesa_numero:selectedTable?.num, tipo:'descuento_gerencia', plato_nombre:`Descuento ${gerDescPct}%${gerBono?` + bono ${gerBono.codigo}`:''}`, motivo:gerDescMotivo||'Cobro gerencia', autorizado_por:profile?.nombre_completo||'Gerencia', mesero:profile?.nombre_completo||'Gerencia', estado:'aprobado', notificado_caja:true }).then(()=>{}).catch(()=>{});
+            await supabase.from('cuenta_ediciones').insert({ restaurante_id: restauranteId, mesa_numero:selectedTable?.num, tipo:'descuento_gerencia', plato_nombre:`Descuento ${gerDescPct}%${gerBono?` + bono ${gerBono.codigo}`:''}`, motivo:gerDescMotivo||'Cobro gerencia', autorizado_por:profile?.nombre_completo||'Gerencia', mesero:profile?.nombre_completo||'Gerencia', estado:'aprobado', notificado_caja:true }).then(()=>{}).catch(()=>{});
           }
           if (gerBono?.id) { await supabase.from('bonos_regalo').update({ usado:true, usado_at:new Date().toISOString(), usado_por:'gerencia' }).eq('id', gerBono.id).then(()=>{}).catch(()=>{}); }
           const mesaName = String((selectedTable as any)?.name ?? selectedTable?.num ?? '');
@@ -5588,7 +5651,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                       const msg = chatMessage.trim();
                       setChatHistory(prev => [...prev, { sender: chatRol, msg, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
                       setChatMessage(''); playAlert();
-                      supabase.from('nexum_notificaciones').insert({ restaurante_id:6, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, prioridad:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k))?'alta':'normal', leida:false }).then(()=>{});
+                      supabase.from('nexum_notificaciones').insert({ restaurante_id: restauranteId, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, prioridad:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k))?'alta':'normal', leida:false }).then(()=>{});
                     }
                   }}
                   placeholder={`Mensaje como ${chatRol}...`}
@@ -5598,7 +5661,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     const msg = chatMessage.trim();
                     setChatHistory(prev => [...prev, { sender: chatRol, msg, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
                     setChatMessage(''); playAlert();
-                    supabase.from('nexum_notificaciones').insert({ restaurante_id:6, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, prioridad:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k))?'alta':'normal', leida:false }).then(()=>{});
+                    supabase.from('nexum_notificaciones').insert({ restaurante_id: restauranteId, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, prioridad:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k))?'alta':'normal', leida:false }).then(()=>{});
                   }}}
                   className="w-9 h-9 rounded-lg bg-[#4a8fd4] text-white flex items-center justify-center hover:bg-[#3d7fc4] transition-all active:scale-95">
                   <MessageSquare size={14} />

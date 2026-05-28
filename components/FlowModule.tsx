@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase.ts';
+import { useRestaurant } from '../contexts/RestaurantContext';
 
 // ── ESTACIONES KDS ────────────────────────────────────────────────────
 const ESTACIONES: Record<string,{color:string;emoji:string;objetivo:number}> = {
@@ -50,6 +51,7 @@ const fmtHora = (iso:string) => new Date(iso).toLocaleTimeString('es-CO',{hour:'
 
 // ── COMPONENTE PRINCIPAL ───────────────────────────────────────────────
 export default function FlowModule() {
+  const { activeId: restauranteId } = useRestaurant();
   const [items,      setItems]      = useState<FlowItem[]>([]);
   const [diasItems,  setDiasItems]  = useState<FlowItem[]>([]);
   const [loading,    setLoading]    = useState(true);
@@ -71,17 +73,19 @@ export default function FlowModule() {
     const { data } = await supabase
       .from('flow_order_items')
       .select('*')
+      .eq('restaurante_id', restauranteId)
       .in('status', ['pending','preparing','almost','ready'])
       .order('created_at');
     if (data) setItems(data as FlowItem[]);
     setLoading(false);
-  }, []);
+  }, [restauranteId]);
 
   const fetchDia = useCallback(async () => {
     const hoy = new Date().toISOString().split('T')[0];
     const { data } = await supabase
       .from('flow_order_items')
       .select('*')
+      .eq('restaurante_id', restauranteId)
       .gte('created_at', hoy+'T00:00:00')
       .order('created_at', {ascending:false});
     if (data) {
@@ -109,7 +113,7 @@ export default function FlowModule() {
         ).map(([est,v]:any) => ({est, platos:v.platos, avgT:v.count?Math.round(v.tiempo/v.count):0})),
       });
     }
-  }, []);
+  }, [restauranteId]);
 
   const fetchCareMetrics = useCallback(async () => {
     const { data } = await supabase
@@ -202,7 +206,7 @@ export default function FlowModule() {
           ? `⏰ ${getNombre(item)} casi listo — 2 minutos`
           : `✅ ${getNombre(item)} LISTO para entrega`;
         await supabase.from('nexum_notificaciones').insert({
-          restaurante_id:6, tipo:status==='ready'?'plato_casi_listo':'plato_listo',
+          restaurante_id: restauranteId, tipo:status==='ready'?'plato_casi_listo':'plato_listo',
           titulo:msg,
           mensaje:`Mesa ${item.table_id} · ${fmtT(item.tiempo_inicio?tsec(item.tiempo_inicio):0)} producción`,
           mesa_numero:item.table_id, item_nombre:getNombre(item),
@@ -210,7 +214,7 @@ export default function FlowModule() {
         }).then(()=>{}).catch(()=>{});
         if (status==='served') {
           await supabase.from('flow_alertas').insert({
-            restaurante_id:6, mesa_num:item.table_id, plato:getNombre(item),
+            restaurante_id: restauranteId, mesa_num:item.table_id, plato:getNombre(item),
             mesero:item.mesero||null, cocinero:item.cocinero||null,
             estacion:getStation(item), leida:false,
           }).then(()=>{}).catch(()=>{});
@@ -786,7 +790,7 @@ function PlatosDia() {
 
   const fetch = async () => {
     const {data} = await supabase.from('platos_dia').select('*')
-      .eq('restaurante_id',6).eq('activo',true)
+      .eq('restaurante_id', restauranteId).eq('activo',true)
       .eq('fecha',new Date().toISOString().split('T')[0])
       .order('created_at',{ascending:false});
     if (data) setPlatos(data);
@@ -796,7 +800,7 @@ function PlatosDia() {
   const agregar = async () => {
     if (!form.nombre) return;
     await supabase.from('platos_dia').insert({
-      restaurante_id:6, nombre:form.nombre, emoji:form.emoji,
+      restaurante_id: restauranteId, nombre:form.nombre, emoji:form.emoji,
       precio:form.precio, estacion:form.estacion, rentable:form.rentable,
       disponible:true, fecha:new Date().toISOString().split('T')[0],
     });
