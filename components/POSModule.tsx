@@ -878,34 +878,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     return () => { alive = false; };
   }, [restauranteId]);
 
-  // ── Reset de operación al cambiar de restaurante ──────────────────
-  // Evita que una mesa/pedido de OMM quede "colgando" al cambiar a Gallo
-  // (y viceversa). Solo dispara en cambios, no en el primer render.
-  const prevRestauranteRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (prevRestauranteRef.current === null) {
-      prevRestauranteRef.current = restauranteId;
-      return;
-    }
-    if (prevRestauranteRef.current !== restauranteId) {
-      setOrder([]);
-      setPendingOrder([]);
-      setSelectedTableId(1);
-      setSelectedPlato(null);
-      setAddedCards(new Set());
-      setStockFlow({});
-      setShowOrderPanel(false);
-      prevRestauranteRef.current = restauranteId;
-    }
-  }, [restauranteId]);
-
-  // Cuando se carga una carta nueva, asegurar que currentCat sea válido
-  useEffect(() => {
-    const cats = Object.keys(productos);
-    if (cats.length > 0 && !cats.includes(currentCat)) {
-      setCurrentCat(cats[0]);
-    }
-  }, [productos, currentCat]);
+  // Los useEffect que tocan order/currentCat/stockFlow se declaran más
+  // abajo, después de sus useState correspondientes, para evitar TDZ.
 
   // Identidad única del mesero — debe coincidir con lo que el Maître asigna
   // (profiles.nombre_completo, o full_name si el primero está vacío).
@@ -1109,6 +1083,36 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     return Math.round((done / ritualStepsAll.length) * 100);
   };
   const [addedCards, setAddedCards] = useState<Set<string>>(new Set());
+
+  // ── Reset de operación al cambiar de restaurante ──────────────────
+  // Evita que una mesa/pedido de OMM quede "colgando" al cambiar a Gallo
+  // (y viceversa). Solo dispara en cambios, no en el primer render.
+  const prevRestauranteRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (prevRestauranteRef.current === null) {
+      prevRestauranteRef.current = restauranteId;
+      return;
+    }
+    if (prevRestauranteRef.current !== restauranteId) {
+      setOrder([]);
+      setPendingOrder([]);
+      setSelectedTableId(1);
+      setSelectedPlato(null);
+      setAddedCards(new Set());
+      setStockFlow({});
+      setShowOrderPanel(false);
+      prevRestauranteRef.current = restauranteId;
+    }
+  }, [restauranteId]);
+
+  // Cuando se carga una carta nueva, asegurar que currentCat sea válido
+  useEffect(() => {
+    const cats = Object.keys(productos);
+    if (cats.length > 0 && !cats.includes(currentCat)) {
+      setCurrentCat(cats[0]);
+    }
+  }, [productos, currentCat]);
+
   const [pantallaConfirmacion, setPantallaConfirmacion] = useState<{
     activa: boolean; monto: number; metodo: string; facMsg: string; tableId: number;
   }>({ activa: false, monto: 0, metodo: '', facMsg: '', tableId: 0 });
