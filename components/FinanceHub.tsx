@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../contexts/AuthContext';
 import { useRestaurant } from '../contexts/RestaurantContext';
+import { CATALOGO_CONTABLE, IMPACTO_PG_LABELS, CENTROS_COSTO, buscarConcepto } from '../lib/catalogoContable';
 
 const S = {
   bg:'#08080f', bg2:'#0f0f1a', bg3:'#161624', bg4:'#1e1e2e',
@@ -28,15 +29,8 @@ const CATEGORIAS_EGRESO = [
   { id:'otro',             label:'📋 Otro',            color:S.t2,      desc:'Gastos varios etiquetados' },
 ];
 
-// Conceptos sugeridos por categoría — el responsable elige uno o "Otro" para
-// escribir libre. Evita conceptos como "asdfas" y agrupa para reportes.
-const CONCEPTOS_POR_CATEGORIA: Record<string,string[]> = {
-  propina_efectivo: ['Liquidación turno noche','Liquidación turno medio día','Pago propina sala','Pago propina barra','Pago propina cocina','Adelanto propina','Otro'],
-  compra_menor: ['Aguacates','Limones','Cilantro','Hierbas frescas','Pan','Leche','Huevos','Frutas','Verduras','Hielo','Servilletas','Bolsas','Detergente','Otro'],
-  mantenimiento: ['Reparación nevera','Reparación estufa/plancha','Reparación lavavajillas','Aire acondicionado','Plomería','Electricista','Cambio bombillos','Mantenimiento POS/internet','Fumigación','Otro'],
-  transporte: ['Domicilio mercado','Taxi compra urgente','Mensajería documentos','Combustible','Parqueadero','Otro'],
-  otro: ['Arriendo','Servicios públicos (agua/luz/gas)','Internet/teléfono','Impuestos','Contador','Abogado','Publicidad/marketing','Limpieza profunda','Decoración','Música/SAYCO','Lavandería uniformes','Otro'],
-};
+// El catálogo de conceptos (cuenta contable + centro de costo + impacto P&G)
+// vive en lib/catalogoContable.ts para que pueda crecer sin tocar este módulo.
 
 export default function FinanceHub() {
   const { profile } = useAuth();
@@ -47,8 +41,17 @@ export default function FinanceHub() {
   const [facturasOcr, setFacturasOcr] = useState<any[]>([]);
   const [toast, setToast] = useState('');
   const [loading, setLoading] = useState(false);
-  // Form egresos
-  const [formEgreso, setFormEgreso] = useState({ categoria:'propina_efectivo', concepto:'', conceptoCustom:'', valor:'', responsable:'', notas:'' });
+  // Form egresos: el usuario elige categoría + conceptoId (catálogo controlado).
+  // centroCostoOverride permite cambiar el centro de costo default del concepto
+  // (ej: compra de cocina pero para un evento → cambia a Eventos).
+  const [formEgreso, setFormEgreso] = useState({
+    categoria: 'propina_efectivo',
+    conceptoId: '',
+    centroCostoOverride: '',
+    valor: '',
+    responsable: '',
+    notas: '',
+  });
   const [guardandoEgreso, setGuardandoEgreso] = useState(false);
   // Foto comprobante (factura/recibo)
   const [comprobanteFile, setComprobanteFile] = useState<File|null>(null);
@@ -84,10 +87,11 @@ export default function FinanceHub() {
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  // El "concepto" final que se guarda: si eligió "Otro" usa el custom, si no usa el del dropdown
-  const conceptoFinal = formEgreso.concepto === 'Otro' || formEgreso.concepto === ''
-    ? formEgreso.conceptoCustom.trim()
-    : formEgreso.concepto;
+  // Concepto contable resuelto desde el catálogo + centro de costo final
+  const conceptoSel = formEgreso.conceptoId ? buscarConcepto(formEgreso.categoria, formEgreso.conceptoId) : undefined;
+  const centroCostoFinal = formEgreso.centroCostoOverride || conceptoSel?.centroCosto || '';
+  const requiereNotaObligatoria = !!conceptoSel?.requiereNota;
+  const requiereAprobacion = !!conceptoSel?.requiereAprobacion;
 
   const onSelectComprobante = (file: File | null) => {
     setComprobanteFile(file);
@@ -99,8 +103,12 @@ export default function FinanceHub() {
 
   // ── GUARDAR EGRESO ──────────────────────────────────────────────────────
   const guardarEgreso = async () => {
-    if (!conceptoFinal) { show('⚠️ Concepto requerido (elige uno o escribe en Otro)'); return; }
+    if (!conceptoSel) { show('⚠️ Elige un tipo de egreso del catálogo'); return; }
     if (!formEgreso.valor || isNaN(Number(formEgreso.valor))) { show('⚠️ Valor requerido'); return; }
+    if (requiereNotaObligatoria && !formEgreso.notas.trim()) {
+      show('⚠️ Este concepto requiere una nota explicando el detalle');
+      return;
+    }
     setGuardandoEgreso(true);
     let comprobanteUrl: string | null = null;
     // Subir foto si la hay
@@ -121,7 +129,13 @@ export default function FinanceHub() {
     const { error: insErr } = await supabase.from('egresos').insert({
       restaurante_id: restauranteId,
       categoria: formEgreso.categoria,
-      concepto: conceptoFinal,
+      concepto: conceptoSel.label,
+      concepto_id: conceptoSel.id,
+      cuenta_contable: conceptoSel.cuenta,
+      centro_costo: centroCostoFinal,
+      impacto_pg: conceptoSel.impacto,
+      requiere_aprobacion: requiereAprobacion,
+      aprobado: requiereAprobacion ? null : true,
       valor: Number(formEgreso.valor),
       responsable: formEgreso.responsable || profile?.nombre_completo || 'Staff',
       notas: formEgreso.notas,
@@ -134,8 +148,10 @@ export default function FinanceHub() {
       setGuardandoEgreso(false);
       return;
     }
-    show('✓ Egreso registrado');
-    setFormEgreso({ categoria:'propina_efectivo', concepto:'', conceptoCustom:'', valor:'', responsable:'', notas:'' });
+    show(requiereAprobacion
+      ? '✓ Egreso registrado · queda PENDIENTE de aprobación'
+      : `✓ Egreso registrado → ${conceptoSel.cuenta}`);
+    setFormEgreso({ categoria:'propina_efectivo', conceptoId:'', centroCostoOverride:'', valor:'', responsable:'', notas:'' });
     onSelectComprobante(null);
     setGuardandoEgreso(false);
     fetchData();
@@ -318,19 +334,48 @@ export default function FinanceHub() {
                 </div>
               </div>
               <div style={{marginBottom:12}}>
-                <div style={lbl}>Concepto *</div>
-                <select style={inp} value={formEgreso.concepto} onChange={e=>setFE('concepto',e.target.value)}>
-                  <option value="">— Elige un concepto —</option>
-                  {(CONCEPTOS_POR_CATEGORIA[formEgreso.categoria] || []).map(c => (
-                    <option key={c} value={c}>{c}</option>
+                <div style={lbl}>Tipo de egreso *</div>
+                <select style={inp} value={formEgreso.conceptoId} onChange={e=>setFE('conceptoId',e.target.value)}>
+                  <option value="">— Elige tipo del catálogo —</option>
+                  {(CATALOGO_CONTABLE[formEgreso.categoria] || []).map(c => (
+                    <option key={c.id} value={c.id}>{c.label}{c.requiereAprobacion ? ' · requiere aprobación' : ''}</option>
                   ))}
                 </select>
-                {formEgreso.concepto === 'Otro' && (
-                  <input style={{...inp, marginTop:8}} value={formEgreso.conceptoCustom}
-                    onChange={e=>setFE('conceptoCustom', e.target.value)}
-                    placeholder="Escribe el concepto..." autoFocus/>
+                {/* Chip resumen contable de lo que se está clasificando */}
+                {conceptoSel && (
+                  <div style={{marginTop:8, padding:'8px 10px', borderRadius:8, background:'rgba(255,255,255,0.04)', border:`1px solid ${IMPACTO_PG_LABELS[conceptoSel.impacto].color}30`}}>
+                    <div style={{fontSize:10, color:S.t3, textTransform:'uppercase', letterSpacing:'.06em', marginBottom:4}}>Clasificación contable</div>
+                    <div style={{display:'flex', flexWrap:'wrap', gap:6, alignItems:'center'}}>
+                      <span style={{fontSize:11, fontWeight:700, color:S.t1}}>{conceptoSel.cuenta}</span>
+                      <span style={{fontSize:10, padding:'2px 8px', borderRadius:6, background:`${IMPACTO_PG_LABELS[conceptoSel.impacto].color}20`, color:IMPACTO_PG_LABELS[conceptoSel.impacto].color, fontWeight:700}}>
+                        {IMPACTO_PG_LABELS[conceptoSel.impacto].label}
+                      </span>
+                      <span style={{fontSize:10, padding:'2px 8px', borderRadius:6, background:'rgba(255,255,255,0.06)', color:S.t2, fontWeight:600}}>
+                        📍 {centroCostoFinal}
+                      </span>
+                    </div>
+                    {conceptoSel.requiereAprobacion && (
+                      <div style={{marginTop:6, fontSize:10, color:S.gold}}>
+                        ⚠ Este egreso quedará PENDIENTE hasta que un gerente lo apruebe
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
+
+              {/* Centro de costo override — solo visible si ya eligió concepto */}
+              {conceptoSel && (
+                <div style={{marginBottom:12}}>
+                  <div style={lbl}>Centro de costo</div>
+                  <select style={inp} value={formEgreso.centroCostoOverride}
+                    onChange={e=>setFE('centroCostoOverride', e.target.value)}>
+                    <option value="">Default ({conceptoSel.centroCosto})</option>
+                    {CENTROS_COSTO.filter(cc => cc !== conceptoSel.centroCosto).map(cc => (
+                      <option key={cc} value={cc}>Cambiar a {cc}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div style={{marginBottom:12}}>
                 <div style={lbl}>Valor (COP) *</div>
                 <input style={inp} type="number" value={formEgreso.valor} onChange={e=>setFE('valor',e.target.value)} placeholder="0"/>
@@ -362,8 +407,19 @@ export default function FinanceHub() {
                 )}
               </div>
               <div style={{marginBottom:16}}>
-                <div style={lbl}>Notas (opcional)</div>
-                <textarea style={{...inp,height:60,resize:'vertical'}} value={formEgreso.notas} onChange={e=>setFE('notas',e.target.value)} placeholder="Observaciones adicionales..."/>
+                <div style={lbl}>
+                  Notas {requiereNotaObligatoria ? <span style={{color:S.red}}>*</span> : '(opcional)'}
+                </div>
+                <textarea style={{
+                  ...inp, height:60, resize:'vertical',
+                  border: requiereNotaObligatoria && !formEgreso.notas.trim()
+                    ? `1px solid ${S.red}50` : inp.border,
+                }}
+                  value={formEgreso.notas}
+                  onChange={e=>setFE('notas',e.target.value)}
+                  placeholder={requiereNotaObligatoria
+                    ? 'Obligatorio: explica el detalle de este egreso...'
+                    : 'Observaciones adicionales...'}/>
               </div>
               <button onClick={guardarEgreso} disabled={guardandoEgreso}
                 style={{width:'100%',padding:13,borderRadius:12,border:'none',background:guardandoEgreso?S.bg3:`linear-gradient(135deg,${S.red},#c02020)`,color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>
@@ -381,14 +437,27 @@ export default function FinanceHub() {
               <div style={{display:'flex',flexDirection:'column',gap:8}}>
                 {egresos.map(e=>{
                   const cat = CATEGORIAS_EGRESO.find(c=>c.id===e.categoria)||CATEGORIAS_EGRESO[4];
+                  const impactoInfo = e.impacto_pg ? IMPACTO_PG_LABELS[e.impacto_pg as keyof typeof IMPACTO_PG_LABELS] : null;
+                  const pendiente = e.requiere_aprobacion && e.aprobado === null;
                   return (
-                    <div key={e.id} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+                    <div key={e.id} style={{background:S.bg2,border:`1px solid ${pendiente ? S.gold+'50' : S.border}`,borderRadius:12,padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
                       <div style={{width:36,height:36,borderRadius:10,background:`${cat.color}15`,border:`1px solid ${cat.color}30`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>
                         {cat.label.split(' ')[0]}
                       </div>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:13,fontWeight:700}}>{e.concepto}</div>
-                        <div style={{fontSize:10,color:S.t3}}>{e.responsable} · {e.hora}</div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700,display:'flex',alignItems:'center',gap:6,flexWrap:'wrap'}}>
+                          {e.concepto}
+                          {pendiente && <span style={{fontSize:9,padding:'1px 6px',borderRadius:5,background:`${S.gold}25`,color:S.gold,fontWeight:800}}>PENDIENTE APROBAR</span>}
+                          {e.factura_foto && <a href={e.factura_foto} target="_blank" rel="noopener" title="Ver comprobante" style={{fontSize:11,color:S.cyan,textDecoration:'none'}}>📎</a>}
+                        </div>
+                        {(e.cuenta_contable || e.centro_costo || impactoInfo) && (
+                          <div style={{fontSize:9,color:S.t2,marginTop:2,display:'flex',gap:8,flexWrap:'wrap'}}>
+                            {e.cuenta_contable && <span>📒 {e.cuenta_contable}</span>}
+                            {e.centro_costo && <span>📍 {e.centro_costo}</span>}
+                            {impactoInfo && <span style={{color:impactoInfo.color}}>● {impactoInfo.label}</span>}
+                          </div>
+                        )}
+                        <div style={{fontSize:10,color:S.t3,marginTop:2}}>{e.responsable} · {e.hora}</div>
                       </div>
                       <div style={{fontSize:15,fontWeight:900,color:S.red}}>{fmt(e.valor)}</div>
                     </div>
