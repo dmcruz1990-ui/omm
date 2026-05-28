@@ -14,6 +14,7 @@ import {
   Loader2,
   ShieldCheck,
   Sparkles,
+  Eye,
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
@@ -113,10 +114,12 @@ const Dashboard: React.FC = () => {
   }, [isAdmin]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  // Cámara se activa SOLO cuando el modal de Vision AI está abierto —
-  // así no pedimos permiso de cámara al cargar la app ni gastamos
-  // batería/memoria con MediaPipe corriendo en background.
-  const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, isVisionAIOpen);
+  // Cámara se activa cuando el modal de Vision AI está abierto O cuando
+  // el módulo VISION_AI del sidebar está activo. En cualquier otro caso
+  // queda apagada para no pedir permiso al cargar la app ni gastar
+  // batería con MediaPipe en background.
+  const visionAIActivo = isVisionAIOpen || activeModule === ModuleType.VISION_AI;
+  const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, visionAIActivo);
 
   const getVisibleModules = (role: UserRole = 'mesero'): ModuleType[] => {
     switch (role) {
@@ -140,6 +143,7 @@ const Dashboard: React.FC = () => {
           ModuleType.MARKETPLACE,
           ModuleType.FOOD_INTELLIGENCE,
           ModuleType.FLOW,
+          ModuleType.VISION_AI,
           ModuleType.MOBILE_MGR,
           ModuleType.OH_YEAH
         ];
@@ -302,6 +306,7 @@ const Dashboard: React.FC = () => {
                 { type: ModuleType.SERVICE_OS,   label: 'SMART POS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
                 { type: ModuleType.PROPINAS,    label: 'PROPINAS',     sub: 'Bolsa del turno',  icon: <DollarSign size={18} /> },
                 { type: ModuleType.FLOW,        label: 'FLOW',         sub: 'ESTACIONES · TIEMPOS', icon: <ChefHat size={18} /> },
+                { type: ModuleType.VISION_AI,   label: 'VISION AI',    sub: 'CÁMARAS · IA TIEMPO REAL', icon: <Eye size={18} /> },
               ]
             },
             {
@@ -429,7 +434,18 @@ const Dashboard: React.FC = () => {
                 <FlowModule />
               </div>
             )}
-            {activeModule !== ModuleType.SERVICE_OS && activeModule !== ModuleType.FLOW && (
+            {activeModule === ModuleType.VISION_AI && (
+              <div className="h-full overflow-y-auto custom-scrollbar p-6 text-left">
+                <SurveillanceModule
+                  videoRef={videoRef}
+                  isCameraReady={isCameraReady}
+                  resultsRef={lastResultsRef}
+                  tables={tables}
+                  onManualTrigger={async(id) => handleUpdateTable(id, { status: 'calling' })}
+                />
+              </div>
+            )}
+            {activeModule !== ModuleType.SERVICE_OS && activeModule !== ModuleType.FLOW && activeModule !== ModuleType.VISION_AI && (
               <div className="h-full overflow-y-auto custom-scrollbar p-6 text-left">
                 {activeModule === ModuleType.RESERVE       && <ReserveModule />}
                 {activeModule === ModuleType.PLANO         && <PlanoOMM onOpenPOS={() => setActiveModule(ModuleType.SERVICE_OS)} />}
