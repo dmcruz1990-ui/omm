@@ -1,128 +1,152 @@
 // ═══════════════════════════════════════════════════════════════════════
-// Catálogo contable controlado para Egresos.
+// Catálogo contable — ahora vive en BD (catalogo_egresos) según spec
+// NEXUM Finance Hub. Este módulo solo expone tipos + loader + helpers
+// derivados (centros de costo, agrupaciones P&G).
 //
-// Cada concepto operativo está pre-mapeado a:
-//   - cuenta_contable: nombre de la cuenta NIIF (lo que verá el contador)
-//   - centro_costo:    Cocina / Bar / Sala / Administración / Marketing /
-//                      Eventos / Local / Operativo / Comercial
-//   - impacto_pg:      cómo afecta al estado de resultados
-//   - requiereNota:    obliga a escribir nota antes de guardar
-//   - requiereAprobacion: queda en estado "pendiente" hasta que un gerente
-//                         lo apruebe (típicamente conceptos "Otro").
-//
-// El usuario solo elige categoría operativa + concepto. El sistema
-// completa el resto automáticamente. El centro de costo se puede
-// sobreescribir si el egreso fue para un centro distinto al default
-// (ej: compra de cocina para un evento → cambia a "Eventos").
+// El catálogo se carga UNA vez al montar FinanceHub y se cachea en
+// memoria; las búsquedas son sincrónicas contra el array cacheado.
 // ═══════════════════════════════════════════════════════════════════════
 
-export type ImpactoPG =
-  | 'costo_ventas'
-  | 'gasto_operativo'
-  | 'gasto_administrativo'
-  | 'gasto_comercial'
-  | 'gasto_financiero'
-  | 'cuenta_por_pagar'
-  | 'anticipo'
-  | 'activo'
-  | 'ajuste'
-  | 'gasto_no_recurrente'
-  | 'pendiente';
+import { supabase } from './supabase.ts';
 
-export const IMPACTO_PG_LABELS: Record<ImpactoPG, { label: string; color: string }> = {
-  costo_ventas:         { label: 'Costo de ventas',        color: '#FF5252' },
-  gasto_operativo:      { label: 'Gasto operativo',        color: '#FFB547' },
-  gasto_administrativo: { label: 'Gasto administrativo',   color: '#448AFF' },
-  gasto_comercial:      { label: 'Gasto comercial',        color: '#B388FF' },
-  gasto_financiero:     { label: 'Gasto financiero',       color: '#FF2D78' },
-  cuenta_por_pagar:     { label: 'Cuenta por pagar',       color: '#00E676' },
-  anticipo:             { label: 'Anticipo',               color: '#22d3ee' },
-  activo:               { label: 'Activo',                 color: '#00E676' },
-  ajuste:               { label: 'Ajuste contable',        color: '#A0A0B8' },
-  gasto_no_recurrente:  { label: 'Gasto no recurrente',    color: '#B388FF' },
-  pendiente:            { label: 'Pendiente clasificar',   color: '#FFB547' },
-};
+export type ImpactoPG = 'si' | 'no' | 'depende';
 
-export const CENTROS_COSTO = [
-  'Cocina', 'Bar', 'Sala', 'Administración', 'Marketing',
-  'Comercial', 'Eventos', 'Local', 'Operativo',
-] as const;
-export type CentroCosto = typeof CENTROS_COSTO[number];
+export type TipoFinanciero =
+  | 'costo' | 'gasto' | 'activo' | 'pasivo'
+  | 'anticipo' | 'impuesto' | 'propina_por_pagar' | 'medio_pago';
 
-export interface ConceptoContable {
+export type CategoriaOperativa =
+  | 'costos_directos'
+  | 'nomina'
+  | 'ocupacion'
+  | 'servicios_publicos'
+  | 'mantenimiento'
+  | 'operacion'
+  | 'experiencia'
+  | 'administracion'
+  | 'comercial'
+  | 'financiero'
+  | 'impuestos'
+  | 'balance'
+  | 'caja_menor'
+  | 'capex'
+  | 'no_recurrente'
+  | 'otro_controlado';
+
+export interface ConceptoCatalogo {
   id: string;
-  label: string;
-  cuenta: string;
-  centroCosto: CentroCosto;
-  impacto: ImpactoPG;
-  requiereNota?: boolean;
-  requiereAprobacion?: boolean;
+  nombre_usuario: string;
+  categoria_maestra: string;
+  categoria_operativa: CategoriaOperativa;
+  grupo_pyg: string;
+  subgrupo_pyg: string | null;
+  tipo_financiero: TipoFinanciero;
+  impacta_pyg: ImpactoPG;
+  cuenta_niif_interna: string;
+  centro_costo_default: string;
+  requiere_factura: boolean;
+  requiere_ocr: boolean;
+  requiere_aprobacion: boolean;
+  monto_aprobacion: number;
+  permite_nota_libre: boolean;
+  es_recurrente: boolean;
+  es_caja_menor: boolean;
+  es_capex: boolean;
+  es_impuesto_recaudado: boolean;
+  es_propina: boolean;
+  estado: string;
+  orden_ux: number;
+  notas_contables: string | null;
 }
 
-export const CATALOGO_CONTABLE: Record<string, ConceptoContable[]> = {
-  // ── PROPINAS — NO afecta P&G como gasto, es cuenta por pagar al personal ──
-  propina_efectivo: [
-    { id: 'prop_meseros',   label: 'Liquidación propinas meseros', cuenta: 'Propinas por pagar — Sala',     centroCosto: 'Sala',           impacto: 'cuenta_por_pagar' },
-    { id: 'prop_cocina',    label: 'Liquidación propinas cocina',  cuenta: 'Propinas por pagar — Cocina',   centroCosto: 'Cocina',         impacto: 'cuenta_por_pagar' },
-    { id: 'prop_bar',       label: 'Liquidación propinas bar',     cuenta: 'Propinas por pagar — Bar',      centroCosto: 'Bar',            impacto: 'cuenta_por_pagar' },
-    { id: 'prop_steward',   label: 'Liquidación propinas steward', cuenta: 'Propinas por pagar — Steward',  centroCosto: 'Cocina',         impacto: 'cuenta_por_pagar' },
-    { id: 'prop_ajuste',    label: 'Ajuste de propinas',           cuenta: 'Propinas por pagar — Ajustes',  centroCosto: 'Administración', impacto: 'ajuste',          requiereNota: true },
-    { id: 'prop_pendiente', label: 'Propina pendiente por distribuir', cuenta: 'Propinas por pagar — Pendientes', centroCosto: 'Administración', impacto: 'cuenta_por_pagar' },
-  ],
+// Etiquetas de UI para las 16 categorías operativas (lo que ve el usuario).
+// Sólo 12 visibles por defecto; el resto se muestra como "ver más".
+export const CATEGORIAS_OPERATIVAS_UI: { id: CategoriaOperativa; emoji: string; label: string; desc: string; visible: boolean }[] = [
+  { id: 'costos_directos',    emoji: '🍳', label: 'Costos directos',    desc: 'Alimentos, bebidas, bar, empaques',           visible: true },
+  { id: 'nomina',             emoji: '👥', label: 'Nómina',              desc: 'Cocina, bar, servicio, prestaciones',         visible: true },
+  { id: 'ocupacion',          emoji: '🏠', label: 'Arriendo y ocupación',desc: 'Arriendo, administración, copropiedad',       visible: true },
+  { id: 'servicios_publicos', emoji: '⚡', label: 'Servicios públicos',  desc: 'Energía, agua, gas, internet',                visible: true },
+  { id: 'mantenimiento',      emoji: '🔧', label: 'Mantenimiento',       desc: 'Reparaciones, equipos, refrigeración',        visible: true },
+  { id: 'operacion',          emoji: '🧼', label: 'Operación diaria',    desc: 'Aseo, menaje, uniformes, seguridad',          visible: true },
+  { id: 'experiencia',        emoji: '🎵', label: 'Experiencia',         desc: 'DJ, música, decoración, flores',              visible: true },
+  { id: 'administracion',     emoji: '📋', label: 'Administración',      desc: 'Gerencia, honorarios, papelería, software',   visible: true },
+  { id: 'comercial',          emoji: '📢', label: 'Marketing y ventas',  desc: 'Pauta, influencers, CRM, eventos',            visible: true },
+  { id: 'financiero',         emoji: '🏦', label: 'Bancos y deuda',      desc: 'Comisiones, intereses, datáfono, 4x1000',     visible: true },
+  { id: 'impuestos',          emoji: '🧾', label: 'Impuestos y tributos',desc: 'ICA, IVA, retenciones, permisos',             visible: true },
+  { id: 'balance',            emoji: '💰', label: 'Propinas',            desc: 'Recaudo y pago de propinas (no toca P&G)',    visible: true },
+  { id: 'caja_menor',         emoji: '👜', label: 'Caja menor',          desc: 'Reembolsos urgentes (se reclasifican)',       visible: true },
+  { id: 'capex',              emoji: '🏗️', label: 'CAPEX / Activos',     desc: 'Equipos, obras, mobiliario (no P&G directo)', visible: true },
+  { id: 'no_recurrente',      emoji: '⚠️', label: 'No recurrente / Legal',desc: 'Multas, sanciones, contingencias, robos',    visible: true },
+  { id: 'otro_controlado',    emoji: '❓', label: 'Otro (pendiente)',    desc: 'Se reclasifica luego — requiere aprobación',  visible: true },
+];
 
-  // ── COMPRA MENOR — afecta P&G según tipo: insumos = COGS, otros = OPEX ──
-  compra_menor: [
-    { id: 'cm_cocina',    label: 'Insumos cocina',          cuenta: 'Costo de alimentos',            centroCosto: 'Cocina',         impacto: 'costo_ventas' },
-    { id: 'cm_bar',       label: 'Insumos bar',             cuenta: 'Costo de bebidas',              centroCosto: 'Bar',            impacto: 'costo_ventas' },
-    { id: 'cm_aseo',      label: 'Aseo',                    cuenta: 'Gastos de aseo y cafetería',    centroCosto: 'Operativo',      impacto: 'gasto_operativo' },
-    { id: 'cm_papeleria', label: 'Papelería',               cuenta: 'Útiles, papelería y fotocopias',centroCosto: 'Administración', impacto: 'gasto_administrativo' },
-    { id: 'cm_decor',     label: 'Decoración menor',        cuenta: 'Decoración y ambientación',     centroCosto: 'Sala',           impacto: 'gasto_operativo' },
-    { id: 'cm_menaje',    label: 'Menaje menor',            cuenta: 'Menaje y dotación',             centroCosto: 'Sala',           impacto: 'gasto_operativo' },
-    { id: 'cm_empaques',  label: 'Empaques',                cuenta: 'Empaques y desechables',        centroCosto: 'Cocina',         impacto: 'gasto_operativo' },
-    { id: 'cm_mercado',   label: 'Mercado urgente',         cuenta: 'Costo de alimentos',            centroCosto: 'Cocina',         impacto: 'costo_ventas' },
-    { id: 'cm_hielo',     label: 'Hielo',                   cuenta: 'Costo de bebidas',              centroCosto: 'Bar',            impacto: 'costo_ventas' },
-    { id: 'cm_flores',    label: 'Flores',                  cuenta: 'Decoración y ambientación',     centroCosto: 'Sala',           impacto: 'gasto_operativo' },
-    { id: 'cm_otro',      label: 'Otro insumo operativo',   cuenta: 'Gastos operativos varios',      centroCosto: 'Operativo',      impacto: 'gasto_operativo', requiereNota: true },
-  ],
+// Orígenes del egreso (Paso 1 del PDF).
+export const ORIGENES_EGRESO = [
+  { id: 'efectivo',      emoji: '💵', label: 'Efectivo' },
+  { id: 'caja_menor',    emoji: '👜', label: 'Caja menor' },
+  { id: 'banco',         emoji: '🏦', label: 'Banco' },
+  { id: 'tarjeta',       emoji: '💳', label: 'Tarjeta' },
+  { id: 'transferencia', emoji: '📲', label: 'Transferencia' },
+  { id: 'anticipo',      emoji: '📥', label: 'Anticipo' },
+  { id: 'reembolso',     emoji: '🔁', label: 'Reembolso' },
+  { id: 'proveedor',     emoji: '🚚', label: 'Crédito proveedor' },
+] as const;
 
-  // ── MANTENIMIENTO — todo a P&G como gasto operativo (subcategoría locativa) ──
-  mantenimiento: [
-    { id: 'mt_locativa',     label: 'Reparación locativa',     cuenta: 'Mantenimiento locativo',        centroCosto: 'Local',  impacto: 'gasto_operativo' },
-    { id: 'mt_electricidad', label: 'Electricidad',            cuenta: 'Mantenimiento eléctrico',       centroCosto: 'Local',  impacto: 'gasto_operativo' },
-    { id: 'mt_plomeria',     label: 'Plomería',                cuenta: 'Mantenimiento plomería',        centroCosto: 'Local',  impacto: 'gasto_operativo' },
-    { id: 'mt_equipos',      label: 'Equipos de cocina',       cuenta: 'Mantenimiento equipos cocina',  centroCosto: 'Cocina', impacto: 'gasto_operativo' },
-    { id: 'mt_refrig',       label: 'Refrigeración',           cuenta: 'Mantenimiento refrigeración',   centroCosto: 'Cocina', impacto: 'gasto_operativo' },
-    { id: 'mt_aire',         label: 'Aires acondicionados',    cuenta: 'Mantenimiento AC y ventilación',centroCosto: 'Local',  impacto: 'gasto_operativo' },
-    { id: 'mt_av',           label: 'Sonido / luces',          cuenta: 'Mantenimiento equipos AV',      centroCosto: 'Sala',   impacto: 'gasto_operativo' },
-    { id: 'mt_preventivo',   label: 'Mantenimiento preventivo',cuenta: 'Mantenimiento preventivo',     centroCosto: 'Local',  impacto: 'gasto_operativo' },
-    { id: 'mt_correctivo',   label: 'Mantenimiento correctivo',cuenta: 'Mantenimiento correctivo',     centroCosto: 'Local',  impacto: 'gasto_operativo' },
-    { id: 'mt_repuestos',    label: 'Repuestos',               cuenta: 'Repuestos y materiales',        centroCosto: 'Local',  impacto: 'gasto_operativo' },
-  ],
-
-  // ── TRANSPORTE — separado para detectar fugas ──
-  transporte: [
-    { id: 'tr_dom_int',    label: 'Domicilio interno',         cuenta: 'Transporte operativo',         centroCosto: 'Operativo',      impacto: 'gasto_operativo' },
-    { id: 'tr_mensajeria', label: 'Mensajería',                cuenta: 'Mensajería',                   centroCosto: 'Administración', impacto: 'gasto_administrativo' },
-    { id: 'tr_personal',   label: 'Transporte de personal',    cuenta: 'Transporte de personal',       centroCosto: 'Administración', impacto: 'gasto_administrativo' },
-    { id: 'tr_insumos',    label: 'Transporte de insumos',     cuenta: 'Transporte de mercancía',      centroCosto: 'Cocina',         impacto: 'costo_ventas' },
-    { id: 'tr_eventos',    label: 'Transporte eventos',        cuenta: 'Eventos especiales',           centroCosto: 'Eventos',        impacto: 'gasto_comercial' },
-    { id: 'tr_plataforma', label: 'Plataforma de mensajería',  cuenta: 'Mensajería',                   centroCosto: 'Administración', impacto: 'gasto_administrativo' },
-    { id: 'tr_taxi',       label: 'Taxi / Uber operativo',     cuenta: 'Transporte operativo',         centroCosto: 'Operativo',      impacto: 'gasto_operativo' },
-  ],
-
-  // ── OTRO — todos requieren nota; "Otro requiere aprobación" entra como pendiente ──
-  otro: [
-    { id: 'ot_admin',         label: 'Gasto administrativo',    cuenta: 'Gastos administrativos varios', centroCosto: 'Administración', impacto: 'gasto_administrativo', requiereNota: true },
-    { id: 'ot_comercial',     label: 'Gasto comercial',         cuenta: 'Gastos comerciales',            centroCosto: 'Comercial',      impacto: 'gasto_comercial',     requiereNota: true },
-    { id: 'ot_financiero',    label: 'Gasto financiero',        cuenta: 'Gastos financieros',            centroCosto: 'Administración', impacto: 'gasto_financiero',   requiereNota: true },
-    { id: 'ot_legal',         label: 'Gasto legal',             cuenta: 'Honorarios legales',            centroCosto: 'Administración', impacto: 'gasto_administrativo', requiereNota: true },
-    { id: 'ot_marketing',     label: 'Gasto de marketing',      cuenta: 'Publicidad y marketing',        centroCosto: 'Marketing',      impacto: 'gasto_comercial',     requiereNota: true },
-    { id: 'ot_ajuste',        label: 'Ajuste contable',         cuenta: 'Ajustes contables',             centroCosto: 'Administración', impacto: 'ajuste',              requiereNota: true },
-    { id: 'ot_no_recurrente', label: 'Gasto no recurrente',     cuenta: 'Gastos no recurrentes',         centroCosto: 'Administración', impacto: 'gasto_no_recurrente', requiereNota: true },
-    { id: 'ot_aprobacion',    label: 'Otro, requiere aprobación', cuenta: 'Pendiente de clasificación', centroCosto: 'Administración', impacto: 'pendiente',           requiereNota: true, requiereAprobacion: true },
-  ],
+// Color por grupo P&G — para los chips de la UI.
+export const GRUPO_PYG_COLORS: Record<string, string> = {
+  'Costo de venta':        '#FF5252',
+  'Gasto operacional':     '#FFB547',
+  'Gasto administrativo':  '#448AFF',
+  'Gasto comercial':       '#B388FF',
+  'Gasto financiero':      '#FF2D78',
+  'No recurrente':         '#FF7043',
+  'Balance':               '#00E676',
 };
 
-export function buscarConcepto(categoriaId: string, conceptoId: string): ConceptoContable | undefined {
-  return (CATALOGO_CONTABLE[categoriaId] || []).find(c => c.id === conceptoId);
+// ── Loader cacheado ──────────────────────────────────────────────────
+let _cache: ConceptoCatalogo[] | null = null;
+let _cargandoPromise: Promise<ConceptoCatalogo[]> | null = null;
+
+export async function cargarCatalogoEgresos(forzar = false): Promise<ConceptoCatalogo[]> {
+  if (_cache && !forzar) return _cache;
+  if (_cargandoPromise) return _cargandoPromise;
+  _cargandoPromise = (async () => {
+    const { data, error } = await supabase
+      .from('catalogo_egresos')
+      .select('*')
+      .eq('estado', 'activo')
+      .order('categoria_operativa').order('orden_ux').order('nombre_usuario');
+    _cargandoPromise = null;
+    if (error || !data) return [];
+    _cache = data as ConceptoCatalogo[];
+    return _cache;
+  })();
+  return _cargandoPromise;
+}
+
+export function conceptosDeCategoria(catalogo: ConceptoCatalogo[], categoriaOperativa: string): ConceptoCatalogo[] {
+  return catalogo.filter(c => c.categoria_operativa === categoriaOperativa);
+}
+
+export function buscarConcepto(catalogo: ConceptoCatalogo[], id: string): ConceptoCatalogo | undefined {
+  return catalogo.find(c => c.id === id);
+}
+
+// Lista única de centros de costo presentes en el catálogo (para el override).
+export function centrosCostoDisponibles(catalogo: ConceptoCatalogo[]): string[] {
+  return Array.from(new Set(catalogo.map(c => c.centro_costo_default))).sort();
+}
+
+// ── Regla automática del Punto 5: dado un concepto, devuelve la frase
+//    que explica al usuario qué pasará con su egreso.
+export function explicarImpacto(c: ConceptoCatalogo): string {
+  if (c.tipo_financiero === 'costo')             return 'Afecta P&G como costo de venta';
+  if (c.tipo_financiero === 'gasto')             return `Afecta P&G como ${c.grupo_pyg.toLowerCase()}`;
+  if (c.tipo_financiero === 'activo')            return 'Va a Balance · impactará P&G por depreciación/amortización';
+  if (c.tipo_financiero === 'pasivo')            return 'Va a Balance · reduce deuda, NO afecta P&G';
+  if (c.tipo_financiero === 'anticipo')          return 'Va a Balance · impactará P&G cuando se reciba el servicio/producto';
+  if (c.tipo_financiero === 'impuesto')          return 'Va a Balance fiscal · NO es gasto operativo';
+  if (c.tipo_financiero === 'propina_por_pagar') return 'Va a Cuenta por pagar al equipo · NO afecta P&G';
+  if (c.tipo_financiero === 'medio_pago')        return 'Pendiente reclasificar al concepto real';
+  return '';
 }
