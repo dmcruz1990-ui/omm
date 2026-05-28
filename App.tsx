@@ -428,7 +428,7 @@ const Dashboard: React.FC = () => {
             {activeModule !== ModuleType.SERVICE_OS && activeModule !== ModuleType.FLOW && (
               <div className="h-full overflow-y-auto custom-scrollbar p-6 text-left">
                 {activeModule === ModuleType.RESERVE       && <ReserveModule />}
-                {activeModule === ModuleType.PLANO         && <PlanoOMM />}
+                {activeModule === ModuleType.PLANO         && <PlanoOMM onOpenPOS={() => setActiveModule(ModuleType.SERVICE_OS)} />}
                 {activeModule === ModuleType.FINANCE_HUB   && <FinanceHub />}
                 {activeModule === ModuleType.PAYROLL        && <PayrollModule />}
                 {activeModule === ModuleType.WORKFORCE      && <WorkforceModule />}
