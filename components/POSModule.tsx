@@ -834,14 +834,20 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const { activeId: restauranteId, activeRestaurant, canSwitch, setActiveId, options: restaurantesDisponibles } = useRestaurant();
   const isGerencia = ['admin','gerencia','desarrollo'].includes(profile?.role || '');
 
-  // ── Carta dinámica multi-restaurante: se carga desde menu_platos.
-  // OMM (id 6) cae al fallback hardcoded si la BD no tiene los items.
-  // Gallo (id 23) y futuros restaurantes leen 100% de BD.
+  // ── Carta dinámica multi-restaurante.
+  // OMM (id 6) usa SIEMPRE la carta hardcoded — su carta de BD tiene
+  // categorías y emojis distintos a los que el equipo lleva meses usando.
+  // Gallo (id 23) y futuros restaurantes leen de menu_platos.
   const [productos, setProductos] = useState<Record<string, any[]>>(
     restauranteId === 6 ? PRODUCTOS_OMM_FALLBACK : {}
   );
   const categorias = React.useMemo(() => Object.keys(productos), [productos]);
   useEffect(() => {
+    // OMM no carga de BD — mantiene la carta hardcoded estable.
+    if (restauranteId === 6) {
+      setProductos(PRODUCTOS_OMM_FALLBACK);
+      return;
+    }
     let alive = true;
     (async () => {
       const { data } = await supabase.from('menu_platos')
@@ -850,8 +856,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         .order('categoria').order('nombre');
       if (!alive) return;
       if (!data || data.length === 0) {
-        // BD vacía → fallback (solo aplica a OMM)
-        setProductos(restauranteId === 6 ? PRODUCTOS_OMM_FALLBACK : {});
+        setProductos({});
         return;
       }
       const grouped: Record<string, any[]> = {};
