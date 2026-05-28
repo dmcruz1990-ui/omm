@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
+import { useRestaurant } from '../contexts/RestaurantContext';
 import {
   Calendar, Clock, Users, CheckCircle2, AlertTriangle, FileText, DollarSign,
   Plus, X, Check, ChevronLeft, ChevronRight, LogIn, LogOut, Loader2, ShieldCheck, Ban
@@ -11,8 +12,8 @@ import {
    Conectado a: empleados, turnos, attendance, workforce_novedades, workforce_audit
    ────────────────────────────────────────────────────────────────────────── */
 
-const REST_ID = 6;
-const COMPLEJO_ID = 2;
+// REST_ID y COMPLEJO_ID se leen del RestaurantContext (multi-restaurante)
+const COMPLEJO_POR_RESTAURANTE: Record<number, number> = { 6: 2, 23: 3 };
 
 // Policy laboral (parametrizable — PRD §10). Colombia, valores demo.
 const HORAS_MES = 230;
@@ -75,6 +76,8 @@ const C = {
 type Tab = 'resumen'|'horarios'|'asistencia'|'novedades'|'preliquidacion';
 
 export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: string }) {
+  const { activeId: REST_ID, activeRestaurant } = useRestaurant();
+  const COMPLEJO_ID = COMPLEJO_POR_RESTAURANTE[REST_ID] || 2;
   const [tab, setTab] = useState<Tab>('resumen');
   const [loading, setLoading] = useState(true);
   const [empleados, setEmpleados] = useState<any[]>([]);
@@ -107,7 +110,7 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
     setAsistencia(asi.data||[]);
     setNovedades(nov.data||[]);
     setLoading(false);
-  }, [weekStartStr, weekEndStr, hoy]);
+  }, [weekStartStr, weekEndStr, hoy, REST_ID]);
 
   useEffect(()=>{ cargar(); }, [cargar]);
   useEffect(()=>{

@@ -1,25 +1,36 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../contexts/AuthContext';
+import { useRestaurant } from '../contexts/RestaurantContext';
 
 // ═══════════════════════════════════════════════════════════════════════
-// PLANO OMM v3 — Operativo. Sidebar derecha de reservas (drag&drop),
-// meseros activos, drop sobre mesa = sienta + crea orden + abre POS.
-// Vista por rol: mesero solo ve sus mesas + libres (otras dimmed).
+// PLANO SALA v4 — Multi-restaurante. Lee del RestaurantContext y carga
+// las zonas/mesas del restaurante activo. Drag&drop reservas, POS, etc.
 // ═══════════════════════════════════════════════════════════════════════
 
 const POS_STATE_KEY = 'nexum_pos_state_v1';
 const VW = 1280, VH = 920;
-const ZONAS_VISIBLES = ['Eterno','Mantra','Amatista','Barra Eterno','Barra Sushi','Barra Torre'];
 
-type ZonaKey = 'Eterno'|'Mantra'|'Amatista'|'Barra Eterno'|'Barra Sushi'|'Barra Torre';
-const ZONAS: Record<ZonaKey, { area:{x:number;y:number;w:number;h:number}; fill:string; stroke:string; chipBg:string; label:string; }> = {
+type ZonaArea = { area:{x:number;y:number;w:number;h:number}; fill:string; stroke:string; chipBg:string; label:string; };
+
+// ── Mapas de zonas por restaurante ──────────────────────────────
+const ZONAS_OMM: Record<string, ZonaArea> = {
   'Eterno':       { area:{x:30,  y:90,  w:470, h:430}, fill:'#FFF4D6', stroke:'#E5B23B', chipBg:'#E5B23B', label:'ETERNO' },
   'Mantra':       { area:{x:530, y:170, w:610, h:680}, fill:'#FCD9D9', stroke:'#D14545', chipBg:'#D14545', label:'MANTRA' },
   'Amatista':     { area:{x:240, y:540, w:280, h:340}, fill:'#D2D9F0', stroke:'#3F4F9E', chipBg:'#3F4F9E', label:'AMATISTA' },
   'Barra Eterno': { area:{x:35,  y:95,  w:80,  h:280}, fill:'rgba(255,210,90,0.30)', stroke:'#C99629', chipBg:'#C99629', label:'BE' },
   'Barra Sushi':  { area:{x:540, y:200, w:430, h:60},  fill:'#3A3A3A', stroke:'#222',    chipBg:'#1a1a1a', label:'BARRA SUSHI' },
   'Barra Torre':  { area:{x:980, y:480, w:60,  h:280}, fill:'rgba(209,69,69,0.30)', stroke:'#8B2E2E', chipBg:'#8B2E2E', label:'BT' },
+};
+const ZONAS_GALLO: Record<string, ZonaArea> = {
+  'Salón Principal': { area:{x:30,  y:90,  w:730, h:560}, fill:'#FFE4D6', stroke:'#C13B3B', chipBg:'#C13B3B', label:'SALÓN PRINCIPAL' },
+  'Terraza':         { area:{x:790, y:90,  w:380, h:380}, fill:'#D5EBD5', stroke:'#4A8C4A', chipBg:'#4A8C4A', label:'TERRAZA' },
+  'VIP':             { area:{x:790, y:500, w:380, h:240}, fill:'#F4D7F2', stroke:'#9B4699', chipBg:'#9B4699', label:'VIP' },
+  'Barra Gallo':     { area:{x:130, y:730, w:440, h:80},  fill:'rgba(193,59,59,0.30)', stroke:'#8B2E2E', chipBg:'#8B2E2E', label:'BARRA' },
+};
+const ZONAS_POR_RESTAURANTE: Record<number, { zonas: Record<string,ZonaArea>; orden: string[] }> = {
+  6: { zonas: ZONAS_OMM, orden: ['Eterno','Mantra','Amatista','Barra Eterno','Barra Sushi','Barra Torre'] },
+  23:{ zonas: ZONAS_GALLO, orden: ['Salón Principal','Terraza','VIP','Barra Gallo'] },
 };
 
 const ST = {
@@ -64,9 +75,17 @@ interface Props { onOpenPOS?: () => void; }
 
 export default function PlanoOMM({ onOpenPOS }: Props) {
   const { profile } = useAuth();
+  const { activeId: restauranteId, activeRestaurant } = useRestaurant();
   const miNombre = profile?.nombre_completo || profile?.full_name || '';
   const esMesero = profile?.role === 'mesero';
   const esMaitre = ['maitre','admin','gerencia','desarrollo'].includes(profile?.role||'');
+
+  // Zonas del restaurante activo
+  const cfgRest = ZONAS_POR_RESTAURANTE[restauranteId] || ZONAS_POR_RESTAURANTE[6];
+  const ZONAS = cfgRest.zonas;
+  const ZONAS_ORDEN = cfgRest.orden;
+  const ZONAS_VISIBLES = ZONAS_ORDEN;
+  type ZonaKey = string;
 
   const [mesas, setMesas]       = useState<MesaRow[]>([]);
   const [reservas, setReservas] = useState<ReservaRow[]>([]);
@@ -95,13 +114,13 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
     const hoy = new Date().toISOString().split('T')[0];
     const [tb, rs, oy, ms] = await Promise.all([
       supabase.from('tables')
-        .select('id,name,capacidad,zona,estado,shape,posicion_x,posicion_y,mesero_nombre,cliente_nombre,pax_actual,abierta_en,vip,order_id_activo')
-        .in('zona', ZONAS_VISIBLES).order('name'),
-      supabase.from('reservations').select('*').eq('restaurante_id',6).eq('fecha',hoy)
+        .select('id,name,capacidad,zona,estado,shape,posicion_x,posicion_y,mesero_nombre,cliente_nombre,pax_actual,abierta_en,vip,order_id_activo,restaurante_id')
+        .eq('restaurante_id', restauranteId).eq('activa', true).order('name'),
+      supabase.from('reservations').select('*').eq('restaurante_id',restauranteId).eq('fecha',hoy)
         .in('estado',['pendiente','confirmada','sentada']).order('hora'),
       supabase.from('ohyeah_reservas').select('*').eq('date',hoy)
         .in('status',['pending','pendiente','confirmed','confirmada','seated','sentada']).order('time'),
-      supabase.from('profiles').select('id,nombre_completo,full_name,role,activo').eq('role','mesero').eq('activo',true),
+      supabase.from('profiles').select('id,nombre_completo,full_name,role,activo,restaurante_id').eq('role','mesero').eq('activo',true).eq('restaurante_id', restauranteId),
     ]);
     setMesas((tb.data||[]) as MesaRow[]);
     const allRes: ReservaRow[] = [
@@ -130,9 +149,9 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
       .map((m:any)=>({ id:m.id, nombre:m.nombre_completo||m.full_name||'', role:m.role }))
       .filter(m=>m.nombre));
     setLoad(false);
-  }, []);
+  }, [restauranteId]);
 
-  useEffect(() => { fetchAll(); }, [fetchAll]);
+  useEffect(() => { setLoad(true); fetchAll(); }, [fetchAll]);
 
   // ── Realtime ──────────────────────────────────────────────────
   useEffect(() => {
@@ -163,10 +182,12 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
   // ── Filtrado y vista por rol ──────────────────────────────────
   const visibles = useMemo(() => mesas.filter(m => {
     if (zonaFiltro) {
-      const zonaBase = zonaFiltro;
-      const okBarra = (zonaBase==='Eterno' && m.zona==='Barra Eterno')
-                   || (zonaBase==='Mantra' && (m.zona==='Barra Sushi'||m.zona==='Barra Torre'));
-      if (m.zona !== zonaBase && !okBarra) return false;
+      // Las barras se agrupan con su zona principal (Barra Eterno con Eterno, etc.)
+      const matches = m.zona === zonaFiltro
+        || (zonaFiltro==='Eterno' && m.zona==='Barra Eterno')
+        || (zonaFiltro==='Mantra' && (m.zona==='Barra Sushi'||m.zona==='Barra Torre'))
+        || (zonaFiltro==='Salón Principal' && m.zona==='Barra Gallo');
+      if (!matches) return false;
     }
     const e = (m.estado||'libre').toLowerCase();
     if (filter==='libres' && e!=='libre') return false;
@@ -244,7 +265,7 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
     // 3) Crear orden abierta en POS
     const { data: ord } = await supabase.from('orders').insert({
       table_id: mesa.id, status:'open',
-      mesero_nombre: mesero, restaurante_id: 6, restaurant_id: 6,
+      mesero_nombre: mesero, restaurante_id: restauranteId, restaurant_id: restauranteId,
       opened_at: nowIso,
     }).select('id').single();
 
@@ -333,7 +354,10 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
       {/* ─── Header ─────────────────────────────────────────────── */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10,flexWrap:'wrap',gap:10}}>
         <div style={{display:'flex',alignItems:'center',gap:18}}>
-          <div style={{fontFamily:"'Syne',sans-serif",fontWeight:900,fontSize:26}}>OMM</div>
+          <div style={{fontFamily:"'Syne',sans-serif",fontWeight:900,fontSize:26,display:'flex',alignItems:'center',gap:8}}>
+            <span style={{fontSize:30}}>{activeRestaurant.emoji}</span>
+            {activeRestaurant.nombre.toUpperCase()}
+          </div>
           <div style={{paddingLeft:18,borderLeft:'1px solid rgba(255,255,255,0.15)'}}>
             <div style={{fontFamily:"'Syne',sans-serif",fontWeight:800,fontSize:16}}>SALA OPERATIVA</div>
             <div style={{fontSize:10,color:'#A0A0B8',letterSpacing:'.12em',marginTop:2}}>
@@ -368,7 +392,7 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
               border: `1px solid ${filter===f.k ? f.c : 'rgba(255,255,255,0.08)'}`}}>{f.l}</button>
         ))}
         <div style={{flex:1}}/>
-        {(['Eterno','Mantra','Amatista'] as ZonaKey[]).map(z => (
+        {ZONAS_ORDEN.filter(z => !z.startsWith('Barra')).map(z => (
           <button key={z} onClick={()=>setZonaFiltro(zonaFiltro===z?null:z)}
             style={{padding:'6px 12px',borderRadius:99,fontSize:11,fontWeight:600,cursor:'pointer',
               background: zonaFiltro===z ? ZONAS[z].chipBg : 'rgba(255,255,255,0.05)',
@@ -385,8 +409,8 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
           onMouseMove={(e)=>{ const r=svgRef.current?.getBoundingClientRect(); if(r) setMouse({x:e.clientX-r.left, y:e.clientY-r.top}); }}>
           <svg ref={svgRef} viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{display:'block',background:'#FAFAFA',borderRadius:12}}>
             {/* Áreas de zona */}
-            {(['Eterno','Mantra','Amatista','Barra Eterno','Barra Sushi','Barra Torre'] as ZonaKey[]).map(k => {
-              const z = ZONAS[k];
+            {ZONAS_ORDEN.map(k => {
+              const z = ZONAS[k]; if (!z) return null;
               return (
                 <g key={k}>
                   <rect x={z.area.x} y={z.area.y} width={z.area.w} height={z.area.h}
@@ -496,6 +520,7 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
         {/* ── PANEL LATERAL — Detalle mesa ──────────────────────── */}
         {sel && <PanelMesa mesa={sel} onClose={()=>setSel(null)}
                   meseros={meseros} miNombre={miNombre} esMesero={esMesero}
+                  zonaMeta={ZONAS[sel.zona]}
                   onWalkin={()=>setWalkin(sel)}
                   onOpenPOS={onOpenPOS}
                   onAccion={async (accion) => {
@@ -707,13 +732,13 @@ function Kpi({label,value,color,alert}:{label:string;value:string|number;color:s
   );
 }
 
-function PanelMesa({mesa, meseros, miNombre, esMesero, onClose, onWalkin, onAccion, onOpenPOS}:{
+function PanelMesa({mesa, meseros, miNombre, esMesero, zonaMeta, onClose, onWalkin, onAccion, onOpenPOS}:{
   mesa:MesaRow; meseros:any[]; miNombre:string; esMesero:boolean;
+  zonaMeta?: ZonaArea;
   onClose:()=>void; onWalkin:()=>void; onAccion:(a:string)=>void; onOpenPOS?:()=>void;
 }) {
   const estado = (mesa.estado||'libre').toLowerCase();
   const c = ST[estado as keyof typeof ST] || ST.libre;
-  const zonaMeta = ZONAS[mesa.zona as ZonaKey];
   const min = minutesSince(mesa.abierta_en);
   const esTuya = (mesa.mesero_nombre||'').toLowerCase() === miNombre.toLowerCase();
 
