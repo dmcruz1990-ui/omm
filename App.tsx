@@ -113,8 +113,10 @@ const Dashboard: React.FC = () => {
   }, [isAdmin]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
-  // Cámara desactivada — evita pedir permiso en cada entrada y libera memoria.
-  const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, false);
+  // Cámara se activa SOLO cuando el modal de Vision AI está abierto —
+  // así no pedimos permiso de cámara al cargar la app ni gastamos
+  // batería/memoria con MediaPipe corriendo en background.
+  const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, isVisionAIOpen);
 
   const getVisibleModules = (role: UserRole = 'mesero'): ModuleType[] => {
     switch (role) {

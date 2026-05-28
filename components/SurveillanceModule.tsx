@@ -259,7 +259,16 @@ const SurveillanceModule: React.FC<SurveillanceProps> = ({
               </div>
 
               <canvas ref={canvasRef} className="w-full h-full object-cover" />
-              
+
+              {/* OVERLAY mientras la cámara se conecta */}
+              {!isCameraReady && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/70 pointer-events-none">
+                  <div className="w-12 h-12 rounded-full border-2 border-blue-500 border-t-transparent animate-spin mb-3"></div>
+                  <div className="text-white text-sm font-bold">Activando Vision AI…</div>
+                  <div className="text-gray-400 text-xs mt-1">Concede acceso a la cámara cuando el navegador lo pida</div>
+                </div>
+              )}
+
               {/* ALERTA GLOBAL DE INTERVENCIÓN */}
               {tables.some(t => t.status === 'calling' && t.id <= 3) && (
                 <div className="absolute inset-0 bg-red-600/10 pointer-events-none animate-pulse"></div>
