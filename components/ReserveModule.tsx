@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../contexts/AuthContext';
+import { useRestaurant } from '../contexts/RestaurantContext';
 
 // ══ PLANO OMM — fiel al plano arquitectónico (mismo layout que el POS) ══
 const PLANTA: Record<string,{num:number;zona:string;shape:'round'|'rect';cap:number;x:number;y:number;w:number;h:number}> = {
@@ -75,6 +76,7 @@ interface Reserva {
 
 export default function ReserveModule() {
   const { profile } = useAuth();
+  const { activeId: restauranteIdActivo } = useRestaurant();
   const [tab, setTab]           = useState<Tab>('home');
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [mesas, setMesas]       = useState<any[]>([]);
@@ -138,7 +140,7 @@ export default function ReserveModule() {
     const safe = Math.max(0, Math.min(10, pct));
     setSobreventa(safe);
     await supabase.from('reservas_config').upsert(
-      { restaurante_id:6, sobreventa_pct:safe, updated_at:new Date().toISOString() },
+      { restaurante_id: restauranteIdActivo, sobreventa_pct:safe, updated_at:new Date().toISOString() },
       { onConflict:'restaurante_id' });
     show(safe>0 ? `⭐ Sobreventa VIP: ${safe}% (hard stop 110%)` : '✓ Sobreventa VIP desactivada');
   };
@@ -146,12 +148,12 @@ export default function ReserveModule() {
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    const { data: planta } = await supabase.from('planta_mesas').select('*').eq('restaurante_id',6).eq('activa',true).order('num');
+    const { data: planta } = await supabase.from('planta_mesas').select('*').eq('restaurante_id',restauranteIdActivo).eq('activa',true).order('num');
     if (planta && planta.length > 0) setPlantaDB(planta);
-    supabase.from('reservas_config').select('sobreventa_pct').eq('restaurante_id',6).maybeSingle()
+    supabase.from('reservas_config').select('sobreventa_pct').eq('restaurante_id',restauranteIdActivo).maybeSingle()
       .then(({data})=>{ if(data) setSobreventa(Math.min(10, data.sobreventa_pct||0)); });
     const [rv, ms, ohyeah] = await Promise.all([
-      supabase.from('reservations').select('*').eq('restaurante_id',6).eq('fecha',fechaFiltro).order('hora'),
+      supabase.from('reservations').select('*').eq('restaurante_id',restauranteIdActivo).eq('fecha',fechaFiltro).order('hora'),
       supabase.from('tables').select('*').order('name'),
       supabase.from('ohyeah_reservas').select('*').eq('date',fechaFiltro).in('status',['pending','pendiente','confirmed','confirmada','seated','sentada']).order('time'),
     ]);
@@ -161,7 +163,7 @@ export default function ReserveModule() {
         id:r.id, cliente_nombre:r.guest_name, cliente_email:r.guest_email,
         cliente_telefono:r.guest_phone, fecha:r.date, hora:r.time, pax:r.pax,
         estado:(['confirmed','confirmada'].includes(r.status))?'confirmada':r.status==='cancelled'||r.status==='cancelada'?'cancelada':r.status==='seated'||r.status==='sentada'?'sentada':'confirmada',
-        ocasion:r.occasion, notas:r.observations, mesa_num:r.mesa_num||null, restaurante_id:6,
+        ocasion:r.occasion, notas:r.observations, mesa_num:r.mesa_num||null, restaurante_id: restauranteIdActivo,
         sentado_at:r.mesa_asignada_at||null,
         gourmand_level:r.gourmand_level, is_first_visit:r.is_first_visit,
         visit_count:r.visit_count, mood:r.mood, nexum_brief:r.nexum_brief,
@@ -172,10 +174,10 @@ export default function ReserveModule() {
     if (ms.data) setMesas(ms.data);
     // Meseros = usuarios reales que hacen login (profiles role='mesero').
     // La identidad debe coincidir con la del POS: nombre_completo || full_name.
-    supabase.from('profiles').select('id,nombre_completo,full_name,role').eq('role','mesero')
+    supabase.from('profiles').select('id,nombre_completo,full_name,role,restaurante_id').eq('role','mesero').eq('restaurante_id', restauranteIdActivo)
       .then(({data})=>{ if(data) setMeserosLista((data||[]).filter((m:any)=>m.nombre_completo||m.full_name)); });
     setLoading(false);
-  },[fechaFiltro]);
+  },[fechaFiltro, restauranteIdActivo]);
 
   useEffect(()=>{ fetchData(); },[fetchData]);
 
@@ -242,7 +244,7 @@ const guardar = async () => {
     }
     setSugerenciasHora([]);
     setSaving(true);
-    const payload = {...form,restaurante_id:6,estado:'confirmada',mesa_num:form.mesa_num||null};
+    const payload = {...form,restaurante_id: restauranteIdActivo,estado:'confirmada',mesa_num:form.mesa_num||null};
     if (selected?.id) {
       await supabase.from('reservations').update(payload).eq('id',selected.id);
       show('✓ Reserva actualizada');
@@ -284,7 +286,7 @@ const sentarWalkin = async () => {
   // §2 del doc: el walk-in NO se bloquea por la franja — toma capacidad residual.
   // Registro de la visita walk-in
   await supabase.from('reservations').insert({
-    restaurante_id:6, cliente_nombre:walkin.nombre, cliente_email:walkin.email||'', cliente_telefono:walkin.telefono,
+    restaurante_id: restauranteIdActivo, cliente_nombre:walkin.nombre, cliente_email:walkin.email||'', cliente_telefono:walkin.telefono,
     fecha:ahora.toISOString().split('T')[0], hora:hh, pax:walkin.pax, ocasion:'Walk-in', notas:'Walk-in — sentado en sala',
     estado:'sentada', mesa_num:walkin.mesa, sentado_at:new Date().toISOString(),
   }).then(()=>{}).catch(()=>{});

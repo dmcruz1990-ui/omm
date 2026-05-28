@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { supabase } from './lib/supabase.ts';
 import { AuthProvider, useAuth } from './contexts/AuthContext.tsx';
+import { RestaurantProvider, useRestaurant } from './contexts/RestaurantContext.tsx';
 import { ModuleType, Table, RitualTask, UserRole } from './types.ts';
 import { useMediaPipe } from './hooks/useMediaPipe.ts';
 import Login from './components/Login.tsx';
@@ -245,11 +246,12 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        <div className="mb-6 px-4">
+        <div className="mb-6 px-4 space-y-2">
            <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 flex items-center justify-between">
               <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Rol:</span>
               <span className="text-[9px] font-black text-blue-500 uppercase italic">{profile?.role}</span>
            </div>
+           <RestaurantSelector />
         </div>
 
         {isAdmin && (
@@ -481,8 +483,52 @@ const AppContent: React.FC = () => {
 const App: React.FC = () => {
   return (
     <AuthProvider>
-      <AppContent />
+      <RestaurantProvider>
+        <AppContent />
+      </RestaurantProvider>
     </AuthProvider>
+  );
+};
+
+// ── Selector de restaurante (solo visible para admin/gerencia/desarrollo) ──
+const RestaurantSelector: React.FC = () => {
+  const { activeId, activeRestaurant, canSwitch, setActiveId, options } = useRestaurant();
+  const [open, setOpen] = useState(false);
+  if (!canSwitch) {
+    // Mesero/cocina: solo lectura
+    return (
+      <div className="bg-white/5 border border-white/10 rounded-xl px-4 py-2 flex items-center justify-between">
+        <span className="text-[8px] font-black text-gray-500 uppercase tracking-widest">Restaurante:</span>
+        <span className="text-[10px] font-black text-white">{activeRestaurant.emoji} {activeRestaurant.nombre}</span>
+      </div>
+    );
+  }
+  return (
+    <div className="relative">
+      <button onClick={() => setOpen(v => !v)}
+        className="w-full bg-gradient-to-br from-purple-700/30 to-blue-700/30 border border-purple-500/40 rounded-xl px-4 py-2.5 flex items-center justify-between hover:from-purple-700/50 transition-all">
+        <span className="flex items-center gap-2">
+          <span className="text-lg">{activeRestaurant.emoji}</span>
+          <span className="text-[11px] font-black text-white uppercase tracking-wide">{activeRestaurant.nombre}</span>
+        </span>
+        <span className="text-[8px] text-purple-300">▼</span>
+      </button>
+      {open && (
+        <div className="absolute top-full mt-1 left-0 right-0 bg-[#0f0f1a] border border-white/15 rounded-xl overflow-hidden z-50 shadow-2xl">
+          {options.map(o => (
+            <button key={o.id} onClick={() => { setActiveId(o.id); setOpen(false); }}
+              className={`w-full px-4 py-2.5 flex items-center gap-2 hover:bg-white/10 transition-all ${o.id === activeId ? 'bg-blue-600/20' : ''}`}>
+              <span className="text-lg">{o.emoji}</span>
+              <div className="text-left flex-1">
+                <div className="text-[11px] font-black text-white uppercase">{o.nombre}</div>
+                <div className="text-[9px] text-gray-400">{o.categoria}</div>
+              </div>
+              {o.id === activeId && <span className="text-[9px] text-blue-400">●</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 };
 
