@@ -831,7 +831,7 @@ const PremioPicker: React.FC<{ onPick: (juego:'ruleta'|'cartas')=>void; onSkip: 
 const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisionAI }) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { profile } = useAuth();
-  const { activeId: restauranteId, activeRestaurant } = useRestaurant();
+  const { activeId: restauranteId, activeRestaurant, canSwitch, setActiveId, options: restaurantesDisponibles } = useRestaurant();
   const isGerencia = ['admin','gerencia','desarrollo'].includes(profile?.role || '');
 
   // ── Carta dinámica multi-restaurante: se carga desde menu_platos.
@@ -872,6 +872,36 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     })();
     return () => { alive = false; };
   }, [restauranteId]);
+
+  // ── Reset de operación al cambiar de restaurante ──────────────────
+  // Evita que una mesa/pedido de OMM quede "colgando" al cambiar a Gallo
+  // (y viceversa). Solo dispara en cambios, no en el primer render.
+  const prevRestauranteRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (prevRestauranteRef.current === null) {
+      prevRestauranteRef.current = restauranteId;
+      return;
+    }
+    if (prevRestauranteRef.current !== restauranteId) {
+      setOrder([]);
+      setPendingOrder([]);
+      setSelectedTableId(1);
+      setSelectedPlato(null);
+      setAddedCards(new Set());
+      setStockFlow({});
+      setShowOrderPanel(false);
+      prevRestauranteRef.current = restauranteId;
+    }
+  }, [restauranteId]);
+
+  // Cuando se carga una carta nueva, asegurar que currentCat sea válido
+  useEffect(() => {
+    const cats = Object.keys(productos);
+    if (cats.length > 0 && !cats.includes(currentCat)) {
+      setCurrentCat(cats[0]);
+    }
+  }, [productos, currentCat]);
+
   // Identidad única del mesero — debe coincidir con lo que el Maître asigna
   // (profiles.nombre_completo, o full_name si el primero está vacío).
   const miNombre = profile?.nombre_completo || profile?.full_name || 'Mesero';
@@ -4516,10 +4546,51 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
       {/* LEFT PANEL */}
       <div className="bg-[#141414] border-r border-[#2a2a2a] flex flex-col shrink-0" style={{ width: 200 }}>
+        {/* BANNER DE RESTAURANTE ACTIVO — evita confusión OMM vs Gallo */}
+        <div className="px-3 py-2.5 border-b border-[#2a2a2a]" style={{
+          background: restauranteId === 23
+            ? 'linear-gradient(135deg, rgba(198,58,42,0.28), rgba(198,58,42,0.04))'
+            : 'linear-gradient(135deg, rgba(212,148,58,0.25), rgba(212,148,58,0.04))'
+        }}>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span style={{ fontSize: 22 }}>{activeRestaurant.emoji}</span>
+            <div className="flex-1 min-w-0">
+              <div className="font-['Syne'] text-[12px] font-black leading-tight truncate"
+                style={{ color: restauranteId === 23 ? '#e07060' : '#d4943a' }}>
+                {activeRestaurant.nombre.toUpperCase()}
+              </div>
+              <div className="text-[8px] text-[#a0a0a0] uppercase tracking-wider truncate">{activeRestaurant.categoria}</div>
+            </div>
+          </div>
+          {canSwitch && (
+            <div className="flex gap-1 p-0.5 rounded-lg" style={{ background: 'rgba(0,0,0,0.35)' }}>
+              {restaurantesDisponibles.map(r => {
+                const active = r.id === restauranteId;
+                return (
+                  <button key={r.id} onClick={() => setActiveId(r.id)}
+                    title={`Operar POS en ${r.nombre}`}
+                    className="flex-1 py-1 rounded-md text-[10px] font-black transition-all flex items-center justify-center gap-0.5"
+                    style={{
+                      background: active ? (r.id === 23 ? '#c63a2a' : '#d4943a') : 'transparent',
+                      color: active ? (r.id === 23 ? '#fff' : '#000') : '#a0a0a0',
+                    }}>
+                    <span style={{ fontSize: 11 }}>{r.emoji}</span>
+                    <span>{r.nombre === 'Gallo Colorado' ? 'Gallo' : r.nombre}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
         <div className="p-2 px-3 pb-2 flex items-center gap-2 border-b border-[#2a2a2a] shrink-0 relative">
           {/* Botón mapa de mesas — grande, acción principal del POS */}
           <button onClick={() => setShowMapaMesas(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#d4943a]/15 border border-[#d4943a]/40 text-[#d4943a] text-[13px] font-black hover:bg-[#d4943a]/25 active:scale-95 transition-all">
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[13px] font-black active:scale-95 transition-all"
+            style={{
+              background: restauranteId === 23 ? 'rgba(198,58,42,0.15)' : 'rgba(212,148,58,0.15)',
+              border: `1px solid ${restauranteId === 23 ? 'rgba(198,58,42,0.40)' : 'rgba(212,148,58,0.40)'}`,
+              color: restauranteId === 23 ? '#e07060' : '#d4943a',
+            }}>
             🗺️ <span>Mapa de Mesas</span>
           </button>
           {/* Bandeja de cobros pendientes (cuentas enviadas desde otras tablets) */}
