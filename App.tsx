@@ -47,6 +47,7 @@ const WorkforceModule = lazy(() => import('./components/WorkforceModule.tsx'));
 const ExecutiveCockpit = lazy(() => import('./components/ExecutiveCockpit.tsx'));
 const DIANModule = lazy(() => import('./components/DIANModule.tsx'));
 const ContabilidadModule = lazy(() => import('./components/ContabilidadModule.tsx'));
+const PlanoOMM = lazy(() => import('./components/PlanoOMM.tsx'));
 // OhYeahAdmin legacy removido — usar OhYeahAdminModule
 
 const ModuleLoader = () => (
@@ -121,8 +122,9 @@ const Dashboard: React.FC = () => {
         return Object.values(ModuleType);
       case 'gerencia':
         return [
-          ModuleType.RESERVE, 
-          ModuleType.RELATIONSHIP, 
+          ModuleType.RESERVE,
+          ModuleType.PLANO,
+          ModuleType.RELATIONSHIP,
           ModuleType.SERVICE_OS,
           ModuleType.CARE,
           ModuleType.FINANCE_HUB,
@@ -142,6 +144,7 @@ const Dashboard: React.FC = () => {
         return [
           ModuleType.SERVICE_OS,
           ModuleType.RESERVE,
+          ModuleType.PLANO,
           ModuleType.RELATIONSHIP,
           ModuleType.CARE,
         ];
@@ -283,6 +286,7 @@ const Dashboard: React.FC = () => {
               modules: [
                 { type: ModuleType.OH_YEAH,       label: 'OH YEAH! B2C',  sub: 'VISTA CLIENTE',      icon: <Smartphone size={18} /> },
                 { type: ModuleType.RESERVE,        label: 'RESERVE',       sub: 'MAPA & AGENDA',      icon: <CalendarDays size={18} /> },
+                 { type: ModuleType.PLANO,          label: 'PLANO MESAS',   sub: 'DISTRIBUCIÓN OFICIAL', icon: <span style={{fontSize:16}}>🗺️</span> },
                  { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> },
                  { type: ModuleType.OH_YEAH_ADMIN,  label: 'OH YEAH ADMIN', sub: 'RESTAURANTES',       icon: <Store size={18} /> },
                  { type: ModuleType.OH_YEAH_RESTAURANTE, label: 'OH YEAH REG.', sub: 'REGISTRO EXTERNO', icon: <Store size={18} /> },
@@ -424,6 +428,7 @@ const Dashboard: React.FC = () => {
             {activeModule !== ModuleType.SERVICE_OS && activeModule !== ModuleType.FLOW && (
               <div className="h-full overflow-y-auto custom-scrollbar p-6 text-left">
                 {activeModule === ModuleType.RESERVE       && <ReserveModule />}
+                {activeModule === ModuleType.PLANO         && <PlanoOMM />}
                 {activeModule === ModuleType.FINANCE_HUB   && <FinanceHub />}
                 {activeModule === ModuleType.PAYROLL        && <PayrollModule />}
                 {activeModule === ModuleType.WORKFORCE      && <WorkforceModule />}
