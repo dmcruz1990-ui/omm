@@ -31,7 +31,8 @@ export enum ModuleType {
   METRICAS = 'METRICAS',
   MENU = 'MENU',
   PROPINAS = 'PROPINAS',
-  WORKFORCE = 'WORKFORCE'
+  WORKFORCE = 'WORKFORCE',
+  PLANO = 'PLANO'
 }
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo' | 'maitre';
