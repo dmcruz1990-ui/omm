@@ -85,6 +85,18 @@ const CATEGORIAS_OMM_FALLBACK = ['Compartir','Robata','Wok','Makis','Sashimis','
 // Términos de cocción disponibles
 const TERMINOS_COCCION = ['3/4', 'Término Medio', 'Bien Cocido', 'Poco Cocido', 'Azul'];
 
+// Niveles de picante (Gallo Colorado). El nombre del plato se sufija para
+// que cocina y bar lo vean en el KDS, ej: "Taco al Pastor 🌶️🌶️ Temible".
+const NIVELES_PICANTE: { key: string; emoji: string; label: string; desc: string }[] = [
+  { key: '🐣 Gallinita', emoji: '🐣', label: 'Gallinita', desc: 'Sin picante' },
+  { key: '🌶️ Colorado',  emoji: '🌶️', label: 'Colorado',  desc: 'Picante suave' },
+  { key: '🌶️🌶️ Temible', emoji: '🌶️🌶️', label: 'Temible',  desc: 'Picante fuerte' },
+  { key: '🔥 Ardiente',  emoji: '🔥', label: 'Ardiente',  desc: 'Extremo · solo valientes' },
+];
+const CATEGORIAS_CON_PICANTE = new Set([
+  'Sopas','Del Campo','Del Mar','Esquites','Nachos','Tacos','Fuertes',
+]);
+
 const PRODUCTOS_OMM_FALLBACK: Record<string, any[]> = {
   Compartir: [
     { nombre:'Burosu Shitake', precio:'$39.900', emoji:'🍜', badge:'recomendado' },
@@ -1069,12 +1081,41 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // ── Modal término de cocción ─────────────────────────────
   const [terminoModal, setTerminoModal] = useState<{ open: boolean; producto: any | null; modo: 'orden' | 'marchar' }>({ open: false, producto: null, modo: 'orden' });
 
+  // ── Modal nivel de picante (solo Gallo Colorado, categorías saladas) ──
+  const [picanteModal, setPicanteModal] = useState<{ open: boolean; producto: any | null; modo: 'orden' | 'marchar' }>({ open: false, producto: null, modo: 'orden' });
+
+  const requierePicante = (p: any): boolean => {
+    if (restauranteId !== 23) return false;
+    const cat = p?.categoria ?? currentCat;
+    return CATEGORIAS_CON_PICANTE.has(cat);
+  };
+
   const abrirTermino = (p: any, modo: 'orden' | 'marchar') => {
+    if (requierePicante(p)) {
+      setPicanteModal({ open: true, producto: p, modo });
+      return;
+    }
     if (p.carne) {
       setTerminoModal({ open: true, producto: p, modo });
     } else {
       if (modo === 'orden') agregarAOrdenDirecto(p);
       else marcharAhoraDirecto(p);
+    }
+  };
+
+  // Tras elegir picante: si además es carne, continúa al modal de término;
+  // si no, despacha directo con el sufijo de picante.
+  const elegirPicante = (nivelKey: string) => {
+    const p = picanteModal.producto;
+    const modo = picanteModal.modo;
+    setPicanteModal({ open: false, producto: null, modo: 'orden' });
+    if (!p) return;
+    const pConPicante = { ...p, nombre: `${p.nombre} ${nivelKey}` };
+    if (p.carne) {
+      setTerminoModal({ open: true, producto: pConPicante, modo });
+    } else {
+      if (modo === 'orden') agregarAOrdenDirecto(pConPicante);
+      else marcharAhoraDirecto(pConPicante);
     }
   };
 
@@ -4396,6 +4437,36 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         </div>
       )}
 
+      {/* MODAL NIVEL DE PICANTE — Gallo Colorado */}
+      {picanteModal.open && picanteModal.producto && (
+        <div className="fixed inset-0 bg-black/80 z-[600] flex items-center justify-center p-4">
+          <div className="bg-[#1c1c1c] border border-[#c63a2a]/40 rounded-2xl p-6 w-full max-w-[360px]">
+            <div className="text-center mb-5">
+              <div className="text-[28px] mb-2">{picanteModal.producto.emoji}</div>
+              <div className="font-['Syne'] text-[16px] font-bold">{picanteModal.producto.nombre}</div>
+              <div className="text-[11px] text-[#a0a0a0] mt-1">¿Qué nivel de picante quiere el comensal?</div>
+            </div>
+            <div className="flex flex-col gap-2 mb-4">
+              {NIVELES_PICANTE.map(n => (
+                <button key={n.key}
+                  onClick={() => elegirPicante(n.key)}
+                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl border border-[#2a2a2a] hover:border-[#c63a2a] hover:bg-[#c63a2a]/10 transition-all text-left">
+                  <span className="text-[26px]">{n.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-bold text-[#f0f0f0] leading-tight">{n.label}</div>
+                    <div className="text-[10px] text-[#a0a0a0]">{n.desc}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setPicanteModal({ open: false, producto: null, modo: 'orden' })}
+              className="w-full py-2.5 rounded-xl border border-[#2a2a2a] text-[#606060] text-[11px] font-semibold hover:border-[#a0a0a0] transition-all">
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ORDER PANEL */}
       {showOrderPanel && (
         <div className="fixed right-0 top-0 h-full w-[300px] bg-[#141414] border-l border-[#2a2a2a] z-[400] flex flex-col shadow-2xl">
@@ -4824,7 +4895,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   <div className="w-full aspect-[4/3] bg-[#222] flex items-center justify-center text-[52px]">{p.emoji}</div>
                   <div className="p-3 flex flex-col gap-1.5 flex-1">
                     <div className="text-[14px] font-bold text-[#f0f0f0] leading-tight overflow-hidden text-ellipsis whitespace-nowrap pr-4">{p.nombre}</div>
-                    <span className={`self-start text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeColors[getBadgeClass(p.badge)] || 'bg-[#3dba6f]/15 text-[#3dba6f]'}`}>{getBadgeLabel(p.badge)}</span>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeColors[getBadgeClass(p.badge)] || 'bg-[#3dba6f]/15 text-[#3dba6f]'}`}>{getBadgeLabel(p.badge)}</span>
+                      {requierePicante(p) && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#c63a2a]/15 text-[#e07060] border border-[#c63a2a]/30" title="Pide nivel de picante al agregar">🌶️ picante</span>
+                      )}
+                    </div>
                     <div className="text-[15px] font-bold text-[#d4943a]">{p.precio}</div>
                     {/* Botones */}
                     {stock > 0 && (

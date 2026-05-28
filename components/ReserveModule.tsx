@@ -76,7 +76,7 @@ interface Reserva {
 
 export default function ReserveModule() {
   const { profile } = useAuth();
-  const { activeId: restauranteIdActivo } = useRestaurant();
+  const { activeId: restauranteIdActivo, setActiveId, canSwitch, options: restaurantesDisponibles } = useRestaurant();
   const [tab, setTab]           = useState<Tab>('home');
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [mesas, setMesas]       = useState<any[]>([]);
@@ -631,6 +631,29 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
           </div>
         ))}
         <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          {/* Toggle de restaurante — admin/gerencia ve reservas de cada local */}
+          {canSwitch && (
+            <div style={{display:'flex',gap:4,padding:4,background:S.bg,border:`1px solid ${S.border}`,borderRadius:10}}
+                 title="Ver reservas de otro restaurante">
+              {restaurantesDisponibles.map(r => {
+                const active = r.id === restauranteIdActivo;
+                return (
+                  <button key={r.id}
+                    onClick={() => setActiveId(r.id)}
+                    style={{
+                      display:'flex',alignItems:'center',gap:6,padding:'6px 12px',borderRadius:7,fontSize:11,fontWeight:800,letterSpacing:'.02em',cursor:'pointer',
+                      background: active ? `linear-gradient(135deg,${S.gold},#E07830)` : 'transparent',
+                      color: active ? '#0a0a0a' : S.t2,
+                      border: active ? 'none' : `1px solid transparent`,
+                      transition:'all .15s',
+                    }}>
+                    <span style={{fontSize:14}}>{r.emoji}</span>
+                    <span>{r.nombre}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {/* Modo dinámico (PDF NEXUM Roadmap 1) */}
           <div title="Modo operativo del motor de reservas — afecta Demand Score y políticas de pacing" style={{display:'flex',alignItems:'center',gap:4,background:'rgba(255,255,255,0.04)',border:`1px solid ${modoDinamico!=='base'?S.purple:S.border2}`,borderRadius:10,padding:'3px 6px 3px 10px'}}>
             <span style={{fontSize:10,color:modoDinamico!=='base'?S.purple:S.t3,fontWeight:700,textTransform:'uppercase'}}>🎚️ Modo</span>
