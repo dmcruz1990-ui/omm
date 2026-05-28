@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../contexts/AuthContext';
+import { useRestaurant } from '../contexts/RestaurantContext';
 
 const S = {
   bg:'#08080f', bg2:'#0f0f1a', bg3:'#161624', bg4:'#1e1e2e',
@@ -27,8 +28,19 @@ const CATEGORIAS_EGRESO = [
   { id:'otro',             label:'📋 Otro',            color:S.t2,      desc:'Gastos varios etiquetados' },
 ];
 
+// Conceptos sugeridos por categoría — el responsable elige uno o "Otro" para
+// escribir libre. Evita conceptos como "asdfas" y agrupa para reportes.
+const CONCEPTOS_POR_CATEGORIA: Record<string,string[]> = {
+  propina_efectivo: ['Liquidación turno noche','Liquidación turno medio día','Pago propina sala','Pago propina barra','Pago propina cocina','Adelanto propina','Otro'],
+  compra_menor: ['Aguacates','Limones','Cilantro','Hierbas frescas','Pan','Leche','Huevos','Frutas','Verduras','Hielo','Servilletas','Bolsas','Detergente','Otro'],
+  mantenimiento: ['Reparación nevera','Reparación estufa/plancha','Reparación lavavajillas','Aire acondicionado','Plomería','Electricista','Cambio bombillos','Mantenimiento POS/internet','Fumigación','Otro'],
+  transporte: ['Domicilio mercado','Taxi compra urgente','Mensajería documentos','Combustible','Parqueadero','Otro'],
+  otro: ['Arriendo','Servicios públicos (agua/luz/gas)','Internet/teléfono','Impuestos','Contador','Abogado','Publicidad/marketing','Limpieza profunda','Decoración','Música/SAYCO','Lavandería uniformes','Otro'],
+};
+
 export default function FinanceHub() {
   const { profile } = useAuth();
+  const { activeId: restauranteId } = useRestaurant();
   const [tab, setTab] = useState<Tab>('egresos');
   const [egresos, setEgresos] = useState<any[]>([]);
   const [arqueo, setArqueo] = useState<any>(null);
@@ -36,8 +48,13 @@ export default function FinanceHub() {
   const [toast, setToast] = useState('');
   const [loading, setLoading] = useState(false);
   // Form egresos
-  const [formEgreso, setFormEgreso] = useState({ categoria:'propina_efectivo', concepto:'', valor:'', responsable:'', notas:'' });
+  const [formEgreso, setFormEgreso] = useState({ categoria:'propina_efectivo', concepto:'', conceptoCustom:'', valor:'', responsable:'', notas:'' });
   const [guardandoEgreso, setGuardandoEgreso] = useState(false);
+  // Foto comprobante (factura/recibo)
+  const [comprobanteFile, setComprobanteFile] = useState<File|null>(null);
+  const [comprobantePreview, setComprobantePreview] = useState<string>('');
+  const [subiendoFoto, setSubiendoFoto] = useState(false);
+  const comprobanteRef = useRef<HTMLInputElement>(null);
   // Arqueo
   const [arqueoForm, setArqueoForm] = useState({ efectivo_real:'', tarjeta_real:'', datafono_real:'', notas:'' });
   const [guardandoArqueo, setGuardandoArqueo] = useState(false);
@@ -55,36 +72,71 @@ export default function FinanceHub() {
     setLoading(true);
     const today = new Date().toISOString().split('T')[0];
     const [eg, arq, ocr] = await Promise.all([
-      supabase.from('egresos').select('*').eq('restaurante_id',6).eq('fecha',today).order('created_at',{ascending:false}),
-      supabase.from('arqueos').select('*').eq('restaurante_id',6).eq('fecha',today).order('created_at',{ascending:false}).limit(1),
-      supabase.from('facturas_ocr').select('*').eq('restaurante_id',6).order('created_at',{ascending:false}).limit(20),
+      supabase.from('egresos').select('*').eq('restaurante_id', restauranteId).eq('fecha',today).order('created_at',{ascending:false}),
+      supabase.from('arqueos').select('*').eq('restaurante_id', restauranteId).eq('fecha',today).order('created_at',{ascending:false}).limit(1),
+      supabase.from('facturas_ocr').select('*').eq('restaurante_id', restauranteId).order('created_at',{ascending:false}).limit(20),
     ]);
     if (eg.data) setEgresos(eg.data);
     if (arq.data?.[0]) { setArqueo(arq.data[0]); }
     if (ocr.data) setFacturasOcr(ocr.data);
     setLoading(false);
-  }, []);
+  }, [restauranteId]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
+  // El "concepto" final que se guarda: si eligió "Otro" usa el custom, si no usa el del dropdown
+  const conceptoFinal = formEgreso.concepto === 'Otro' || formEgreso.concepto === ''
+    ? formEgreso.conceptoCustom.trim()
+    : formEgreso.concepto;
+
+  const onSelectComprobante = (file: File | null) => {
+    setComprobanteFile(file);
+    if (!file) { setComprobantePreview(''); return; }
+    const reader = new FileReader();
+    reader.onload = ev => setComprobantePreview(String(ev.target?.result || ''));
+    reader.readAsDataURL(file);
+  };
+
   // ── GUARDAR EGRESO ──────────────────────────────────────────────────────
   const guardarEgreso = async () => {
-    if (!formEgreso.concepto) { show('⚠️ Concepto requerido'); return; }
+    if (!conceptoFinal) { show('⚠️ Concepto requerido (elige uno o escribe en Otro)'); return; }
     if (!formEgreso.valor || isNaN(Number(formEgreso.valor))) { show('⚠️ Valor requerido'); return; }
     setGuardandoEgreso(true);
+    let comprobanteUrl: string | null = null;
+    // Subir foto si la hay
+    if (comprobanteFile) {
+      setSubiendoFoto(true);
+      const ext = comprobanteFile.name.split('.').pop() || 'jpg';
+      const path = `egresos/${restauranteId}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+      const { error: upErr } = await supabase.storage.from('ohyeah-fotos').upload(path, comprobanteFile, { upsert:false, contentType: comprobanteFile.type });
+      if (!upErr) {
+        const { data: pub } = supabase.storage.from('ohyeah-fotos').getPublicUrl(path);
+        comprobanteUrl = pub?.publicUrl || null;
+      } else {
+        show('⚠️ Foto no se pudo subir, guardando egreso sin comprobante');
+      }
+      setSubiendoFoto(false);
+    }
     const ahora = new Date();
-    await supabase.from('egresos').insert({
-      restaurante_id: 6,
+    const { error: insErr } = await supabase.from('egresos').insert({
+      restaurante_id: restauranteId,
       categoria: formEgreso.categoria,
-      concepto: formEgreso.concepto,
+      concepto: conceptoFinal,
       valor: Number(formEgreso.valor),
       responsable: formEgreso.responsable || profile?.nombre_completo || 'Staff',
       notas: formEgreso.notas,
+      factura_foto: comprobanteUrl,
       fecha: ahora.toISOString().split('T')[0],
       hora: ahora.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),
     });
+    if (insErr) {
+      show(`⚠️ Error: ${insErr.message}`);
+      setGuardandoEgreso(false);
+      return;
+    }
     show('✓ Egreso registrado');
-    setFormEgreso({ categoria:'propina_efectivo', concepto:'', valor:'', responsable:'', notas:'' });
+    setFormEgreso({ categoria:'propina_efectivo', concepto:'', conceptoCustom:'', valor:'', responsable:'', notas:'' });
+    onSelectComprobante(null);
     setGuardandoEgreso(false);
     fetchData();
   };
@@ -94,7 +146,7 @@ export default function FinanceHub() {
     setGuardandoArqueo(true);
     const today = new Date().toISOString().split('T')[0];
     // Obtener ventas del sistema
-    const { data: facturas } = await supabase.from('facturacion').select('total').eq('restaurante_id',6).eq('fecha',today);
+    const { data: facturas } = await supabase.from('facturacion').select('total').eq('restaurante_id', restauranteId).eq('fecha',today);
     const ventasSistema = facturas?.reduce((s:number,f:any) => s+(f.total||0), 0) || 0;
     const egresosTotal = egresos.reduce((s:number,e:any) => s+(e.valor||0), 0);
     const efectivo = Number(arqueoForm.efectivo_real)||0;
@@ -105,7 +157,7 @@ export default function FinanceHub() {
     const estado = Math.abs(diferencia) > 20000 ? 'con_diferencia' : 'cerrado';
 
     const payload = {
-      restaurante_id:6, fecha:today, turno:'noche',
+      restaurante_id: restauranteId, fecha:today, turno:'noche',
       responsable: profile?.nombre_completo||'Admin',
       ventas_sistema: ventasSistema, efectivo_real:efectivo,
       tarjeta_real:tarjeta, datafono_real:datafono,
@@ -124,7 +176,7 @@ export default function FinanceHub() {
       show(`⚠️ Diferencia de ${fmt(Math.abs(diferencia))} — Alerta enviada al JP`);
       // Insertar notificación
       await supabase.from('notifications').insert({
-        restaurante_id:6, tipo:'arqueo_diferencia',
+        restaurante_id: restauranteId, tipo:'arqueo_diferencia',
         titulo:'Diferencia de caja',
         mensaje:`Diferencia de ${fmt(Math.abs(diferencia))} en el arqueo del turno. Revisar.`,
         urgente:true, leida:false,
@@ -188,7 +240,7 @@ export default function FinanceHub() {
         fotoUrl = publicUrl;
       }
       await supabase.from('facturas_ocr').insert({
-        restaurante_id:6, foto_url:fotoUrl, proveedor:result.proveedor,
+        restaurante_id: restauranteId, foto_url:fotoUrl, proveedor:result.proveedor,
         nit_proveedor:result.nit_proveedor, numero_factura:result.numero_factura,
         fecha_factura:result.fecha_factura, items:result.items,
         subtotal:result.subtotal, iva:result.iva, total:result.total,
@@ -267,7 +319,17 @@ export default function FinanceHub() {
               </div>
               <div style={{marginBottom:12}}>
                 <div style={lbl}>Concepto *</div>
-                <input style={inp} value={formEgreso.concepto} onChange={e=>setFE('concepto',e.target.value)} placeholder="Ej: Propina turno noche, Aceite de oliva..."/>
+                <select style={inp} value={formEgreso.concepto} onChange={e=>setFE('concepto',e.target.value)}>
+                  <option value="">— Elige un concepto —</option>
+                  {(CONCEPTOS_POR_CATEGORIA[formEgreso.categoria] || []).map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+                {formEgreso.concepto === 'Otro' && (
+                  <input style={{...inp, marginTop:8}} value={formEgreso.conceptoCustom}
+                    onChange={e=>setFE('conceptoCustom', e.target.value)}
+                    placeholder="Escribe el concepto..." autoFocus/>
+                )}
               </div>
               <div style={{marginBottom:12}}>
                 <div style={lbl}>Valor (COP) *</div>
@@ -278,13 +340,34 @@ export default function FinanceHub() {
                 <div style={lbl}>Responsable</div>
                 <input style={inp} value={formEgreso.responsable} onChange={e=>setFE('responsable',e.target.value)} placeholder={profile?.nombre_completo||'Staff'}/>
               </div>
+              <div style={{marginBottom:12}}>
+                <div style={lbl}>Comprobante de pago (foto)</div>
+                <input ref={comprobanteRef} type="file" accept="image/*" capture="environment"
+                  onChange={e=>onSelectComprobante(e.target.files?.[0]||null)} style={{display:'none'}}/>
+                {!comprobantePreview ? (
+                  <button onClick={()=>comprobanteRef.current?.click()}
+                    style={{width:'100%',padding:'14px 12px',borderRadius:10,border:`1px dashed ${S.border2}`,background:'rgba(255,255,255,0.03)',color:S.t2,fontSize:12,fontWeight:600,cursor:'pointer',textAlign:'center'}}>
+                    📷 Subir foto del recibo / comprobante
+                  </button>
+                ) : (
+                  <div style={{position:'relative',borderRadius:10,overflow:'hidden',border:`1px solid ${S.border}`}}>
+                    <img src={comprobantePreview} alt="comprobante" style={{width:'100%',display:'block',maxHeight:180,objectFit:'cover'}}/>
+                    <div style={{position:'absolute',top:8,right:8,display:'flex',gap:6}}>
+                      <button onClick={()=>comprobanteRef.current?.click()}
+                        style={{padding:'6px 10px',borderRadius:8,border:'none',background:'rgba(0,0,0,0.65)',color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer'}}>📷 Cambiar</button>
+                      <button onClick={()=>onSelectComprobante(null)}
+                        style={{padding:'6px 10px',borderRadius:8,border:'none',background:'rgba(220,38,38,0.85)',color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer'}}>✕ Quitar</button>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div style={{marginBottom:16}}>
                 <div style={lbl}>Notas (opcional)</div>
                 <textarea style={{...inp,height:60,resize:'vertical'}} value={formEgreso.notas} onChange={e=>setFE('notas',e.target.value)} placeholder="Observaciones adicionales..."/>
               </div>
               <button onClick={guardarEgreso} disabled={guardandoEgreso}
                 style={{width:'100%',padding:13,borderRadius:12,border:'none',background:guardandoEgreso?S.bg3:`linear-gradient(135deg,${S.red},#c02020)`,color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>
-                {guardandoEgreso?'Guardando...':'✓ Registrar egreso'}
+                {subiendoFoto ? 'Subiendo foto...' : (guardandoEgreso?'Guardando...':'✓ Registrar egreso')}
               </button>
             </div>
 

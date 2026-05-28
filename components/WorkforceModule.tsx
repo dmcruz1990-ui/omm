@@ -461,7 +461,7 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
       )}
 
       {/* Modal nuevo turno */}
-      {shiftModal && <ShiftModal empleado={empById[shiftModal.empId]} fecha={shiftModal.fecha} onClose={()=>setShiftModal(null)} onSaved={(msg)=>{ setShiftModal(null); showToast(msg); logAudit('turno.creado','turnos',{empleado_id:shiftModal.empId, fecha:shiftModal.fecha}); }} />}
+      {shiftModal && <ShiftModal empleado={empById[shiftModal.empId]} fecha={shiftModal.fecha} complejoId={COMPLEJO_ID} onClose={()=>setShiftModal(null)} onSaved={(msg)=>{ setShiftModal(null); showToast(msg); logAudit('turno.creado','turnos',{empleado_id:shiftModal.empId, fecha:shiftModal.fecha}); cargar(); }} />}
       {/* Modal nueva novedad */}
       {novModal && <NovedadModal empleados={empleados} userName={userName} onClose={()=>setNovModal(false)} onSaved={(msg)=>{ setNovModal(false); showToast(msg); }} />}
 
@@ -486,18 +486,26 @@ function AsisChip({a}:{a:any}){
 }
 
 // ── Modal: crear turno ──
-function ShiftModal({empleado, fecha, onClose, onSaved}:{empleado:any, fecha:string, onClose:()=>void, onSaved:(m:string)=>void}){
+function ShiftModal({empleado, fecha, complejoId, onClose, onSaved}:{empleado:any, fecha:string, complejoId:number, onClose:()=>void, onSaved:(m:string)=>void}){
   const [ini,setIni]=useState('17:00');
   const [fin,setFin]=useState('23:00');
   const [tipo,setTipo]=useState('servicio');
   const [nota,setNota]=useState('');
   const [saving,setSaving]=useState(false);
+  const [error,setError]=useState<string|null>(null);
   const guardar = async ()=>{
     setSaving(true);
-    const horas = shiftHours(ini+':00', fin+':00');
-    await supabase.from('turnos').insert({ empleado_id:empleado.id, complejo_id:COMPLEJO_ID, fecha, hora_inicio:ini+':00', hora_fin:fin+':00', estado:'programado', tipo_turno:tipo, horas_trabajadas:horas, nota, confirmado:false, publicado:false });
-    setSaving(false);
-    onSaved(`✓ Turno ${ini}–${fin} · ${empleado.nombre_completo}`);
+    setError(null);
+    try {
+      const horas = shiftHours(ini+':00', fin+':00');
+      const { error: insErr } = await supabase.from('turnos').insert({ empleado_id:empleado.id, complejo_id:complejoId, fecha, hora_inicio:ini+':00', hora_fin:fin+':00', estado:'programado', tipo_turno:tipo, horas_trabajadas:horas, nota, confirmado:false, publicado:false });
+      if (insErr) throw insErr;
+      onSaved(`✓ Turno ${ini}–${fin} · ${empleado.nombre_completo}`);
+    } catch (e:any) {
+      setError(e?.message || 'No se pudo guardar el turno');
+    } finally {
+      setSaving(false);
+    }
   };
   return (
     <div className="fixed inset-0 bg-black/80 z-[700] flex items-center justify-center p-4" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
@@ -517,6 +525,7 @@ function ShiftModal({empleado, fecha, onClose, onSaved}:{empleado:any, fecha:str
           ))}
         </div>
         <input value={nota} onChange={e=>setNota(e.target.value)} placeholder="Nota (opcional)" className="w-full px-2 py-2 rounded-lg text-[12px] mb-3" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/>
+        {error && <div className="text-[11px] mb-2 px-3 py-2 rounded-lg" style={{background:'rgba(255,82,82,0.12)',border:'1px solid rgba(255,82,82,0.30)',color:'#ff7878'}}>⚠ {error}</div>}
         <button onClick={guardar} disabled={saving} className="w-full py-2.5 rounded-xl text-[13px] font-black flex items-center justify-center gap-2" style={{background:C.gold,color:'#000'}}>{saving?<Loader2 size={15} className="animate-spin"/>:<Plus size={15}/>} Crear turno</button>
       </div>
     </div>

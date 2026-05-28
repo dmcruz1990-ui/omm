@@ -3,8 +3,10 @@ import { useAuth } from './AuthContext';
 
 // ═══════════════════════════════════════════════════════════════
 // RestaurantContext — restaurante activo del usuario.
-// Admin/gerencia/desarrollo pueden cambiar entre OMM/Gallo.
-// Meseros/cocina están fijos al restaurante que dice su profile.
+// CADA USUARIO PERTENECE A UN SOLO RESTAURANTE (profile.restaurante_id).
+// OMM y Gallo Colorado son universos separados: para operar Gallo,
+// hay que loguearse con un usuario asignado a Gallo (id=23).
+// Sólo el rol "desarrollo" (Dale) puede saltar entre ambos para QA.
 // ═══════════════════════════════════════════════════════════════
 
 export interface RestauranteOption {
@@ -35,7 +37,9 @@ const RestaurantContext = createContext<Ctx | undefined>(undefined);
 export const RestaurantProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { profile } = useAuth();
   const role = profile?.role || 'mesero';
-  const canSwitch = ['admin','gerencia','desarrollo'].includes(role);
+  // Sólo "desarrollo" puede saltar entre restaurantes (QA).
+  // Admin/gerencia ahora quedan fijos al restaurante de su profile.
+  const canSwitch = role === 'desarrollo';
 
   const defaultId = profile?.restaurante_id || 6;
 

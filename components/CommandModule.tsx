@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from '../lib/supabase.ts';
+import { useRestaurant } from '../contexts/RestaurantContext';
 import {
   Home, TrendingUp, Users, Zap, Wine, UserCheck, CalendarDays, Settings,
   DollarSign, Receipt, Heart, Bell, ChevronRight, Star, Cake, AlertTriangle,
@@ -243,6 +245,49 @@ const roles = [
 
 const CommandModule: React.FC<CommandModuleProps> = () => {
   const [active, setActive] = useState<ViewId>('inicio');
+  const { activeId: restauranteId, activeRestaurant } = useRestaurant();
+
+  // ── KPIs REALES del restaurante activo (vacíos = $0 hasta que opere) ──
+  const [kpisReales, setKpisReales] = useState({
+    ventaHoy: 0, ventaMes: 0, ticketsHoy: 0, ticketsMes: 0,
+    comensalesHoy: 0, comensalesMes: 0,
+  });
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const today = new Date(); const todayStr = today.toISOString().split('T')[0];
+      const mesStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
+      // Cobros del día y mes (cuentas cerradas — fuente más confiable que facturacion)
+      const [cobHoy, cobMes] = await Promise.all([
+        supabase.from('cobros_trazabilidad').select('total,platos_servidos')
+          .eq('restaurante_id', restauranteId).gte('created_at', todayStr+'T00:00:00'),
+        supabase.from('cobros_trazabilidad').select('total,platos_servidos')
+          .eq('restaurante_id', restauranteId).gte('created_at', mesStart+'T00:00:00'),
+      ]);
+      if (!alive) return;
+      const sumarH = (rows:any[]|null) => (rows||[]).reduce((s,r)=>s+Number(r.total||0),0);
+      const sumPaxH = (rows:any[]|null) => (rows||[]).reduce((s,r)=>s+Number(r.platos_servidos||0),0);
+      setKpisReales({
+        ventaHoy: sumarH(cobHoy.data),
+        ventaMes: sumarH(cobMes.data),
+        ticketsHoy: (cobHoy.data||[]).length,
+        ticketsMes: (cobMes.data||[]).length,
+        comensalesHoy: sumPaxH(cobHoy.data),
+        comensalesMes: sumPaxH(cobMes.data),
+      });
+    })();
+    return () => { alive = false; };
+  }, [restauranteId]);
+
+  const fmtCOP = (n:number) => {
+    if (!n) return '$0';
+    if (n >= 1_000_000_000) return `$${(n/1_000_000_000).toFixed(1)}B`;
+    if (n >= 1_000_000) return `$${(n/1_000_000).toFixed(1)}M`;
+    if (n >= 1_000) return `$${(n/1_000).toFixed(0)}K`;
+    return `$${n.toLocaleString('es-CO')}`;
+  };
+  const ticketProm = kpisReales.ticketsHoy ? kpisReales.ventaHoy / kpisReales.ticketsHoy : 0;
+  const ticketPromMes = kpisReales.ticketsMes ? kpisReales.ventaMes / kpisReales.ticketsMes : 0;
 
   const titulo: Record<ViewId,string> = {
     inicio:'NEXUM COMANDANTE',
@@ -286,12 +331,12 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
           <div>
             <h1 className="text-[18px] font-black tracking-tight">{titulo[active]}</h1>
             <div className="flex items-center gap-2 text-[11px] text-[#7a8499]">
-              <span>Robata 114</span><span>·</span>
+              <span>{activeRestaurant.nombre}</span><span>·</span>
               <span className="flex items-center gap-1">En vivo <span className="w-1.5 h-1.5 rounded-full bg-[#3dba6f] inline-block animate-pulse"/></span>
             </div>
           </div>
           <div className="flex items-center gap-3 text-right">
-            <div><div className="text-[13px] font-bold">8:28 p.m.</div><div className="text-[10px] text-[#7a8499]">24 de mayo, 2025</div></div>
+            <div><div className="text-[13px] font-bold">{new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</div><div className="text-[10px] text-[#7a8499]">{new Date().toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'})}</div></div>
             <button className="w-8 h-8 rounded-full bg-[#0e1424] border border-[#1a2030] flex items-center justify-center text-[#7a8499]"><Bell size={14}/></button>
             <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#0e1424] border border-[#1a2030]">
               <div className="w-6 h-6 rounded-full bg-[#4a9fff] flex items-center justify-center text-[10px] font-black text-black">GM</div>
@@ -302,13 +347,31 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
 
         {/* ═══════════════ INICIO ═══════════════ */}
         {active==='inicio' && (<>
+          {/* Banner del restaurante activo */}
+          <div className="mb-3 flex items-center gap-3 px-3 py-2 rounded-xl"
+            style={{background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.07)'}}>
+            <span style={{fontSize:24}}>{activeRestaurant.emoji}</span>
+            <div>
+              <div className="text-[11px] text-[#7a8499] uppercase tracking-widest">Operando</div>
+              <div className="text-[14px] font-black text-white">{activeRestaurant.nombre}</div>
+            </div>
+            <div className="ml-auto text-[10px] text-[#7a8499]">Datos en vivo · {new Date().toLocaleDateString('es-CO')}</div>
+          </div>
+          {/* KPIs REALES — empiezan en $0 y crecen conforme operan los meseros */}
           <div className="grid grid-cols-5 gap-3 mb-3">
-            <KPI label="VENTA HOY"       value="$42.5M" icon={DollarSign}  iconColor="#3dba6f" sub={<><div>● Meta: $50M</div><div>● Cumplimiento: 85%</div><div>● Costo día: 32% · $13.8M</div></>}/>
-            <KPI label="VENTA MES"       value="$780M"  icon={TrendingUp}  iconColor="#3dba6f" sub={<><div>● Meta: $1.2B</div><div>● Cumplimiento: 85%</div><div>● Costo mes: 31.8% · $248M</div></>}/>
-            <KPI label="TICKET PROMEDIO" value="$185K"  icon={Receipt}     iconColor="#c66de8" sub={<div>Mes: $172K</div>}/>
-            <KPI label="COMENSALES"      value="238"    color="#f0a050"    icon={Users}        iconColor="#f0a050" sub={<><div>Mes: 6,820</div><div>Esperados hoy: 310</div></>}/>
-            <KPI label="HEALTH SCORE"    value="87/100" icon={Heart}       iconColor="#3dba6f"
-                 sub={<><div className="text-[#f0a050]">Sano, revisar cocina</div><div className="flex gap-2 flex-wrap text-[9px]"><span>Ventas:<span className="text-white font-bold">88</span></span><span>Clientes:<span className="text-white font-bold">84</span></span><span>Op:<span className="text-white font-bold">81</span></span><span>Equipo:<span className="text-white font-bold">89</span></span></div></>}/>
+            <KPI label="VENTA HOY"       value={fmtCOP(kpisReales.ventaHoy)} icon={DollarSign} iconColor="#3dba6f" sub={<><div>● Cuentas cerradas: {kpisReales.ticketsHoy}</div><div>● Mes: {fmtCOP(kpisReales.ventaMes)}</div></>}/>
+            <KPI label="VENTA MES"       value={fmtCOP(kpisReales.ventaMes)} icon={TrendingUp} iconColor="#3dba6f" sub={<><div>● Cuentas mes: {kpisReales.ticketsMes}</div><div>● Día {new Date().getDate()}/{new Date(new Date().getFullYear(),new Date().getMonth()+1,0).getDate()}</div></>}/>
+            <KPI label="TICKET PROMEDIO" value={fmtCOP(ticketProm)} icon={Receipt} iconColor="#c66de8" sub={<div>Mes: {fmtCOP(ticketPromMes)}</div>}/>
+            <KPI label="COMENSALES"      value={String(kpisReales.comensalesHoy)} color="#f0a050" icon={Users} iconColor="#f0a050" sub={<><div>Mes: {kpisReales.comensalesMes.toLocaleString('es-CO')}</div></>}/>
+            <KPI label="HEALTH SCORE"    value={kpisReales.ventaHoy ? '—' : '0/100'} icon={Heart} iconColor="#3dba6f"
+                 sub={<div className="text-[#7a8499]">Se calcula con datos reales</div>}/>
+          </div>
+
+          {/* Aviso temporal: las siguientes secciones aún muestran datos de
+              ejemplo. Se conectarán a producción en el próximo sprint. */}
+          <div className="mb-3 px-3 py-1.5 rounded-lg text-[10px]"
+            style={{background:'rgba(240,180,90,0.08)', border:'1px solid rgba(240,180,90,0.25)', color:'#f0b45a'}}>
+            ⚠ Los KPIs de arriba ya son reales del restaurante. Las secciones de abajo (Guest Pulse, Operation Flow, Top Empleados, etc.) todavía muestran datos de demostración.
           </div>
 
           <div className="grid grid-cols-3 gap-3 mb-3">
