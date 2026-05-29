@@ -17,7 +17,7 @@ const inp: React.CSSProperties = {
 };
 const label: React.CSSProperties = { fontSize:11, color:'#50506A', fontWeight:700, marginBottom:6, display:'block', textTransform:'uppercase', letterSpacing:'.06em' };
 
-type Tab = 'general' | 'fotos' | 'horarios' | 'amenidades' | 'experiencias' | 'menu' | 'preview';
+type Tab = 'general' | 'fotos' | 'horarios' | 'amenidades' | 'experiencias' | 'menu' | 'top_platos' | 'eventos' | 'gourmand' | 'preview';
 type Vista = 'lista' | 'solicitudes' | 'editor';
 
 const COCINAS_OPTS = ['Italiana','Japonesa','Nikkei','Mediterránea','Colombiana','Francesa','Española','China','Peruana','Mexicana','Bar de pizzas','Cócteles','Sake','Vinos','Mariscos','Carnes','Vegetariana','Vegana','Fusión'];
@@ -70,6 +70,10 @@ export default function OhYeahAdminModule() {
   const [analizando, setAnal]   = useState(false);
   const [analisisIA, setAnalIA] = useState<any>(null);
   const [toast, setToast]       = useState('');
+  // Datos de las pestañas nuevas (Top platos, Eventos, Gourmand Society)
+  const [topPlatos, setTopPlatos] = useState<any[]>([]);
+  const [eventos, setEventos] = useState<any[]>([]);
+  const [gourmand, setGourmand] = useState<any[]>([]);
   const [showList, setShowList] = useState(true);
   // Horarios por día
   const [horarioDia, setHorarioDia] = useState<Record<string,{abre:string,cierra:string,cerrado:boolean}>>({});
@@ -227,11 +231,23 @@ No incluyas texto adicional, solo el JSON.` }
     setShowList(true);
   };
 
+  const cargarExtras = async (restauranteId:number) => {
+    const [tp, ev, gs] = await Promise.all([
+      supabase.from('ohyeah_top_platos').select('*').eq('restaurante_id', restauranteId).order('posicion'),
+      supabase.from('ohyeah_eventos').select('*').eq('restaurante_id', restauranteId).order('fecha', { ascending:false }),
+      supabase.from('ohyeah_gourmand_regalos').select('*').eq('restaurante_id', restauranteId).order('nivel'),
+    ]);
+    setTopPlatos(tp.data || []);
+    setEventos(ev.data || []);
+    setGourmand(gs.data || []);
+  };
+
   const abrirEditar = (r:any) => {
     setSel(r);
     setForm(r);
     setShowList(false);
     setTab('general');
+    if (r?.id) cargarExtras(r.id);
   };
 
   const nuevoRestaurante = () => {
@@ -268,6 +284,9 @@ No incluyas texto adicional, solo el JSON.` }
     {id:'amenidades',   label:'✓ Amenidades'},
     {id:'experiencias', label:'✨ Experiencias'},
     {id:'menu',         label:'🍽️ Menú & Concierge'},
+    {id:'top_platos',   label:'🌟 Top 10 Platos'},
+    {id:'eventos',      label:'🎉 Eventos'},
+    {id:'gourmand',     label:'👑 Gourmand Society'},
     {id:'preview',      label:'👁️ Preview'},
   ];
 
@@ -917,6 +936,36 @@ No incluyas texto adicional, solo el JSON.` }
               </div>
             )}
 
+            {/* ── TOP 10 PLATOS ── */}
+            {tab==='top_platos' && (
+              <TopPlatosEditor
+                restauranteId={selected?.id}
+                topPlatos={topPlatos}
+                onChange={(p:any[]) => setTopPlatos(p)}
+                showToast={showToast}
+              />
+            )}
+
+            {/* ── EVENTOS ── */}
+            {tab==='eventos' && (
+              <EventosEditor
+                restauranteId={selected?.id}
+                eventos={eventos}
+                onChange={(p:any[]) => setEventos(p)}
+                showToast={showToast}
+              />
+            )}
+
+            {/* ── GOURMAND SOCIETY ── */}
+            {tab==='gourmand' && (
+              <GourmandEditor
+                restauranteId={selected?.id}
+                regalos={gourmand}
+                onChange={(p:any[]) => setGourmand(p)}
+                showToast={showToast}
+              />
+            )}
+
             {/* ── PREVIEW ── */}
             {tab==='preview' && (
               <div style={{maxWidth:480,margin:'0 auto'}}>
@@ -984,6 +1033,431 @@ No incluyas texto adicional, solo el JSON.` }
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SUB-EDITORES: Top Platos / Eventos / Gourmand Society
+// ═══════════════════════════════════════════════════════════════════════
+
+// Helper para subir foto a Storage y devolver URL pública
+async function subirFotoOhYeah(file: File, prefix: string, restauranteId: number): Promise<string|null> {
+  const ext = file.name.split('.').pop() || 'jpg';
+  const path = `${prefix}/${restauranteId}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.${ext}`;
+  const { error: upErr } = await supabase.storage.from('ohyeah-fotos').upload(path, file, { upsert:false, contentType: file.type });
+  if (upErr) return null;
+  const { data: pub } = supabase.storage.from('ohyeah-fotos').getPublicUrl(path);
+  return pub?.publicUrl || null;
+}
+
+// ── TOP 10 PLATOS ──────────────────────────────────────────────────────
+function TopPlatosEditor({ restauranteId, topPlatos, onChange, showToast }: any) {
+  const [editing, setEditing] = useState<number|null>(null);
+  const [form, setForm] = useState<any>({});
+  const [subiendo, setSubiendo] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  if (!restauranteId) return <div style={{padding:40,textAlign:'center',color:'#50506A'}}>Selecciona un restaurante de la lista</div>;
+
+  const abrirSlot = (pos: number) => {
+    const existente = topPlatos.find((p:any) => p.posicion === pos);
+    setEditing(pos);
+    setForm(existente || { posicion: pos, restaurante_id: restauranteId, nombre: '', descripcion: '', precio: 0, emoji: '🍽️' });
+  };
+  const guardar = async () => {
+    if (!form.nombre) { showToast('⚠ Nombre requerido'); return; }
+    setSubiendo(true);
+    let payload = { ...form, restaurante_id: restauranteId, updated_at: new Date().toISOString() };
+    if (payload.id) {
+      await supabase.from('ohyeah_top_platos').update(payload).eq('id', payload.id);
+    } else {
+      const { data } = await supabase.from('ohyeah_top_platos').insert(payload).select().single();
+      if (data) payload = data;
+    }
+    const nuevoArr = topPlatos.filter((p:any) => p.posicion !== form.posicion).concat(payload).sort((a:any,b:any)=>a.posicion-b.posicion);
+    onChange(nuevoArr);
+    setSubiendo(false);
+    setEditing(null);
+    showToast(`✓ Plato #${form.posicion} guardado`);
+  };
+  const onFile = async (file: File) => {
+    setSubiendo(true);
+    const url = await subirFotoOhYeah(file, 'top-platos', restauranteId);
+    if (url) setForm((f:any) => ({ ...f, foto_url: url }));
+    else showToast('⚠ Error subiendo foto');
+    setSubiendo(false);
+  };
+  const generarConIA = async () => {
+    if (!form.nombre) { showToast('⚠ Pon el nombre primero'); return; }
+    showToast('🤖 La generación de descripciones con IA estará disponible próximamente');
+    // TODO: llamar al endpoint de IA cuando esté listo
+    setForm((f:any) => ({ ...f, ai_optimizado: true, ai_descripcion: `${f.nombre} — descripción optimizada por IA (placeholder)` }));
+  };
+
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',marginBottom:18,gap:12,flexWrap:'wrap'}}>
+        <div>
+          <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:'#FFE600'}}>🌟 Top 10 Platos</div>
+          <div style={{fontSize:11,color:'#50506A'}}>Sube tus 10 platos estrella · Estos aparecerán destacados en Oh Yeah</div>
+        </div>
+        <div style={{marginLeft:'auto',fontSize:11,color:'#50506A'}}>{topPlatos.length}/10 cargados</div>
+      </div>
+      {/* Grid de 10 slots */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))',gap:14}}>
+        {Array.from({length:10}).map((_,i) => {
+          const pos = i+1;
+          const plato = topPlatos.find((p:any) => p.posicion === pos);
+          return (
+            <button key={pos} onClick={() => abrirSlot(pos)}
+              style={{background:plato?'#1a1a26':'rgba(255,255,255,0.02)',border:`1px solid ${plato?'#FFE600'+'40':'rgba(255,255,255,0.08)'}`,borderRadius:14,overflow:'hidden',cursor:'pointer',textAlign:'left',padding:0,transition:'all .15s'}}>
+              <div style={{height:140,background:plato?.foto_url?`url(${plato.foto_url}) center/cover`:'linear-gradient(135deg,#1e1e2e,#2a2a3e)',position:'relative'}}>
+                <div style={{position:'absolute',top:8,left:8,background:'#FFE600',color:'#000',fontSize:10,fontWeight:900,padding:'3px 9px',borderRadius:50}}>#{pos}</div>
+                {!plato && <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:30,color:'rgba(255,255,255,0.2)'}}>📷</div>}
+                {plato?.ai_optimizado && <div style={{position:'absolute',top:8,right:8,background:'rgba(155,114,255,0.8)',color:'#fff',fontSize:9,fontWeight:700,padding:'2px 8px',borderRadius:50}}>🤖 IA</div>}
+              </div>
+              <div style={{padding:'10px 12px'}}>
+                <div style={{fontSize:13,fontWeight:700,color:'#fff',marginBottom:3}}>{plato?.nombre || `Slot ${pos} vacío`}</div>
+                <div style={{fontSize:11,color:plato?'#FFE600':'#50506A',fontWeight:700}}>{plato?.precio?`$${Number(plato.precio).toLocaleString('es-CO')}`:'Toca para agregar'}</div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Modal edición */}
+      {editing !== null && (
+        <div onClick={()=>setEditing(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200,padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'#0f0f1a',border:'1px solid rgba(255,255,255,0.1)',borderRadius:18,width:'100%',maxWidth:420,padding:24,maxHeight:'90vh',overflowY:'auto'}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,marginBottom:14,color:'#FFE600'}}>🌟 Plato Top #{form.posicion}</div>
+            <input type="file" accept="image/*" ref={fileRef} onChange={e=>e.target.files?.[0] && onFile(e.target.files[0])} style={{display:'none'}}/>
+            <div onClick={()=>fileRef.current?.click()}
+              style={{height:160,borderRadius:12,marginBottom:14,cursor:'pointer',background:form.foto_url?`url(${form.foto_url}) center/cover`:'rgba(255,255,255,0.03)',border:`1px dashed ${form.foto_url?'transparent':'rgba(255,255,255,0.2)'}`,display:'flex',alignItems:'center',justifyContent:'center',color:'#A0A0B8',fontSize:13}}>
+              {subiendo ? '⌛ Subiendo...' : (form.foto_url ? '🔄 Cambiar foto' : '📷 Subir foto del plato')}
+            </div>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Nombre del plato</div>
+              <input value={form.nombre||''} onChange={e=>setForm((p:any)=>({...p, nombre:e.target.value}))} placeholder="Ej: Ceviche a la Roca" style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,outline:'none'}}/>
+            </div>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Descripción {form.ai_optimizado && <span style={{color:'#9b72ff'}}>· 🤖 IA</span>}</div>
+              <textarea value={form.descripcion||''} onChange={e=>setForm((p:any)=>({...p, descripcion:e.target.value}))} placeholder="Cuéntale al comensal de este plato..." rows={3} style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:12,outline:'none',resize:'vertical'}}/>
+              <button onClick={generarConIA} style={{marginTop:6,padding:'5px 11px',borderRadius:7,border:'1px solid rgba(155,114,255,0.4)',background:'rgba(155,114,255,0.08)',color:'#9b72ff',fontSize:10,fontWeight:700,cursor:'pointer'}}>🤖 Generar con IA</button>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
+              <div>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Precio (COP)</div>
+                <input type="number" value={form.precio||''} onChange={e=>setForm((p:any)=>({...p, precio:Number(e.target.value)}))} placeholder="0" style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,outline:'none'}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Emoji</div>
+                <input value={form.emoji||''} onChange={e=>setForm((p:any)=>({...p, emoji:e.target.value}))} placeholder="🍽️" style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:18,outline:'none',textAlign:'center'}}/>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              {form.id && <button onClick={async()=>{ await supabase.from('ohyeah_top_platos').delete().eq('id', form.id); onChange(topPlatos.filter((p:any)=>p.id!==form.id)); setEditing(null); showToast(`✓ Slot ${form.posicion} eliminado`); }} style={{padding:'10px 14px',borderRadius:9,border:'1px solid rgba(255,82,82,0.4)',background:'rgba(255,82,82,0.1)',color:'#ff5252',fontSize:12,fontWeight:700,cursor:'pointer'}}>Eliminar</button>}
+              <button onClick={()=>setEditing(null)} style={{flex:1,padding:'10px 14px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'transparent',color:'#A0A0B8',fontSize:12,fontWeight:700,cursor:'pointer'}}>Cancelar</button>
+              <button onClick={guardar} disabled={subiendo} style={{flex:2,padding:'10px 14px',borderRadius:9,border:'none',background:`linear-gradient(135deg,#FFE600,#e6a800)`,color:'#000',fontSize:12,fontWeight:900,cursor:'pointer'}}>{subiendo?'Guardando...':'✓ Guardar plato'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── EVENTOS DE OH YEAH ─────────────────────────────────────────────────
+function EventosEditor({ restauranteId, eventos, onChange, showToast }: any) {
+  const [editing, setEditing] = useState<any|null>(null);
+  const [subiendo, setSubiendo] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  if (!restauranteId) return <div style={{padding:40,textAlign:'center',color:'#50506A'}}>Selecciona un restaurante</div>;
+  const TIPOS = [
+    { id:'cata', label:'🍷 Cata', color:'#B388FF' },
+    { id:'brunch', label:'🥐 Brunch', color:'#FFB547' },
+    { id:'cena_privada', label:'🍽️ Cena privada', color:'#FF5252' },
+    { id:'lanzamiento', label:'🎉 Lanzamiento', color:'#00E676' },
+    { id:'show', label:'🎵 Show', color:'#FF2D78' },
+    { id:'degustacion', label:'👨‍🍳 Degustación', color:'#448AFF' },
+    { id:'clase', label:'📚 Clase', color:'#22d3ee' },
+    { id:'otro', label:'✨ Otro', color:'#A0A0B8' },
+  ];
+  const ESTADOS = ['borrador','publicado','vendido','cancelado','finalizado'];
+
+  const nuevoEvento = () => setEditing({ restaurante_id: restauranteId, titulo:'', tipo:'cata', fecha: new Date().toISOString().split('T')[0], cupos_totales: 20, cupos_disponibles: 20, estado:'borrador' });
+  const guardar = async () => {
+    if (!editing.titulo) { showToast('⚠ Título requerido'); return; }
+    setSubiendo(true);
+    let payload = { ...editing, restaurante_id: restauranteId, updated_at: new Date().toISOString() };
+    if (payload.id) {
+      await supabase.from('ohyeah_eventos').update(payload).eq('id', payload.id);
+    } else {
+      const { data } = await supabase.from('ohyeah_eventos').insert(payload).select().single();
+      if (data) payload = data;
+    }
+    const nuevos = editing.id ? eventos.map((e:any)=>e.id===payload.id?payload:e) : [payload, ...eventos];
+    onChange(nuevos);
+    setSubiendo(false);
+    setEditing(null);
+    showToast('✓ Evento guardado');
+  };
+  const eliminar = async () => {
+    if (!editing.id) { setEditing(null); return; }
+    await supabase.from('ohyeah_eventos').delete().eq('id', editing.id);
+    onChange(eventos.filter((e:any)=>e.id!==editing.id));
+    setEditing(null);
+    showToast('Evento eliminado');
+  };
+  const onFile = async (file: File) => {
+    setSubiendo(true);
+    const url = await subirFotoOhYeah(file, 'eventos', restauranteId);
+    if (url) setEditing((e:any) => ({ ...e, foto_url: url }));
+    setSubiendo(false);
+  };
+
+  return (
+    <div>
+      <div style={{display:'flex',alignItems:'center',marginBottom:18,gap:12,flexWrap:'wrap'}}>
+        <div>
+          <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:'#FFE600'}}>🎉 Eventos Oh Yeah</div>
+          <div style={{fontSize:11,color:'#50506A'}}>Catas, brunch, lanzamientos, cenas privadas · Tus clientes ven y reservan cupos</div>
+        </div>
+        <button onClick={nuevoEvento} style={{marginLeft:'auto',padding:'9px 18px',borderRadius:10,border:'none',background:`linear-gradient(135deg,#FFE600,#e6a800)`,color:'#000',fontSize:12,fontWeight:900,cursor:'pointer'}}>+ Nuevo evento</button>
+      </div>
+
+      {eventos.length === 0 && <div style={{padding:60,textAlign:'center',color:'#50506A'}}><div style={{fontSize:40,marginBottom:10}}>🎉</div><div style={{fontSize:13,fontWeight:700}}>Aún no tienes eventos · Crea el primero</div></div>}
+
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(260px,1fr))',gap:14}}>
+        {eventos.map((e:any) => {
+          const tipo = TIPOS.find(t => t.id === e.tipo) || TIPOS[7];
+          const estadoColor = e.estado==='publicado'?'#00E676':e.estado==='vendido'?'#FFE600':e.estado==='cancelado'?'#FF5252':'#A0A0B8';
+          return (
+            <button key={e.id} onClick={()=>setEditing(e)} style={{background:'#1a1a26',border:`1px solid ${tipo.color}30`,borderRadius:14,overflow:'hidden',cursor:'pointer',textAlign:'left',padding:0}}>
+              <div style={{height:120,background:e.foto_url?`url(${e.foto_url}) center/cover`:`linear-gradient(135deg,${tipo.color}30,#1e1e2e)`,position:'relative'}}>
+                <div style={{position:'absolute',top:8,left:8,background:tipo.color,color:'#000',fontSize:10,fontWeight:900,padding:'3px 9px',borderRadius:50}}>{tipo.label}</div>
+                <div style={{position:'absolute',top:8,right:8,background:`${estadoColor}25`,color:estadoColor,fontSize:9,fontWeight:900,padding:'3px 9px',borderRadius:50,textTransform:'uppercase'}}>{e.estado}</div>
+              </div>
+              <div style={{padding:'10px 14px'}}>
+                <div style={{fontSize:14,fontWeight:700,color:'#fff',marginBottom:4}}>{e.titulo}</div>
+                <div style={{fontSize:11,color:'#A0A0B8',marginBottom:6}}>{new Date(e.fecha+'T00:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})}{e.hora_inicio?` · ${e.hora_inicio.slice(0,5)}`:''}</div>
+                <div style={{display:'flex',justifyContent:'space-between',fontSize:11}}>
+                  <span style={{color:'#FFE600',fontWeight:700}}>{e.cupos_disponibles}/{e.cupos_totales} cupos</span>
+                  {e.precio && <span style={{color:'#fff',fontWeight:700}}>${Number(e.precio).toLocaleString('es-CO')}</span>}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {editing && (
+        <div onClick={()=>setEditing(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200,padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'#0f0f1a',border:'1px solid rgba(255,255,255,0.1)',borderRadius:18,width:'100%',maxWidth:480,padding:24,maxHeight:'90vh',overflowY:'auto'}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,marginBottom:14,color:'#FFE600'}}>🎉 {editing.id?'Editar evento':'Nuevo evento'}</div>
+            <input type="file" accept="image/*" ref={fileRef} onChange={e=>e.target.files?.[0] && onFile(e.target.files[0])} style={{display:'none'}}/>
+            <div onClick={()=>fileRef.current?.click()} style={{height:140,borderRadius:12,marginBottom:14,cursor:'pointer',background:editing.foto_url?`url(${editing.foto_url}) center/cover`:'rgba(255,255,255,0.03)',border:`1px dashed ${editing.foto_url?'transparent':'rgba(255,255,255,0.2)'}`,display:'flex',alignItems:'center',justifyContent:'center',color:'#A0A0B8',fontSize:13}}>
+              {editing.foto_url?'🔄 Cambiar foto':'📷 Subir foto del evento'}
+            </div>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Título</div>
+              <input value={editing.titulo||''} onChange={e=>setEditing((p:any)=>({...p, titulo:e.target.value}))} placeholder="Ej: Cata de vinos italianos" style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,outline:'none'}}/>
+            </div>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Descripción</div>
+              <textarea value={editing.descripcion||''} onChange={e=>setEditing((p:any)=>({...p, descripcion:e.target.value}))} rows={3} placeholder="¿De qué se trata el evento?" style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:12,outline:'none',resize:'vertical'}}/>
+            </div>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Tipo de evento</div>
+              <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                {TIPOS.map(t => (
+                  <button key={t.id} onClick={()=>setEditing((p:any)=>({...p, tipo:t.id}))} style={{padding:'7px 12px',borderRadius:9,border:`1px solid ${editing.tipo===t.id?t.color:'rgba(255,255,255,0.12)'}`,background:editing.tipo===t.id?`${t.color}20`:'transparent',color:editing.tipo===t.id?t.color:'#A0A0B8',fontSize:11,fontWeight:700,cursor:'pointer'}}>{t.label}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:10}}>
+              <div>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Fecha</div>
+                <input type="date" value={editing.fecha||''} onChange={e=>setEditing((p:any)=>({...p, fecha:e.target.value}))} style={{width:'100%',padding:'9px 10px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:11,outline:'none',colorScheme:'dark'}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Inicio</div>
+                <input type="time" value={editing.hora_inicio||''} onChange={e=>setEditing((p:any)=>({...p, hora_inicio:e.target.value}))} style={{width:'100%',padding:'9px 10px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:11,outline:'none',colorScheme:'dark'}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Fin</div>
+                <input type="time" value={editing.hora_fin||''} onChange={e=>setEditing((p:any)=>({...p, hora_fin:e.target.value}))} style={{width:'100%',padding:'9px 10px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:11,outline:'none',colorScheme:'dark'}}/>
+              </div>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+              <div>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Cupos totales</div>
+                <input type="number" value={editing.cupos_totales||0} onChange={e=>{ const v = Number(e.target.value); setEditing((p:any)=>({...p, cupos_totales:v, cupos_disponibles: p.cupos_disponibles ?? v })); }} style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,outline:'none'}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Precio (COP)</div>
+                <input type="number" value={editing.precio||''} onChange={e=>setEditing((p:any)=>({...p, precio:Number(e.target.value)}))} placeholder="0" style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,outline:'none'}}/>
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Estado</div>
+              <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
+                {ESTADOS.map(es => (
+                  <button key={es} onClick={()=>setEditing((p:any)=>({...p, estado:es}))} style={{padding:'6px 12px',borderRadius:8,border:`1px solid ${editing.estado===es?'#FFE600':'rgba(255,255,255,0.12)'}`,background:editing.estado===es?'rgba(255,230,0,0.12)':'transparent',color:editing.estado===es?'#FFE600':'#A0A0B8',fontSize:11,fontWeight:700,cursor:'pointer',textTransform:'uppercase'}}>{es}</button>
+                ))}
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              {editing.id && <button onClick={eliminar} style={{padding:'10px 14px',borderRadius:9,border:'1px solid rgba(255,82,82,0.4)',background:'rgba(255,82,82,0.1)',color:'#ff5252',fontSize:12,fontWeight:700,cursor:'pointer'}}>Eliminar</button>}
+              <button onClick={()=>setEditing(null)} style={{flex:1,padding:'10px 14px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'transparent',color:'#A0A0B8',fontSize:12,fontWeight:700,cursor:'pointer'}}>Cancelar</button>
+              <button onClick={guardar} disabled={subiendo} style={{flex:2,padding:'10px 14px',borderRadius:9,border:'none',background:`linear-gradient(135deg,#FFE600,#e6a800)`,color:'#000',fontSize:12,fontWeight:900,cursor:'pointer'}}>{subiendo?'Guardando...':'✓ Guardar evento'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── GOURMAND SOCIETY (regalos por nivel) ───────────────────────────────
+function GourmandEditor({ restauranteId, regalos, onChange, showToast }: any) {
+  const [editing, setEditing] = useState<any|null>(null);
+  const [subiendo, setSubiendo] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  if (!restauranteId) return <div style={{padding:40,textAlign:'center',color:'#50506A'}}>Selecciona un restaurante</div>;
+  const NIVELES = [
+    { id:'INICIADO', label:'Iniciado', emoji:'🌱', color:'#A0A0B8' },
+    { id:'REGULAR', label:'Regular', emoji:'🍴', color:'#22d3ee' },
+    { id:'VIP', label:'VIP', emoji:'⭐', color:'#FFE600' },
+    { id:'CONSAGRADO', label:'Consagrado', emoji:'🔥', color:'#FF9800' },
+    { id:'ELITE', label:'Élite', emoji:'👑', color:'#FF5252' },
+    { id:'GRAND_GOURMAND', label:'Grand Gourmand', emoji:'🏆', color:'#B388FF' },
+    { id:'LA_CREME', label:'La Crème', emoji:'💎', color:'#00E676' },
+  ];
+  const TIPOS_REGALO = ['cortesia','descuento','experiencia','plato','bebida','postre','combo','servicio'];
+
+  const nuevo = (nivel:string) => setEditing({ restaurante_id: restauranteId, nivel, nombre:'', tipo:'cortesia', emoji:'🎁', activo:true });
+  const guardar = async () => {
+    if (!editing.nombre) { showToast('⚠ Nombre requerido'); return; }
+    setSubiendo(true);
+    let payload = { ...editing, restaurante_id: restauranteId, updated_at: new Date().toISOString() };
+    if (payload.id) {
+      await supabase.from('ohyeah_gourmand_regalos').update(payload).eq('id', payload.id);
+    } else {
+      const { data } = await supabase.from('ohyeah_gourmand_regalos').insert(payload).select().single();
+      if (data) payload = data;
+    }
+    const nuevos = editing.id ? regalos.map((r:any)=>r.id===payload.id?payload:r) : [payload, ...regalos];
+    onChange(nuevos);
+    setSubiendo(false);
+    setEditing(null);
+    showToast('✓ Regalo guardado');
+  };
+  const eliminar = async () => {
+    if (!editing.id) { setEditing(null); return; }
+    await supabase.from('ohyeah_gourmand_regalos').delete().eq('id', editing.id);
+    onChange(regalos.filter((r:any)=>r.id!==editing.id));
+    setEditing(null);
+    showToast('Regalo eliminado');
+  };
+  const onFile = async (file: File) => {
+    setSubiendo(true);
+    const url = await subirFotoOhYeah(file, 'gourmand', restauranteId);
+    if (url) setEditing((e:any) => ({ ...e, foto_url: url }));
+    setSubiendo(false);
+  };
+
+  return (
+    <div>
+      <div style={{marginBottom:18}}>
+        <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:'#FFE600'}}>👑 Gourmand Society</div>
+        <div style={{fontSize:11,color:'#50506A'}}>Catálogo de regalos por nivel · Los clientes desbloquean según su nivel en Oh Yeah</div>
+      </div>
+
+      {NIVELES.map(nv => {
+        const delNivel = regalos.filter((r:any) => r.nivel === nv.id);
+        return (
+          <div key={nv.id} style={{marginBottom:20,padding:16,background:`${nv.color}08`,border:`1px solid ${nv.color}30`,borderRadius:14}}>
+            <div style={{display:'flex',alignItems:'center',marginBottom:12,gap:10}}>
+              <span style={{fontSize:24}}>{nv.emoji}</span>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,color:nv.color}}>{nv.label}</div>
+                <div style={{fontSize:10,color:'#50506A'}}>{delNivel.length} regalo{delNivel.length===1?'':'s'} disponible{delNivel.length===1?'':'s'}</div>
+              </div>
+              <button onClick={()=>nuevo(nv.id)} style={{padding:'7px 14px',borderRadius:9,border:`1px solid ${nv.color}50`,background:`${nv.color}15`,color:nv.color,fontSize:11,fontWeight:700,cursor:'pointer'}}>+ Agregar</button>
+            </div>
+            {delNivel.length === 0 ? (
+              <div style={{textAlign:'center',padding:18,color:'#50506A',fontSize:11}}>Sin regalos en este nivel</div>
+            ) : (
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:10}}>
+                {delNivel.map((r:any) => (
+                  <button key={r.id} onClick={()=>setEditing(r)} style={{background:'#1a1a26',border:`1px solid ${nv.color}30`,borderRadius:11,padding:12,cursor:'pointer',textAlign:'left'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                      {r.foto_url ? <img src={r.foto_url} alt="" style={{width:36,height:36,borderRadius:8,objectFit:'cover'}}/> : <span style={{fontSize:24}}>{r.emoji||'🎁'}</span>}
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:700,color:'#fff',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{r.nombre}</div>
+                        <div style={{fontSize:10,color:'#50506A',textTransform:'uppercase'}}>{r.tipo}</div>
+                      </div>
+                    </div>
+                    {r.valor_estimado && <div style={{fontSize:10,color:nv.color,fontWeight:700}}>Valor: ${Number(r.valor_estimado).toLocaleString('es-CO')}</div>}
+                    {r.veces_canjeado > 0 && <div style={{fontSize:9,color:'#50506A',marginTop:3}}>{r.veces_canjeado}× canjeado</div>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {editing && (
+        <div onClick={()=>setEditing(null)} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200,padding:20}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'#0f0f1a',border:'1px solid rgba(255,255,255,0.1)',borderRadius:18,width:'100%',maxWidth:440,padding:24,maxHeight:'90vh',overflowY:'auto'}}>
+            <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,marginBottom:14,color:'#FFE600'}}>{editing.id?'Editar regalo':'Nuevo regalo'} · {NIVELES.find(n=>n.id===editing.nivel)?.label}</div>
+            <input type="file" accept="image/*" ref={fileRef} onChange={e=>e.target.files?.[0] && onFile(e.target.files[0])} style={{display:'none'}}/>
+            <div onClick={()=>fileRef.current?.click()} style={{height:120,borderRadius:12,marginBottom:14,cursor:'pointer',background:editing.foto_url?`url(${editing.foto_url}) center/cover`:'rgba(255,255,255,0.03)',border:`1px dashed ${editing.foto_url?'transparent':'rgba(255,255,255,0.2)'}`,display:'flex',alignItems:'center',justifyContent:'center',color:'#A0A0B8',fontSize:13}}>
+              {editing.foto_url?'🔄 Cambiar foto':'📷 Foto del regalo (opcional)'}
+            </div>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Nombre del regalo</div>
+              <input value={editing.nombre||''} onChange={e=>setEditing((p:any)=>({...p, nombre:e.target.value}))} placeholder="Ej: Copa de espumante de cortesía" style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:13,outline:'none'}}/>
+            </div>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Descripción</div>
+              <textarea value={editing.descripcion||''} onChange={e=>setEditing((p:any)=>({...p, descripcion:e.target.value}))} rows={2} style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:12,outline:'none',resize:'vertical'}}/>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:10}}>
+              <div>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Tipo</div>
+                <select value={editing.tipo||'cortesia'} onChange={e=>setEditing((p:any)=>({...p, tipo:e.target.value}))} style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'#1a1a26',color:'#fff',fontSize:12,outline:'none',colorScheme:'dark'}}>
+                  {TIPOS_REGALO.map(t => <option key={t} value={t} style={{background:'#1a1a26'}}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Valor (COP)</div>
+                <input type="number" value={editing.valor_estimado||''} onChange={e=>setEditing((p:any)=>({...p, valor_estimado:Number(e.target.value)}))} placeholder="0" style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:12,outline:'none'}}/>
+              </div>
+            </div>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Condiciones (opcional)</div>
+              <input value={editing.condiciones||''} onChange={e=>setEditing((p:any)=>({...p, condiciones:e.target.value}))} placeholder='Ej: "Mín 4 personas", "No aplica fines de semana"' style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:12,outline:'none'}}/>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
+              <div>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Emoji</div>
+                <input value={editing.emoji||'🎁'} onChange={e=>setEditing((p:any)=>({...p, emoji:e.target.value}))} style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:18,outline:'none',textAlign:'center'}}/>
+              </div>
+              <div>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Stock / mes</div>
+                <input type="number" value={editing.stock_mensual||''} onChange={e=>setEditing((p:any)=>({...p, stock_mensual:Number(e.target.value)}))} placeholder="∞" style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:12,outline:'none'}}/>
+              </div>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              {editing.id && <button onClick={eliminar} style={{padding:'10px 14px',borderRadius:9,border:'1px solid rgba(255,82,82,0.4)',background:'rgba(255,82,82,0.1)',color:'#ff5252',fontSize:12,fontWeight:700,cursor:'pointer'}}>Eliminar</button>}
+              <button onClick={()=>setEditing(null)} style={{flex:1,padding:'10px 14px',borderRadius:9,border:'1px solid rgba(255,255,255,0.12)',background:'transparent',color:'#A0A0B8',fontSize:12,fontWeight:700,cursor:'pointer'}}>Cancelar</button>
+              <button onClick={guardar} disabled={subiendo} style={{flex:2,padding:'10px 14px',borderRadius:9,border:'none',background:`linear-gradient(135deg,#FFE600,#e6a800)`,color:'#000',fontSize:12,fontWeight:900,cursor:'pointer'}}>{subiendo?'Guardando...':'✓ Guardar'}</button>
+            </div>
           </div>
         </div>
       )}
