@@ -33,7 +33,8 @@ export enum ModuleType {
   PROPINAS = 'PROPINAS',
   WORKFORCE = 'WORKFORCE',
   PLANO = 'PLANO',
-  VISION_AI = 'VISION_AI'
+  VISION_AI = 'VISION_AI',
+  TERMINAL_PAGO = 'TERMINAL_PAGO'
 }
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo' | 'maitre';

@@ -30,6 +30,7 @@ const MenuModule = lazy(() => import('./components/MenuModule.tsx'));
 const RelationshipModule = lazy(() => import('./components/RelationshipModule.tsx'));
 const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
 const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
+const TerminalPagoModule = lazy(() => import('./components/TerminalPagoModule.tsx'));
 const SupplyModule = lazy(() => import('./components/SupplyModule.tsx')); // Supply IA real
 const MarketplaceModule = lazy(() => import('./components/MarketplaceModule.tsx'));
 const PropinasModule = lazy(() => import('./components/PropinasModule.tsx'));
@@ -144,6 +145,7 @@ const Dashboard: React.FC = () => {
           ModuleType.MARKETPLACE,
           ModuleType.FOOD_INTELLIGENCE,
           ModuleType.FLOW,
+          ModuleType.TERMINAL_PAGO,
           ModuleType.VISION_AI,
           ModuleType.MOBILE_MGR,
           ModuleType.OH_YEAH
@@ -308,6 +310,7 @@ const Dashboard: React.FC = () => {
                 { type: ModuleType.SERVICE_OS,   label: 'SMART POS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
                 { type: ModuleType.PROPINAS,    label: 'PROPINAS',     sub: 'Bolsa del turno',  icon: <DollarSign size={18} /> },
                 { type: ModuleType.FLOW,        label: 'FLOW',         sub: 'ESTACIONES · TIEMPOS', icon: <ChefHat size={18} /> },
+                { type: ModuleType.TERMINAL_PAGO, label: 'TERMINAL DE PAGO', sub: 'CAJA · CUENTAS POR COBRAR', icon: <Receipt size={18} /> },
                 { type: ModuleType.VISION_AI,   label: 'VISION AI',    sub: 'CÁMARAS · IA TIEMPO REAL', icon: <Eye size={18} /> },
               ]
             },
@@ -436,6 +439,11 @@ const Dashboard: React.FC = () => {
                 <FlowModule />
               </div>
             )}
+            {activeModule === ModuleType.TERMINAL_PAGO && (
+              <div className="h-full">
+                <TerminalPagoModule />
+              </div>
+            )}
             {activeModule === ModuleType.VISION_AI && (
               <div className="h-full overflow-y-auto custom-scrollbar p-6 text-left">
                 <SurveillanceModule
@@ -447,7 +455,7 @@ const Dashboard: React.FC = () => {
                 />
               </div>
             )}
-            {activeModule !== ModuleType.SERVICE_OS && activeModule !== ModuleType.FLOW && activeModule !== ModuleType.VISION_AI && (
+            {activeModule !== ModuleType.SERVICE_OS && activeModule !== ModuleType.FLOW && activeModule !== ModuleType.VISION_AI && activeModule !== ModuleType.TERMINAL_PAGO && (
               <div className="h-full overflow-y-auto custom-scrollbar p-6 text-left">
                 {activeModule === ModuleType.RESERVE       && <ReserveModule />}
                 {activeModule === ModuleType.PLANO         && <PlanoOMM onOpenPOS={() => setActiveModule(ModuleType.SERVICE_OS)} />}
