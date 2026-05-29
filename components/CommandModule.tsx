@@ -251,6 +251,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
   const [kpisReales, setKpisReales] = useState({
     ventaHoy: 0, ventaMes: 0, ticketsHoy: 0, ticketsMes: 0,
     comensalesHoy: 0, comensalesMes: 0,
+    egresoHoy: 0, egresoMes: 0,
   });
   useEffect(() => {
     let alive = true;
@@ -258,15 +259,24 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
       const today = new Date(); const todayStr = today.toISOString().split('T')[0];
       const mesStart = new Date(today.getFullYear(), today.getMonth(), 1).toISOString().split('T')[0];
       // Cobros del día y mes (cuentas cerradas — fuente más confiable que facturacion)
-      const [cobHoy, cobMes] = await Promise.all([
+      // Egresos: solo los aprobados que impactan P&G (excluye anticipos,
+      // propinas por pagar, impuestos recaudados, CAPEX).
+      const [cobHoy, cobMes, egHoy, egMes] = await Promise.all([
         supabase.from('cobros_trazabilidad').select('total,platos_servidos')
           .eq('restaurante_id', restauranteId).gte('created_at', todayStr+'T00:00:00'),
         supabase.from('cobros_trazabilidad').select('total,platos_servidos')
           .eq('restaurante_id', restauranteId).gte('created_at', mesStart+'T00:00:00'),
+        supabase.from('egresos').select('valor,tipo_financiero,aprobado')
+          .eq('restaurante_id', restauranteId).gte('fecha', todayStr),
+        supabase.from('egresos').select('valor,tipo_financiero,aprobado')
+          .eq('restaurante_id', restauranteId).gte('fecha', mesStart),
       ]);
       if (!alive) return;
       const sumarH = (rows:any[]|null) => (rows||[]).reduce((s,r)=>s+Number(r.total||0),0);
       const sumPaxH = (rows:any[]|null) => (rows||[]).reduce((s,r)=>s+Number(r.platos_servidos||0),0);
+      const sumarEgresosPyG = (rows:any[]|null) => (rows||[])
+        .filter(r => (r.aprobado === null || r.aprobado === true) && ['costo','gasto'].includes(r.tipo_financiero))
+        .reduce((s,r)=>s+Number(r.valor||0),0);
       setKpisReales({
         ventaHoy: sumarH(cobHoy.data),
         ventaMes: sumarH(cobMes.data),
@@ -274,6 +284,8 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
         ticketsMes: (cobMes.data||[]).length,
         comensalesHoy: sumPaxH(cobHoy.data),
         comensalesMes: sumPaxH(cobMes.data),
+        egresoHoy: sumarEgresosPyG(egHoy.data),
+        egresoMes: sumarEgresosPyG(egMes.data),
       });
     })();
     return () => { alive = false; };
@@ -367,11 +379,48 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
                  sub={<div className="text-[#7a8499]">Se calcula con datos reales</div>}/>
           </div>
 
+          {/* CASH PULSE — Ingresos vs Egresos vs Remanente en vivo */}
+          {(() => {
+            const remHoy = kpisReales.ventaHoy - kpisReales.egresoHoy;
+            const remMes = kpisReales.ventaMes - kpisReales.egresoMes;
+            const pctEgresoMes = kpisReales.ventaMes > 0 ? (kpisReales.egresoMes / kpisReales.ventaMes) * 100 : 0;
+            // Proyección remanente fin de mes: lineal según día actual
+            const diaActual = new Date().getDate();
+            const diasMes = new Date(new Date().getFullYear(), new Date().getMonth()+1, 0).getDate();
+            const proyeccionRem = diaActual > 0 ? Math.round(remMes / diaActual * diasMes) : 0;
+            const colorRemHoy = remHoy >= 0 ? '#3dba6f' : '#e05050';
+            const colorRemMes = remMes >= 0 ? '#3dba6f' : '#e05050';
+            return (
+              <div className="mb-3 grid grid-cols-4 gap-3">
+                <div className="rounded-xl p-3" style={{background:'rgba(255,82,82,0.06)', border:'1px solid rgba(255,82,82,0.25)'}}>
+                  <div className="text-[9px] text-[#7a8499] uppercase tracking-wider mb-1">💸 Egreso HOY</div>
+                  <div className="font-['Syne'] text-[20px] font-black text-[#e05050]">{fmtCOP(kpisReales.egresoHoy)}</div>
+                  <div className="text-[10px] text-[#7a8499] mt-1">vs ventas: {fmtCOP(kpisReales.ventaHoy)}</div>
+                </div>
+                <div className="rounded-xl p-3" style={{background:'rgba(255,82,82,0.06)', border:'1px solid rgba(255,82,82,0.25)'}}>
+                  <div className="text-[9px] text-[#7a8499] uppercase tracking-wider mb-1">💸 Egreso MES</div>
+                  <div className="font-['Syne'] text-[20px] font-black text-[#e05050]">{fmtCOP(kpisReales.egresoMes)}</div>
+                  <div className="text-[10px] text-[#7a8499] mt-1">{pctEgresoMes.toFixed(1)}% de ventas</div>
+                </div>
+                <div className="rounded-xl p-3" style={{background:`${colorRemHoy}10`, border:`1px solid ${colorRemHoy}40`}}>
+                  <div className="text-[9px] text-[#7a8499] uppercase tracking-wider mb-1">💰 Remanente HOY</div>
+                  <div className="font-['Syne'] text-[20px] font-black" style={{color:colorRemHoy}}>{fmtCOP(remHoy)}</div>
+                  <div className="text-[10px] text-[#7a8499] mt-1">Ingreso − Egreso</div>
+                </div>
+                <div className="rounded-xl p-3" style={{background:`${colorRemMes}10`, border:`1px solid ${colorRemMes}40`}}>
+                  <div className="text-[9px] text-[#7a8499] uppercase tracking-wider mb-1">💰 Remanente MES</div>
+                  <div className="font-['Syne'] text-[20px] font-black" style={{color:colorRemMes}}>{fmtCOP(remMes)}</div>
+                  <div className="text-[10px] text-[#7a8499] mt-1">Proyección fin mes: <span style={{color:colorRemMes,fontWeight:700}}>{fmtCOP(proyeccionRem)}</span></div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Aviso temporal: las siguientes secciones aún muestran datos de
               ejemplo. Se conectarán a producción en el próximo sprint. */}
           <div className="mb-3 px-3 py-1.5 rounded-lg text-[10px]"
             style={{background:'rgba(240,180,90,0.08)', border:'1px solid rgba(240,180,90,0.25)', color:'#f0b45a'}}>
-            ⚠ Los KPIs de arriba ya son reales del restaurante. Las secciones de abajo (Guest Pulse, Operation Flow, Top Empleados, etc.) todavía muestran datos de demostración.
+            ⚠ KPIs de arriba (ventas) + Cash Pulse (egreso/remanente) son reales. Guest Pulse / Operation Flow / Top Empleados todavía muestran datos de demostración.
           </div>
 
           <div className="grid grid-cols-3 gap-3 mb-3">

@@ -1483,7 +1483,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   }, []);
 
   // ── Ticket del día ─────────────────────────────────────
-  const calcularPuntos = (monto: number) => Math.floor(monto / 10000);
+  // Puntos NX: 10 puntos por cada $10.000 de cuenta = 1 pt cada $1.000.
+  // El cliente acumula en su wallet (puntos_nx) para canjear beneficios.
+  const calcularPuntos = (monto: number) => Math.floor(monto / 1000);
 
   // ── Suscripción a alertas de platos listos (Flow → POS) ─────────────
   useEffect(() => {
@@ -2131,8 +2133,39 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     showToast(`✓ ${name} agregado — Ritual de Servicio`);
   };
 
-  const removeOrder = (i: number) => {
+  // Regla: el mesero solo puede eliminar un plato del order MIENTRAS
+  // cocina no haya comenzado a prepararlo (status='pending' en
+  // flow_order_items). Si ya está 'preparing'/'almost'/'ready'/'served',
+  // se bloquea con un toast explicando.
+  // Si se permite eliminar, también se borra del flow_order_items para
+  // que cocina no lo siga preparando.
+  const removeOrder = async (i: number) => {
+    const item = order[i];
+    if (!item) return;
+    // Buscar el plato en flow_order_items por nombre + mesa creados después
+    // del created_at del item local. Si no existe (modo offline) o está
+    // pending, se permite. Si está en otro estado, se bloquea.
+    const desdeIso = item.created_at || new Date(Date.now() - 60_000).toISOString();
+    const { data: matches } = await supabase
+      .from('flow_order_items')
+      .select('id,status,nombre_plato,table_id,created_at')
+      .eq('restaurante_id', restauranteId)
+      .eq('table_id', item.mesa)
+      .eq('nombre_plato', item.nombre)
+      .gte('created_at', new Date(new Date(desdeIso).getTime() - 5000).toISOString())
+      .order('created_at', { ascending: false })
+      .limit(1);
+    const flowItem = matches?.[0];
+    if (flowItem && flowItem.status !== 'pending') {
+      showToast(`⚠️ Cocina ya empezó "${item.nombre}" (${flowItem.status}). No puedes eliminarlo.`);
+      return;
+    }
+    // OK: borrar del flow Y del order local
+    if (flowItem) {
+      await supabase.from('flow_order_items').delete().eq('id', flowItem.id);
+    }
     setOrder(prev => prev.filter((_, idx) => idx !== i));
+    showToast(`🗑️ ${item.nombre} eliminado de la cuenta y de cocina`);
   };
 
   const clearOrder = () => { setOrder([]); showToast('Pedido limpiado'); };
@@ -5819,20 +5852,23 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 </div>
               )}
 
-              {/* ══ PUNTOS POR PEDIDO ══ */}
+              {/* ══ PUNTOS NX (Wallet) ══ */}
               <div className="bg-[#1c1c1c] border border-[#9b72ff]/30 rounded-xl overflow-hidden mb-3">
                 <div className="px-3 py-2 border-b border-[#2a2a2a]">
-                  <div className="text-[10px] font-bold text-[#9b72ff] uppercase tracking-wider">✦ Puntos acumulados</div>
+                  <div className="text-[10px] font-bold text-[#9b72ff] uppercase tracking-wider flex items-center gap-1.5">
+                    <span>✦ Puntos NX</span>
+                    <span className="text-[9px] text-[#606060] normal-case font-normal tracking-normal">10 pts cada $10.000</span>
+                  </div>
                 </div>
                 <div className="px-3 py-3 flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-[#9b72ff]/20 flex items-center justify-center text-[20px]">⭐</div>
                   <div>
-                    <div className="text-[18px] font-black text-[#9b72ff]" style={{fontFamily:"'Syne',sans-serif"}}>{calcularPuntos(mesaSubtotal)} pts</div>
-                    <div className="text-[10px] text-[#606060]">Mesa {selectedTable.num} · 1 pto por $10k</div>
+                    <div className="text-[18px] font-black text-[#9b72ff]" style={{fontFamily:"'Syne',sans-serif"}}>+{calcularPuntos(mesaSubtotal)} pts NX</div>
+                    <div className="text-[10px] text-[#606060]">Mesa {selectedTable.num} · Se suman al wallet</div>
                   </div>
                   <div className="ml-auto text-right">
                     <div className="text-[10px] text-[#606060]">Próximo nivel</div>
-                    <div className="text-[11px] font-bold text-[#f0b45a]">{Math.max(0,50-calcularPuntos(mesaSubtotal))} pts</div>
+                    <div className="text-[11px] font-bold text-[#f0b45a]">{Math.max(0,100-calcularPuntos(mesaSubtotal))} pts</div>
                   </div>
                 </div>
               </div>
