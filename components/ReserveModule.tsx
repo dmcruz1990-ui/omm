@@ -540,11 +540,11 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                 <div style={{marginBottom:16,padding:'12px 14px',borderRadius:12,background:`${S.blue}0d`,border:`1px solid ${S.blue}30`}}>
                   <div style={{fontSize:10,color:S.blue,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:7}}>👤 Mesero a cargo</div>
                   <select value={meseroAsignar} onChange={e=>setMeseroAsignar(e.target.value)}
-                    style={{width:'100%',background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 12px',color:'#fff',fontSize:13,outline:'none'}}>
-                    <option value="">Sin asignar — libre para tomar</option>
+                    style={{width:'100%',background:S.bg4,border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 12px',color:'#fff',fontSize:13,outline:'none',colorScheme:'dark'}}>
+                    <option value="" style={{background:S.bg4,color:'#fff'}}>Sin asignar — libre para tomar</option>
                     {meserosLista.map((ms:any)=>{
                       const nombre = ms.nombre_completo || ms.full_name || '';
-                      return <option key={ms.id||nombre} value={nombre}>{nombre}</option>;
+                      return <option key={ms.id||nombre} value={nombre} style={{background:S.bg4,color:'#fff'}}>{nombre}</option>;
                     })}
                   </select>
                   <div style={{fontSize:10,color:S.t3,marginTop:6}}>
@@ -937,7 +937,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
           setEditMesa={setEditMesa}
           show={show}
           mesas={mesas}
-          onToggleVip={async(num:number,vip:boolean)=>{ await supabase.from('tables').update({vip}).eq('name',String(num)); show(vip?`⭐ Mesa ${num} marcada VIP`:`Mesa ${num} ya no es VIP`); fetchData(); }}
+          restauranteId={restauranteIdActivo}
+          onToggleVip={async(num:number,vip:boolean)=>{ await supabase.from('tables').update({vip}).eq('name',String(num)).eq('restaurante_id',restauranteIdActivo); show(vip?`⭐ Mesa ${num} marcada VIP`:`Mesa ${num} ya no es VIP`); fetchData(); }}
         />
       )}
 
@@ -1321,17 +1322,63 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, 
 // ═══════════════════════════════════════════════════════════════════════
 // EDITOR DE PLANTA
 // ═══════════════════════════════════════════════════════════════════════
-function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesas, onToggleVip }:any) {
+function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesas, onToggleVip, restauranteId }:any) {
   const esVip = editMesa ? (mesas||[]).some((m:any)=>Number(m.name)===Number(editMesa.num) && m.vip) : false;
   const inp: React.CSSProperties = {width:'100%',padding:'7px 10px',borderRadius:7,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:12,outline:'none'};
+  const canvasRef = React.useRef<HTMLDivElement>(null);
+  const dragRef = React.useRef<{ id:any; offX:number; offY:number; moved:boolean } | null>(null);
+  const [dragging, setDragging] = React.useState<any>(null);
 
   const agregarMesa = async () => {
     const newNum = Math.max(...(plantaDB.map((m:any)=>m.num)||[0]),0)+1;
-    const newMesa = {restaurante_id: restauranteIdActivo,mesa_key:`X${newNum}`,num:newNum,zona:'Salón',shape:'round',capacidad:4,x:45,y:45,w:10,h:10,activa:true};
-    const {data} = await supabase.from('planta_mesas').insert(newMesa).select().single();
+    const newMesa = {restaurante_id: restauranteId, mesa_key:`X${newNum}`,num:newNum,zona:'Salón',shape:'round',capacidad:4,x:45,y:45,w:10,h:10,activa:true};
+    const {data, error} = await supabase.from('planta_mesas').insert(newMesa).select().single();
+    if (error) { show(`⚠ ${error.message}`); return; }
     if (data) setPlantaDB((p:any)=>[...p,data]);
     show(`✓ Mesa ${newNum} agregada`);
   };
+
+  // ── Drag & drop de mesas en el canvas (mover con click + arrastre) ──
+  const onMesaMouseDown = (e: React.MouseEvent, mesa: any) => {
+    if (!canvasRef.current) return;
+    const rect = canvasRef.current.getBoundingClientRect();
+    const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+    const yPct = ((e.clientY - rect.top) / rect.height) * 100;
+    dragRef.current = { id: mesa.id, offX: xPct - mesa.x, offY: yPct - mesa.y, moved: false };
+    setDragging(mesa.id);
+    e.preventDefault();
+  };
+  React.useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      const d = dragRef.current; if (!d || !canvasRef.current) return;
+      const rect = canvasRef.current.getBoundingClientRect();
+      const xPct = Math.max(0, Math.min(95, ((e.clientX - rect.left) / rect.width) * 100 - d.offX));
+      const yPct = Math.max(0, Math.min(95, ((e.clientY - rect.top) / rect.height) * 100 - d.offY));
+      d.moved = true;
+      setPlantaDB((p:any) => p.map((m:any) => m.id === d.id ? { ...m, x: Math.round(xPct), y: Math.round(yPct) } : m));
+      if (editMesa?.id === d.id) setEditMesa((p:any) => ({ ...p, x: Math.round(xPct), y: Math.round(yPct) }));
+    };
+    const onUp = async () => {
+      const d = dragRef.current; if (!d) return;
+      const moved = d.moved;
+      const id = d.id;
+      dragRef.current = null;
+      setDragging(null);
+      if (moved) {
+        // Persistir nueva posición en BD
+        const m = (plantaDB || []).find((x:any) => x.id === id);
+        if (m) {
+          await supabase.from('planta_mesas').update({ x: m.x, y: m.y, updated_at: new Date().toISOString() }).eq('id', id);
+        }
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+    };
+  }, [plantaDB, editMesa, setPlantaDB, setEditMesa]);
 
   const guardarMesa = async () => {
     await supabase.from('planta_mesas').update({
@@ -1358,8 +1405,8 @@ function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesa
     <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
       {/* Toolbar */}
       <div style={{padding:'10px 20px',borderBottom:'1px solid rgba(255,255,255,0.07)',background:'#0f0f1a',display:'flex',gap:10,alignItems:'center',flexShrink:0,flexWrap:'wrap'}}>
-        <div style={{fontSize:12,color:'#A0A0B8',fontWeight:700}}>⚙️ Editor de planta · OMM</div>
-        <div style={{fontSize:11,color:'#50506A'}}>Toca una mesa para editar · Los cambios se guardan en Supabase</div>
+        <div style={{fontSize:12,color:'#A0A0B8',fontWeight:700}}>⚙️ Editor de planta</div>
+        <div style={{fontSize:11,color:'#50506A'}}>Click para editar · Arrastra para mover · ⭐ marca mesas VIP</div>
         <button onClick={agregarMesa} style={{marginLeft:'auto',padding:'7px 16px',borderRadius:9,border:'none',background:'linear-gradient(135deg,#00E676,#009944)',color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
           + Agregar mesa
         </button>
@@ -1368,7 +1415,7 @@ function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesa
       <div style={{flex:1,overflow:'hidden',display:'flex'}}>
         {/* Canvas */}
         <div style={{flex:1,overflow:'auto',padding:16}}>
-          <div style={{position:'relative',width:'100%',paddingBottom:'70%',background:'#0a0a12',borderRadius:16,border:'1px solid rgba(255,255,255,0.08)',overflow:'hidden',userSelect:'none'}}>
+          <div ref={canvasRef} style={{position:'relative',width:'100%',paddingBottom:'70%',background:'#0a0a12',borderRadius:16,border:'1px solid rgba(255,255,255,0.08)',overflow:'hidden',userSelect:'none'}}>
             <div style={{position:'absolute',inset:0}}>
               {Object.entries(ZONA_AREAS).map(([zona,area])=>(
                 <div key={zona} style={{position:'absolute',left:`${area.x}%`,top:`${area.y}%`,width:`${area.w}%`,height:`${area.h}%`,background:ZONA_COLORES[zona]?.bg,border:`1px dashed ${ZONA_COLORES[zona]?.border}`,borderRadius:12}}>
@@ -1382,24 +1429,43 @@ function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesa
               <div style={{position:'absolute',left:'2%',top:'76%',width:'68%',height:'12%',background:'rgba(68,139,255,0.05)',border:'1px dashed rgba(68,139,255,0.2)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
                 <div>🍸</div><div style={{fontSize:9,color:'rgba(68,139,255,0.5)',fontWeight:700}}>Barra</div>
               </div>
-              {/* Mesas editables */}
+              {/* Mesas editables — arrastrables con mousedown */}
               {plantaVis.filter((m:any)=>m.activa!==false).map((mesa:any)=>{
                 const isEditing = editMesa?.id===mesa.id;
+                const isDragging = dragging === mesa.id;
+                const isVip = (mesas||[]).some((m:any)=>Number(m.name)===Number(mesa.num) && m.vip);
                 const key = mesa.mesa_key || `M${mesa.num}`;
+                const borderColor = isEditing ? '#d4943a' : isVip ? '#FFB547' : 'rgba(255,255,255,0.25)';
+                const bgColor = isEditing ? 'rgba(212,148,58,0.25)' : isVip ? 'rgba(255,181,71,0.15)' : 'rgba(255,255,255,0.07)';
                 return (
                   <div key={key}
-                    style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w||10}%`,height:`${mesa.h||10}%`,borderRadius:mesa.shape==='round'?'50%':10,background:isEditing?'rgba(212,148,58,0.25)':'rgba(255,255,255,0.07)',border:`2px solid ${isEditing?'#d4943a':'rgba(255,255,255,0.25)'}`,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',boxShadow:isEditing?'0 0 12px rgba(212,148,58,0.4)':'none',zIndex:isEditing?3:1,transition:'all .15s'}}
-                    onClick={()=>setEditMesa(isEditing?null:{...mesa})}
+                    onMouseDown={(e)=>onMesaMouseDown(e, mesa)}
+                    onClick={(e)=>{
+                      // Si arrastramos, no abrir el editor
+                      if (dragRef.current?.moved) { dragRef.current.moved = false; return; }
+                      setEditMesa(isEditing?null:{...mesa});
+                    }}
+                    style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w||10}%`,height:`${mesa.h||10}%`,
+                      borderRadius:mesa.shape==='round'?'50%':10,
+                      background:bgColor,border:`2px solid ${borderColor}`,
+                      cursor:isDragging?'grabbing':'grab',
+                      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                      boxShadow:isEditing?'0 0 12px rgba(212,148,58,0.4)':isVip?'0 0 8px rgba(255,181,71,0.3)':'none',
+                      zIndex:isDragging?5:isEditing?3:1,
+                      transition: isDragging ? 'none' : 'all .15s',
+                      opacity: isDragging ? 0.85 : 1,
+                    }}
                   >
-                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color:isEditing?'#d4943a':'rgba(255,255,255,0.8)',lineHeight:1}}>M{mesa.num}</div>
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color:isEditing?'#d4943a':isVip?'#FFB547':'rgba(255,255,255,0.8)',lineHeight:1}}>M{mesa.num}</div>
                     {mesa.shape!=='round'&&<div style={{fontSize:'clamp(5px,0.7vw,9px)',color:'rgba(255,255,255,0.4)'}}>{mesa.capacidad||mesa.cap}p</div>}
+                    {isVip&&<div style={{position:'absolute',top:-4,left:-4,fontSize:'clamp(8px,1.1vw,12px)'}}>⭐</div>}
                     {isEditing&&<div style={{position:'absolute',top:-2,right:-2,width:8,height:8,borderRadius:'50%',background:'#d4943a'}}/>}
                   </div>
                 );
               })}
             </div>
           </div>
-          <div style={{marginTop:8,fontSize:10,color:'#50506A',textAlign:'center'}}>Toca una mesa para editar en el panel derecho</div>
+          <div style={{marginTop:8,fontSize:10,color:'#50506A',textAlign:'center'}}>Click sobre una mesa para editar · Arrastra para reposicionar</div>
         </div>
 
         {/* Panel edición */}
