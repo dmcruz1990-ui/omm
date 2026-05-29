@@ -31,6 +31,7 @@ const RelationshipModule = lazy(() => import('./components/RelationshipModule.ts
 const ServiceOSModule = lazy(() => import('./components/POSModule.tsx'));
 const FlowModule = lazy(() => import('./components/FlowModule.tsx'));
 const TerminalPagoModule = lazy(() => import('./components/TerminalPagoModule.tsx'));
+const PuntosNXModule = lazy(() => import('./components/PuntosNXModule.tsx'));
 const SupplyModule = lazy(() => import('./components/SupplyModule.tsx')); // Supply IA real
 const MarketplaceModule = lazy(() => import('./components/MarketplaceModule.tsx'));
 const PropinasModule = lazy(() => import('./components/PropinasModule.tsx'));
@@ -147,6 +148,7 @@ const Dashboard: React.FC = () => {
           ModuleType.FLOW,
           ModuleType.TERMINAL_PAGO,
           ModuleType.VISION_AI,
+          ModuleType.PUNTOS_NX,
           ModuleType.MOBILE_MGR,
           ModuleType.OH_YEAH
         ];
@@ -167,6 +169,7 @@ const Dashboard: React.FC = () => {
           ModuleType.MARKETPLACE,
           ModuleType.FOOD_INTELLIGENCE,
           ModuleType.STAFF_HUB,
+          ModuleType.PUNTOS_NX,
           ModuleType.OH_YEAH
         ];
       case 'cocina':
@@ -309,6 +312,7 @@ const Dashboard: React.FC = () => {
               modules: [
                 { type: ModuleType.SERVICE_OS,   label: 'SMART POS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
                 { type: ModuleType.PROPINAS,    label: 'PROPINAS',     sub: 'Bolsa del turno',  icon: <DollarSign size={18} /> },
+                { type: ModuleType.PUNTOS_NX,   label: 'PUNTOS NX',    sub: 'Wallet · Beneficios · Retos · Canjes', icon: <span style={{fontSize:18,color:'#9b72ff'}}>✦</span> },
                 { type: ModuleType.FLOW,        label: 'FLOW',         sub: 'ESTACIONES · TIEMPOS', icon: <ChefHat size={18} /> },
                 { type: ModuleType.TERMINAL_PAGO, label: 'TERMINAL DE PAGO', sub: 'CAJA · CUENTAS POR COBRAR', icon: <Receipt size={18} /> },
                 { type: ModuleType.VISION_AI,   label: 'VISION AI',    sub: 'CÁMARAS · IA TIEMPO REAL', icon: <Eye size={18} /> },
@@ -444,6 +448,11 @@ const Dashboard: React.FC = () => {
                 <TerminalPagoModule />
               </div>
             )}
+            {activeModule === ModuleType.PUNTOS_NX && (
+              <div className="h-full">
+                <PuntosNXModule />
+              </div>
+            )}
             {activeModule === ModuleType.VISION_AI && (
               <div className="h-full overflow-y-auto custom-scrollbar p-6 text-left">
                 <SurveillanceModule
@@ -455,7 +464,7 @@ const Dashboard: React.FC = () => {
                 />
               </div>
             )}
-            {activeModule !== ModuleType.SERVICE_OS && activeModule !== ModuleType.FLOW && activeModule !== ModuleType.VISION_AI && activeModule !== ModuleType.TERMINAL_PAGO && (
+            {activeModule !== ModuleType.SERVICE_OS && activeModule !== ModuleType.FLOW && activeModule !== ModuleType.VISION_AI && activeModule !== ModuleType.TERMINAL_PAGO && activeModule !== ModuleType.PUNTOS_NX && (
               <div className="h-full overflow-y-auto custom-scrollbar p-6 text-left">
                 {activeModule === ModuleType.RESERVE       && <ReserveModule />}
                 {activeModule === ModuleType.PLANO         && <PlanoOMM onOpenPOS={() => setActiveModule(ModuleType.SERVICE_OS)} />}

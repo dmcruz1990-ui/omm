@@ -1736,6 +1736,55 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         });
       } catch (e) { console.error('facturacion insert error:', e); }
 
+      // ── Acreditar puntos NX al wallet del cliente (10 pts cada $10.000)
+      // Aplica multiplicador de retos si alguno de los items está activo.
+      try {
+        const customerId = c?.id || mesaCliente?.customer_id;
+        if (customerId) {
+          // Buscar retos activos para multiplicar
+          const { data: retosActivos } = await supabase.from('nx_retos')
+            .select('id,producto_nombre,multiplicador,puntos_otorgados,veces_vendido')
+            .eq('restaurante_id', restauranteId).eq('activo', true)
+            .or(`hasta.is.null,hasta.gte.${ahora.toISOString().split('T')[0]}`);
+          const itemsCl = itemsData || [];
+          let puntosBase = calcularPuntos(totalFinal);
+          let puntosBonus = 0;
+          (retosActivos || []).forEach((reto:any) => {
+            const matchItem = itemsCl.find((it:any) =>
+              String(it.nombre||'').toLowerCase().includes(String(reto.producto_nombre).toLowerCase())
+            );
+            if (matchItem) {
+              const valorPlato = Number(String(matchItem.precio || '0').replace(/[^\d.-]/g,'')) || 0;
+              const extras = calcularPuntos(valorPlato) * (reto.multiplicador - 1);
+              puntosBonus += extras;
+              // Tracking del reto
+              supabase.from('nx_retos').update({
+                veces_vendido: (reto.veces_vendido||0) + 1,
+                puntos_otorgados: (reto.puntos_otorgados||0) + extras,
+              }).eq('id', reto.id).then(()=>{}, ()=>{});
+            }
+          });
+          const totalPuntos = puntosBase + puntosBonus;
+          if (totalPuntos > 0) {
+            const { data: cliCustomer } = await supabase.from('customers').select('puntos').eq('id', customerId).maybeSingle();
+            const saldoActual = cliCustomer?.puntos || 0;
+            const nuevoSaldo = saldoActual + totalPuntos;
+            await supabase.from('customers').update({ puntos: nuevoSaldo }).eq('id', customerId);
+            await supabase.from('nx_wallet_movimientos').insert({
+              restaurante_id: restauranteId,
+              customer_id: String(customerId),
+              cliente_nombre: c?.nombreCompleto || c?.nombre,
+              tipo: 'gana',
+              puntos: totalPuntos,
+              saldo_resultante: nuevoSaldo,
+              mesa_num: mesaCliente?.num,
+              mesero: meseroNombre,
+              motivo: puntosBonus > 0 ? `Consumo $${Math.round(totalFinal).toLocaleString('es-CO')} + bono retos +${puntosBonus} pts` : `Consumo $${Math.round(totalFinal).toLocaleString('es-CO')}`,
+            });
+          }
+        }
+      } catch (e) { console.error('puntos nx error:', e); }
+
       // Cerrar la orden en Supabase
       const { data: ordenes } = await supabase.from('orders').select('id')
         .eq('table_id', mesaCliente?.num ?? 0).eq('status','open').limit(1);
