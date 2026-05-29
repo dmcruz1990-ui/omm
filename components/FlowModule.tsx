@@ -55,7 +55,8 @@ export default function FlowModule() {
   const [items,      setItems]      = useState<FlowItem[]>([]);
   const [diasItems,  setDiasItems]  = useState<FlowItem[]>([]);
   const [loading,    setLoading]    = useState(true);
-  const [activeTab,  setActiveTab]  = useState<'live'|'dia'|'platos'|'metricas'>('live');
+  const [activeTab,  setActiveTab]  = useState<'live'|'dia'|'platos'|'metricas'|'chat'>('live');
+  const [diaSeleccionado, setDiaSeleccionado] = useState<string>(new Date().toISOString().split('T')[0]);
   const [filtroEst,  setFiltroEst]  = useState<string>('all');
   const [statsHoy,   setStatsHoy]   = useState<any>(null);
   const [careMetrics,setCareMetrics] = useState<any>(null);
@@ -81,19 +82,32 @@ export default function FlowModule() {
   }, [restauranteId]);
 
   const fetchDia = useCallback(async () => {
-    const hoy = new Date().toISOString().split('T')[0];
+    // Usa el día seleccionado por el calendario (default = hoy)
+    const desde = diaSeleccionado + 'T00:00:00';
+    const hasta = diaSeleccionado + 'T23:59:59';
     const { data } = await supabase
       .from('flow_order_items')
       .select('*')
       .eq('restaurante_id', restauranteId)
-      .gte('created_at', hoy+'T00:00:00')
+      .gte('created_at', desde)
+      .lte('created_at', hasta)
       .order('created_at', {ascending:false});
     if (data) {
       setDiasItems(data as FlowItem[]);
       const served  = data.filter(i=>i.status==='served');
       const tiempos = served.filter(i=>i.duracion_seg&&i.duracion_seg>0).map(i=>i.duracion_seg as number);
       const avgT    = tiempos.length ? Math.round(tiempos.reduce((a,b)=>a+b,0)/tiempos.length) : 0;
-      const totalT  = tiempos.reduce((a,b)=>a+b,0);
+      // tiempoTotalServicio = desde el primer pedido del día hasta el último servido
+      // (NO suma de duraciones individuales; ese es tiempo_total_produccion legacy)
+      let tiempoTotalServicio = 0;
+      if (data.length > 0) {
+        const minCreated = Math.min(...data.map(i => new Date(i.created_at).getTime()));
+        const servidosConTiempo = served.filter(i => (i as any).tiempo_listo).map(i => new Date((i as any).tiempo_listo).getTime());
+        if (servidosConTiempo.length > 0) {
+          const maxServido = Math.max(...servidosConTiempo);
+          tiempoTotalServicio = Math.max(0, Math.round((maxServido - minCreated) / 1000));
+        }
+      }
       setStatsHoy({
         total:    data.length,
         served:   served.length,
@@ -101,7 +115,7 @@ export default function FlowModule() {
         prep:     data.filter(i=>i.status==='preparing').length,
         ready:    data.filter(i=>i.status==='ready').length,
         avgTiempo: avgT,
-        totalTiempo: totalT,
+        totalTiempo: tiempoTotalServicio,
         estaciones: Object.entries(
           data.reduce((acc:any,i) => {
             const est = getStation(i);
@@ -113,7 +127,7 @@ export default function FlowModule() {
         ).map(([est,v]:any) => ({est, platos:v.platos, avgT:v.count?Math.round(v.tiempo/v.count):0})),
       });
     }
-  }, [restauranteId]);
+  }, [restauranteId, diaSeleccionado]);
 
   const fetchCareMetrics = useCallback(async () => {
     const { data } = await supabase
@@ -151,11 +165,15 @@ export default function FlowModule() {
     setCareByMesa(map);
   }, []);
 
-  // Feed en tiempo real de comentarios sobre el menú/platos (lado derecho)
+  // Feed en tiempo real de comentarios sobre el menú/platos (lado derecho).
+  // Sólo trae encuestas SIN marcar como vistas — al darles "✓ Leído"
+  // se ocultan del feed pero quedan en BD para métricas/care.
   const fetchComentariosPlato = useCallback(async () => {
     const desde = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
     const { data } = await supabase.from('xcare_encuestas')
-      .select('id,mesa_numero,estrellas,platos_problema,tags_negativos,tags_positivos,comentario,created_at')
+      .select('id,mesa_numero,estrellas,platos_problema,tags_negativos,tags_positivos,comentario,created_at,vista_flow')
+      .eq('restaurante_id', restauranteId)
+      .eq('vista_flow', false)
       .gte('created_at', desde)
       .order('created_at', { ascending: false })
       .limit(40);
@@ -164,6 +182,15 @@ export default function FlowModule() {
       (e.comentario && String(e.comentario).trim().length > 4)
     );
     setComentariosPlato(filt);
+  }, [restauranteId]);
+
+  // Marcar encuesta como leída → la oculta del feed pero queda en BD
+  const marcarEncuestaLeida = useCallback(async (encuestaId: any) => {
+    await supabase.from('xcare_encuestas').update({
+      vista_flow: true,
+      vista_flow_en: new Date().toISOString(),
+    }).eq('id', encuestaId);
+    setComentariosPlato(prev => prev.filter((c:any) => c.id !== encuestaId));
   }, []);
 
   // Registrar una acción de gestión de conflicto en la encuesta
@@ -293,6 +320,7 @@ export default function FlowModule() {
           {id:'dia',      l:'📋 Pedidos del día'},
           {id:'platos',   l:'🍽️ Mi Menú'},
           {id:'metricas', l:'📊 Métricas + Care'},
+          {id:'chat',     l:'💬 Chat Meseros'},
         ] as {id:typeof activeTab,l:string}[]).map(t=>(
           <button key={t.id} onClick={()=>setActiveTab(t.id)}
             style={{padding:'9px 14px',background:'none',border:'none',borderBottom:`2px solid ${activeTab===t.id?S.gold:'transparent'}`,color:activeTab===t.id?S.gold:S.t3,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
@@ -554,6 +582,10 @@ export default function FlowModule() {
                         "{String(c.comentario).trim()}"
                       </div>
                     )}
+                    <button onClick={()=>marcarEncuestaLeida(c.id)}
+                      style={{marginTop:4,padding:'5px 10px',borderRadius:7,border:`1px solid ${col}40`,background:'transparent',color:col,fontSize:10,fontWeight:700,cursor:'pointer',alignSelf:'flex-start'}}>
+                      ✓ Leído · guardar en métricas
+                    </button>
                   </div>
                 );
               })}
@@ -565,6 +597,21 @@ export default function FlowModule() {
         {/* ══ PEDIDOS DEL DÍA ══ */}
         {activeTab==='dia' && (
           <div style={{flex:1,overflowY:'auto',padding:16}}>
+            {/* Calendario para revisar pedidos de cualquier día */}
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14,padding:'10px 14px',background:S.bg2,borderRadius:12,border:`1px solid ${S.border}`}}>
+              <span style={{fontSize:18}}>📅</span>
+              <div style={{fontSize:11,color:S.t2,fontWeight:700}}>Día:</div>
+              <input type="date" value={diaSeleccionado} onChange={e=>setDiaSeleccionado(e.target.value)}
+                max={new Date().toISOString().split('T')[0]}
+                style={{padding:'8px 12px',borderRadius:9,border:`1px solid ${S.border2}`,background:S.bg,color:S.t1,fontSize:12,fontWeight:700,outline:'none',colorScheme:'dark' as any}}/>
+              <button onClick={()=>setDiaSeleccionado(new Date().toISOString().split('T')[0])}
+                style={{padding:'7px 12px',borderRadius:9,border:`1px solid ${S.gold}40`,background:`${S.gold}10`,color:S.gold,fontSize:11,fontWeight:700,cursor:'pointer'}}>Hoy</button>
+              <button onClick={()=>{ const d = new Date(diaSeleccionado); d.setDate(d.getDate()-1); setDiaSeleccionado(d.toISOString().split('T')[0]); }}
+                style={{padding:'7px 12px',borderRadius:9,border:`1px solid ${S.border2}`,background:'transparent',color:S.t2,fontSize:11,fontWeight:700,cursor:'pointer'}}>‹ Ayer</button>
+              <div style={{marginLeft:'auto',fontSize:11,color:S.t3}}>
+                {new Date(diaSeleccionado+'T12:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
+              </div>
+            </div>
             {/* Totales de tiempo arriba */}
             {statsHoy && (
               <div style={{display:'flex',gap:8,marginBottom:14,flexWrap:'wrap'}}>
@@ -639,6 +686,8 @@ export default function FlowModule() {
         {activeTab==='platos' && <PlatosDia />}
 
         {/* ══ MÉTRICAS + CARE ══ */}
+        {activeTab==='chat' && <ChatMeseros restauranteId={restauranteId} />}
+
         {activeTab==='metricas' && (
           <div style={{flex:1,overflowY:'auto',padding:16}}>
             <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900,marginBottom:14}}>📊 Métricas del día</div>
@@ -879,6 +928,103 @@ function PlatosDia() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// CHAT DE MESEROS — comunicación rápida sala ↔ cocina ↔ bar
+// ═══════════════════════════════════════════════════════════════════════
+function ChatMeseros({ restauranteId }: { restauranteId: number }) {
+  const [mensajes, setMensajes] = useState<any[]>([]);
+  const [texto, setTexto] = useState('');
+  const [prioridad, setPrioridad] = useState<'normal'|'alta'|'fuego'|'86'>('normal');
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    (async () => {
+      const { data } = await supabase.from('flow_chat_meseros')
+        .select('*').eq('restaurante_id', restauranteId)
+        .order('created_at', { ascending: false }).limit(80);
+      setMensajes((data || []).reverse());
+      setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight }), 50);
+    })();
+    const ch = supabase.channel(`flow-chat-${restauranteId}`)
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'flow_chat_meseros' }, (payload:any) => {
+        if (payload.new?.restaurante_id !== restauranteId) return;
+        setMensajes(prev => [...prev, payload.new]);
+        setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior:'smooth' }), 50);
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [restauranteId]);
+
+  const enviar = async () => {
+    if (!texto.trim()) return;
+    const tx = texto.toLowerCase();
+    let p: 'normal'|'alta'|'fuego'|'86' = prioridad;
+    if (tx.includes('86') || tx.includes('no hay')) p = '86';
+    else if (tx.includes('fuego') || tx.includes('urgente')) p = 'fuego';
+    await supabase.from('flow_chat_meseros').insert({
+      restaurante_id: restauranteId,
+      autor: 'Yo',
+      autor_color: '#9b72ff',
+      mensaje: texto.trim(),
+      prioridad: p,
+    });
+    setTexto('');
+    setPrioridad('normal');
+  };
+
+  const PRIO = {
+    normal: { color:'#A0A0B8', label:'' },
+    alta:   { color:'#FFB547', label:'⚡' },
+    fuego:  { color:'#FF5252', label:'🔥' },
+    '86':   { color:'#FF2D78', label:'⚠️ 86' },
+  } as const;
+
+  return (
+    <div style={{flex:1, display:'flex', flexDirection:'column', overflow:'hidden'}}>
+      <div ref={scrollRef as any} style={{flex:1, overflowY:'auto', padding:'18px 24px', display:'flex', flexDirection:'column', gap:8}}>
+        {mensajes.length === 0 && (
+          <div style={{textAlign:'center', padding:60, color:'#50506A'}}>
+            <div style={{fontSize:42, marginBottom:10}}>💬</div>
+            <div style={{fontSize:13, fontWeight:700}}>Aún sin mensajes</div>
+            <div style={{fontSize:11, marginTop:6}}>Escribe el primero para coordinar con sala / cocina / bar.</div>
+          </div>
+        )}
+        {mensajes.map(m => {
+          const p = PRIO[m.prioridad as keyof typeof PRIO] || PRIO.normal;
+          return (
+            <div key={m.id} style={{padding:'10px 14px', borderRadius:12, background:'#1a1a26', border:`1px solid ${p.color}30`, borderLeft:`4px solid ${m.autor_color || p.color}`, maxWidth:'85%'}}>
+              <div style={{fontSize:10, color:'#50506A', marginBottom:3, display:'flex', alignItems:'center', gap:6}}>
+                <span style={{fontWeight:800, color:m.autor_color || '#A0A0B8'}}>{m.autor}</span>
+                {m.rol && <span style={{padding:'1px 6px', borderRadius:50, background:`${p.color}20`, color:p.color, fontWeight:700}}>{m.rol}</span>}
+                {p.label && <span style={{color:p.color, fontWeight:900}}>{p.label}</span>}
+                <span style={{marginLeft:'auto'}}>{new Date(m.created_at).toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'})}</span>
+              </div>
+              <div style={{fontSize:13, color:'#f0f0f0', fontWeight:m.prioridad==='fuego'||m.prioridad==='86'?700:500, lineHeight:1.4}}>{m.mensaje}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{padding:'14px 24px', borderTop:'1px solid rgba(255,255,255,0.07)', background:'#0f0f1a', display:'flex', gap:10, alignItems:'center'}}>
+        <div style={{display:'flex', gap:5}}>
+          {(['normal','alta','fuego','86'] as const).map(p => (
+            <button key={p} onClick={()=>setPrioridad(p)}
+              style={{padding:'7px 10px', borderRadius:9, border:`1px solid ${prioridad===p?(PRIO[p].color):'rgba(255,255,255,0.12)'}`, background:prioridad===p?`${PRIO[p].color}20`:'transparent', color:prioridad===p?PRIO[p].color:'#50506A', fontSize:10, fontWeight:700, cursor:'pointer'}}>
+              {PRIO[p].label||'·'} {p}
+            </button>
+          ))}
+        </div>
+        <input value={texto} onChange={e=>setTexto(e.target.value)} onKeyDown={e=>{if(e.key==='Enter') enviar();}}
+          placeholder='Escribe... ("fuego" o "86" elevan prioridad)'
+          style={{flex:1, padding:'10px 14px', borderRadius:10, border:'1px solid rgba(255,255,255,0.12)', background:'rgba(255,255,255,0.04)', color:'#fff', fontSize:13, outline:'none'}}/>
+        <button onClick={enviar} disabled={!texto.trim()}
+          style={{padding:'10px 18px', borderRadius:10, border:'none', background:texto.trim()?'linear-gradient(135deg,#9b72ff,#7c5ac7)':'#2a2a3e', color:'#fff', fontSize:12, fontWeight:900, cursor:texto.trim()?'pointer':'not-allowed'}}>
+          Enviar
+        </button>
+      </div>
     </div>
   );
 }
