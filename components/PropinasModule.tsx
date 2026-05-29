@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../contexts/AuthContext';
+import { useRestaurant } from '../contexts/RestaurantContext';
 
 // ══ PALETA ══
 const S = {
@@ -38,11 +39,13 @@ const WALLET_ESTADOS: Record<string,{c:string,l:string}> = {
   HELD:       {c:'#FF5252', l:'🔒 Retenido'},
 };
 
-type Tab = 'bolsa'|'wallet'|'ranking'|'equipo'|'config'|'backoffice'|'admin';
+type Tab = 'bolsa'|'wallet'|'ranking'|'solicitudes'|'equipo'|'config'|'backoffice'|'admin';
 
 export default function PropinasModule() {
   const { profile } = useAuth();
+  const { activeId: restauranteId } = useRestaurant();
   const isGerencia = ['admin','gerencia','desarrollo'].includes(profile?.role||'');
+  const miNombre = profile?.nombre_completo || profile?.full_name || 'Mesero';
 
   const [tab, setTab]                   = useState<Tab>('bolsa');
   const [fechaFiltro, setFechaFiltro]   = useState(new Date().toISOString().split('T')[0]);
@@ -188,6 +191,7 @@ export default function PropinasModule() {
           {id:'bolsa',      l:'💰 Bolsa del día'},
           {id:'wallet',     l:'💳 Wallet'},
           {id:'ranking',    l:'🏆 Ranking'},
+          {id:'solicitudes', l:'📥 Solicitudes Crew'},
           ...(isGerencia ? [
             {id:'equipo',   l:'👥 Equipo & Tags'},
             {id:'config',   l:'⚙️ Política V5'},
@@ -445,6 +449,8 @@ export default function PropinasModule() {
         )}
 
         {/* ══ EQUIPO & TAGS ══ */}
+        {tab==='solicitudes' && <SolicitudesCrew restauranteId={restauranteId} isGerencia={isGerencia} miNombre={miNombre} />}
+
         {tab==='equipo' && isGerencia && (
           <div style={{flex:1,overflow:'hidden',display:'flex'}}>
             {/* Tags disponibles */}
@@ -817,6 +823,151 @@ export default function PropinasModule() {
           </div>
         )}
 
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// SOLICITUDES DE COBRO ENVIADAS DESDE LA APP SERATTA CREW
+// El mesero solicita un anticipo de su wallet de propinas → la gerencia
+// aprueba/rechaza/marca como pagada desde aquí.
+// ═══════════════════════════════════════════════════════════════════════
+function SolicitudesCrew({ restauranteId, isGerencia, miNombre }: any) {
+  const [solicitudes, setSolic] = React.useState<any[]>([]);
+  const [filtroEstado, setFiltroEstado] = React.useState<'todas'|'pendiente'|'aprobada'|'rechazada'|'pagada'>('pendiente');
+  const [loading, setLoading] = React.useState(true);
+  const [toast, setToast] = React.useState('');
+  const [accionando, setAccionando] = React.useState<number|null>(null);
+
+  const show = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
+
+  const cargar = React.useCallback(async () => {
+    setLoading(true);
+    let q: any = supabase.from('propinas_solicitudes_cobro').select('*').eq('restaurante_id', restauranteId);
+    // Si el usuario NO es gerencia, solo ve sus propias solicitudes
+    if (!isGerencia) q = q.eq('mesero_nombre', miNombre);
+    if (filtroEstado !== 'todas') q = q.eq('estado', filtroEstado);
+    q = q.order('solicitada_en', { ascending: false });
+    const { data } = await q;
+    setSolic(data || []);
+    setLoading(false);
+  }, [restauranteId, isGerencia, miNombre, filtroEstado]);
+
+  React.useEffect(() => {
+    cargar();
+    const ch = supabase.channel(`propinas-solic-${restauranteId}`)
+      .on('postgres_changes', { event:'*', schema:'public', table:'propinas_solicitudes_cobro' }, () => cargar())
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [cargar, restauranteId]);
+
+  const aprobar = async (s:any) => {
+    setAccionando(s.id);
+    await supabase.from('propinas_solicitudes_cobro').update({
+      estado: 'aprobada', aprobada_por: miNombre, aprobada_en: new Date().toISOString(),
+    }).eq('id', s.id);
+    setAccionando(null);
+    show(`✓ Aprobada solicitud de ${s.mesero_nombre}`);
+  };
+  const rechazar = async (s:any) => {
+    const motivo = prompt(`¿Por qué rechazas la solicitud de ${s.mesero_nombre}?`);
+    if (!motivo) return;
+    setAccionando(s.id);
+    await supabase.from('propinas_solicitudes_cobro').update({
+      estado: 'rechazada', aprobada_por: miNombre, aprobada_en: new Date().toISOString(), motivo_rechazo: motivo,
+    }).eq('id', s.id);
+    setAccionando(null);
+    show(`Rechazada con motivo`);
+  };
+  const marcarPagada = async (s:any) => {
+    setAccionando(s.id);
+    await supabase.from('propinas_solicitudes_cobro').update({
+      estado: 'pagada', pagada_en: new Date().toISOString(),
+    }).eq('id', s.id);
+    setAccionando(null);
+    show(`💵 ${s.mesero_nombre} marcada como pagada`);
+  };
+
+  const fmt = (n:number) => `$${Math.round(n||0).toLocaleString('es-CO')}`;
+  const ESTADOS = [
+    { id:'pendiente' as const, label:'Pendientes', color:'#FFB547' },
+    { id:'aprobada'  as const, label:'Aprobadas',  color:'#3dba6f' },
+    { id:'pagada'    as const, label:'Pagadas',    color:'#9b72ff' },
+    { id:'rechazada' as const, label:'Rechazadas', color:'#e05050' },
+    { id:'todas'     as const, label:'Todas',      color:'#A0A0B8' },
+  ];
+
+  return (
+    <div style={{flex:1, overflow:'hidden', display:'flex', flexDirection:'column', padding:'18px 24px'}}>
+      {toast && <div style={{position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:'#1e1e2e', border:'1px solid #FFB547', color:'#fff', padding:'10px 24px', borderRadius:50, fontSize:13, fontWeight:700, zIndex:9999}}>{toast}</div>}
+
+      <div style={{display:'flex', alignItems:'center', marginBottom:14, gap:12, flexWrap:'wrap'}}>
+        <div>
+          <div style={{fontFamily:"'Syne',sans-serif", fontSize:16, fontWeight:900}}>📥 Solicitudes Crew</div>
+          <div style={{fontSize:11, color:'#7a8499'}}>Cobros anticipados de wallet enviados desde la app Seratta Crew</div>
+        </div>
+        <div style={{marginLeft:'auto', display:'flex', gap:6}}>
+          {ESTADOS.map(e => (
+            <button key={e.id} onClick={()=>setFiltroEstado(e.id)}
+              style={{padding:'7px 14px', borderRadius:9, border:`1px solid ${filtroEstado===e.id?e.color:'rgba(255,255,255,0.12)'}`, background:filtroEstado===e.id?`${e.color}18`:'transparent', color:filtroEstado===e.id?e.color:'#7a8499', fontSize:11, fontWeight:700, cursor:'pointer'}}>
+              {e.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{flex:1, overflowY:'auto'}}>
+        {loading && <div style={{padding:40, textAlign:'center', color:'#7a8499'}}>Cargando...</div>}
+        {!loading && solicitudes.length === 0 && (
+          <div style={{padding:60, textAlign:'center', color:'#7a8499'}}>
+            <div style={{fontSize:50, marginBottom:12}}>📭</div>
+            <div style={{fontSize:14, fontWeight:700}}>Sin solicitudes {filtroEstado!=='todas'?`en estado "${filtroEstado}"`:''}</div>
+            <div style={{fontSize:11, color:'#50506A', marginTop:6}}>Cuando un mesero solicite cobrar parte de su wallet desde la app Crew aparecerá aquí.</div>
+          </div>
+        )}
+
+        <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(320px, 1fr))', gap:12}}>
+          {solicitudes.map(s => {
+            const estadoColor = s.estado==='pendiente'?'#FFB547':s.estado==='aprobada'?'#3dba6f':s.estado==='pagada'?'#9b72ff':'#e05050';
+            const tiempoHoras = Math.floor((Date.now() - new Date(s.solicitada_en).getTime()) / 3600000);
+            return (
+              <div key={s.id} style={{background:'#161624', border:`1px solid ${estadoColor}30`, borderRadius:12, padding:14}}>
+                <div style={{display:'flex', alignItems:'center', gap:10, marginBottom:10}}>
+                  <div style={{width:38, height:38, borderRadius:'50%', background:`${estadoColor}25`, color:estadoColor, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:900, fontFamily:"'Syne',sans-serif"}}>{(s.mesero_nombre||'?').charAt(0).toUpperCase()}</div>
+                  <div style={{flex:1, minWidth:0}}>
+                    <div style={{fontSize:13, fontWeight:700, color:'#fff'}}>{s.mesero_nombre}</div>
+                    <div style={{fontSize:10, color:'#50506A'}}>Hace {tiempoHoras<1?'<1h':`${tiempoHoras}h`} · {s.metodo_pago}</div>
+                  </div>
+                  <span style={{fontSize:9, padding:'3px 8px', borderRadius:50, background:`${estadoColor}20`, color:estadoColor, fontWeight:900, textTransform:'uppercase'}}>{s.estado}</span>
+                </div>
+                <div style={{textAlign:'center', padding:'10px 0', background:'#0f0f1a', borderRadius:10, marginBottom:10}}>
+                  <div style={{fontFamily:"'Syne',sans-serif", fontSize:24, fontWeight:900, color:'#FFB547'}}>{fmt(s.monto)}</div>
+                  <div style={{fontSize:10, color:'#50506A'}}>Solicitado</div>
+                </div>
+                {s.motivo && <div style={{fontSize:11, color:'#A0A0B8', marginBottom:8, fontStyle:'italic'}}>💬 "{s.motivo}"</div>}
+                {s.cuenta_destino && <div style={{fontSize:11, color:'#A0A0B8', marginBottom:8}}>📲 {s.cuenta_destino}</div>}
+                {s.motivo_rechazo && <div style={{fontSize:11, color:'#e05050', marginBottom:8, padding:'6px 10px', background:'rgba(224,80,80,0.08)', borderRadius:8}}>⚠ Rechazada: {s.motivo_rechazo}</div>}
+
+                {isGerencia && s.estado === 'pendiente' && (
+                  <div style={{display:'flex', gap:6}}>
+                    <button onClick={()=>rechazar(s)} disabled={accionando===s.id}
+                      style={{flex:1, padding:'8px', borderRadius:9, border:'1px solid rgba(224,80,80,0.4)', background:'rgba(224,80,80,0.1)', color:'#e05050', fontSize:11, fontWeight:700, cursor:'pointer'}}>Rechazar</button>
+                    <button onClick={()=>aprobar(s)} disabled={accionando===s.id}
+                      style={{flex:2, padding:'8px', borderRadius:9, border:'none', background:'linear-gradient(135deg,#3dba6f,#00B050)', color:'#fff', fontSize:11, fontWeight:900, cursor:'pointer'}}>{accionando===s.id?'...':'✓ Aprobar'}</button>
+                  </div>
+                )}
+                {isGerencia && s.estado === 'aprobada' && (
+                  <button onClick={()=>marcarPagada(s)} disabled={accionando===s.id}
+                    style={{width:'100%', padding:'9px', borderRadius:9, border:'none', background:'linear-gradient(135deg,#9b72ff,#7c5ac7)', color:'#fff', fontSize:11, fontWeight:900, cursor:'pointer'}}>{accionando===s.id?'...':'💵 Marcar como pagada'}</button>
+                )}
+                {s.estado === 'pagada' && s.pagada_en && (
+                  <div style={{fontSize:10, color:'#9b72ff', textAlign:'center'}}>Pagada {new Date(s.pagada_en).toLocaleDateString('es-CO',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }
