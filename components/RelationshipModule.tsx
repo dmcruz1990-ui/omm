@@ -108,7 +108,31 @@ export default function CustomersModule() {
     const nexumEmails = new Set((nexum||[]).map((n:any) => n.email).filter(Boolean));
     const ohyeahFiltrado = ohyeahMapped.filter(cl => !cl.email || !nexumEmails.has(cl.email));
 
-    setClientes([...(nexum||[]), ...ohyeahFiltrado] as Customer[]);
+    // Calificaciones agregadas por cliente (de las encuestas X-CARE)
+    const { data: enc } = await supabase.from('xcare_encuestas')
+      .select('customer_id,cliente_id,ohyeah_cliente_id,estrellas,estrellas_comida,estrellas_servicio,estrellas_ambiente');
+    const ratingsById: Record<string, { sum:number; n:number; ult:number }> = {};
+    (enc||[]).forEach((e:any) => {
+      // El promedio usa la nota general si existe; si no, hace media de las 3 dimensiones
+      const dims = [e.estrellas_comida, e.estrellas_servicio, e.estrellas_ambiente].filter((x:any)=>x!=null);
+      const nota = e.estrellas ?? (dims.length ? dims.reduce((s:number,d:number)=>s+d,0)/dims.length : null);
+      if (nota == null) return;
+      const id = String(e.customer_id || e.cliente_id || e.ohyeah_cliente_id || '');
+      if (!id) return;
+      if (!ratingsById[id]) ratingsById[id] = { sum:0, n:0, ult:0 };
+      ratingsById[id].sum += Number(nota);
+      ratingsById[id].n += 1;
+      ratingsById[id].ult = Number(nota);
+    });
+    const aplicarRating = (cl:any) => {
+      const r = ratingsById[String(cl.id)];
+      return r ? { ...cl, rating_avg: r.sum / r.n, rating_count: r.n, rating_ult: r.ult } : cl;
+    };
+
+    setClientes([
+      ...((nexum||[]).map(aplicarRating)),
+      ...ohyeahFiltrado.map(aplicarRating),
+    ] as Customer[]);
     setLoading(false);
   }, [ordenar]);
 
@@ -312,7 +336,7 @@ export default function CustomersModule() {
               <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:13}}>
                 <thead>
                   <tr style={{background:S.bg2,position:'sticky',top:0,zIndex:5}}>
-                    {['Cliente','Contacto','Score','Segmento','Visitas','Gasto total','Ticket prom.','Última visita','Puntos','Alergias / Prefs','Origen','Acciones'].map(h=>(
+                    {['Cliente','Contacto','Score','Calificación','Segmento','Visitas','Gasto total','Ticket prom.','Última visita','Puntos','Alergias / Prefs','Origen','Acciones'].map(h=>(
                       <th key={h} style={{padding:'10px 14px',textAlign:'left' as const,fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.06em',borderBottom:`1px solid ${S.border}`,whiteSpace:'nowrap'}}>
                         {h}
                       </th>
@@ -375,6 +399,30 @@ export default function CustomersModule() {
                             </div>
                             <div style={{fontSize:9,color:scoreColor(sc),fontWeight:700}}>{scoreLabel(sc)}</div>
                           </div>
+                        </td>
+
+                        {/* Calificación promedio de X-CARE */}
+                        <td style={{padding:'11px 14px'}}>
+                          {(() => {
+                            const avg = (cliente as any).rating_avg;
+                            const n = (cliente as any).rating_count || 0;
+                            if (!avg || n === 0) {
+                              return <div style={{fontSize:10,color:S.t3,textAlign:'center'}}>—</div>;
+                            }
+                            const color = avg>=4.5?S.green:avg>=3.5?S.gold:avg>=2?'#FF9800':S.red;
+                            const fullStars = Math.round(avg);
+                            return (
+                              <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                                <div style={{fontSize:11,letterSpacing:0.5}}>
+                                  {Array.from({length:5}).map((_,k)=>(
+                                    <span key={k} style={{color: k<fullStars?color:'rgba(255,255,255,0.15)'}}>★</span>
+                                  ))}
+                                </div>
+                                <div style={{fontFamily:"'Syne',sans-serif",fontSize:12,fontWeight:900,color}}>{avg.toFixed(1)}</div>
+                                <div style={{fontSize:9,color:S.t3}}>{n} {n===1?'encuesta':'encuestas'}</div>
+                              </div>
+                            );
+                          })()}
                         </td>
 
                         {/* Segmento */}

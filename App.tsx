@@ -86,6 +86,7 @@ class ModuleErrorBoundary extends React.Component<{children: React.ReactNode}, {
 
 const Dashboard: React.FC = () => {
   const { profile, signOut } = useAuth();
+  const { activeId: restauranteActivoId } = useRestaurant();
   const [activeModule, setActiveModule] = useState<ModuleType>(ModuleType.SERVICE_OS);
   const [tables, setTables] = useState<Table[]>([]);
   const [ritualTasks, setRitualTasks] = useState<RitualTask[]>([]);
@@ -190,6 +191,7 @@ const Dashboard: React.FC = () => {
       const { data: tablesData } = await supabase
         .from('tables')
         .select(`*`)
+        .eq('restaurante_id', restauranteActivoId)
         .order('id', { ascending: true });
 
       setTables(tablesData || []);
@@ -205,12 +207,12 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchData();
-    const channel = supabase.channel('main-sync')
+    const channel = supabase.channel(`main-sync-${restauranteActivoId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tables' }, () => fetchData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ritual_tasks' }, () => fetchData())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, []);
+  }, [restauranteActivoId]);
 
   const handleUpdateTable = async (tableId: number, updates: Partial<Table>) => {
     await supabase.from('tables').update(updates).eq('id', tableId);

@@ -1209,6 +1209,15 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // Si la mesa no tiene reserva asociada, se arma un perfil mínimo.
   const recsCliente = (iaRecsByCat[currentCat] || iaRecsByCat['Compartir'] || []).slice(0,3)
     .map((x:any)=>({icon:x.emoji, txt:`${x.name} — ${x.reason}`}));
+
+  // Si selectedTableId no existe en displayTables (al cambiar de
+  // restaurante las nuevas mesas tienen IDs distintos), saltar al
+  // primer ID disponible — evita que el panel izquierdo se vea vacío.
+  useEffect(() => {
+    if (displayTables.length === 0) return;
+    const existe = displayTables.some((t:any) => t.id === selectedTableId);
+    if (!existe) setSelectedTableId(displayTables[0].id);
+  }, [displayTables, selectedTableId]);
   const c = clientesPorMesa[selectedTable?.num] || {
     nombre: selectedTable?.cliente && !['mesa','cliente'].includes(String(selectedTable.cliente).toLowerCase()) ? selectedTable.cliente : 'Mesa sin reserva',
     nombreCompleto: selectedTable?.cliente || 'Cliente',
