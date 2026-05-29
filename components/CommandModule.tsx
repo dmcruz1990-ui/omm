@@ -243,6 +243,14 @@ const roles = [
   { r:'Administrador',  n:2 }, { r:'Gerencia',  n:4 }, { r:'Maître',  n:1 }, { r:'Meseros',  n:9 }, { r:'Cocina',  n:7 }, { r:'Barra',  n:3 }, { r:'Caja',  n:2 },
 ];
 
+// Helper a nivel de módulo para parsear precios "$57.400" → 57400
+const parsePrecioMix = (p:any): number => {
+  if (typeof p === 'number') return p;
+  if (!p) return 0;
+  const s = String(p).replace(/[^\d.-]/g, '');
+  return Number(s) || 0;
+};
+
 const CommandModule: React.FC<CommandModuleProps> = () => {
   const [active, setActive] = useState<ViewId>('inicio');
   const { activeId: restauranteId, activeRestaurant } = useRestaurant();
@@ -252,6 +260,21 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
     ventaHoy: 0, ventaMes: 0, ticketsHoy: 0, ticketsMes: 0,
     comensalesHoy: 0, comensalesMes: 0,
     egresoHoy: 0, egresoMes: 0,
+    // Guest Pulse
+    ocupacionPct: 0, mesasLibres: 0, mesasTotales: 0,
+    satisfaccionPct: 0, satisfaccionMes: 0,
+    reservasPendientes: 0,
+    // Operation Flow
+    primerPlatoMin: 0, primerBebidaMin: 0,
+    atrasadosCocina: 0, atrasadosBar: 0,
+    eficienciaEstaciones: [] as { l:string; v:number; c:string }[],
+    // Quejas / Mix / Top
+    quejas: [] as { l:string; n:number }[],
+    mixVentas: [] as { l:string; p:number; c:string }[],
+    topEmpleados: [] as { n:string; s:number }[],
+    talentoAlerta: [] as { n:string; s:number; m:string }[],
+    topPlatos: [] as { n:string; v:string }[],
+    topBebidas: [] as { n:string; v:string }[],
   });
   useEffect(() => {
     let alive = true;
@@ -261,8 +284,9 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
       // Cobros del día y mes (cuentas cerradas — fuente más confiable que facturacion)
       // Egresos: solo los aprobados que impactan P&G (excluye anticipos,
       // propinas por pagar, impuestos recaudados, CAPEX).
-      const [cobHoy, cobMes, egHoy, egMes] = await Promise.all([
-        supabase.from('cobros_trazabilidad').select('total,platos_servidos')
+      const [cobHoy, cobMes, egHoy, egMes,
+             tables, encHoy, encMes, reservasH, flowHoy] = await Promise.all([
+        supabase.from('cobros_trazabilidad').select('total,platos_servidos,mesero,items')
           .eq('restaurante_id', restauranteId).gte('created_at', todayStr+'T00:00:00'),
         supabase.from('cobros_trazabilidad').select('total,platos_servidos')
           .eq('restaurante_id', restauranteId).gte('created_at', mesStart+'T00:00:00'),
@@ -270,6 +294,16 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
           .eq('restaurante_id', restauranteId).gte('fecha', todayStr),
         supabase.from('egresos').select('valor,tipo_financiero,aprobado')
           .eq('restaurante_id', restauranteId).gte('fecha', mesStart),
+        supabase.from('tables').select('status,mesero_nombre')
+          .eq('restaurante_id', restauranteId),
+        supabase.from('xcare_encuestas').select('estrellas,tags_negativos,platos_problema')
+          .eq('restaurante_id', restauranteId).gte('created_at', todayStr+'T00:00:00'),
+        supabase.from('xcare_encuestas').select('estrellas')
+          .eq('restaurante_id', restauranteId).gte('created_at', mesStart+'T00:00:00'),
+        supabase.from('reservations').select('estado')
+          .eq('restaurante_id', restauranteId).eq('fecha', todayStr).in('estado', ['pendiente','confirmada']),
+        supabase.from('flow_order_items').select('status,estacion,categoria,nombre_plato,created_at,tiempo_inicio,duracion_seg')
+          .eq('restaurante_id', restauranteId).gte('created_at', todayStr+'T00:00:00'),
       ]);
       if (!alive) return;
       const sumarH = (rows:any[]|null) => (rows||[]).reduce((s,r)=>s+Number(r.total||0),0);
@@ -277,6 +311,100 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
       const sumarEgresosPyG = (rows:any[]|null) => (rows||[])
         .filter(r => (r.aprobado === null || r.aprobado === true) && ['costo','gasto'].includes(r.tipo_financiero))
         .reduce((s,r)=>s+Number(r.valor||0),0);
+      // ── Guest Pulse ──
+      const tbls = tables.data || [];
+      const ocupadas = tbls.filter((t:any) => ['ocupada','asignada','sentada'].includes(t.status)).length;
+      const mesasTotales = tbls.length;
+      const mesasLibres = mesasTotales - ocupadas;
+      const ocupacionPct = mesasTotales > 0 ? Math.round((ocupadas / mesasTotales) * 100) : 0;
+
+      const promEstrellas = (rows:any[]|null) => {
+        const arr = (rows||[]).map((r:any) => r.estrellas).filter((x:any) => x>0);
+        return arr.length > 0 ? arr.reduce((s:number,x:number)=>s+x,0) / arr.length : 0;
+      };
+      const satHoyAvg = promEstrellas(encHoy.data);
+      const satMesAvg = promEstrellas(encMes.data);
+      const satisfaccionPct = satHoyAvg > 0 ? Math.round((satHoyAvg / 5) * 100) : 0;
+      const satisfaccionMes = satMesAvg > 0 ? Math.round((satMesAvg / 5) * 100) : 0;
+
+      // ── Quejas top de hoy ──
+      const tagsCount: Record<string, number> = {};
+      (encHoy.data || []).forEach((e:any) => {
+        (e.tags_negativos || []).forEach((t:string) => { tagsCount[t] = (tagsCount[t]||0) + 1; });
+        (e.platos_problema || []).forEach((t:string) => { tagsCount[t] = (tagsCount[t]||0) + 1; });
+      });
+      const quejas = Object.entries(tagsCount).sort((a,b)=>b[1]-a[1]).slice(0,5).map(([l,n]) => ({ l, n }));
+
+      // ── Operation Flow ──
+      const flowItems = flowHoy.data || [];
+      const cocItems = flowItems.filter((i:any) => !['bar','cava'].includes(i.estacion));
+      const barItems = flowItems.filter((i:any) => ['bar','cava'].includes(i.estacion));
+      const calcPrimerMin = (items:any[]) => {
+        const servidos = items.filter((i:any) => i.duracion_seg > 0);
+        if (servidos.length === 0) return 0;
+        return Math.round(servidos.reduce((s,i)=>s+(i.duracion_seg||0),0) / servidos.length / 60);
+      };
+      const primerPlatoMin = calcPrimerMin(cocItems);
+      const primerBebidaMin = calcPrimerMin(barItems);
+      const atrasadosCocina = cocItems.filter((i:any) => i.status==='pending' && (Date.now() - new Date(i.created_at).getTime()) / 60000 > 8).length;
+      const atrasadosBar    = barItems.filter((i:any) => i.status==='pending' && (Date.now() - new Date(i.created_at).getTime()) / 60000 > 3).length;
+      const estaciones: Record<string, { tot:number; on:number }> = {};
+      flowItems.forEach((i:any) => {
+        const e = i.estacion || 'cocina_caliente';
+        if (!estaciones[e]) estaciones[e] = { tot:0, on:0 };
+        estaciones[e].tot++;
+        if (i.status === 'served' || i.status === 'ready') estaciones[e].on++;
+      });
+      const labelEst: Record<string,string> = { cocina_caliente:'Cocina caliente', cocina_fria:'Cocina fría', robata:'Robata', postres:'Postres', bar:'Coctelería', cava:'Vinos' };
+      const colorEst: Record<string,string> = { cocina_caliente:'#FF6B00', cocina_fria:'#22d3ee', robata:'#FF9800', postres:'#B388FF', bar:'#448AFF', cava:'#FFB547' };
+      const eficienciaEstaciones = Object.entries(estaciones).map(([k,v]:any) => ({
+        l: labelEst[k] || k,
+        v: v.tot > 0 ? Math.round((v.on / v.tot) * 100) : 0,
+        c: colorEst[k] || '#A0A0B8',
+      }));
+
+      // ── Top empleados por ventas del día ──
+      const ventasPorMesero: Record<string, { ventas:number; tickets:number }> = {};
+      (cobHoy.data || []).forEach((c:any) => {
+        const k = c.mesero || 'Desconocido';
+        if (!ventasPorMesero[k]) ventasPorMesero[k] = { ventas:0, tickets:0 };
+        ventasPorMesero[k].ventas += Number(c.total || 0);
+        ventasPorMesero[k].tickets++;
+      });
+      const rankingMeseros = Object.entries(ventasPorMesero).sort((a,b)=>b[1].ventas-a[1].ventas);
+      const topEmpleados = rankingMeseros.slice(0,5).map(([n,v]:any) => ({ n, s: Math.round(v.ventas / 100000) }));
+      const talentoAlerta = rankingMeseros.slice(-3).reverse().map(([n,v]:any) => ({ n, s: v.tickets, m:'tickets' }));
+
+      // ── Top platos y bebidas vendidos hoy ──
+      const itemCount: Record<string, { count:number; tipo:'comida'|'bebida' }> = {};
+      (cobHoy.data || []).forEach((c:any) => {
+        (c.items || []).forEach((it:any) => {
+          const nombre = it.nombre || '?';
+          const esBebida = /coctel|vino|cerveza|copa|gin|whisky|vodka|sake|tequila|mezcal|margarita|jugo|limonada|café|agua|jarra/i.test(nombre);
+          if (!itemCount[nombre]) itemCount[nombre] = { count:0, tipo: esBebida ? 'bebida' : 'comida' };
+          itemCount[nombre].count++;
+        });
+      });
+      const items = Object.entries(itemCount).sort((a,b)=>b[1].count-a[1].count);
+      const topPlatos = items.filter(([_,v]) => v.tipo==='comida').slice(0,3).map(([n,v]) => ({ n: n.length>22?n.slice(0,22)+'…':n, v:String(v.count) }));
+      const topBebidas = items.filter(([_,v]) => v.tipo==='bebida').slice(0,3).map(([n,v]) => ({ n: n.length>22?n.slice(0,22)+'…':n, v:String(v.count) }));
+
+      // ── Mix ventas por categoría ──
+      const mixCat: Record<string, number> = {};
+      (cobHoy.data || []).forEach((c:any) => {
+        (c.items || []).forEach((it:any) => {
+          const nombre = (it.nombre || '').toLowerCase();
+          let cat = 'Comida';
+          if (/coctel|cóctel|gin|whisky|vodka|sake|tequila|mezcal|margarita/.test(nombre)) cat = 'Cócteles';
+          else if (/cerveza|vino|copa|jarra/.test(nombre)) cat = 'Bebidas';
+          else if (/postre|cheesecake|mochi|churro|flan|tarta/.test(nombre)) cat = 'Postres';
+          mixCat[cat] = (mixCat[cat]||0) + parsePrecioMix(it.precio);
+        });
+      });
+      const mixTotal = Object.values(mixCat).reduce((s:number,v:number)=>s+v,0);
+      const colorCat: Record<string,string> = { 'Comida':'#3dba6f', 'Bebidas':'#448AFF', 'Postres':'#f0a050', 'Cócteles':'#c66de8' };
+      const mixVentas = Object.entries(mixCat).map(([l,v]:any) => ({ l, p: mixTotal>0?Math.round((v/mixTotal)*100):0, c: colorCat[l] || '#A0A0B8' }));
+
       setKpisReales({
         ventaHoy: sumarH(cobHoy.data),
         ventaMes: sumarH(cobMes.data),
@@ -286,6 +414,16 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
         comensalesMes: sumPaxH(cobMes.data),
         egresoHoy: sumarEgresosPyG(egHoy.data),
         egresoMes: sumarEgresosPyG(egMes.data),
+        ocupacionPct, mesasLibres, mesasTotales,
+        satisfaccionPct, satisfaccionMes,
+        reservasPendientes: (reservasH.data||[]).length,
+        primerPlatoMin, primerBebidaMin,
+        atrasadosCocina, atrasadosBar,
+        eficienciaEstaciones,
+        quejas,
+        mixVentas,
+        topEmpleados, talentoAlerta,
+        topPlatos, topBebidas,
       });
     })();
     return () => { alive = false; };
@@ -420,7 +558,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
               ejemplo. Se conectarán a producción en el próximo sprint. */}
           <div className="mb-3 px-3 py-1.5 rounded-lg text-[10px]"
             style={{background:'rgba(240,180,90,0.08)', border:'1px solid rgba(240,180,90,0.25)', color:'#f0b45a'}}>
-            ⚠ KPIs de arriba (ventas) + Cash Pulse (egreso/remanente) son reales. Guest Pulse / Operation Flow / Top Empleados todavía muestran datos de demostración.
+            ✓ TODO ya es real: ventas, cash pulse, Guest Pulse (mesas/satisfacción), Operation Flow (eficiencia x estación), Top Empleados, Top Ventas, Mix por categoría, Quejas X-CARE.
           </div>
 
           <div className="grid grid-cols-3 gap-3 mb-3">
@@ -428,23 +566,47 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <div className="text-[9px] text-[#7a8499] mb-1">OCUPACIÓN</div>
-                  <div className="text-[26px] font-black text-[#3dba6f] leading-none mb-2">82%</div>
-                  <div className="space-y-0.5 text-[10px] text-[#7a8499]"><div>Hora pico: 8:30 pm</div><div>Mesas libres: 6</div><div>Reservas pendientes: 12</div><div>Rotación mesas: 1.8x</div></div>
+                  <div className="text-[26px] font-black leading-none mb-2" style={{color:kpisReales.ocupacionPct>=80?'#e05050':kpisReales.ocupacionPct>=50?'#3dba6f':'#a0a9bd'}}>{kpisReales.ocupacionPct}%</div>
+                  <div className="space-y-0.5 text-[10px] text-[#7a8499]">
+                    <div>Mesas: <span className="text-white">{kpisReales.mesasTotales - kpisReales.mesasLibres}/{kpisReales.mesasTotales}</span></div>
+                    <div>Mesas libres: <span className="text-white">{kpisReales.mesasLibres}</span></div>
+                    <div>Reservas hoy: <span className="text-white">{kpisReales.reservasPendientes}</span></div>
+                    <div>Comensales: <span className="text-white">{kpisReales.comensalesHoy}</span></div>
+                  </div>
                 </div>
                 <div>
                   <div className="text-[9px] text-[#7a8499] mb-1">SATISFACCIÓN CLIENTE</div>
-                  <div className="text-[26px] font-black text-[#3dba6f] leading-none mb-2">94%</div>
-                  <div className="space-y-0.5 text-[10px] text-[#7a8499]"><div>hoy / actual</div><div>Mes: 91%</div></div>
+                  <div className="text-[26px] font-black leading-none mb-2" style={{color:kpisReales.satisfaccionPct>=85?'#3dba6f':kpisReales.satisfaccionPct>=70?'#f0a050':kpisReales.satisfaccionPct>0?'#e05050':'#7a8499'}}>{kpisReales.satisfaccionPct||'—'}{kpisReales.satisfaccionPct?'%':''}</div>
+                  <div className="space-y-0.5 text-[10px] text-[#7a8499]">
+                    <div>hoy / actual</div>
+                    <div>Mes: <span className="text-white">{kpisReales.satisfaccionMes||'—'}{kpisReales.satisfaccionMes?'%':''}</span></div>
+                  </div>
                 </div>
               </div>
             </Section>
             <Section title="OPERATION FLOW" color="#4a9fff" icon={Zap}>
-              <div className="text-[9px] text-[#7a8499] mb-1.5 font-bold tracking-wider">EFICIENCIA COCINA</div>
-              <div className="space-y-1.5 mb-2">{cocina.map(r=>(<div key={r.l}><div className="flex justify-between text-[10px] mb-0.5"><span>{r.l}</span><span className="text-[#a0a9bd] font-bold">{r.v}%</span></div><Bar pct={r.v} color={r.c}/></div>))}</div>
-              <div className="text-[9px] text-[#7a8499] mb-2">Primer plato: <span className="text-white">18 min</span> · Pedidos atrasados: <span className="text-[#e05050]">6</span></div>
-              <div className="text-[9px] text-[#7a8499] mb-1.5 font-bold tracking-wider">EFICIENCIA BARRA</div>
-              <div className="space-y-1.5 mb-2">{barra.map(r=>(<div key={r.l}><div className="flex justify-between text-[10px] mb-0.5"><span>{r.l}</span><span className="text-[#a0a9bd] font-bold">{r.v}%</span></div><Bar pct={r.v} color={r.c}/></div>))}</div>
-              <div className="text-[9px] text-[#7a8499]">Primera bebida: <span className="text-white">7 min</span> · Bebidas atrasadas: <span className="text-[#e05050]">4</span></div>
+              <div className="text-[9px] text-[#7a8499] mb-1.5 font-bold tracking-wider">EFICIENCIA POR ESTACIÓN</div>
+              {kpisReales.eficienciaEstaciones.length === 0 ? (
+                <div className="text-[10px] text-[#7a8499] mb-2 italic">Sin pedidos en cocina aún</div>
+              ) : (
+                <div className="space-y-1.5 mb-2">
+                  {kpisReales.eficienciaEstaciones.map(r => (
+                    <div key={r.l}>
+                      <div className="flex justify-between text-[10px] mb-0.5">
+                        <span>{r.l}</span>
+                        <span className="text-[#a0a9bd] font-bold">{r.v}%</span>
+                      </div>
+                      <Bar pct={r.v} color={r.c}/>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <div className="text-[9px] text-[#7a8499] mb-2 pt-1 border-t border-[#1a2030]">
+                Primer plato: <span className="text-white">{kpisReales.primerPlatoMin||'—'}{kpisReales.primerPlatoMin?' min':''}</span> · Atrasados cocina: <span className="text-[#e05050]">{kpisReales.atrasadosCocina}</span>
+              </div>
+              <div className="text-[9px] text-[#7a8499]">
+                Primera bebida: <span className="text-white">{kpisReales.primerBebidaMin||'—'}{kpisReales.primerBebidaMin?' min':''}</span> · Atrasados bar: <span className="text-[#e05050]">{kpisReales.atrasadosBar}</span>
+              </div>
             </Section>
             <div className="rounded-2xl p-4 relative overflow-hidden" style={{background:'linear-gradient(135deg, #1f2454 0%, #3a2a6e 50%, #5a3a7e 100%)', border:'1px solid #4a3a78'}}>
               <div className="absolute -top-10 -right-10 w-32 h-32 rounded-full" style={{background:'radial-gradient(circle, rgba(150,100,220,0.3), transparent)'}}/>
@@ -460,14 +622,22 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <div className="text-[10px] font-black tracking-[0.15em] text-[#e05050] mb-2">PRINCIPALES QUEJAS HOY</div>
-                  <ul className="space-y-1.5">{quejas.map((q,i)=>(<li key={i} className="flex items-center justify-between text-[11px]"><span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#e05050]"/>{q.l}</span><span className="text-[#a0a9bd] font-bold">{q.n}</span></li>))}</ul>
+                  {kpisReales.quejas.length === 0 ? (
+                    <div className="text-[10px] text-[#7a8499] italic">Sin quejas registradas hoy ✓</div>
+                  ) : (
+                    <ul className="space-y-1.5">{kpisReales.quejas.map((q,i)=>(<li key={i} className="flex items-center justify-between text-[11px]"><span className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-[#e05050]"/>{q.l}</span><span className="text-[#a0a9bd] font-bold">{q.n}</span></li>))}</ul>
+                  )}
                 </div>
                 <div>
                   <div className="text-[10px] font-black tracking-[0.15em] text-[#7a8499] mb-2">MIX VENTAS HOY</div>
-                  <div className="flex items-center gap-3">
-                    <PieMix data={mix}/>
-                    <ul className="space-y-1">{mix.map(m=>(<li key={m.l} className="flex items-center gap-1.5 text-[10px]"><span className="w-2 h-2 rounded-sm" style={{background:m.c}}/><span className="text-[#a0a9bd]">{m.l}</span><span className="text-white font-bold">{m.p}%</span></li>))}</ul>
-                  </div>
+                  {kpisReales.mixVentas.length === 0 ? (
+                    <div className="text-[10px] text-[#7a8499] italic">Sin ventas aún</div>
+                  ) : (
+                    <div className="flex items-center gap-3">
+                      <PieMix data={kpisReales.mixVentas}/>
+                      <ul className="space-y-1">{kpisReales.mixVentas.map(m=>(<li key={m.l} className="flex items-center gap-1.5 text-[10px]"><span className="w-2 h-2 rounded-sm" style={{background:m.c}}/><span className="text-[#a0a9bd]">{m.l}</span><span className="text-white font-bold">{m.p}%</span></li>))}</ul>
+                    </div>
+                  )}
                 </div>
               </div>
             </Card>
@@ -479,21 +649,50 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
           </div>
 
           <div className="grid grid-cols-3 gap-3">
-            <Section title="TOP EMPLEADOS" color="#3dba6f" icon={Award}>
-              <ul className="space-y-1.5">{topEmp.map((e,i)=>(<li key={e.n} className="flex items-center justify-between text-[12px]"><span className="flex items-center gap-2"><span className="w-4 text-[#7a8499] text-[10px]">{i+1}</span>{e.n}</span><span className="font-black text-[#3dba6f]">{e.s}</span></li>))}</ul>
+            <Section title="TOP EMPLEADOS · ventas hoy" color="#3dba6f" icon={Award}>
+              {kpisReales.topEmpleados.length === 0 ? (
+                <div className="text-[10px] text-[#7a8499] italic">Sin ventas registradas hoy</div>
+              ) : (
+                <ul className="space-y-1.5">{kpisReales.topEmpleados.map((e,i)=>(
+                  <li key={e.n} className="flex items-center justify-between text-[12px]">
+                    <span className="flex items-center gap-2"><span className="w-4 text-[#7a8499] text-[10px]">{i+1}</span>{e.n}</span>
+                    <span className="font-black text-[#3dba6f]">{fmtCOP(e.s*100000)}</span>
+                  </li>
+                ))}</ul>
+              )}
             </Section>
             <Section title="TALENTO EN ALERTA" color="#e05050" icon={AlertTriangle}>
-              <ul className="space-y-1.5">{alertaEmp.map((e,i)=>(<li key={e.n} className="flex items-center justify-between text-[12px]"><span className="flex items-center gap-2"><span className="w-4 text-[#7a8499] text-[10px]">{i+1}</span>{e.n}</span><span className="flex items-center gap-2"><span className="font-black text-[#e05050]">{e.s}</span><span className="text-[10px] text-[#7a8499]">{e.m}</span></span></li>))}</ul>
+              {kpisReales.talentoAlerta.length === 0 ? (
+                <div className="text-[10px] text-[#7a8499] italic">Sin alertas operativas</div>
+              ) : (
+                <ul className="space-y-1.5">{kpisReales.talentoAlerta.map((e,i)=>(
+                  <li key={e.n} className="flex items-center justify-between text-[12px]">
+                    <span className="flex items-center gap-2"><span className="w-4 text-[#7a8499] text-[10px]">{i+1}</span>{e.n}</span>
+                    <span className="flex items-center gap-2">
+                      <span className="font-black text-[#e05050]">{e.s}</span>
+                      <span className="text-[10px] text-[#7a8499]">{e.m}</span>
+                    </span>
+                  </li>
+                ))}</ul>
+              )}
             </Section>
             <Section title="TOP VENTAS HOY" color="#7a8499">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <div className="text-[9px] text-[#7a8499] mb-1 tracking-wider font-bold">TOP 3 PLATOS</div>
-                  <ul className="space-y-1">{topPlatos.map((p,i)=>(<li key={p.n} className="flex items-center justify-between text-[10px]"><span className="flex items-center gap-1.5 truncate"><span className="text-[#7a8499]">{i+1}</span>{p.n}</span><span className="font-black text-white">{p.v}</span></li>))}</ul>
+                  {kpisReales.topPlatos.length === 0 ? (
+                    <div className="text-[9px] text-[#7a8499] italic">—</div>
+                  ) : (
+                    <ul className="space-y-1">{kpisReales.topPlatos.map((p,i)=>(<li key={p.n} className="flex items-center justify-between text-[10px]"><span className="flex items-center gap-1.5 truncate"><span className="text-[#7a8499]">{i+1}</span>{p.n}</span><span className="font-black text-white">{p.v}</span></li>))}</ul>
+                  )}
                 </div>
                 <div>
                   <div className="text-[9px] text-[#7a8499] mb-1 tracking-wider font-bold">TOP 3 BEBIDAS</div>
-                  <ul className="space-y-1">{topBebidas.map((p,i)=>(<li key={p.n} className="flex items-center justify-between text-[10px]"><span className="flex items-center gap-1.5 truncate"><span className="text-[#7a8499]">{i+1}</span>{p.n}</span><span className="font-black text-white">{p.v}</span></li>))}</ul>
+                  {kpisReales.topBebidas.length === 0 ? (
+                    <div className="text-[9px] text-[#7a8499] italic">—</div>
+                  ) : (
+                    <ul className="space-y-1">{kpisReales.topBebidas.map((p,i)=>(<li key={p.n} className="flex items-center justify-between text-[10px]"><span className="flex items-center gap-1.5 truncate"><span className="text-[#7a8499]">{i+1}</span>{p.n}</span><span className="font-black text-white">{p.v}</span></li>))}</ul>
+                  )}
                 </div>
               </div>
             </Section>

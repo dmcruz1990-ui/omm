@@ -924,7 +924,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     let alive = true;
     (async () => {
       const { data } = await supabase.from('menu_platos')
-        .select('nombre,descripcion,categoria,estacion,emoji,precio_venta,disponible,featured')
+        .select('nombre,descripcion,categoria,estacion,emoji,precio_venta,disponible,featured,modificadores')
         .eq('restaurante_id', restauranteId).eq('activo', true).eq('disponible', true)
         .order('categoria').order('nombre');
       if (!alive) return;
@@ -944,6 +944,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           descripcion: p.descripcion,
           estacion: p.estacion,
           categoria: cat,
+          modificadores: Array.isArray(p.modificadores) ? p.modificadores : [],
         });
       });
       setProductos(grouped);
@@ -957,6 +958,44 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // Identidad única del mesero — debe coincidir con lo que el Maître asigna
   // (profiles.nombre_completo, o full_name si el primero está vacío).
   const miNombre = profile?.nombre_completo || profile?.full_name || 'Mesero';
+
+  // ── Retos NX activos (badges x2/x3/x4 en productos del POS) ──
+  const [retosNXActivos, setRetosNXActivos] = useState<any[]>([]);
+  useEffect(() => {
+    const hoy = new Date().toISOString().split('T')[0];
+    supabase.from('nx_retos').select('producto_nombre,multiplicador,emoji,motivacion_mesero')
+      .eq('restaurante_id', restauranteId).eq('activo', true)
+      .or(`hasta.is.null,hasta.gte.${hoy}`)
+      .then(({ data }) => setRetosNXActivos(data || []));
+  }, [restauranteId]);
+  const retoDePlato = useCallback((nombrePlato: string): any => {
+    if (!nombrePlato) return null;
+    const n = nombrePlato.toLowerCase();
+    return retosNXActivos.find((r:any) => n.includes(String(r.producto_nombre).toLowerCase()));
+  }, [retosNXActivos]);
+
+  // ── Intel del día (modal con ⚡ rayo junto al nombre) ──
+  const [intelOpen, setIntelOpen] = useState(false);
+  const [intelData, setIntelData] = useState({ ventas:0, tickets:0, propinas:0, retosCumplidos:0, puntosOtorgados:0 });
+  useEffect(() => {
+    if (!intelOpen) return;
+    (async () => {
+      const hoy = new Date().toISOString().split('T')[0];
+      const [cobros, retosT] = await Promise.all([
+        supabase.from('cobros_trazabilidad').select('total,propina,mesero,items')
+          .eq('restaurante_id', restauranteId).gte('created_at', hoy+'T00:00:00')
+          .eq('mesero', miNombre),
+        supabase.from('nx_retos').select('veces_vendido,puntos_otorgados')
+          .eq('restaurante_id', restauranteId).eq('activo', true),
+      ]);
+      const ventas = (cobros.data||[]).reduce((s:number,c:any)=>s+Number(c.total||0),0);
+      const propinas = (cobros.data||[]).reduce((s:number,c:any)=>s+Number(c.propina||0),0);
+      const tickets = (cobros.data||[]).length;
+      const retosCumplidos = (retosT.data||[]).reduce((s:number,r:any)=>s+Number(r.veces_vendido||0),0);
+      const puntosOtorgados = (retosT.data||[]).reduce((s:number,r:any)=>s+Number(r.puntos_otorgados||0),0);
+      setIntelData({ ventas, tickets, propinas, retosCumplidos, puntosOtorgados });
+    })();
+  }, [intelOpen, restauranteId, miNombre]);
 
   // ── Selector de color del mesero (al primer login) ──
   // Cada mesero elige UN color que se aplica como borde a sus mesas
@@ -1224,13 +1263,23 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // ── Modal nivel de picante (solo Gallo Colorado, categorías saladas) ──
   const [picanteModal, setPicanteModal] = useState<{ open: boolean; producto: any | null; modo: 'orden' | 'marchar' }>({ open: false, producto: null, modo: 'orden' });
 
+  // ── Modal de modificadores (leche con/sin, azúcar, extras, hielo…) ──
+  const [modifModal, setModifModal] = useState<{ open: boolean; producto: any | null; modo: 'orden' | 'marchar'; selecciones: Record<string, any> }>({ open: false, producto: null, modo: 'orden', selecciones: {} });
+
   const requierePicante = (p: any): boolean => {
     if (restauranteId !== 23) return false;
     const cat = p?.categoria ?? currentCat;
     return CATEGORIAS_CON_PICANTE.has(cat);
   };
 
+  const tieneModificadores = (p: any) => Array.isArray(p?.modificadores) && p.modificadores.length > 0;
+
   const abrirTermino = (p: any, modo: 'orden' | 'marchar') => {
+    // 1. Si el plato tiene modificadores definidos en BD → abre modal de modificadores primero
+    if (tieneModificadores(p)) {
+      setModifModal({ open: true, producto: p, modo, selecciones: {} });
+      return;
+    }
     if (requierePicante(p)) {
       setPicanteModal({ open: true, producto: p, modo });
       return;
@@ -1240,6 +1289,64 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     } else {
       if (modo === 'orden') agregarAOrdenDirecto(p);
       else marcharAhoraDirecto(p);
+    }
+  };
+
+  // Tras elegir modificadores: encadena a picante/término o despacha directo
+  const aplicarModificadores = () => {
+    const p = modifModal.producto;
+    const modo = modifModal.modo;
+    const selecciones = modifModal.selecciones;
+    setModifModal({ open: false, producto: null, modo: 'orden', selecciones: {} });
+    if (!p) return;
+    // Validar obligatorios
+    for (const m of (p.modificadores || [])) {
+      if (m.obligatorio && !selecciones[m.id]) {
+        showToast(`⚠ ${m.label} es obligatorio`);
+        setModifModal({ open: true, producto: p, modo, selecciones });
+        return;
+      }
+    }
+    // Construir sufijo y calcular extra
+    const partes: string[] = [];
+    let extraTotal = 0;
+    for (const m of (p.modificadores || [])) {
+      const sel = selecciones[m.id];
+      if (!sel) continue;
+      if (Array.isArray(sel)) {
+        // multi: sel = array de ids
+        const labels = sel.map((id:string) => {
+          const op = m.opciones.find((o:any) => o.id === id);
+          if (op) extraTotal += Number(op.extra || 0);
+          return op?.label;
+        }).filter(Boolean);
+        if (labels.length) partes.push(`${m.label}: ${labels.join(', ')}`);
+      } else {
+        const op = m.opciones.find((o:any) => o.id === sel);
+        if (op) {
+          extraTotal += Number(op.extra || 0);
+          partes.push(`${m.label}: ${op.label}`);
+        }
+      }
+    }
+    const sufijo = partes.length ? ` (${partes.join(' · ')})` : '';
+    const precioBase = parsePrecio(p.precio || '0');
+    const precioFinal = precioBase + extraTotal;
+    const pConMod = {
+      ...p,
+      nombre: `${p.nombre}${sufijo}`,
+      precio: extraTotal > 0 ? `$${precioFinal.toLocaleString('es-CO')}` : p.precio,
+    };
+    // Continuar con picante/término
+    if (requierePicante(pConMod)) {
+      setPicanteModal({ open: true, producto: pConMod, modo });
+      return;
+    }
+    if (p.carne) {
+      setTerminoModal({ open: true, producto: pConMod, modo });
+    } else {
+      if (modo === 'orden') agregarAOrdenDirecto(pConMod);
+      else marcharAhoraDirecto(pConMod);
     }
   };
 
@@ -4780,6 +4887,133 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       )}
 
       {/* MODAL NIVEL DE PICANTE — Gallo Colorado */}
+      {/* MODAL ⚡ INTEL DEL DÍA — resumen rápido del mesero */}
+      {intelOpen && (
+        <div className="fixed inset-0 bg-black/85 z-[700] flex items-center justify-center p-4" onClick={() => setIntelOpen(false)}>
+          <div className="bg-[#0f0f1a] border border-[#9b72ff]/40 rounded-2xl p-7 w-full max-w-[460px]" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-5">
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-[28px]"
+                style={{ background:'linear-gradient(135deg,#9b72ff,#7c5ac7)' }}>⚡</div>
+              <div className="flex-1">
+                <div className="font-['Syne'] text-[20px] font-black text-[#f0f0f0]">Intel del día</div>
+                <div className="text-[11px] text-[#a0a0a0]">{miNombre} · {new Date().toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})}</div>
+              </div>
+              <button onClick={() => setIntelOpen(false)} className="w-8 h-8 rounded-lg border border-[#2a2a2a] text-[#606060] hover:text-white text-[14px]">✕</button>
+            </div>
+
+            {/* KPIs */}
+            <div className="grid grid-cols-2 gap-3 mb-5">
+              <div className="rounded-xl p-3" style={{ background:'rgba(61,186,111,0.08)', border:'1px solid rgba(61,186,111,0.25)' }}>
+                <div className="text-[9px] text-[#7a8499] uppercase tracking-wider mb-1">💰 Mis ventas hoy</div>
+                <div className="font-['Syne'] text-[22px] font-black text-[#3dba6f]">${Math.round(intelData.ventas).toLocaleString('es-CO')}</div>
+                <div className="text-[10px] text-[#7a8499] mt-1">{intelData.tickets} cuenta{intelData.tickets!==1?'s':''} cerrada{intelData.tickets!==1?'s':''}</div>
+              </div>
+              <div className="rounded-xl p-3" style={{ background:'rgba(212,148,58,0.08)', border:'1px solid rgba(212,148,58,0.25)' }}>
+                <div className="text-[9px] text-[#7a8499] uppercase tracking-wider mb-1">💵 Mis propinas</div>
+                <div className="font-['Syne'] text-[22px] font-black text-[#d4943a]">${Math.round(intelData.propinas).toLocaleString('es-CO')}</div>
+                <div className="text-[10px] text-[#7a8499] mt-1">{intelData.ventas > 0 ? Math.round((intelData.propinas / intelData.ventas) * 100) : 0}% del total</div>
+              </div>
+              <div className="rounded-xl p-3" style={{ background:'rgba(155,114,255,0.08)', border:'1px solid rgba(155,114,255,0.25)' }}>
+                <div className="text-[9px] text-[#7a8499] uppercase tracking-wider mb-1">🎯 Retos hoy</div>
+                <div className="font-['Syne'] text-[22px] font-black text-[#9b72ff]">{intelData.retosCumplidos}</div>
+                <div className="text-[10px] text-[#7a8499] mt-1">platos vendidos con multiplicador</div>
+              </div>
+              <div className="rounded-xl p-3" style={{ background:'rgba(34,211,238,0.08)', border:'1px solid rgba(34,211,238,0.25)' }}>
+                <div className="text-[9px] text-[#7a8499] uppercase tracking-wider mb-1">✦ Pts NX bonus</div>
+                <div className="font-['Syne'] text-[22px] font-black text-[#22d3ee]">+{intelData.puntosOtorgados.toLocaleString('es-CO')}</div>
+                <div className="text-[10px] text-[#7a8499] mt-1">pts extra por retos</div>
+              </div>
+            </div>
+
+            {/* Retos activos del día */}
+            {retosNXActivos.length > 0 && (
+              <div className="mb-2">
+                <div className="text-[10px] text-[#7a8499] uppercase tracking-wider font-bold mb-2">🎯 Retos vigentes — recomienda estos platos</div>
+                <div className="flex flex-col gap-1.5 max-h-[180px] overflow-y-auto">
+                  {retosNXActivos.map((r:any, i:number) => {
+                    const multiColor = r.multiplicador===2?'#22d3ee':r.multiplicador===3?'#FFB547':r.multiplicador===4?'#FF2D78':'#9b72ff';
+                    return (
+                      <div key={i} className="flex items-center gap-3 px-3 py-2 rounded-lg" style={{ background:'rgba(255,255,255,0.03)', border:`1px solid ${multiColor}30` }}>
+                        <span style={{ fontSize: 24 }}>{r.emoji || '🍽️'}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[12px] font-bold text-[#f0f0f0] truncate">{r.producto_nombre}</div>
+                          {r.motivacion_mesero && <div className="text-[10px] truncate" style={{ color: multiColor }}>{r.motivacion_mesero}</div>}
+                        </div>
+                        <div className="font-['Syne'] font-black text-[18px]" style={{ color: multiColor }}>x{r.multiplicador}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE MODIFICADORES — bebidas, agregar/quitar, hielo, leche, etc. */}
+      {modifModal.open && modifModal.producto && (
+        <div className="fixed inset-0 bg-black/80 z-[600] flex items-center justify-center p-4">
+          <div className="bg-[#1c1c1c] border border-[#9b72ff]/40 rounded-2xl p-6 w-full max-w-[420px] max-h-[88vh] overflow-y-auto">
+            <div className="text-center mb-5">
+              <div className="text-[28px] mb-2">{modifModal.producto.emoji}</div>
+              <div className="font-['Syne'] text-[16px] font-bold">{modifModal.producto.nombre}</div>
+              <div className="text-[10px] text-[#9b72ff] mt-1">Configura los detalles del pedido</div>
+            </div>
+            <div className="flex flex-col gap-4 mb-4">
+              {modifModal.producto.modificadores.map((m: any) => (
+                <div key={m.id}>
+                  <div className="text-[11px] font-bold text-[#a0a0a0] mb-2 uppercase tracking-wider flex items-center gap-1">
+                    {m.label}
+                    {m.obligatorio && <span className="text-[#e05050]">*</span>}
+                    {m.tipo === 'multi' && <span className="text-[9px] text-[#606060] normal-case font-normal tracking-normal">· puedes elegir varios</span>}
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    {m.opciones.map((op: any) => {
+                      const sel = modifModal.selecciones[m.id];
+                      const activo = m.tipo === 'multi' ? Array.isArray(sel) && sel.includes(op.id) : sel === op.id;
+                      return (
+                        <button key={op.id}
+                          onClick={() => {
+                            setModifModal(prev => {
+                              const next = { ...prev.selecciones };
+                              if (m.tipo === 'multi') {
+                                const arr = Array.isArray(next[m.id]) ? [...next[m.id]] : [];
+                                const i = arr.indexOf(op.id);
+                                if (i >= 0) arr.splice(i, 1); else arr.push(op.id);
+                                next[m.id] = arr;
+                              } else {
+                                next[m.id] = next[m.id] === op.id ? undefined : op.id;
+                              }
+                              return { ...prev, selecciones: next };
+                            });
+                          }}
+                          className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl border transition-all text-left ${activo ? 'border-[#9b72ff] bg-[#9b72ff]/15 text-[#9b72ff]' : 'border-[#2a2a2a] bg-transparent text-[#a0a0a0] hover:border-[#9b72ff]/40'}`}>
+                          <span className={`w-3 h-3 ${m.tipo === 'multi' ? 'rounded' : 'rounded-full'} border ${activo ? 'bg-[#9b72ff] border-[#9b72ff]' : 'border-[#606060]'} flex items-center justify-center text-[8px] text-white`}>
+                            {activo && '✓'}
+                          </span>
+                          <span className="flex-1 text-[12px] font-bold">{op.label}</span>
+                          {op.extra > 0 && <span className="text-[11px] text-[#d4943a]">+${Number(op.extra).toLocaleString('es-CO')}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <button onClick={() => setModifModal({ open: false, producto: null, modo: 'orden', selecciones: {} })}
+                className="flex-1 py-2.5 rounded-xl border border-[#2a2a2a] text-[#606060] text-[11px] font-semibold hover:border-[#a0a0a0] transition-all">
+                Cancelar
+              </button>
+              <button onClick={aplicarModificadores}
+                className="flex-[2] py-2.5 rounded-xl bg-[#9b72ff] text-white text-[12px] font-bold hover:bg-[#7c5ac7] transition-all">
+                ✓ Confirmar pedido
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {picanteModal.open && picanteModal.producto && (
         <div className="fixed inset-0 bg-black/80 z-[600] flex items-center justify-center p-4">
           <div className="bg-[#1c1c1c] border border-[#c63a2a]/40 rounded-2xl p-6 w-full max-w-[360px]">
@@ -4865,6 +5099,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           <button onClick={() => setShowMapaMesas(true)}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#d4943a]/15 border border-[#d4943a]/40 text-[#d4943a] text-[13px] font-black hover:bg-[#d4943a]/25 active:scale-95 transition-all">
             🗺️ <span>Mapa de Mesas</span>
+          </button>
+          {/* ⚡ Intel del día — resumen rápido del mesero */}
+          <button onClick={() => setIntelOpen(true)}
+            title={`Intel del día · ${miNombre}`}
+            className="px-3 py-2.5 rounded-xl border text-[13px] font-black active:scale-95 transition-all"
+            style={{ background:'rgba(155,114,255,0.12)', borderColor:'rgba(155,114,255,0.40)', color:'#9b72ff' }}>
+            ⚡
           </button>
           <div className="flex gap-1.5 ml-auto shrink-0">
             {/* Cerebro */}
@@ -5323,6 +5564,20 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                       isAdded ? 'border-[#3dba6f]' :
                       isMarchando ? 'border-[#4a8fd4]' :
                       'border-[#2a2a2a] hover:border-[#d4943a]/50'}`}>
+
+                  {/* Reto NX badge (x2 / x3 / x4) */}
+                  {(() => {
+                    const reto = retoDePlato(p.nombre);
+                    if (!reto) return null;
+                    const multiColor = reto.multiplicador===2?'#22d3ee':reto.multiplicador===3?'#FFB547':reto.multiplicador===4?'#FF2D78':'#9b72ff';
+                    return (
+                      <div className="absolute top-1.5 left-1.5 z-20 px-2 py-1 rounded-full text-[10px] font-black flex items-center gap-0.5"
+                        style={{ background: multiColor, color:'#000', boxShadow:`0 0 12px ${multiColor}60` }}
+                        title={reto.motivacion_mesero || 'Reto NX activo'}>
+                        ✦ x{reto.multiplicador}
+                      </div>
+                    );
+                  })()}
 
                   {/* Stock badge */}
                   <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 px-2 py-1 rounded-full text-[9px] font-black"
