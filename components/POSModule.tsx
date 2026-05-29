@@ -930,6 +930,34 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // Identidad única del mesero — debe coincidir con lo que el Maître asigna
   // (profiles.nombre_completo, o full_name si el primero está vacío).
   const miNombre = profile?.nombre_completo || profile?.full_name || 'Mesero';
+
+  // ── Selector de color del mesero (al primer login) ──
+  // Cada mesero elige UN color que se aplica como borde a sus mesas
+  // en el mapa y en el card del POS. Solo aparece si profile.color es null.
+  const [colorPickerAbierto, setColorPickerAbierto] = useState(false);
+  const COLORES_MESERO = [
+    { hex: '#3dba6f', label: 'Verde' },
+    { hex: '#448AFF', label: 'Azul' },
+    { hex: '#FF5252', label: 'Rojo' },
+    { hex: '#FFB547', label: 'Naranja' },
+    { hex: '#B388FF', label: 'Morado' },
+    { hex: '#22d3ee', label: 'Cian' },
+    { hex: '#FF2D78', label: 'Rosa' },
+    { hex: '#FFE600', label: 'Amarillo' },
+    { hex: '#00E676', label: 'Verde claro' },
+    { hex: '#d4943a', label: 'Dorado' },
+  ];
+  useEffect(() => {
+    if (profile && !profile.color && profile.role === 'mesero') setColorPickerAbierto(true);
+  }, [profile]);
+  const elegirMiColor = async (hex: string) => {
+    if (!profile?.id) return;
+    await supabase.from('profiles').update({ color: hex }).eq('id', profile.id);
+    showToast(`✓ Color asignado · tus mesas se verán con este borde`);
+    setColorPickerAbierto(false);
+    // Forzar reload del profile
+    setTimeout(() => window.location.reload(), 600);
+  };
   // Acceso total al salón: ve y entra a TODAS las mesas y ve todas las
   // notificaciones (Maître, capitán, sommelier y gerencia). No otorga
   // poderes financieros de gerencia (eso sigue en isGerencia).
@@ -4610,6 +4638,30 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         </div>
       )}
 
+      {/* MODAL SELECTOR DE COLOR DEL MESERO — al primer login */}
+      {colorPickerAbierto && (
+        <div className="fixed inset-0 bg-black/90 z-[700] flex items-center justify-center p-4">
+          <div className="bg-[#1c1c1c] border border-[#2a2a2a] rounded-2xl p-7 w-full max-w-[440px]">
+            <div className="text-center mb-5">
+              <div className="text-[40px] mb-3">🎨</div>
+              <div className="font-['Syne'] text-[20px] font-black text-[#f0f0f0] mb-1">Bienvenido, {miNombre.split(' ')[0]}</div>
+              <div className="text-[12px] text-[#a0a0a0]">Elige tu color. Tus mesas tendrán este borde en el mapa para que las reconozcas al instante.</div>
+            </div>
+            <div className="grid grid-cols-5 gap-3 mb-4">
+              {COLORES_MESERO.map(c => (
+                <button key={c.hex} onClick={() => elegirMiColor(c.hex)}
+                  title={c.label}
+                  className="aspect-square rounded-xl border-2 transition-all hover:scale-110 active:scale-95"
+                  style={{ background: c.hex, borderColor: c.hex }}>
+                  <span className="sr-only">{c.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="text-[10px] text-[#606060] text-center">Este color se guarda y solo se elige una vez.</div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL NIVEL DE PICANTE — Gallo Colorado */}
       {picanteModal.open && picanteModal.producto && (
         <div className="fixed inset-0 bg-black/80 z-[600] flex items-center justify-center p-4">
@@ -4690,16 +4742,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       {/* LEFT PANEL */}
       <div className="bg-[#141414] border-r border-[#2a2a2a] flex flex-col shrink-0" style={{ width: 200 }}>
         <div className="p-2 px-3 pb-2 flex items-center gap-2 border-b border-[#2a2a2a] shrink-0 relative">
-          {/* Botón mapa de mesas — grande, acción principal del POS */}
+          {/* Botón mapa de mesas — grande, acción principal del POS
+              (ocupa todo el ancho; el botón Caja del POS se eliminó porque
+              ahora los cobros se procesan desde el módulo TERMINAL DE PAGO) */}
           <button onClick={() => setShowMapaMesas(true)}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#d4943a]/15 border border-[#d4943a]/40 text-[#d4943a] text-[13px] font-black hover:bg-[#d4943a]/25 active:scale-95 transition-all">
+            className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#d4943a]/15 border border-[#d4943a]/40 text-[#d4943a] text-[13px] font-black hover:bg-[#d4943a]/25 active:scale-95 transition-all">
             🗺️ <span>Mapa de Mesas</span>
-          </button>
-          {/* Bandeja de cobros pendientes (cuentas enviadas desde otras tablets) */}
-          <button onClick={() => setShowCaja(true)}
-            className={`relative flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-[13px] font-black transition-all active:scale-95 ${cobrosPendientes.length>0 ? 'bg-[#3dba6f]/15 border border-[#3dba6f]/50 text-[#3dba6f] animate-pulse' : 'bg-[#1c1c1c] border border-[#2a2a2a] text-[#a0a0a0] hover:text-[#3dba6f] hover:border-[#3dba6f]'}`}>
-            💳 <span>Caja</span>
-            {cobrosPendientes.length>0 && <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-[#3dba6f] flex items-center justify-center text-[9px] font-black text-black">{cobrosPendientes.length}</span>}
           </button>
           <div className="flex gap-1.5 ml-auto shrink-0">
             {/* Cerebro */}
@@ -4798,7 +4846,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 </div>
 
                 {/* Card de la mesa activa — más grande */}
-                <div className="bg-[#1c1c1c] border-2 border-[#d4943a] rounded-2xl p-4 px-4">
+                <div className="bg-[#1c1c1c] rounded-2xl p-4 px-4"
+                  style={{ border: `2px solid ${profile?.color || '#d4943a'}` }}>
                   <div className="flex items-center gap-2 mb-1">
                     <span className="font-['Syne'] text-[20px] font-black text-[#f0f0f0] truncate min-w-0">M{m.num} · {m.cliente}</span>
                     <div className="flex gap-1 items-center shrink-0">
