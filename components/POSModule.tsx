@@ -70,7 +70,53 @@ interface OrderItem {
   precio: string;
   emoji: string;
   mesa: number;
+  // Campos opcionales para semáforo de tiempos (verde/amarillo/rojo)
+  // y alertas de bebidas. Se llenan cuando el plato se marcha.
+  created_at?: string;       // ISO timestamp de cuando se envió a cocina
+  estacion?: string;         // cocina_caliente|cocina_fria|bar|robata|postres|cava
+  categoria?: string;        // categoría del menú (para mapear estación)
+  tipo?: 'comida'|'bebida';  // alimenta alerta de bebida a los 40min
+  carne?: boolean;
 }
+
+// Objetivos de tiempo por estación (en segundos). Mismo set que Flow.
+// Se usan para pintar el semáforo en el panel izquierdo del POS.
+const ESTACIONES_OBJETIVO: Record<string, number> = {
+  cocina_caliente: 480, // 8 min
+  cocina_fria:     360, // 6 min
+  robata:          600, // 10 min
+  postres:         300, // 5 min
+  bar:             180, // 3 min
+  cava:            120, // 2 min
+};
+
+// Inferir estación a partir del nombre y categoría. Cubre vocabulario
+// OMM (japonés-latino) y Gallo Colorado (mexicano).
+const inferirEstacionFromNombre = (nombre: string, cat: string): string => {
+  const n = (nombre + ' ' + cat).toUpperCase();
+  if (['ROBATA','YAKITORI','BRASA'].some(k => n.includes(k))) return 'robata';
+  if (['COCTEL','CÓCTEL','GIN','RUM','WHISKY','VODKA','SAKE','CERVEZA','JUGO','LIMONADA','CAFÉ','LATTE','AMERICANO',
+       'TEQUILA','MEZCAL','MARGARITA','MICHELADA','JARRA','MEZCALERÍA','PALOMA','CACTUS','AGUARDIENTE','RON ','BACARDI',
+       'JAGERMEISTER','BAILEYS','FRANGELICO','AMARETTO','LIMONCELLO','JIMADOR','PATRÓN','MACALLAN','BUCHANANS','TANQUERAY','BOMBAY','HENDRICKS','SKYY','GREY GOOSE','PARCE','SANTA TERESA','DEWARS','JW ','JACK DANIELS','LICOR','AGUA DE'].some(k => n.includes(k))) return 'bar';
+  if (['VINO','COPA','CAVA','CHAMPAGNE','PROSECCO'].some(k => n.includes(k))) return 'cava';
+  if (['POSTRE','CHEESECAKE','MOCHI','HELADO','YOROKOBI','KYOTO','PIE','TARTA','FLAN','QUESADILLA DULCE','CHURRO'].some(k => n.includes(k))) return 'postres';
+  if (['MAKI','SUSHI','NIGIRI','SASHIMI','TEMAKI','TIRADITO','CEVICHE','TATAKI','CARPACCIO',
+       'GUACAMOLE','TOSTA','AGUACHILE','ENSALADA','DEL CAMPO'].some(k => n.includes(k))) return 'cocina_fria';
+  return 'cocina_caliente';
+};
+
+// Devuelve el estado del semáforo: verde / amarillo / rojo.
+//   verde  → menos del 70% del objetivo
+//   amarillo → 70%-100% (o entre 5min y objetivo si objetivo<5min)
+//   rojo  → supera el objetivo, o más de 5min sin avance estando en cola
+const getSemaforo = (createdAtISO: string | undefined, estacion: string | undefined): 'verde'|'amarillo'|'rojo' => {
+  if (!createdAtISO) return 'verde';
+  const seg = Math.floor((Date.now() - new Date(createdAtISO).getTime()) / 1000);
+  const objetivo = ESTACIONES_OBJETIVO[estacion || 'cocina_caliente'] || 480;
+  if (seg >= objetivo) return 'rojo';
+  if (seg >= Math.max(300, objetivo * 0.7)) return 'amarillo'; // 5min o 70% del objetivo
+  return 'verde';
+};
 
 interface POSModal {
   open: boolean;
@@ -1218,6 +1264,53 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     const existe = displayTables.some((t:any) => t.id === selectedTableId);
     if (!existe) setSelectedTableId(displayTables[0].id);
   }, [displayTables, selectedTableId]);
+
+  // Tick cada 30s para re-renderizar el semáforo de tiempos
+  // y disparar la alerta de bebida a los 40min.
+  const [, setSemaforoTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setSemaforoTick(x => x + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  // ── ALERTA BEBIDA 40min ────────────────────────────────────────────
+  // Por mesa, calcula el tiempo desde la última bebida marchando.
+  // Si pasa más de 40min y no hay bebidas más nuevas (ni pendientes),
+  // dispara una notificación al mesero. Se reinicia al pedir otra.
+  const ULTIMA_BEBIDA_ALERTADA = React.useRef<Record<number, number>>({});
+  useEffect(() => {
+    const revisar = () => {
+      const ahora = Date.now();
+      // Agrupar por mesa: cuál es la bebida más reciente y cuándo
+      const ultimaPorMesa: Record<number, number> = {};
+      [...order, ...pendingOrder].forEach((o:any) => {
+        if (o.tipo !== 'bebida' || !o.created_at) return;
+        const t = new Date(o.created_at).getTime();
+        if (!ultimaPorMesa[o.mesa] || ultimaPorMesa[o.mesa] < t) ultimaPorMesa[o.mesa] = t;
+      });
+      Object.entries(ultimaPorMesa).forEach(([mesaStr, ts]) => {
+        const mesa = Number(mesaStr);
+        const minutos = (ahora - ts) / 60000;
+        if (minutos < 40) return;
+        // Si ya alertamos para este timestamp, no spamear
+        if (ULTIMA_BEBIDA_ALERTADA.current[mesa] === ts) return;
+        ULTIMA_BEBIDA_ALERTADA.current[mesa] = ts;
+        showToast(`🥃 Mesa ${mesa}: 40min sin pedir bebida — ofrece otra ronda`);
+        // Notificación persistente para el mesero
+        supabase.from('nexum_notificaciones').insert({
+          restaurante_id: restauranteId,
+          tipo: 'bebida_40min',
+          titulo: `🥃 Mesa ${mesa} — 40min sin bebida`,
+          mensaje: `Ofrece una nueva ronda a la mesa ${mesa}.`,
+          prioridad: 'normal',
+          leida: false,
+        }).then(()=>{}, ()=>{});
+      });
+    };
+    revisar();
+    const t = setInterval(revisar, 60000); // chequear cada 1 min
+    return () => clearInterval(t);
+  }, [order, pendingOrder, restauranteId]);
   const c = clientesPorMesa[selectedTable?.num] || {
     nombre: selectedTable?.cliente && !['mesa','cliente'].includes(String(selectedTable.cliente).toLowerCase()) ? selectedTable.cliente : 'Mesa sin reserva',
     nombreCompleto: selectedTable?.cliente || 'Cliente',
@@ -1723,7 +1816,16 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const closeModal = () => setModal({ open: false, title: '', content: null });
 
   const addToOrder = (p: any) => {
-    setOrder(prev => [...prev, { ...p, mesa: selectedTable.num }]);
+    const cat = p.categoria || currentCat;
+    const est = inferirEstacionFromNombre(p.nombre, cat);
+    setOrder(prev => [...prev, {
+      ...p,
+      mesa: selectedTable.num,
+      created_at: p.created_at || new Date().toISOString(),
+      estacion: p.estacion || est,
+      categoria: cat,
+      tipo: (est === 'bar' || est === 'cava') ? 'bebida' as const : 'comida' as const,
+    }]);
     setAddedCards(prev => new Set([...prev, p.nombre]));
     setTimeout(() => setAddedCards(prev => { const n = new Set(prev); n.delete(p.nombre); return n; }), 1200);
     showToast(`✓ ${p.nombre} agregado al pedido`);
@@ -1745,22 +1847,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     try {
       const meseroActivo = miNombre;
 
-      // Determinar estación por categoría/nombre del plato.
-      // Cubre vocabulario OMM (japonés-latino) + Gallo Colorado (mexicano).
-      const inferirEstacion = (nombre: string, cat: string): string => {
-        const n = (nombre + ' ' + cat).toUpperCase();
-        if (['ROBATA','YAKITORI','BRASA'].some(k => n.includes(k))) return 'robata';
-        if (['COCTEL','CÓCTEL','GIN','RUM','WHISKY','VODKA','SAKE','CERVEZA','JUGO','LIMONADA','CAFÉ','LATTE','AMERICANO',
-             // Gallo:
-             'TEQUILA','MEZCAL','MARGARITA','MICHELADA','JARRA','MEZCALERÍA','PALOMA','CACTUS','AGUARDIENTE','RON ','BACARDI',
-             'JAGERMEISTER','BAILEYS','FRANGELICO','AMARETTO','LIMONCELLO','JIMADOR','PATRÓN','MACALLAN','BUCHANANS','TANQUERAY','BOMBAY','HENDRICKS','SKYY','GREY GOOSE','PARCE','SANTA TERESA','DEWARS','JW ','JACK DANIELS','LICOR','AGUA DE'].some(k => n.includes(k))) return 'bar';
-        if (['VINO','COPA','CAVA','CHAMPAGNE','PROSECCO'].some(k => n.includes(k))) return 'cava';
-        if (['POSTRE','CHEESECAKE','MOCHI','HELADO','YOROKOBI','KYOTO','PIE','TARTA','FLAN','QUESADILLA DULCE','CHURRO'].some(k => n.includes(k))) return 'postres';
-        if (['MAKI','SUSHI','NIGIRI','SASHIMI','TEMAKI','TIRADITO','CEVICHE','TATAKI','CARPACCIO',
-             // Gallo frío:
-             'GUACAMOLE','TOSTA','AGUACHILE','ENSALADA','DEL CAMPO'].some(k => n.includes(k))) return 'cocina_fria';
-        return 'cocina_caliente';
-      };
+      // Reusa el clasificador definido a nivel de módulo (mismo set
+      // que el semáforo del panel izquierdo y el ruteo a Flow).
+      const inferirEstacion = inferirEstacionFromNombre;
 
       // Cocinero por estación (depende del restaurante activo)
       const COCINEROS_POR_REST: Record<number, Record<string, string>> = {
@@ -1863,11 +1952,20 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       termino: termino,
     });
     // ── CRÍTICO: agregar al order para que sume al total de mesa ──
-    setOrder(prev => [...prev, { 
-      nombre: productoFinal.nombre, 
-      precio: p.precio, 
-      emoji: p.emoji ?? '🍽️', 
-      mesa: selectedTable?.num ?? 0 
+    // Incluimos created_at + estacion + tipo para que el panel izquierdo
+    // pinte el semáforo y la alerta de bebida de 40min sepa qué contar.
+    const catFinal = p.categoria ?? currentCat;
+    const estFinal = inferirEstacionFromNombre(productoFinal.nombre, catFinal);
+    const tipoFinal: 'comida'|'bebida' = (estFinal === 'bar' || estFinal === 'cava') ? 'bebida' : 'comida';
+    setOrder(prev => [...prev, {
+      nombre: productoFinal.nombre,
+      precio: p.precio,
+      emoji: p.emoji ?? '🍽️',
+      mesa: selectedTable?.num ?? 0,
+      created_at: new Date().toISOString(),
+      estacion: estFinal,
+      categoria: catFinal,
+      tipo: tipoFinal,
     }]);
     autoCheckRitual(p.categoria ?? currentCat);
     setTimeout(() => setAddedCards(prev => { const n = new Set(prev); n.delete(p.nombre + '_marchar'); return n; }), 1500);
@@ -1932,7 +2030,20 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     urgente: false,
                   });
                 });
-              setOrder(prev => [...prev, ...pendingOrder]);
+              // Enriquecer cada item con timestamp + estación para el semáforo
+              const ahora = new Date().toISOString();
+              const pendingEnriched = pendingOrder.map(o => {
+                const cat = (o as any).categoria || currentCat;
+                const est = inferirEstacionFromNombre(o.nombre, cat);
+                return {
+                  ...o,
+                  created_at: o.created_at || ahora,
+                  estacion: o.estacion || est,
+                  categoria: cat,
+                  tipo: (est === 'bar' || est === 'cava') ? 'bebida' as const : 'comida' as const,
+                };
+              });
+              setOrder(prev => [...prev, ...pendingEnriched]);
               setPendingOrder([]);
               showToast('🍽️ Orden enviada a cocina exitosamente');
             }} className="flex-[2] py-2.5 rounded-xl bg-[#d4943a] text-black text-[13px] font-bold hover:bg-[#f0b45a] transition-all">
@@ -1949,7 +2060,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   };
 
   const addRitual = (name: string, price: string) => {
-    setOrder(prev => [...prev, { nombre: name, precio: price, emoji: '💧', mesa: selectedTable.num }]);
+    // Los rituales son bebidas (agua de bienvenida, té de cortesía).
+    setOrder(prev => [...prev, {
+      nombre: name, precio: price, emoji: '💧', mesa: selectedTable.num,
+      created_at: new Date().toISOString(), estacion: 'bar', tipo: 'bebida',
+    }]);
     showToast(`✓ ${name} agregado — Ritual de Servicio`);
   };
 
@@ -4838,6 +4953,50 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   );
                 })()}
 
+                {/* EN COCINA — semáforo de tiempos por plato (verde/amarillo/rojo)
+                    Igual lógica que Flow: verde<70%, amarillo<obj, rojo≥obj */}
+                {order.filter(o => o.mesa === selectedTable.num).length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-[#3dba6f]/30">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="text-[10px] font-bold text-[#3dba6f] uppercase tracking-wider flex items-center gap-1">
+                        🔥 En cocina · M{selectedTable.num}
+                      </div>
+                      <span className="text-[9px] bg-[#3dba6f] text-black font-black px-1.5 py-0.5 rounded-full">
+                        {order.filter(o => o.mesa === selectedTable.num).length}
+                      </span>
+                    </div>
+                    <div className="flex flex-col gap-1 mb-2 max-h-[160px] overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+                      {order.filter(o => o.mesa === selectedTable.num).map((item, i) => {
+                        const semaforo = getSemaforo(item.created_at, item.estacion);
+                        const sColor = semaforo === 'rojo' ? '#e05050' : semaforo === 'amarillo' ? '#FFB547' : '#3dba6f';
+                        const sBg = semaforo === 'rojo' ? 'rgba(224,80,80,0.08)' : semaforo === 'amarillo' ? 'rgba(255,181,71,0.06)' : 'rgba(61,186,111,0.04)';
+                        const minTranscurridos = item.created_at ? Math.floor((Date.now() - new Date(item.created_at).getTime()) / 60000) : 0;
+                        return (
+                          <div key={i} className="flex items-center gap-1.5 py-1 px-1.5 rounded-md"
+                            style={{ background: sBg, borderLeft: `3px solid ${sColor}` }}>
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sColor, boxShadow: semaforo === 'rojo' ? `0 0 6px ${sColor}` : 'none' }}/>
+                            <span className="text-[13px] shrink-0">{item.emoji}</span>
+                            <span className="flex-1 text-[10px] text-[#f0f0f0] truncate">{item.nombre}</span>
+                            {item.created_at && (
+                              <span className="text-[9px] font-bold tabular-nums shrink-0" style={{ color: sColor }}>
+                                {minTranscurridos < 1 ? '<1m' : `${minTranscurridos}m`}
+                              </span>
+                            )}
+                            <span className="text-[10px] text-[#d4943a] font-bold shrink-0">{item.precio}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex items-center justify-between text-[9px] text-[#606060] px-1">
+                      <span className="flex items-center gap-2">
+                        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-[#3dba6f]"/>Verde: a tiempo</span>
+                        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-[#FFB547]"/>+5min</span>
+                        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-[#e05050]"/>Demorado</span>
+                      </span>
+                    </div>
+                  </div>
+                )}
+
                 {/* ORDEN PENDIENTE — confirmación prominente */}
                 {pendingOrder.filter(o => o.mesa === selectedTable.num).length > 0 && (
                   <div className="mt-3 pt-3 border-t border-[#d4943a]/40">
@@ -4885,7 +5044,20 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                             urgente: items.length >= 10,
                           });
                         });
-                        setOrder(prev => [...prev, ...items]);
+                        // Enriquecer cada item marchando con timestamp + estación
+                        const ahora = new Date().toISOString();
+                        const itemsMarcando = items.map(it => {
+                          const cat = (it as any).categoria || currentCat;
+                          const est = inferirEstacionFromNombre(it.nombre, cat);
+                          return {
+                            ...it,
+                            created_at: it.created_at || ahora,
+                            estacion: it.estacion || est,
+                            categoria: cat,
+                            tipo: (est === 'bar' || est === 'cava') ? 'bebida' as const : 'comida' as const,
+                          };
+                        });
+                        setOrder(prev => [...prev, ...itemsMarcando]);
                         setPendingOrder(prev => prev.filter(o => o.mesa !== selectedTable.num));
                         showToast(`🔥 ${items.length} plato${items.length!==1?'s':''} marchando → Flow`);
                       }}
