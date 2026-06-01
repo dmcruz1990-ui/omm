@@ -35,7 +35,8 @@ export enum ModuleType {
   PLANO = 'PLANO',
   VISION_AI = 'VISION_AI',
   TERMINAL_PAGO = 'TERMINAL_PAGO',
-  PUNTOS_NX = 'PUNTOS_NX'
+  PUNTOS_NX = 'PUNTOS_NX',
+  CREW_ADMIN = 'CREW_ADMIN'
 }
 
 export type UserRole = 'admin' | 'gerencia' | 'mesero' | 'cocina' | 'desarrollo' | 'maitre';
