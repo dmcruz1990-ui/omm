@@ -968,6 +968,27 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       .or(`hasta.is.null,hasta.gte.${hoy}`)
       .then(({ data }) => setRetosNXActivos(data || []));
   }, [restauranteId]);
+
+  // ── Colores de los meseros (mapa visual: cada mesa toma el color de su mesero) ──
+  const [coloresMeseros, setColoresMeseros] = useState<Record<string, string>>({});
+  useEffect(() => {
+    supabase.from('profiles').select('nombre_completo,full_name,color')
+      .not('color', 'is', null)
+      .then(({ data }) => {
+        const map: Record<string, string> = {};
+        (data || []).forEach((p:any) => {
+          const k1 = p.nombre_completo || '';
+          const k2 = p.full_name || '';
+          if (k1 && p.color) map[k1] = p.color;
+          if (k2 && k2 !== k1 && p.color) map[k2] = p.color;
+        });
+        setColoresMeseros(map);
+      });
+  }, [restauranteId]);
+  const colorDeMesero = (nombre: string | null | undefined): string => {
+    if (!nombre) return '#5a6472';
+    return coloresMeseros[nombre] || (nombre === miNombre ? (profile?.color || '#d4943a') : '#5a6472');
+  };
   const retoDePlato = useCallback((nombrePlato: string): any => {
     if (!nombrePlato) return null;
     const n = nombrePlato.toLowerCase();
@@ -6507,18 +6528,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 {[
                   /* PDF NEXUM § 5 — Estados oficiales (paleta + visibilidad). Los marcados con * se derivan automáticamente de señales del POS; los demás están en implementación. */
                   {c:'#5a6472',l:'Libre*'},
-                  {c:'#448AFF',l:'Reservada*'},
-                  {c:'#3dba6f',l:'Sentados*'},
-                  {c:'#22d3ee',l:'Orden tomada*'},
-                  {c:'#d4943a',l:'Mi mesa*'},
-                  {c:'#FFB547',l:'Comiendo'},
-                  {c:'#B388FF',l:'Postres'},
-                  {c:'#FF6B00',l:'Cuenta solicitada'},
-                  {c:'#FF2D78',l:'Cleaning'},
-                  {c:'#9b72ff',l:'Resetting'},
-                  {c:'#404040',l:'Bloqueada*'},
-                  {c:'#FFE600',l:'VIP Hold'},
-                  {c:'#e05050',l:'Otro mesero*'},
+                  {c:'#3dba6f',l:'Verde · por sentar (tomar)'},
+                  {c:profile?.color || '#d4943a', l:`Mi color · ${miNombre.split(' ')[0]}`},
+                  {c:'#5a6472',l:'Gris · libre'},
+                  {c:'#404040',l:'Bloqueada'},
+                  {c:'#e05050',l:'Otro mesero (bloqueada para mí)'},
                 ].map(l=>(
                   <div key={l.l} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:'#a0a0a0'}}>
                     <span style={{width:7,height:7,borderRadius:'50%',background:l.c,display:'inline-block'}}/>
@@ -6668,11 +6682,18 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                       const asignadaDeOtro = asignada && !!meseroDeMesa && meseroDeMesa!==meseroActual && !compartida;
                       const esMia = (ocupada || asignada) && (!meseroDeMesa || meseroDeMesa===meseroActual || compartida);
                       const puedeEntrar = esMia || privilegiado;
-                      // color: verde=mi asignada/pool · rojo=de otro · dorado=mía ocupada · gris=libre · oscuro=bloqueada
-                      const col = asignadaDeOtro ? (privilegiado ? '#3dba6f' : '#e05050')
-                        : asignada ? '#3dba6f'
-                        : ocupada ? (puedeEntrar ? '#d4943a' : '#e05050')
-                        : bloqueada ? '#404040'
+                      // Color por mesero (cada mesero tiene su HEX en profiles.color):
+                      //   asignada/ocupada con mesero conocido → color del mesero
+                      //   asignadaMia → mi propio color
+                      //   pool (asignada sin mesero) → verde "tomar"
+                      //   libre → gris
+                      //   bloqueada → oscuro
+                      const colorMesero = colorDeMesero(meseroDeMesa || (asignadaMia ? miNombre : ''));
+                      const col = bloqueada ? '#404040'
+                        : asignadaPool ? '#3dba6f'                 // verde · libre para tomar
+                        : asignadaMia ? (profile?.color || '#3dba6f')
+                        : asignadaDeOtro ? (privilegiado ? colorMesero : '#e05050')
+                        : ocupada ? (puedeEntrar ? colorMesero : '#e05050')
                         : '#5a6472';
                       return (
                         <div key={key}
