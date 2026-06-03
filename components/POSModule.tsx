@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { Table, RitualTask } from '../types.ts';
-import { BellRing, Settings, MonitorPlay, MessageSquare, Sparkles, Receipt, X, ShoppingCart, Lock, Zap, BarChart3, ShieldCheck } from 'lucide-react';
+import { BellRing, Settings, MonitorPlay, MessageSquare, Sparkles, Receipt, X, ShoppingCart, Lock, Zap, BarChart3, ShieldCheck, Brain, ChevronDown, ChevronUp } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useRestaurant } from '../contexts/RestaurantContext';
 import { ZONAS_POR_RESTAURANTE, VW_PLANO, VH_PLANO, sizeForMesa } from './PlanoOMM.tsx';
@@ -1155,6 +1155,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [showOrderPanel, setShowOrderPanel] = useState(false);
   const [mostrarTraspaso, setMostrarTraspaso] = useState(false);
   const [mostrarCompartir, setMostrarCompartir] = useState(false);
+  const [mostrarEnProduccion, setMostrarEnProduccion] = useState(true);
   const [meserosTodas,   setMeserosTodas]   = useState<any[]>([]);
   const [mesaDestino, setMesaDestino] = useState<number | null>(null);
   const [tipoTraspaso, setTipoTraspaso] = useState<'mesa'|'barra'|'barra-a-mesa'>('mesa');
@@ -5116,19 +5117,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       {/* LEFT PANEL */}
       <div className="bg-[#141414] border-r border-[#2a2a2a] flex flex-col shrink-0" style={{ width: 200 }}>
         <div className="p-2 px-3 pb-2 flex items-center gap-2 border-b border-[#2a2a2a] shrink-0 relative">
-          {/* Botón mapa de mesas — grande, acción principal del POS
-              (ocupa todo el ancho; el botón Caja del POS se eliminó porque
-              ahora los cobros se procesan desde el módulo TERMINAL DE PAGO) */}
+          {/* Botón Mesas — acción principal del POS (ocupa todo el ancho).
+              El ⚡ Brief se movió al lado del nombre del cliente (header). */}
           <button onClick={() => setShowMapaMesas(true)}
             className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#d4943a]/15 border border-[#d4943a]/40 text-[#d4943a] text-[13px] font-black hover:bg-[#d4943a]/25 active:scale-95 transition-all">
-            🗺️ <span>Mapa de Mesas</span>
-          </button>
-          {/* ⚡ Intel del día — resumen rápido del mesero */}
-          <button onClick={() => setIntelOpen(true)}
-            title={`Intel del día · ${miNombre}`}
-            className="px-3 py-2.5 rounded-xl border text-[13px] font-black active:scale-95 transition-all"
-            style={{ background:'rgba(155,114,255,0.12)', borderColor:'rgba(155,114,255,0.40)', color:'#9b72ff' }}>
-            ⚡
+            <span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,borderRadius:'50%',border:'1.5px solid #d4943a',fontSize:10,fontWeight:900}}>M</span>
+            <span>Mesas</span>
           </button>
           <div className="flex gap-1.5 ml-auto shrink-0">
             {/* Cerebro */}
@@ -5425,47 +5419,46 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   );
                 })()}
 
-                {/* EN COCINA — semáforo de tiempos por plato (verde/amarillo/rojo)
-                    Igual lógica que Flow: verde<70%, amarillo<obj, rojo≥obj */}
+                {/* EN PRODUCCIÓN — semáforo de tiempos por plato (verde/amarillo/rojo)
+                    Igual lógica que Flow: verde<70%, amarillo<obj, rojo≥obj
+                    Colapsable como 'Compartir mesa' · sin botones de leyenda */}
                 {order.filter(o => o.mesa === selectedTable.num).length > 0 && (
                   <div className="mt-3 pt-3 border-t border-[#3dba6f]/30">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="text-[10px] font-bold text-[#3dba6f] uppercase tracking-wider flex items-center gap-1">
-                        🔥 En cocina · M{selectedTable.num}
+                    <button onClick={() => setMostrarEnProduccion(p => !p)}
+                      className="w-full flex items-center justify-between text-[10px] font-bold text-[#3dba6f] uppercase tracking-wider hover:text-[#5dd88f] transition-all">
+                      <span className="flex items-center gap-1.5">
+                        🔥 En producción · M{selectedTable.num}
+                        <span className="text-[9px] bg-[#3dba6f] text-black font-black px-1.5 py-0.5 rounded-full">
+                          {order.filter(o => o.mesa === selectedTable.num).length}
+                        </span>
+                        <span className="text-[8px] text-[#606060] font-normal normal-case ml-1">↔ Flow</span>
+                      </span>
+                      <span>{mostrarEnProduccion ? '▲' : '▼'}</span>
+                    </button>
+                    {mostrarEnProduccion && (
+                      <div className="flex flex-col gap-1 mt-2 max-h-[160px] overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
+                        {order.filter(o => o.mesa === selectedTable.num).map((item, i) => {
+                          const semaforo = getSemaforo(item.created_at, item.estacion);
+                          const sColor = semaforo === 'rojo' ? '#e05050' : semaforo === 'amarillo' ? '#FFB547' : '#3dba6f';
+                          const sBg = semaforo === 'rojo' ? 'rgba(224,80,80,0.08)' : semaforo === 'amarillo' ? 'rgba(255,181,71,0.06)' : 'rgba(61,186,111,0.04)';
+                          const minTranscurridos = item.created_at ? Math.floor((Date.now() - new Date(item.created_at).getTime()) / 60000) : 0;
+                          return (
+                            <div key={i} className="flex items-center gap-1.5 py-1 px-1.5 rounded-md"
+                              style={{ background: sBg, borderLeft: `3px solid ${sColor}` }}>
+                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sColor, boxShadow: semaforo === 'rojo' ? `0 0 6px ${sColor}` : 'none' }}/>
+                              <span className="text-[13px] shrink-0">{item.emoji}</span>
+                              <span className="flex-1 text-[10px] text-[#f0f0f0] truncate">{item.nombre}</span>
+                              {item.created_at && (
+                                <span className="text-[10px] font-black tabular-nums shrink-0" style={{ color: sColor }}>
+                                  {minTranscurridos < 1 ? '<1 min' : `${minTranscurridos} min`}
+                                </span>
+                              )}
+                              <span className="text-[10px] text-[#d4943a] font-bold shrink-0">{item.precio}</span>
+                            </div>
+                          );
+                        })}
                       </div>
-                      <span className="text-[9px] bg-[#3dba6f] text-black font-black px-1.5 py-0.5 rounded-full">
-                        {order.filter(o => o.mesa === selectedTable.num).length}
-                      </span>
-                    </div>
-                    <div className="flex flex-col gap-1 mb-2 max-h-[160px] overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-                      {order.filter(o => o.mesa === selectedTable.num).map((item, i) => {
-                        const semaforo = getSemaforo(item.created_at, item.estacion);
-                        const sColor = semaforo === 'rojo' ? '#e05050' : semaforo === 'amarillo' ? '#FFB547' : '#3dba6f';
-                        const sBg = semaforo === 'rojo' ? 'rgba(224,80,80,0.08)' : semaforo === 'amarillo' ? 'rgba(255,181,71,0.06)' : 'rgba(61,186,111,0.04)';
-                        const minTranscurridos = item.created_at ? Math.floor((Date.now() - new Date(item.created_at).getTime()) / 60000) : 0;
-                        return (
-                          <div key={i} className="flex items-center gap-1.5 py-1 px-1.5 rounded-md"
-                            style={{ background: sBg, borderLeft: `3px solid ${sColor}` }}>
-                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sColor, boxShadow: semaforo === 'rojo' ? `0 0 6px ${sColor}` : 'none' }}/>
-                            <span className="text-[13px] shrink-0">{item.emoji}</span>
-                            <span className="flex-1 text-[10px] text-[#f0f0f0] truncate">{item.nombre}</span>
-                            {item.created_at && (
-                              <span className="text-[9px] font-bold tabular-nums shrink-0" style={{ color: sColor }}>
-                                {minTranscurridos < 1 ? '<1m' : `${minTranscurridos}m`}
-                              </span>
-                            )}
-                            <span className="text-[10px] text-[#d4943a] font-bold shrink-0">{item.precio}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div className="flex items-center justify-between text-[9px] text-[#606060] px-1">
-                      <span className="flex items-center gap-2">
-                        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-[#3dba6f]"/>Verde: a tiempo</span>
-                        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-[#FFB547]"/>+5min</span>
-                        <span className="flex items-center gap-0.5"><span className="w-1.5 h-1.5 rounded-full bg-[#e05050]"/>Demorado</span>
-                      </span>
-                    </div>
+                    )}
                   </div>
                 )}
 
@@ -5858,6 +5851,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <div className="text-[12px] font-bold text-[#f0f0f0] truncate">{profile?.nombre_completo || profile?.full_name || 'Usuario'}</div>
             <div className="text-[9px] text-[#d4943a] font-bold uppercase">{profile?.role === 'admin' ? 'Admin' : profile?.role === 'gerencia' ? 'Gerencia' : profile?.role === 'desarrollo' ? 'Dev' : 'Mesero'}</div>
           </div>
+          {/* ⚡ Brief — resumen IA del día (movido desde el header izquierdo, entre nombre e historial) */}
+          <button onClick={() => setIntelOpen(true)}
+            title={`Brief del día · ${miNombre}`}
+            className="w-[26px] h-[26px] rounded-lg flex items-center justify-center cursor-pointer transition-all"
+            style={{ background:'rgba(155,114,255,0.12)', border:'1px solid rgba(155,114,255,0.40)', color:'#9b72ff' }}>
+            ⚡
+          </button>
           <button onClick={() => { setShowHistorial(true); fetchHistorial(); }}
             className="w-[26px] h-[26px] rounded-lg bg-[#1c1c1c] border border-[#2a2a2a] flex items-center justify-center cursor-pointer hover:bg-[#2a2a2a] transition-all"
             title="Historial de pedidos">
@@ -5896,12 +5896,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         {/* Tabs */}
         <div className="flex border-b border-[#2a2a2a] shrink-0">
           {(['IA', 'Cuenta', 'Chat', 'Intel'] as const).map(tab => {
-            const icons = { IA: <Sparkles size={14} />, Cuenta: <Receipt size={14} />, Chat: <MessageSquare size={14} />, Intel: <Zap size={14} /> };
-            const activeColors = { IA: 'text-[#d4943a] border-b-[#d4943a]', Cuenta: 'text-[#f0f0f0] border-b-[#f0f0f0]', Chat: 'text-[#3dba6f] border-b-[#3dba6f]', Intel: 'text-[#22d3ee] border-b-[#22d3ee]' };
+            const icons:any = { IA: <Sparkles size={14} />, Cuenta: <Receipt size={14} />, Chat: <MessageSquare size={14} />, Intel: <Brain size={14} /> };
+            const labels:any = { IA: 'IA', Cuenta: 'Cuenta', Chat: 'Chat', Intel: 'Brief' };
+            const activeColors:any = { IA: 'text-[#d4943a] border-b-[#d4943a]', Cuenta: 'text-[#f0f0f0] border-b-[#f0f0f0]', Chat: 'text-[#3dba6f] border-b-[#3dba6f]', Intel: 'text-[#9b72ff] border-b-[#9b72ff]' };
             return (
               <button key={tab} onClick={() => setRightTab(tab)}
                 className={`flex-1 py-2.5 text-[11px] font-bold uppercase tracking-widest flex items-center justify-center gap-1.5 transition-all border-b-2 ${rightTab === tab ? `${activeColors[tab]} bg-[#1c1c1c]` : 'text-[#606060] border-b-transparent hover:text-[#a0a0a0] hover:bg-[#1a1a1a]'}`}>
-                {icons[tab]} {tab}
+                {icons[tab]} {labels[tab]}
               </button>
             );
           })}
@@ -6325,11 +6326,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               ) : null;
             })()}
 
+            {/* ══ BRIEF DEL DÍA · Próximas reservas + Frase inspiradora ══ */}
+            <BriefDelDia profile={profile} miNombre={miNombre} restauranteId={restauranteId}/>
+
             {/* ══ RESUMEN DEL DÍA ══ */}
-            <div className="bg-[#1c1c1c] border border-[#22d3ee]/30 rounded-xl overflow-hidden">
+            <div className="bg-[#1c1c1c] border border-[#9b72ff]/30 rounded-xl overflow-hidden">
               <div className="px-3 py-2 flex items-center gap-2 border-b border-[#2a2a2a]">
-                <BarChart3 size={13} className="text-[#22d3ee]"/>
-                <span className="text-[10px] font-black text-[#22d3ee] uppercase tracking-wider">Resumen del día</span>
+                <Brain size={13} className="text-[#9b72ff]"/>
+                <span className="text-[10px] font-black text-[#9b72ff] uppercase tracking-wider">Resumen operativo</span>
                 <button onClick={fetchTicketDia} style={{marginLeft:'auto',fontSize:9,color:'#606060',background:'none',border:'none',cursor:'pointer'}}>↻</button>
               </div>
               <div className="p-3 grid grid-cols-2 gap-2">
@@ -6756,6 +6760,129 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 };
 
 export default ServiceOSModule;
+
+// ═════════════════════════════════════════════════════════════════════
+// BRIEF DEL DÍA · Próximas reservas + clientes que vienen + inspiración
+// Lee reservations + ohyeah_reservas en tiempo real para el restaurante.
+// ═════════════════════════════════════════════════════════════════════
+function BriefDelDia({ profile, miNombre, restauranteId }:{ profile:any; miNombre:string; restauranteId:number }) {
+  const [proximas, setProximas] = React.useState<any[]>([]);
+  const [vipsHoy, setVipsHoy] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const hoy = new Date().toISOString().split('T')[0];
+    const load = async () => {
+      const [rv, oy] = await Promise.all([
+        supabase.from('reservations').select('id,cliente_nombre,hora,pax,ocasion,gourmand_level,mesa_num,estado,notas')
+          .eq('fecha', hoy).eq('restaurante_id', restauranteId)
+          .in('estado',['confirmada','pendiente']).order('hora'),
+        supabase.from('ohyeah_reservas').select('id,guest_name,time,pax,occasion,gourmand_level,mesa_num,status,observations')
+          .eq('date', hoy).in('status',['confirmed','confirmada','pending','pendiente']).order('time'),
+      ]);
+      const ahoraMin = new Date().getHours()*60 + new Date().getMinutes();
+      const map = (r:any, esOh:boolean) => ({
+        id: r.id,
+        nombre: esOh ? r.guest_name : r.cliente_nombre,
+        hora: (esOh ? r.time : r.hora || '').slice(0,5),
+        pax: r.pax,
+        ocasion: esOh ? r.occasion : r.ocasion,
+        nivel: r.gourmand_level,
+        mesa: r.mesa_num,
+        notas: esOh ? r.observations : r.notas,
+        esOh,
+      });
+      const todas = [
+        ...(rv.data||[]).map((r:any)=>map(r,false)),
+        ...(oy.data||[]).map((r:any)=>map(r,true)),
+      ].filter((r:any) => {
+        const [h,m] = (r.hora||'00:00').split(':').map(Number);
+        return (h*60+m) >= ahoraMin - 15; // próximas + cualquiera de hace <15min
+      }).sort((a:any,b:any)=>(a.hora||'').localeCompare(b.hora||''));
+      const VIP_TIERS = ['VIP','CONSAGRADO','ÉLITE','ELITE','GRAND GOURMAND','LA CREME'];
+      setProximas(todas.slice(0, 5));
+      setVipsHoy(todas.filter((r:any)=> VIP_TIERS.includes(String(r.nivel||'').toUpperCase())).slice(0,3));
+      setLoading(false);
+    };
+    load();
+    const ch = supabase.channel('brief-del-dia')
+      .on('postgres_changes',{event:'*',schema:'public',table:'reservations'}, load)
+      .on('postgres_changes',{event:'*',schema:'public',table:'ohyeah_reservas'}, load)
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [restauranteId]);
+
+  // Frase inspiradora (rotativa según día del año + hora)
+  const FRASES = [
+    'El servicio impecable nace de los detalles invisibles. Hoy somos esos detalles.',
+    'Cada cliente que entra es una historia. Nuestra cocina es donde la contamos.',
+    'La excelencia no es un acto, es un hábito. Hoy lo cultivamos juntos.',
+    'El cliente recordará no solo lo que comió, sino cómo lo hicimos sentir.',
+    'Cuidamos los segundos: el tiempo perfecto convierte una comida en experiencia.',
+    'Equipo unido, servicio fluido. Hoy nadie está solo en su estación.',
+    'Cada plato sale como si fuera el último. Cada mesa atendida como si fuera la primera.',
+    'No vendemos comida, creamos memorias. Hoy creamos memorables.',
+  ];
+  const nombre = (profile?.full_name || profile?.nombre_completo || miNombre || '').split(' ')[0] || 'Equipo';
+  const idx = ((new Date()).getDate() + (new Date()).getHours()) % FRASES.length;
+  const frase = FRASES[idx];
+
+  return (
+    <div style={{background:'linear-gradient(135deg,rgba(155,114,255,0.10),rgba(212,148,58,0.06))',border:'1px solid rgba(155,114,255,0.3)',borderRadius:12,overflow:'hidden'}}>
+      <div style={{padding:'10px 14px',display:'flex',alignItems:'center',gap:8,borderBottom:'1px solid rgba(155,114,255,0.15)'}}>
+        <Brain size={14} style={{color:'#9b72ff'}}/>
+        <span style={{fontSize:10,fontWeight:900,color:'#9b72ff',letterSpacing:'.16em',textTransform:'uppercase'}}>Brief del día</span>
+        <span style={{marginLeft:'auto',fontSize:9,color:'#606060'}}>Live · IA</span>
+      </div>
+      <div style={{padding:'12px 14px',display:'flex',flexDirection:'column',gap:10}}>
+        {loading && <div style={{fontSize:11,color:'#606060',textAlign:'center'}}>Cargando reservas…</div>}
+
+        {/* PRÓXIMAS RESERVAS */}
+        {!loading && (
+          <div>
+            <div style={{fontSize:9,fontWeight:800,color:'#d4943a',textTransform:'uppercase',letterSpacing:'.12em',marginBottom:6}}>
+              ⏭ Próximas reservas {proximas.length>0 && `(${proximas.length})`}
+            </div>
+            {proximas.length === 0 ? (
+              <div style={{fontSize:11,color:'#606060',padding:'6px 0'}}>Sin reservas próximas.</div>
+            ) : (
+              <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                {proximas.map((r:any) => (
+                  <div key={`${r.esOh?'oy':'rv'}-${r.id}`} style={{display:'flex',alignItems:'center',gap:8,padding:'7px 9px',background:'rgba(0,0,0,0.25)',borderRadius:8,borderLeft:`3px solid ${r.esOh?'#FFE600':'#d4943a'}`}}>
+                    <span style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,color:r.esOh?'#FFE600':'#d4943a',minWidth:42}}>{r.hora}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:11,fontWeight:700,color:'#f0f0f0',display:'flex',alignItems:'center',gap:4,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>
+                        {r.nombre}{r.esOh && <span style={{fontSize:9}}>🦉</span>}
+                        {r.nivel && ['VIP','CONSAGRADO','ÉLITE','ELITE','GRAND GOURMAND','LA CREME'].includes(String(r.nivel).toUpperCase()) && <span style={{fontSize:9}}>⭐</span>}
+                      </div>
+                      <div style={{fontSize:9,color:'#a0a0a0'}}>{r.pax}p{r.mesa?` · M${r.mesa}`:''}{r.ocasion && r.ocasion!=='Sin ocasión especial'?` · 🎉 ${r.ocasion}`:''}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* VIPs */}
+        {vipsHoy.length > 0 && (
+          <div style={{paddingTop:8,borderTop:'1px solid rgba(155,114,255,0.15)'}}>
+            <div style={{fontSize:9,fontWeight:800,color:'#FFD700',textTransform:'uppercase',letterSpacing:'.12em',marginBottom:5}}>⭐ VIPs hoy</div>
+            <div style={{fontSize:11,color:'#f0f0f0',lineHeight:1.5}}>
+              {vipsHoy.map((v:any) => v.nombre).join(' · ')}
+            </div>
+          </div>
+        )}
+
+        {/* INSPIRACIÓN */}
+        <div style={{paddingTop:10,borderTop:'1px solid rgba(155,114,255,0.15)'}}>
+          <div style={{fontSize:9,fontWeight:800,color:'#9b72ff',textTransform:'uppercase',letterSpacing:'.12em',marginBottom:5}}>✨ Para {nombre}</div>
+          <div style={{fontSize:11,color:'#f0f0f0',lineHeight:1.6,fontStyle:'italic'}}>"{frase}"</div>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ═════════════════════════════════════════════════════════════════════
 // PLANO POS · SALA — mismo SVG que Reserve/Sala, con la lógica POS
