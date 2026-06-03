@@ -131,9 +131,29 @@ export default function CustomersModule() {
       return r ? { ...cl, rating_avg: r.sum / r.n, rating_count: r.n, rating_ult: r.ult, rating_ultimas3: r.ultimas3 } : cl;
     };
 
+    // ── Tiempo "dentro del restaurante" — minutos sentado en este momento ──
+    // Cruzamos reservaciones SENTADAS hoy con los clientes para mostrar live.
+    const hoy = new Date().toISOString().split('T')[0];
+    const { data: sentadas } = await supabase.from('reservations')
+      .select('cliente_telefono,cliente_email,sentado_at,mesa_num,estado')
+      .eq('estado','sentada').eq('fecha',hoy).not('sentado_at','is',null);
+    const tiempoPorEmail: Record<string,{min:number;mesa:any}> = {};
+    const tiempoPorTel: Record<string,{min:number;mesa:any}> = {};
+    (sentadas||[]).forEach((r:any) => {
+      const min = Math.max(0, Math.floor((Date.now()-new Date(r.sentado_at).getTime())/60000));
+      if (r.cliente_email) tiempoPorEmail[String(r.cliente_email).toLowerCase()] = { min, mesa: r.mesa_num };
+      if (r.cliente_telefono) tiempoPorTel[String(r.cliente_telefono).trim()] = { min, mesa: r.mesa_num };
+    });
+    const aplicarSentado = (cl:any) => {
+      const e = cl.email ? tiempoPorEmail[String(cl.email).toLowerCase()] : null;
+      const t = cl.phone ? tiempoPorTel[String(cl.phone).trim()] : null;
+      const m = e || t;
+      return m ? { ...cl, sentado_min: m.min, mesa_actual: m.mesa } : cl;
+    };
+
     setClientes([
-      ...((nexum||[]).map(aplicarRating)),
-      ...ohyeahFiltrado.map(aplicarRating),
+      ...((nexum||[]).map(aplicarRating).map(aplicarSentado)),
+      ...ohyeahFiltrado.map(aplicarRating).map(aplicarSentado),
     ] as Customer[]);
     setLoading(false);
   }, [ordenar]);
@@ -338,7 +358,7 @@ export default function CustomersModule() {
               <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:13}}>
                 <thead>
                   <tr style={{background:S.bg2,position:'sticky',top:0,zIndex:5}}>
-                    {['Cliente','Contacto','Score','Calificación','Segmento','Visitas','Gasto total','Ticket prom.','Última visita','Alergias','Preferencias','Origen · Últimas 3','Acciones'].map(h=>(
+                    {['Cliente','Contacto','Sentado ahora','Score','Calificación','Segmento','Visitas','Gasto total','Ticket prom.','Última visita','Alergias','Preferencias','Origen · Últimas 3','Acciones'].map(h=>(
                       <th key={h} style={{padding:'10px 14px',textAlign:'left' as const,fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.06em',borderBottom:`1px solid ${S.border}`,whiteSpace:'nowrap'}}>
                         {h}
                       </th>
@@ -390,6 +410,21 @@ export default function CustomersModule() {
                             )}
                             {cliente.email && <div style={{fontSize:11,color:S.t3,overflow:'hidden',textOverflow:'ellipsis',maxWidth:160}}>✉ {cliente.email}</div>}
                           </div>
+                        </td>
+
+                        {/* Sentado ahora · tiempo en restaurante (live) */}
+                        <td style={{padding:'11px 14px'}}>
+                          {(cliente as any).sentado_min != null ? (
+                            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                              <div style={{fontSize:18}}>🪑</div>
+                              <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,color:(cliente as any).sentado_min>120?S.red:(cliente as any).sentado_min>90?S.gold:S.green,lineHeight:1}}>
+                                {(cliente as any).sentado_min} min
+                              </div>
+                              {(cliente as any).mesa_actual && <div style={{fontSize:9,color:S.t3,fontWeight:700}}>M{(cliente as any).mesa_actual}</div>}
+                            </div>
+                          ) : (
+                            <div style={{fontSize:10,color:S.t3,textAlign:'center'}}>—</div>
+                          )}
                         </td>
 
                         {/* Score */}
