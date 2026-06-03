@@ -14,7 +14,7 @@ const VW = 1280, VH = 920;
 type ZonaArea = { area:{x:number;y:number;w:number;h:number}; fill:string; stroke:string; chipBg:string; label:string; };
 
 // ── Mapas de zonas por restaurante ──────────────────────────────
-const ZONAS_OMM: Record<string, ZonaArea> = {
+export const ZONAS_OMM: Record<string, ZonaArea> = {
   'Eterno':       { area:{x:30,  y:90,  w:470, h:430}, fill:'#FFF4D6', stroke:'#E5B23B', chipBg:'#E5B23B', label:'ETERNO' },
   'Mantra':       { area:{x:530, y:170, w:610, h:680}, fill:'#FCD9D9', stroke:'#D14545', chipBg:'#D14545', label:'MANTRA' },
   'Amatista':     { area:{x:240, y:540, w:280, h:340}, fill:'#D2D9F0', stroke:'#3F4F9E', chipBg:'#3F4F9E', label:'AMATISTA' },
@@ -28,9 +28,26 @@ const ZONAS_GALLO: Record<string, ZonaArea> = {
   'VIP':             { area:{x:790, y:500, w:380, h:240}, fill:'#F4D7F2', stroke:'#9B4699', chipBg:'#9B4699', label:'VIP' },
   'Barra Gallo':     { area:{x:130, y:730, w:440, h:80},  fill:'rgba(193,59,59,0.30)', stroke:'#8B2E2E', chipBg:'#8B2E2E', label:'BARRA' },
 };
-const ZONAS_POR_RESTAURANTE: Record<number, { zonas: Record<string,ZonaArea>; orden: string[] }> = {
+export const ZONAS_GALLO_EXPORT = ZONAS_GALLO;
+export const ZONAS_POR_RESTAURANTE: Record<number, { zonas: Record<string,ZonaArea>; orden: string[] }> = {
   6: { zonas: ZONAS_OMM, orden: ['Eterno','Mantra','Amatista','Barra Eterno','Barra Sushi','Barra Torre'] },
   23:{ zonas: ZONAS_GALLO, orden: ['Salón Principal','Terraza','VIP','Barra Gallo'] },
+};
+export const VW_PLANO = VW;
+export const VH_PLANO = VH;
+export const ST_MESA = {
+  libre:     { bg:'#FFFFFF', border:'#22C55E', text:'#15803D', chip:'#22C55E', label:'LIBRE' },
+  ocupada:   { bg:'#FEE2E2', border:'#DC2626', text:'#7F1D1D', chip:'#EF4444', label:'OCUPADA' },
+  reservada: { bg:'#FEF3C7', border:'#D97706', text:'#78350F', chip:'#F59E0B', label:'RESERVADA' },
+  bloqueada: { bg:'#E5E7EB', border:'#6B7280', text:'#374151', chip:'#9CA3AF', label:'BLOQUEADA' },
+};
+export const sizeForMesa = (m: { zona:string; capacidad:number; name:string }) => {
+  if (m.zona?.startsWith('Barra')) return { w:38, h:38 };
+  if (m.name === 'M5') return { w:120, h:200 };
+  if (m.capacidad >= 6) return { w:84, h:84 };
+  if (m.capacidad >= 4) return { w:72, h:72 };
+  if (m.capacidad >= 3) return { w:62, h:62 };
+  return { w:54, h:54 };
 };
 
 const ST = {

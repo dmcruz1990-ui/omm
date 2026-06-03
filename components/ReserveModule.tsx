@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../contexts/AuthContext';
 import { useRestaurant } from '../contexts/RestaurantContext';
+import { ZONAS_POR_RESTAURANTE, VW_PLANO, VH_PLANO, ST_MESA, sizeForMesa } from './PlanoOMM.tsx';
 
 // ══ PLANO OMM — fiel al plano arquitectónico (mismo layout que el POS) ══
 const PLANTA: Record<string,{num:number;zona:string;shape:'round'|'rect';cap:number;x:number;y:number;w:number;h:number}> = {
@@ -107,15 +108,27 @@ export default function ReserveModule() {
   const buscarClienteReserva = async (telRaw?:string) => {
     const t = (telRaw ?? form.cliente_telefono).trim();
     if (t.length < 7) { setReservaCRM(null); show('Ingresa un celular válido (mín. 7 dígitos)'); return; }
-    const [c1, c2, enc] = await Promise.all([
-      supabase.from('customers').select('id,name,email,vip_status,total_visits,total_spent,promedio_ticket,score,puntos,origen_captacion').eq('phone', t).limit(1).maybeSingle(),
-      supabase.from('nexum_clientes_ohyeah').select('id,nombre,email,nivel,visitas,total_reservas').eq('telefono', t).limit(1).maybeSingle(),
-      supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_telefono', t).order('created_at',{ascending:false}).limit(1).maybeSingle(),
+    const [c1, c2, encUlt, encExtrema] = await Promise.all([
+      supabase.from('customers').select('id,name,email,vip_status,total_visits,total_spent,promedio_ticket,score,puntos,origen_captacion,alergias,preferencias').eq('phone', t).limit(1).maybeSingle(),
+      supabase.from('nexum_clientes_ohyeah').select('id,nombre,email,nivel,visitas,total_reservas,preferencias,restricciones,notas').eq('telefono', t).limit(1).maybeSingle(),
+      supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_telefono', t).order('created_at',{ascending:false}).limit(3),
+      supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_telefono', t).or('estrellas.eq.1,estrellas.eq.5').order('created_at',{ascending:false}).limit(1).maybeSingle(),
     ]);
-    const base = c1.data || (c2.data ? { name:c2.data.nombre, email:c2.data.email, total_visits:c2.data.visitas, total_spent:0, nivel:c2.data.nivel, vip_status:String(c2.data.nivel||'').toUpperCase()==='VIP', origen_captacion:'oh_yeah' } : null);
-    if (!base) { setReservaCRM(null); show('Cliente nuevo — no está en el sistema'); return; }
+    const base = c1.data || (c2.data ? { name:c2.data.nombre, email:c2.data.email, total_visits:c2.data.visitas, total_spent:0, nivel:c2.data.nivel, vip_status:String(c2.data.nivel||'').toUpperCase()==='VIP', origen_captacion:'oh_yeah', alergias:c2.data.restricciones, preferencias:c2.data.preferencias } : null);
+    if (!base) {
+      // CLIENTE NUEVO — no descartamos, sino que mostramos tag distintivo
+      setReservaCRM({ isNew:true, telefono:t });
+      show('🆕 Cliente nuevo — completá los datos para crearlo');
+      return;
+    }
     const ticketProm = base.promedio_ticket || (base.total_visits ? Math.round((base.total_spent||0)/base.total_visits) : 0);
-    setReservaCRM({ ...base, ticketProm, ultimaEstrellas: enc.data?.estrellas ?? null, ultimoComentario: enc.data?.comentario || '' });
+    const ultimasEstrellas = (encUlt.data||[]).map((e:any)=>e.estrellas).filter((n:any)=>typeof n==='number');
+    // Tomar comentario relevante: el más reciente con 1 o 5 estrellas (sea de comida o bebida)
+    const comentarioRelevante = encExtrema.data ? { estrellas: encExtrema.data.estrellas, texto: encExtrema.data.comentario||'' } : null;
+    // Mezclar preferencias y alergias del CRM principal y de Oh Yeah
+    const alergias = base.alergias || c2.data?.restricciones || '';
+    const preferencias = base.preferencias || c2.data?.preferencias || '';
+    setReservaCRM({ ...base, ticketProm, ultimasEstrellas, comentarioRelevante, alergias, preferencias, isNew:false });
     setForm(p=>({ ...p, cliente_nombre: p.cliente_nombre || base.name || '', cliente_email: p.cliente_email || base.email || '' }));
     show(`✓ Datos cargados: ${base.name||'cliente'}`);
   };
@@ -251,6 +264,29 @@ const guardar = async () => {
     } else {
       await supabase.from('reservations').insert(payload);
       show('✓ Reserva creada');
+    }
+    // Sincronizar el CRM: si el maitre cambia/agrega datos, los persistimos
+    // en customers (origen_captacion=reserva). Idempotente — upsert por phone.
+    if (form.cliente_telefono?.trim()) {
+      try {
+        const existe = await supabase.from('customers').select('id,name,email').eq('phone', form.cliente_telefono.trim()).maybeSingle();
+        if (existe.data) {
+          const cambios:any = {};
+          if (form.cliente_nombre && form.cliente_nombre !== existe.data.name) cambios.name = form.cliente_nombre;
+          if (form.cliente_email && form.cliente_email !== existe.data.email) cambios.email = form.cliente_email;
+          if (Object.keys(cambios).length > 0) {
+            await supabase.from('customers').update(cambios).eq('id', existe.data.id);
+          }
+        } else {
+          await supabase.from('customers').insert({
+            name: form.cliente_nombre,
+            email: form.cliente_email || null,
+            phone: form.cliente_telefono.trim(),
+            origen_captacion: 'reserva_maitre',
+            activo: true,
+          });
+        }
+      } catch (e) { console.warn('No se pudo sincronizar customer:', e); }
     }
     setSaving(false); setTab('lista'); fetchData();
   };
@@ -909,68 +945,13 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             </div>
           </div>
 
-          <div style={{flex:1,overflow:'auto',padding:18,display:'flex',alignItems:'flex-start',justifyContent:'center'}}>
-            <div style={{position:'relative',width:'100%',maxWidth:900,paddingBottom:'62%',background:S.bg,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden',boxShadow:'inset 0 0 80px rgba(0,0,0,0.4)'}}>
-              {/* Grid sutil */}
-              <div style={{position:'absolute',inset:0,backgroundImage:'linear-gradient(rgba(255,255,255,0.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.02) 1px,transparent 1px)',backgroundSize:'5% 7%',pointerEvents:'none'}}/>
-
-              {mesasPlano.map((m:any) => {
-                const tieneXY = typeof m.x === 'number' && typeof m.y === 'number';
-                const xPos = tieneXY ? m.x : 50;
-                const yPos = tieneXY ? m.y : 50;
-                const ocupada = ['ocupada','asignada','sentada'].includes(m.estado);
-                const tieneReserva = !!m.reserva;
-                const col = m.vip ? S.gold
-                  : ocupada ? S.red
-                  : tieneReserva ? '#FFB547'
-                  : S.green;
-                return (
-                  <button key={m.num}
-                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.18)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 0 20px ${col}aa`; }}
-                    onDragLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 2px 10px rgba(0,0,0,0.4), inset 0 1px 0 ${col}25`; }}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      const reservaId = e.dataTransfer.getData('text/reserva');
-                      (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)';
-                      (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 2px 10px rgba(0,0,0,0.4), inset 0 1px 0 ${col}25`;
-                      if (!reservaId) return;
-                      if (m.reserva && String(m.reserva.id) !== reservaId) {
-                        if (!confirm(`La mesa ${m.num} ya tiene asignada la reserva de ${m.reserva.cliente_nombre} (${m.reserva.hora}). ¿Reemplazar?`)) return;
-                      }
-                      asignarMesa(reservaId, m.num);
-                    }}
-                    onClick={() => {
-                      if (m.reserva) setAsignandoMesa(m.reserva);
-                    }}
-                    title={m.reserva ? `${m.reserva.cliente_nombre} · ${m.reserva.hora} · ${m.reserva.pax}p` : `M${m.num} · libre · ${m.cap}p`}
-                    style={{
-                      position:'absolute',
-                      left:`${xPos}%`,top:`${yPos}%`,width:`${m.w}%`,height:`${m.h}%`,
-                      borderRadius: m.shape === 'round' ? '50%' : 10,
-                      background:`radial-gradient(circle at 50% 35%, ${col}26, ${col}0d)`,
-                      border:`2px solid ${col}80`,
-                      cursor:'pointer',
-                      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-                      color:S.t1,padding:0,
-                      transition:'transform .15s, box-shadow .15s',
-                      boxShadow: tieneReserva ? `0 0 14px ${col}55, inset 0 0 10px ${col}25` : `0 2px 10px rgba(0,0,0,0.4), inset 0 1px 0 ${col}25`,
-                    }}>
-                    {m.vip && <span style={{position:'absolute',top:2,right:4,fontSize:'clamp(7px,0.9vw,11px)'}}>⭐</span>}
-                    <span style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(8px,1.1vw,14px)',fontWeight:900,color:'#fff',lineHeight:1,textShadow:`0 1px 6px ${col}`}}>M{m.num}</span>
-                    {m.reserva
-                      ? <span style={{fontSize:'clamp(5px,0.7vw,9px)',color:col,fontWeight:700,marginTop:1}}>{(m.reserva.cliente_nombre||'').split(' ')[0]?.slice(0,8)}</span>
-                      : <span style={{fontSize:'clamp(5px,0.6vw,8px)',color:col,fontWeight:600,marginTop:1,background:`${col}22`,padding:'0 4px',borderRadius:6}}>{m.cap}p</span>}
-                  </button>
-                );
-              })}
-
-              {mesasPlano.length === 0 && (
-                <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:S.t3,fontSize:13,textAlign:'center',padding:30}}>
-                  Sin plano cargado. Ve a <strong style={{color:S.gold}}>"⚙️ Plano · Editar mesas"</strong> para agregar mesas.
-                </div>
-              )}
-            </div>
-          </div>
+          <PlanoSalaSVG
+            mesas={mesas}
+            activas={activas}
+            restauranteId={restauranteIdActivo}
+            asignarMesa={asignarMesa}
+            setAsignandoMesa={setAsignandoMesa}
+          />
         </section>
       </div>
 
@@ -1102,7 +1083,16 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                   <button type="button" onClick={()=>buscarClienteReserva()} style={{whiteSpace:'nowrap',padding:'10px 16px',borderRadius:10,border:`1px solid ${S.blue}`,background:`${S.blue}18`,color:S.blue,fontSize:12,fontWeight:800,cursor:'pointer'}}>🔎 Cargar datos</button>
                 </div>
               </div>
-              {reservaCRM && (
+              {reservaCRM?.isNew && (
+                <div style={{gridColumn:'1/-1',background:`${S.purple}15`,border:`2px solid ${S.purple}`,borderRadius:12,padding:'14px 16px',display:'flex',alignItems:'center',gap:12}}>
+                  <span style={{fontSize:26}}>🆕</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:14,fontWeight:900,color:S.purple,letterSpacing:'.02em',textTransform:'uppercase'}}>Cliente Nuevo</div>
+                    <div style={{fontSize:11,color:S.t2,marginTop:2}}>Sin historial · se creará en el CRM al guardar la reserva</div>
+                  </div>
+                </div>
+              )}
+              {reservaCRM && !reservaCRM.isNew && (
                 <div style={{gridColumn:'1/-1',background:`${S.green}10`,border:`1px solid ${S.green}40`,borderRadius:12,padding:'12px 16px',display:'flex',flexDirection:'column',gap:8}}>
                   <div style={{display:'flex',alignItems:'center',gap:10}}>
                     <span style={{fontSize:22}}>{reservaCRM.vip_status?'⭐':reservaCRM.origen_captacion==='oh_yeah'?'🦉':'✓'}</span>
@@ -1112,13 +1102,20 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                     </div>
                   </div>
                   <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                    <span style={{fontSize:10,background:`${S.green}1f`,color:S.green,padding:'3px 9px',borderRadius:8,fontWeight:800}}>💰 Gasto total ${Number(reservaCRM.total_spent||0).toLocaleString('es-CO')}</span>
                     <span style={{fontSize:10,background:`${S.blue}1f`,color:S.blue,padding:'3px 9px',borderRadius:8,fontWeight:800}}>🎟️ Ticket prom. ${Number(reservaCRM.ticketProm||0).toLocaleString('es-CO')}</span>
-                    {reservaCRM.ultimaEstrellas!=null && <span style={{fontSize:10,background:`${S.gold}1f`,color:S.gold,padding:'3px 9px',borderRadius:8,fontWeight:800}}>{'★'.repeat(reservaCRM.ultimaEstrellas)}{'☆'.repeat(Math.max(0,5-reservaCRM.ultimaEstrellas))} última encuesta</span>}
+                    {reservaCRM.ultimasEstrellas?.length > 0 && (
+                      <span style={{fontSize:10,background:`${S.gold}1f`,color:S.gold,padding:'3px 9px',borderRadius:8,fontWeight:800}}>
+                        ⭐ Últimas visitas: {reservaCRM.ultimasEstrellas.map((s:number)=>'★'.repeat(s)).join(' · ')}
+                      </span>
+                    )}
+                    {reservaCRM.alergias && <span style={{fontSize:10,background:`${S.red}1f`,color:S.red,padding:'3px 9px',borderRadius:8,fontWeight:800}}>🚫 Alergias: {reservaCRM.alergias}</span>}
+                    {reservaCRM.preferencias && <span style={{fontSize:10,background:`${S.purple}1f`,color:S.purple,padding:'3px 9px',borderRadius:8,fontWeight:800}}>🦉 Oh Yeah · {reservaCRM.preferencias}</span>}
                     {reservaCRM.score>0 && <span style={{fontSize:10,background:`${S.green}1f`,color:S.green,padding:'3px 9px',borderRadius:8,fontWeight:800}}>📊 Score {reservaCRM.score}</span>}
                   </div>
-                  {reservaCRM.ultimaEstrellas!=null && reservaCRM.ultimoComentario && (
-                    <div style={{fontSize:10,color:S.t3,fontStyle:'italic'}}>"{reservaCRM.ultimoComentario}"</div>
+                  {reservaCRM.comentarioRelevante && (
+                    <div style={{fontSize:11,color:reservaCRM.comentarioRelevante.estrellas===5?S.green:S.red,fontStyle:'italic',borderLeft:`3px solid ${reservaCRM.comentarioRelevante.estrellas===5?S.green:S.red}`,paddingLeft:10}}>
+                      {reservaCRM.comentarioRelevante.estrellas===5?'💚':'❤️‍🩹'} {'★'.repeat(reservaCRM.comentarioRelevante.estrellas)} — "{reservaCRM.comentarioRelevante.texto}"
+                    </div>
                   )}
                 </div>
               )}
@@ -1714,6 +1711,103 @@ function FooterStat({ label, v, c }:{ label:string; v:number|string; c:string })
     <div style={{display:'flex',flexDirection:'column',gap:2}}>
       <span style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:9,color:'#6E6E84',letterSpacing:'.18em',textTransform:'uppercase'}}>{label}</span>
       <span style={{fontFamily:"'Syne', serif",fontSize:22,fontWeight:700,color:c,lineHeight:1}}>{v}</span>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// PLANO SALA · SVG estilo PlanoOMM (zonas Eterno/Mantra/Amatista/Barras)
+// Recibe drops desde el timeline de reservas — asigna la mesa al soltar.
+// ═════════════════════════════════════════════════════════════════════
+function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignandoMesa }:{
+  mesas:any[]; activas:any[]; restauranteId:number;
+  asignarMesa:(id:any,num:number)=>void;
+  setAsignandoMesa:(r:any)=>void;
+}) {
+  const conf = ZONAS_POR_RESTAURANTE[restauranteId];
+  const zonas = conf?.zonas || {};
+  const orden = conf?.orden || [];
+  const [hoverMesa, setHoverMesa] = React.useState<number|null>(null);
+
+  return (
+    <div style={{flex:1,overflow:'auto',padding:18,background:'#F5F5F2'}}>
+      <svg viewBox={`0 0 ${VW_PLANO} ${VH_PLANO}`} width="100%" style={{display:'block',background:'#FAFAFA',borderRadius:12,boxShadow:'inset 0 0 60px rgba(0,0,0,0.05)'}}>
+        {/* ── ZONAS ── */}
+        {orden.map(z => {
+          const zona = zonas[z]; if (!zona) return null;
+          return (
+            <g key={z}>
+              <rect x={zona.area.x} y={zona.area.y} width={zona.area.w} height={zona.area.h}
+                rx={14} fill={zona.fill} stroke={zona.stroke} strokeWidth={2} strokeDasharray="6 6" opacity={0.85}/>
+              <g transform={`translate(${zona.area.x+10}, ${zona.area.y+10})`}>
+                <rect width={zona.label.length*8.2+18} height={24} rx={6} fill={zona.chipBg}/>
+                <text x={9} y={16} fill="#fff" fontSize={12} fontWeight={800} fontFamily="'Syne', serif" letterSpacing="0.06em">
+                  {zona.label}
+                </text>
+              </g>
+            </g>
+          );
+        })}
+
+        {/* ── MESAS ── */}
+        {mesas.filter((m:any)=>m.posicion_x!=null && m.posicion_y!=null).map((m:any) => {
+          const reserva = activas.find((r:any) => Number(r.mesa_num) === Number(m.name) || String(r.mesa_num)===String(m.name));
+          const ocupada = ['ocupada','asignada','sentada'].includes(m.estado);
+          const tieneReserva = !!reserva;
+          const st = ocupada ? ST_MESA.ocupada : tieneReserva ? ST_MESA.reservada : ST_MESA.libre;
+          const { w, h } = sizeForMesa({ zona:m.zona||'', capacidad:m.capacidad||4, name:m.name });
+          const isHover = hoverMesa === m.id;
+          const isRound = (m.shape||'round') === 'round' || (m.zona||'').startsWith('Barra');
+          const cx = m.posicion_x, cy = m.posicion_y;
+          return (
+            <g key={m.id} style={{cursor:'pointer'}}
+               onDragOver={(e)=>{ e.preventDefault(); setHoverMesa(m.id); }}
+               onDragLeave={()=>setHoverMesa(null)}
+               onDrop={(e)=>{
+                 e.preventDefault();
+                 const id = e.dataTransfer.getData('text/reserva');
+                 setHoverMesa(null);
+                 if (!id) return;
+                 if (reserva && String(reserva.id)!==id) {
+                   if (!confirm(`La mesa ${m.name} ya tiene a ${reserva.cliente_nombre} (${reserva.hora}). ¿Reemplazar?`)) return;
+                 }
+                 asignarMesa(id, Number(m.name));
+               }}
+               onClick={()=>{ if (reserva) setAsignandoMesa(reserva); }}>
+              {isHover && (
+                <circle cx={cx} cy={cy} r={Math.max(w,h)/2+10} fill="none" stroke="#448AFF" strokeWidth={3} strokeDasharray="4 4">
+                  <animate attributeName="stroke-dashoffset" from="0" to="16" dur="0.6s" repeatCount="indefinite"/>
+                </circle>
+              )}
+              {isRound
+                ? <circle cx={cx} cy={cy} r={w/2} fill={st.bg} stroke={m.vip?'#E5B23B':st.border} strokeWidth={m.vip?3:2}/>
+                : <rect x={cx-w/2} y={cy-h/2} width={w} height={h} rx={7} fill={st.bg} stroke={m.vip?'#E5B23B':st.border} strokeWidth={m.vip?3:2}/>}
+              {m.vip && (
+                <>
+                  <circle cx={cx+w/2-8} cy={cy-h/2+8} r={11} fill="#1a1a2e" stroke="#fff" strokeWidth={1.5}/>
+                  <text x={cx+w/2-8} y={cy-h/2+12} fill="#E5B23B" fontSize={12} fontWeight={800} textAnchor="middle">★</text>
+                </>
+              )}
+              <text x={cx} y={cy-3} fill={st.text} fontSize={14} fontWeight={900} textAnchor="middle" fontFamily="'Syne', serif">
+                {m.name}
+              </text>
+              <text x={cx} y={cy+12} fill={st.text} fontSize={9} fontWeight={700} textAnchor="middle" opacity={0.75}>
+                {tieneReserva ? (reserva.cliente_nombre||'').split(' ')[0]?.slice(0,9) : `${m.capacidad}p`}
+              </text>
+              {tieneReserva && (
+                <text x={cx} y={cy+24} fill={st.chip} fontSize={9} fontWeight={800} textAnchor="middle" fontFamily="'IBM Plex Mono', monospace">
+                  {(reserva.hora||'').slice(0,5)}
+                </text>
+              )}
+            </g>
+          );
+        })}
+        {mesas.length===0 && (
+          <text x={VW_PLANO/2} y={VH_PLANO/2} textAnchor="middle" fill="#999" fontSize={18}>
+            Sin plano cargado · Editor de planta
+          </text>
+        )}
+      </svg>
     </div>
   );
 }
