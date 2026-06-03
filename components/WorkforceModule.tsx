@@ -223,59 +223,135 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
 
   return (
     <div className="text-left" style={{color:C.t1}}>
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-1">
-        <Users size={22} className="text-[#d4943a]"/>
-        <h1 className="font-['Syne'] text-[22px] font-black tracking-tight">NEXUM Workforce Intelligence</h1>
+      {/* ══ HEADER · gradient hero con stats vivos ══ */}
+      <div className="rounded-2xl p-5 mb-5 relative overflow-hidden" style={{
+        background:'linear-gradient(135deg, rgba(212,148,58,0.14) 0%, rgba(155,114,255,0.10) 50%, rgba(74,158,255,0.06) 100%)',
+        border:'1px solid rgba(212,148,58,0.25)',
+      }}>
+        <div className="absolute top-0 right-0 w-64 h-64 rounded-full opacity-20"
+          style={{background:'radial-gradient(circle, rgba(212,148,58,0.6) 0%, transparent 70%)', filter:'blur(40px)'}}/>
+        <div className="flex items-start gap-4 relative z-10 flex-wrap">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center" style={{background:'rgba(212,148,58,0.18)', border:'1px solid rgba(212,148,58,0.4)'}}>
+            <Users size={26} className="text-[#d4943a]"/>
+          </div>
+          <div className="flex-1 min-w-[200px]">
+            <h1 className="font-['Syne'] text-[24px] font-black tracking-tight">Workforce Intelligence</h1>
+            <p className="text-[11px] uppercase tracking-[0.22em] mt-1" style={{color:'#a0a0a0'}}>
+              {activeRestaurant?.name || 'OMM'} · Horarios · Asistencia · Nómina
+            </p>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <div className="px-3 py-2 rounded-xl border flex items-baseline gap-2" style={{background:'rgba(0,0,0,0.3)',borderColor:'rgba(255,255,255,0.06)'}}>
+              <span className="text-[9px] uppercase tracking-wider font-bold" style={{color:C.t3}}>Equipo</span>
+              <span className="font-['Syne'] text-[18px] font-black" style={{color:C.goldL}}>{empleados.length}</span>
+            </div>
+            <div className="px-3 py-2 rounded-xl border flex items-baseline gap-2" style={{background:'rgba(0,0,0,0.3)',borderColor:'rgba(255,255,255,0.06)'}}>
+              <span className="text-[9px] uppercase tracking-wider font-bold" style={{color:C.t3}}>Turnos sem.</span>
+              <span className="font-['Syne'] text-[18px] font-black" style={{color:C.blue}}>{turnos.length}</span>
+            </div>
+            <div className="px-3 py-2 rounded-xl border flex items-baseline gap-2" style={{background:'rgba(0,0,0,0.3)',borderColor:'rgba(255,255,255,0.06)'}}>
+              <span className="text-[9px] uppercase tracking-wider font-bold" style={{color:C.t3}}>Cobertura</span>
+              <span className="font-['Syne'] text-[18px] font-black" style={{color: coberturaHoy>=80?C.green:coberturaHoy>=50?C.gold:C.red}}>{coberturaHoy}%</span>
+            </div>
+          </div>
+        </div>
       </div>
-      <p className="text-[11px] uppercase tracking-[0.2em] text-[#606060] mb-4">Horario → Asistencia → Novedades → Preliquidación → Auditoría</p>
 
-      {/* Tabs */}
-      <div className="flex gap-1 border-b border-[#2a2a2a] mb-5 overflow-x-auto">
-        {TABS.map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)}
-            className="relative flex items-center gap-2 px-4 py-2.5 text-[12px] font-bold whitespace-nowrap transition-all"
-            style={{ borderBottom:`2px solid ${tab===t.id?C.gold:'transparent'}`, color: tab===t.id?C.goldL:C.t3 }}>
-            <t.icon size={14}/> {t.label}
-            {!!t.badge && t.badge>0 && <span className="ml-0.5 min-w-[16px] h-[16px] px-1 rounded-full bg-[#e05050] text-white text-[9px] font-black flex items-center justify-center">{t.badge}</span>}
-          </button>
-        ))}
+      {/* ══ TABS · píldoras con icono + count ══ */}
+      <div className="flex gap-2 mb-5 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
+        {TABS.map(t=>{
+          const active = tab===t.id;
+          return (
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              className="relative flex items-center gap-2 px-4 py-2.5 text-[12px] font-bold whitespace-nowrap rounded-xl transition-all"
+              style={{
+                background: active ? 'rgba(212,148,58,0.18)' : 'rgba(255,255,255,0.03)',
+                border: `1px solid ${active ? 'rgba(212,148,58,0.5)' : 'rgba(255,255,255,0.06)'}`,
+                color: active ? C.goldL : C.t2,
+                boxShadow: active ? '0 4px 14px rgba(212,148,58,0.18)' : 'none',
+              }}>
+              <t.icon size={14}/> {t.label}
+              {!!t.badge && t.badge>0 && <span className="ml-0.5 min-w-[18px] h-[18px] px-1.5 rounded-full bg-[#e05050] text-white text-[9px] font-black flex items-center justify-center">{t.badge}</span>}
+            </button>
+          );
+        })}
       </div>
 
       {/* ════════ RESUMEN ════════ */}
       {tab==='resumen' && (
         <div className="flex flex-col gap-4">
+          {/* KPIs · cards con icono lateral, color tonal y delta visual */}
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
             {[
-              { l:'Programados hoy', v:turnosHoy.length, c:C.blue },
-              { l:'Presentes', v:presentes, c:C.green },
-              { l:'Llegadas tarde', v:tarde, c:C.gold },
-              { l:'Ausentes', v:ausentes, c:C.red },
-              { l:'Cobertura hoy', v:`${coberturaHoy}%`, c:C.green },
-              { l:'Novedades pend.', v:novPendientes, c:C.gold },
+              { l:'Programados hoy', v:turnosHoy.length,        c:C.blue,  ico:'📅', sub:`de ${empleados.length} activos` },
+              { l:'Presentes',       v:presentes,                c:C.green, ico:'✅', sub:'check-in registrado' },
+              { l:'Llegadas tarde',  v:tarde,                    c:C.gold,  ico:'⏰', sub:'> 5 min late' },
+              { l:'Ausentes',        v:ausentes,                 c:C.red,   ico:'❌', sub:'sin novedad aún' },
+              { l:'Cobertura hoy',   v:`${coberturaHoy}%`,       c:coberturaHoy>=80?C.green:C.gold,  ico:'📊', sub:'meta 85%' },
+              { l:'Novedades pend.', v:novPendientes,            c:C.gold,  ico:'📋', sub:'esperan aprobación' },
             ].map((k,i)=>(
-              <div key={i} className="rounded-xl p-3 border" style={{background:C.card, borderColor:C.border}}>
-                <div className="text-[10px] uppercase tracking-wider" style={{color:C.t3}}>{k.l}</div>
-                <div className="font-['Syne'] text-[26px] font-black" style={{color:k.c}}>{k.v}</div>
+              <div key={i} className="rounded-2xl p-3.5 border relative overflow-hidden" style={{background:C.card, borderColor:`${k.c}25`}}>
+                <div className="absolute top-2 right-2 text-[18px] opacity-25">{k.ico}</div>
+                <div className="text-[9px] uppercase tracking-[0.14em] font-bold" style={{color:C.t3}}>{k.l}</div>
+                <div className="font-['Syne'] text-[28px] font-black mt-1" style={{color:k.c, lineHeight:1.05}}>{k.v}</div>
+                <div className="text-[9px] mt-1" style={{color:C.t3}}>{k.sub}</div>
+                <div className="absolute bottom-0 left-0 right-0 h-[3px]" style={{background:`linear-gradient(90deg, ${k.c}, transparent)`}}/>
               </div>
             ))}
           </div>
+
+          {/* Costo + Ciclo · cards premium */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            <div className="rounded-xl p-4 border" style={{background:C.card, borderColor:C.border}}>
-              <div className="text-[11px] uppercase tracking-wider mb-1" style={{color:C.t3}}>Costo laboral · semana visible</div>
-              <div className="font-['Syne'] text-[28px] font-black" style={{color:C.goldL}}>{cop(costoSemana)}</div>
-              <div className="text-[11px] mt-1" style={{color:C.t2}}>{turnos.length} turnos programados · {empleados.length} empleados activos</div>
+            <div className="rounded-2xl p-5 border relative overflow-hidden"
+              style={{background:'linear-gradient(135deg, rgba(212,148,58,0.10), rgba(212,148,58,0.02))', borderColor:'rgba(212,148,58,0.25)'}}>
+              <div className="flex items-baseline gap-2 mb-2">
+                <DollarSign size={14} className="text-[#d4943a]"/>
+                <div className="text-[10px] uppercase tracking-[0.16em] font-bold" style={{color:C.gold}}>Costo laboral · semana</div>
+              </div>
+              <div className="font-['Syne'] text-[32px] font-black" style={{color:C.goldL, lineHeight:1}}>{cop(costoSemana)}</div>
+              <div className="text-[11px] mt-2 flex items-center gap-3 flex-wrap" style={{color:C.t2}}>
+                <span>📅 {turnos.length} turnos programados</span>
+                <span>👥 {empleados.length} empleados activos</span>
+              </div>
+              <div className="mt-3 flex items-center gap-2 text-[10px]" style={{color:C.t3}}>
+                <span>Promedio / turno:</span>
+                <span className="font-bold" style={{color:C.goldL}}>{turnos.length > 0 ? cop(costoSemana/turnos.length) : '—'}</span>
+              </div>
             </div>
-            <div className="rounded-xl p-4 border" style={{background:C.card, borderColor:C.border}}>
-              <div className="text-[11px] uppercase tracking-wider mb-2" style={{color:C.t3}}>Estado del ciclo (PRD)</div>
-              <div className="flex flex-col gap-1.5 text-[12px]">
+
+            <div className="rounded-2xl p-5 border" style={{background:C.card, borderColor:C.border}}>
+              <div className="flex items-baseline gap-2 mb-3">
+                <ShieldCheck size={14} className="text-[#3dba6f]"/>
+                <div className="text-[10px] uppercase tracking-[0.16em] font-bold" style={{color:C.green}}>Madurez del módulo</div>
+              </div>
+              <div className="flex flex-col gap-2 text-[12px]">
                 <CicloRow ok label="Horarios + publicación + versión"/>
                 <CicloRow ok label="Asistencia (check-in/out tablet kiosk)"/>
                 <CicloRow ok label="Novedades con aprobación + auditoría"/>
-                <CicloRow ok label="Preliquidación (ordinarias, recargos, extras)"/>
-                <CicloRow label="Forecast IA + optimizador (fase avanzada)"/>
-                <CicloRow label="Biometría real + multipaís (fase avanzada)"/>
+                <CicloRow ok label="Preliquidación (recargos noche/dominical/extra)"/>
+                <CicloRow ok label="🤖 Simulador IA de turnos"/>
+                <CicloRow label="Biometría real + multipaís (próximamente)"/>
               </div>
+            </div>
+          </div>
+
+          {/* CTA rápido al simulador IA */}
+          <div onClick={()=>setTab('ia')} className="rounded-2xl p-4 cursor-pointer transition-all hover:scale-[1.005]"
+            style={{
+              background:'linear-gradient(135deg, rgba(155,114,255,0.12), rgba(74,158,255,0.06))',
+              border:'1px solid rgba(155,114,255,0.3)',
+            }}>
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{background:'rgba(155,114,255,0.2)', border:'1px solid rgba(155,114,255,0.4)'}}>
+                <Sparkles size={22} className="text-[#9b72ff]"/>
+              </div>
+              <div className="flex-1 min-w-[200px]">
+                <div className="font-['Syne'] text-[15px] font-black" style={{color:'#9b72ff'}}>Simulador IA de turnos · semana</div>
+                <div className="text-[11px]" style={{color:C.t2}}>Analiza 90 días de operación y arma el horario completo con un click.</div>
+              </div>
+              <button className="px-4 py-2 rounded-xl text-[12px] font-bold" style={{background:'#9b72ff', color:'#fff'}}>
+                Abrir simulador →
+              </button>
             </div>
           </div>
         </div>
