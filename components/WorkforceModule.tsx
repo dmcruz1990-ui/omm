@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import { useRestaurant } from '../contexts/RestaurantContext';
 import {
   Calendar, Clock, Users, CheckCircle2, AlertTriangle, FileText, DollarSign,
-  Plus, X, Check, ChevronLeft, ChevronRight, LogIn, LogOut, Loader2, ShieldCheck, Ban
+  Plus, X, Check, ChevronLeft, ChevronRight, LogIn, LogOut, Loader2, ShieldCheck, Ban, Sparkles
 } from 'lucide-react';
 
 /* ──────────────────────────────────────────────────────────────────────────
@@ -73,7 +73,7 @@ const C = {
   t1:'#f0f0f0', t2:'#a0a0a0', t3:'#606060',
 };
 
-type Tab = 'resumen'|'horarios'|'asistencia'|'novedades'|'preliquidacion';
+type Tab = 'resumen'|'horarios'|'asistencia'|'novedades'|'preliquidacion'|'ia';
 
 export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: string }) {
   const { activeId: REST_ID, activeRestaurant } = useRestaurant();
@@ -216,6 +216,7 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
     { id:'asistencia', label:'Asistencia', icon:Clock },
     { id:'novedades', label:'Novedades', icon:FileText, badge:novPendientes },
     { id:'preliquidacion', label:'Preliquidación', icon:DollarSign },
+    { id:'ia', label:'IA · Turno óptimo', icon:Sparkles },
   ];
 
   if (loading) return <div className="flex items-center justify-center h-[60vh] text-[#a0a0a0]"><Loader2 className="animate-spin mr-2" size={20}/> Cargando workforce…</div>;
@@ -460,6 +461,8 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
         </div>
       )}
 
+      {tab==='ia' && <IATurnoOptimo restauranteId={REST_ID} empleados={empleados} turnos={turnos}/>}
+
       {/* Modal nuevo turno */}
       {shiftModal && <ShiftModal empleado={empById[shiftModal.empId]} fecha={shiftModal.fecha} complejoId={COMPLEJO_ID} onClose={()=>setShiftModal(null)} onSaved={(msg)=>{ setShiftModal(null); showToast(msg); logAudit('turno.creado','turnos',{empleado_id:shiftModal.empId, fecha:shiftModal.fecha}); cargar(); }} />}
       {/* Modal nueva novedad */}
@@ -588,6 +591,210 @@ function NovedadModal({empleados, userName, onClose, onSaved}:{empleados:any[], 
         <input value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Motivo / soporte" className="w-full px-2 py-2 rounded-lg text-[12px] mb-3" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/>
         <button onClick={guardar} disabled={saving||!empId} className="w-full py-2.5 rounded-xl text-[13px] font-black flex items-center justify-center gap-2 disabled:opacity-40" style={{background:C.gold,color:'#000'}}>{saving?<Loader2 size={15} className="animate-spin"/>:<FileText size={15}/>} Enviar novedad</button>
         <p className="text-[10px] mt-2" style={{color:C.t3}}>Queda en estado “enviada”. No impacta nómina hasta ser aprobada (PRD §8).</p>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// IA · TURNO ÓPTIMO
+// Analiza los últimos 90 días de cobros_trazabilidad y ranking de meseros
+// para sugerir cuántas personas necesitas por día/hora y a quién asignar.
+// ═══════════════════════════════════════════════════════════════════════
+function IATurnoOptimo({ restauranteId, empleados, turnos }: { restauranteId: number; empleados: any[]; turnos: any[] }) {
+  const [loading, setLoading] = React.useState(true);
+  const [datos, setDatos] = React.useState<{
+    porDia: Record<number, { vol: number; tickets: number }>;
+    porHora: Record<string, number>;
+    topMeseros: { nombre: string; ventas: number; tickets: number; ticketProm: number }[];
+    diasAnalizados: number;
+  }>({ porDia: {}, porHora: {}, topMeseros: [], diasAnalizados: 0 });
+
+  React.useEffect(() => {
+    (async () => {
+      setLoading(true);
+      const hace90 = new Date(Date.now() - 90 * 86400000).toISOString();
+      const { data } = await supabase.from('cobros_trazabilidad')
+        .select('total,mesero,created_at')
+        .eq('restaurante_id', restauranteId)
+        .gte('created_at', hace90);
+      const rows = data || [];
+      const porDia: Record<number, { vol: number; tickets: number }> = {};
+      const porHora: Record<string, number> = {};
+      const porMesero: Record<string, { ventas: number; tickets: number }> = {};
+      const fechasUnicas = new Set<string>();
+      rows.forEach((r:any) => {
+        const d = new Date(r.created_at);
+        const dia = d.getDay(); // 0=domingo, 6=sábado
+        const hora = `${String(d.getHours()).padStart(2,'0')}:00`;
+        const total = Number(r.total || 0);
+        if (!porDia[dia]) porDia[dia] = { vol: 0, tickets: 0 };
+        porDia[dia].vol += total;
+        porDia[dia].tickets++;
+        porHora[hora] = (porHora[hora] || 0) + total;
+        fechasUnicas.add(d.toISOString().split('T')[0]);
+        if (r.mesero) {
+          if (!porMesero[r.mesero]) porMesero[r.mesero] = { ventas: 0, tickets: 0 };
+          porMesero[r.mesero].ventas += total;
+          porMesero[r.mesero].tickets++;
+        }
+      });
+      const topMeseros = Object.entries(porMesero)
+        .map(([nombre, v]) => ({ nombre, ventas: v.ventas, tickets: v.tickets, ticketProm: v.tickets > 0 ? v.ventas / v.tickets : 0 }))
+        .sort((a, b) => b.ventas - a.ventas).slice(0, 10);
+      setDatos({ porDia, porHora, topMeseros, diasAnalizados: fechasUnicas.size });
+      setLoading(false);
+    })();
+  }, [restauranteId]);
+
+  const DIAS = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb'];
+  const fmt = (n: number) => `$${Math.round(n).toLocaleString('es-CO')}`;
+  const fmtK = (n: number) => n >= 1000000 ? `$${(n/1000000).toFixed(1)}M` : n >= 1000 ? `$${Math.round(n/1000)}K` : `$${Math.round(n)}`;
+
+  // Recomendación de staff por día: 1 mesero cada $300k de venta promedio diaria
+  const ventaPromDiaria = (dia: number): number => {
+    const d = datos.porDia[dia];
+    if (!d) return 0;
+    // dividir por número de veces que apareció ese día en 90 días (≈13 semanas)
+    return d.vol / Math.max(1, Math.floor(datos.diasAnalizados / 7));
+  };
+  const recomMeseros = (dia: number): number => Math.max(2, Math.ceil(ventaPromDiaria(dia) / 300000));
+
+  const maxVolDia = Math.max(...Object.values(datos.porDia).map(d => d.vol), 1);
+  const horasOrdenadas = Object.entries(datos.porHora).sort((a,b) => a[0].localeCompare(b[0]));
+  const maxVolHora = Math.max(...Object.values(datos.porHora), 1);
+
+  // Detectar 3 horas pico
+  const horasPico = [...horasOrdenadas].sort((a,b) => b[1] - a[1]).slice(0, 3).map(h => h[0]);
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-16 text-[#a0a0a0]"><Loader2 className="animate-spin mr-2" size={20}/> Analizando 90 días de operación…</div>;
+  }
+
+  if (datos.diasAnalizados === 0) {
+    return (
+      <div className="text-center py-16">
+        <Sparkles className="mx-auto mb-3 text-[#d4943a]" size={36}/>
+        <div className="font-['Syne'] text-[16px] font-black mb-2">Sin data suficiente</div>
+        <div className="text-[12px] text-[#a0a0a0] max-w-[400px] mx-auto">
+          La IA necesita al menos unas cuentas cerradas en cobros_trazabilidad para
+          calcular días-tipo y horas pico. Vuelve cuando el POS tenga algunos días
+          de operación.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-5">
+      {/* Header */}
+      <div className="flex items-baseline gap-3 mb-2">
+        <Sparkles size={22} className="text-[#d4943a]"/>
+        <div>
+          <h2 className="font-['Syne'] text-[18px] font-black tracking-tight">Recomendación de turno óptimo</h2>
+          <p className="text-[11px] text-[#606060]">Basada en <strong className="text-white">{datos.diasAnalizados} días</strong> de operación · {Object.values(datos.porDia).reduce((s,d)=>s+d.tickets,0)} cuentas analizadas</p>
+        </div>
+      </div>
+
+      {/* Recomendación por día de semana */}
+      <div className="bg-[#1c1c24] border border-[#2a2a2a] rounded-2xl p-5">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-[#a0a0a0] mb-4">📅 Personal recomendado por día</div>
+        <div className="grid grid-cols-7 gap-2">
+          {DIAS.map((d, i) => {
+            const vol = ventaPromDiaria(i);
+            const n = recomMeseros(i);
+            const pct = (vol / (maxVolDia / Math.max(1, Math.floor(datos.diasAnalizados / 7)))) * 100;
+            const color = n >= 6 ? '#e05050' : n >= 4 ? '#FFB547' : '#3dba6f';
+            return (
+              <div key={i} className="bg-[#0f0f14] border border-[#2a2a2a] rounded-xl p-3 text-center">
+                <div className="text-[10px] text-[#7a7a8c] font-bold uppercase mb-1">{d}</div>
+                <div className="font-['Syne'] text-[26px] font-black leading-none" style={{color}}>{n}</div>
+                <div className="text-[9px] text-[#7a7a8c] mt-0.5">meseros</div>
+                <div className="h-1 rounded-full bg-[#1a1a24] mt-2 overflow-hidden">
+                  <div style={{width:`${Math.min(pct,100)}%`,height:'100%',background:color}}/>
+                </div>
+                <div className="text-[10px] text-[#a0a0a0] mt-2">{fmtK(vol)}</div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="text-[10px] text-[#606060] mt-3">
+          ⚙️ Regla: 1 mesero por cada $300.000 de venta promedio · mínimo 2.
+        </div>
+      </div>
+
+      {/* Horas pico */}
+      <div className="bg-[#1c1c24] border border-[#2a2a2a] rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-[#a0a0a0]">⏰ Distribución por hora</div>
+          <div className="text-[10px] text-[#FFB547]">Pico: {horasPico.join(' · ')}</div>
+        </div>
+        <div className="flex items-end gap-1 h-[120px]">
+          {horasOrdenadas.map(([h, v]) => {
+            const pct = (v / maxVolHora) * 100;
+            const esPico = horasPico.includes(h);
+            return (
+              <div key={h} className="flex-1 flex flex-col items-center justify-end" title={`${h} — ${fmt(v)}`}>
+                <div className="text-[9px] text-[#7a7a8c] mb-1">{fmtK(v)}</div>
+                <div style={{
+                  width:'100%',
+                  height:`${pct}%`,
+                  background: esPico ? 'linear-gradient(to top, #FFB547, #d4943a)' : '#2a2a3a',
+                  borderRadius:'4px 4px 0 0',
+                  minHeight: 3,
+                  transition:'all .3s',
+                }}/>
+                <div className="text-[9px] text-[#a0a0a0] mt-1">{h.slice(0,2)}</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Top meseros con recomendación de asignación */}
+      <div className="bg-[#1c1c24] border border-[#2a2a2a] rounded-2xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-[#a0a0a0]">🏆 Top meseros · asignación recomendada</div>
+          <div className="text-[10px] text-[#606060]">Ordenados por venta total 90d</div>
+        </div>
+        <div className="space-y-1.5">
+          {datos.topMeseros.map((m, i) => {
+            const empMatch = empleados.find((e:any) => (e.nombre_completo || '').toLowerCase().includes(m.nombre.toLowerCase().split(' ')[0]));
+            const recom = i < 2 ? '🌟 Asignar a viernes/sábado noche'
+              : i < 5 ? '✓ Núcleo regular del turno'
+              : '🎯 Refuerzo o entrenamiento';
+            return (
+              <div key={m.nombre} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-[#0f0f14] border border-[#1a1a24]">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center font-['Syne'] font-black text-[12px]"
+                  style={{background: i<2?'#FFB54720':i<5?'#22d3ee20':'#5a5a6420', color: i<2?'#FFB547':i<5?'#22d3ee':'#a0a0a0'}}>
+                  {i+1}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-bold truncate">{empMatch?.nombre_completo || m.nombre}</div>
+                  <div className="text-[10px] text-[#606060]">{m.tickets} cuentas · Ticket prom {fmt(m.ticketProm)}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-['Syne'] text-[14px] font-black text-[#3dba6f]">{fmtK(m.ventas)}</div>
+                  <div className="text-[9px] text-[#a0a0a0]">{recom}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Resumen ejecutivo */}
+      <div className="rounded-2xl p-5" style={{background:'linear-gradient(135deg, rgba(155,114,255,0.08), rgba(74,158,255,0.04))', border:'1px solid rgba(155,114,255,0.25)'}}>
+        <div className="flex items-baseline gap-2 mb-3">
+          <Sparkles size={14} className="text-[#9b72ff]"/>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-[#9b72ff]">Plan de la semana</div>
+        </div>
+        <ul className="space-y-2 text-[12px] text-[#e0e0e0]">
+          <li>• Días más fuertes: <strong>{DIAS.filter((_,i)=>recomMeseros(i)>=5).join(', ') || 'ninguno destacado'}</strong> → reforzar sala con {Math.max(...DIAS.map((_,i)=>recomMeseros(i)))} meseros.</li>
+          <li>• Días más calmos: <strong>{DIAS.filter((_,i)=>recomMeseros(i)<=2 && (datos.porDia[i]?.vol || 0) > 0).join(', ') || 'distribución pareja'}</strong> → 2 meseros suficientes, evitar sobre-staff.</li>
+          <li>• Horas pico: <strong>{horasPico.join(', ')}</strong> → tener todo el equipo en piso, evitar pausas largas.</li>
+          {datos.topMeseros[0] && <li>• Top venta: <strong className="text-[#3dba6f]">{datos.topMeseros[0].nombre}</strong> ({fmtK(datos.topMeseros[0].ventas)}) → cuidar su retención y ofrecer mejores turnos.</li>}
+        </ul>
       </div>
     </div>
   );
