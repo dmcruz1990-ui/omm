@@ -462,6 +462,9 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.CARE           && <CareModule />}
                 {activeModule === ModuleType.DIAN           && <DIANModule />}
                 {activeModule === ModuleType.CONTABILIDAD   && <ContabilidadModule />}
+                {/* Oh Yeah B2B (Admin / Registro Externo) ocultos del sidebar pero el código sigue disponible */}
+                {activeModule === ModuleType.OH_YEAH_ADMIN  && <OhYeahAdminModule />}
+                {activeModule === ModuleType.OH_YEAH_RESTAURANTE && <OhYeahRestauranteModule />}
                 {activeModule === ModuleType.CONFIG         && <SettingsModule />}
                 {activeModule === ModuleType.MARKETPLACE    && <MarketplaceModule />}
                 {activeModule === ModuleType.FOOD_INTELLIGENCE && <FoodIntelligenceModule />}
