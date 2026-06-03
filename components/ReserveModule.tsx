@@ -93,6 +93,8 @@ export default function ReserveModule() {
   const [meserosLista, setMeserosLista] = useState<any[]>([]);
   const [meseroAsignar, setMeseroAsignar] = useState('');
   const [now, setNow] = useState(Date.now());
+  const [franjaModalOpen, setFranjaModalOpen] = useState(false);
+  const [franjasBloqueadas, setFranjasBloqueadas] = useState<any[]>([]);
   useEffect(()=>{ const t=setInterval(()=>setNow(Date.now()),30000); return ()=>clearInterval(t); },[]);
   const [form, setForm]         = useState({
     cliente_nombre:'',cliente_email:'',cliente_telefono:'',
@@ -189,6 +191,9 @@ export default function ReserveModule() {
     // La identidad debe coincidir con la del POS: nombre_completo || full_name.
     supabase.from('profiles').select('id,nombre_completo,full_name,role,restaurante_id').eq('role','mesero').eq('restaurante_id', restauranteIdActivo)
       .then(({data})=>{ if(data) setMeserosLista((data||[]).filter((m:any)=>m.nombre_completo||m.full_name)); });
+    // Franjas bloqueadas para la fecha activa — afectan Oh Yeah / Google
+    supabase.from('reservas_franjas_bloqueadas').select('*').eq('restaurante_id',restauranteIdActivo).eq('fecha',fechaFiltro)
+      .then(({data})=>setFranjasBloqueadas(data||[]));
     setLoading(false);
   },[fechaFiltro, restauranteIdActivo]);
 
@@ -429,6 +434,22 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
   return (
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:S.bg,color:S.t1,fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
       {toast&&<div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:'#1e1e2e',border:`1px solid ${S.pink}`,color:'#fff',padding:'10px 28px',borderRadius:50,fontSize:13,fontWeight:700,zIndex:9999}}>{toast}</div>}
+
+      {/* ── MODAL FRANJA BLOQUEADA ── */}
+      {franjaModalOpen && (
+        <FranjaBloqueoModal
+          fecha={fechaFiltro}
+          restauranteId={restauranteIdActivo}
+          franjas={franjasBloqueadas}
+          onClose={()=>setFranjaModalOpen(false)}
+          onChange={async ()=>{
+            const { data } = await supabase.from('reservas_franjas_bloqueadas').select('*').eq('restaurante_id',restauranteIdActivo).eq('fecha',fechaFiltro);
+            setFranjasBloqueadas(data||[]);
+          }}
+          show={show}
+          S={S}
+        />
+      )}
 
       {/* ── MODAL WALK-IN ── */}
       {walkin && (
@@ -733,8 +754,14 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             <div style={{fontSize:10,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase'}}>Mapa · Reservas · Oh Yeah</div>
           </div>
         </div>
+        {/* ═══ NAVEGADOR DE FECHA · arrows + calendar + total ═══ */}
+        <NavegadorFecha
+          fecha={fechaFiltro}
+          setFecha={setFechaFiltro}
+          totalReservas={reservasHoy.length}
+        />
+
         {[
-          {l:'Hoy',v:`${reservasHoy.length} reservas`,c:S.blue},
           {l:'Pax',v:`${reservasReales.reduce((s,r)=>s+(r.pax||0),0)}p`,c:S.purple},
           {l:'Walk-ins',v:`${walkinsCount}`,c:S.cyan},
           {l:'Ocupación',v:`${ocupacion}%`,c:ocupacion>80?S.red:ocupacion>50?S.gold:S.green},
@@ -746,21 +773,6 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
           </div>
         ))}
         <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-          {/* Modo dinámico (PDF NEXUM Roadmap 1) */}
-          <div title="Modo operativo del motor de reservas — afecta Demand Score y políticas de pacing" style={{display:'flex',alignItems:'center',gap:4,background:'rgba(255,255,255,0.04)',border:`1px solid ${modoDinamico!=='base'?S.purple:S.border2}`,borderRadius:10,padding:'3px 6px 3px 10px'}}>
-            <span style={{fontSize:10,color:modoDinamico!=='base'?S.purple:S.t3,fontWeight:700,textTransform:'uppercase'}}>🎚️ Modo</span>
-            {(['base','smart_peak','evento'] as const).map(m=>{
-              const lbl = m==='base'?'Base':m==='smart_peak'?'⚡ Peak':'🎉 Evento';
-              const sel = modoDinamico===m;
-              return (
-                <button key={m} onClick={()=>cambiarModo(m)}
-                  style={{padding:'4px 8px',borderRadius:7,border:'none',cursor:'pointer',fontSize:11,fontWeight:800,
-                    background:sel?(m==='base'?S.t3:m==='smart_peak'?'#FF6B00':S.purple):'transparent',
-                    color:sel?'#000':S.t3}}>{lbl}</button>
-              );
-            })}
-          </div>
-
           {/* Demand Score™ (PDF NEXUM Roadmap 2) */}
           <div title={`Demand Score — ${demandLabel} (${demandScore}/100). Combina ocupación, día premium, velocidad de reservas y modo dinámico.`}
             style={{display:'flex',alignItems:'center',gap:6,background:`${demandColor}10`,border:`1px solid ${demandColor}44`,borderRadius:10,padding:'4px 10px'}}>
@@ -779,9 +791,11 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             </div>
           )}
 
-          {/* Sobreventa VIP y Shift Pacing se configuran/ven en el Cerebro. */}
-          <input type="date" value={fechaFiltro} onChange={e=>setFechaFiltro(e.target.value)}
-            style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:8,padding:'7px 12px',color:'#fff',fontSize:12,outline:'none'}}/>
+          {/* Modo dinámico, Sobreventa VIP y Shift Pacing se gestionan desde el Cerebro. */}
+          <button onClick={()=>setFranjaModalOpen(true)}
+            style={{padding:'8px 14px',borderRadius:10,border:`1px solid ${S.red}55`,background:`${S.red}12`,color:S.red,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+            🚫 Franja
+          </button>
           <button onClick={()=>setWalkin({nombre:'',pax:2,mesa:0,telefono:'',email:'',vip:false})}
             style={{padding:'8px 16px',borderRadius:10,border:`1px solid ${S.green}`,background:`${S.green}18`,color:S.green,fontSize:12,fontWeight:700,cursor:'pointer'}}>
             🚶 Walk-in
@@ -852,7 +866,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         {/* ═══ IZQUIERDA · Timeline de reservas (draggable) ═══ */}
         <aside style={{borderRight:`1px solid ${S.border}`,display:'flex',flexDirection:'column',overflow:'hidden',background:S.bg}}>
           <div style={{padding:'16px 20px 12px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'baseline',gap:10}}>
-            <span style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:10,color:S.gold,letterSpacing:'0.22em',textTransform:'uppercase'}}>Reservas hoy</span>
+            <span style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:10,color:S.gold,letterSpacing:'0.22em',textTransform:'uppercase'}}>{activas.length === 1 ? 'Reserva hoy' : 'Reservas hoy'}</span>
             <span style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,letterSpacing:'-0.02em'}}>{activas.length}</span>
             <button onClick={()=>setTab('nueva')} style={{marginLeft:'auto',padding:'6px 12px',borderRadius:8,border:`1px solid ${S.gold}50`,background:`${S.gold}10`,color:S.gold,fontSize:11,fontWeight:700,cursor:'pointer'}}>+ Nueva</button>
           </div>
@@ -951,6 +965,17 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             restauranteId={restauranteIdActivo}
             asignarMesa={asignarMesa}
             setAsignandoMesa={setAsignandoMesa}
+            onNuevaConMesa={(mesaNum:number)=>{
+              // Maitre/Admin/Host pueden clickear una mesa vacía para crear reserva.
+              setSelected(null);
+              setReservaCRM(null);
+              setForm({
+                cliente_nombre:'',cliente_email:'',cliente_telefono:'',
+                fecha:fechaFiltro,hora:'20:00',pax:2,
+                ocasion:'Sin ocasión especial',notas:'',mesa_num:mesaNum
+              });
+              setTab('nueva');
+            }}
           />
         </section>
       </div>
@@ -960,7 +985,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         <span style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:9,color:S.t3,letterSpacing:'.22em',textTransform:'uppercase'}}>
           {new Date(fechaFiltro+'T12:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})}
         </span>
-        <FooterStat label="Reservas hoy" v={activas.length}  c={S.gold}/>
+        <FooterStat label={activas.length === 1 ? 'Reserva hoy' : 'Reservas hoy'} v={activas.length}  c={S.gold}/>
         <FooterStat label="Oh Yeah"      v={ohYeahCnt}       c="#FFE600"/>
         <FooterStat label="Sentadas"     v={sentadas}        c={S.green}/>
         <FooterStat label="Sin mesa"     v={sinMesa}         c={sinMesa>0?S.red:S.t2}/>
@@ -1715,14 +1740,161 @@ function FooterStat({ label, v, c }:{ label:string; v:number|string; c:string })
   );
 }
 
+// ══ NAVEGADOR DE FECHA — flechas ‹ › + calendario + total reservas (25px) ══
+function NavegadorFecha({ fecha, setFecha, totalReservas }:{ fecha:string; setFecha:(f:string)=>void; totalReservas:number }) {
+  const [picker, setPicker] = React.useState(false);
+  const d = new Date(fecha+'T12:00:00');
+  const hoy = new Date().toISOString().split('T')[0];
+  const esHoy = fecha === hoy;
+  const dia = d.toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'});
+  const shiftDay = (delta:number) => {
+    const nd = new Date(fecha+'T12:00:00');
+    nd.setDate(nd.getDate()+delta);
+    setFecha(nd.toISOString().split('T')[0]);
+  };
+  const labelReservas = totalReservas === 1 ? 'reserva' : 'reservas';
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:6,background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:12,padding:'4px 6px',position:'relative'}}>
+      <button onClick={()=>shiftDay(-1)} title="Día anterior"
+        style={{width:30,height:30,borderRadius:8,border:'none',background:'rgba(255,255,255,0.06)',color:'#fff',cursor:'pointer',fontSize:16,fontWeight:800}}>‹</button>
+      <button onClick={()=>setPicker(p=>!p)} title="Abrir calendario"
+        style={{minWidth:130,padding:'4px 10px',borderRadius:8,border:'none',background:'transparent',color:'#fff',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'flex-start',gap:1}}>
+        <span style={{fontSize:9,color:esHoy?'#FFD700':'#a8a8b8',letterSpacing:'.18em',textTransform:'uppercase',fontWeight:700}}>{esHoy?'Hoy · ':''}{dia}</span>
+        <span style={{display:'flex',alignItems:'baseline',gap:5}}>
+          <span style={{fontFamily:"'Syne', serif",fontSize:25,fontWeight:900,color:'#fff',lineHeight:1}}>{totalReservas}</span>
+          <span style={{fontSize:10,color:'#a8a8b8',letterSpacing:'.06em'}}>{labelReservas}</span>
+        </span>
+      </button>
+      <button onClick={()=>shiftDay(1)} title="Día siguiente"
+        style={{width:30,height:30,borderRadius:8,border:'none',background:'rgba(255,255,255,0.06)',color:'#fff',cursor:'pointer',fontSize:16,fontWeight:800}}>›</button>
+      {picker && (
+        <div style={{position:'absolute',top:'calc(100% + 6px)',left:0,zIndex:100,background:'#1a1a2e',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:10,boxShadow:'0 12px 30px rgba(0,0,0,0.55)'}}>
+          <input type="date" value={fecha} autoFocus
+            onChange={e=>{ setFecha(e.target.value); setPicker(false); }}
+            onBlur={()=>setTimeout(()=>setPicker(false),120)}
+            style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:8,padding:'8px 12px',color:'#fff',fontSize:13,outline:'none',colorScheme:'dark'}}/>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ══ MODAL FRANJA BLOQUEADA — bloquea horas para Oh Yeah / Google ══
+function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, show, S }:{
+  fecha:string; restauranteId:number; franjas:any[];
+  onClose:()=>void; onChange:()=>void; show:(m:string)=>void; S:any;
+}) {
+  const [horaDesde, setHoraDesde] = React.useState('12:00');
+  const [horaHasta, setHoraHasta] = React.useState('15:00');
+  const [motivo, setMotivo] = React.useState('');
+  const [bloqueaOh, setBloqueaOh] = React.useState(true);
+  const [bloqueaGoogle, setBloqueaGoogle] = React.useState(true);
+  const [saving, setSaving] = React.useState(false);
+
+  const guardar = async () => {
+    if (horaDesde >= horaHasta) { show('⚠️ La hora de inicio debe ser menor a la de fin'); return; }
+    setSaving(true);
+    const { error } = await supabase.from('reservas_franjas_bloqueadas').insert({
+      restaurante_id: restauranteId, fecha,
+      hora_desde: horaDesde, hora_hasta: horaHasta,
+      motivo: motivo || null,
+      bloquea_oh_yeah: bloqueaOh, bloquea_google: bloqueaGoogle,
+    });
+    setSaving(false);
+    if (error) { show('✗ '+error.message); return; }
+    show('✓ Franja bloqueada');
+    onChange();
+    setMotivo('');
+  };
+  const eliminar = async (id:string) => {
+    if (!confirm('¿Eliminar este bloqueo? Las nuevas reservas Oh Yeah / Google volverán a entrar.')) return;
+    await supabase.from('reservas_franjas_bloqueadas').delete().eq('id', id);
+    show('✓ Bloqueo eliminado');
+    onChange();
+  };
+
+  return (
+    <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:18,width:'100%',maxWidth:560,padding:24,maxHeight:'92vh',overflowY:'auto',color:'#fff'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+          <span style={{fontSize:22}}>🚫</span>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900}}>Bloquear franja horaria</div>
+            <div style={{fontSize:11,color:S.t3}}>No se borran reservas existentes — solo evita el ingreso de nuevas reservas Oh Yeah / Google.</div>
+          </div>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:S.t3,fontSize:22,cursor:'pointer'}}>×</button>
+        </div>
+
+        <div style={{fontSize:10,color:S.gold,fontWeight:800,textTransform:'uppercase',letterSpacing:'.16em',marginTop:14}}>📅 {new Date(fecha+'T12:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginTop:12}}>
+          <div>
+            <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4}}>DESDE</div>
+            <input type="time" value={horaDesde} onChange={e=>setHoraDesde(e.target.value)}
+              style={{width:'100%',background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 12px',color:'#fff',fontSize:13,outline:'none',colorScheme:'dark'}}/>
+          </div>
+          <div>
+            <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4}}>HASTA</div>
+            <input type="time" value={horaHasta} onChange={e=>setHoraHasta(e.target.value)}
+              style={{width:'100%',background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 12px',color:'#fff',fontSize:13,outline:'none',colorScheme:'dark'}}/>
+          </div>
+        </div>
+
+        <div style={{marginTop:12}}>
+          <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4}}>MOTIVO (opcional)</div>
+          <input value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Evento privado, mantenimiento, cierre…"
+            style={{width:'100%',background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 12px',color:'#fff',fontSize:13,outline:'none'}}/>
+        </div>
+
+        <div style={{display:'flex',gap:8,marginTop:12,flexWrap:'wrap'}}>
+          <button onClick={()=>setBloqueaOh(!bloqueaOh)}
+            style={{padding:'7px 12px',borderRadius:8,border:`1px solid ${bloqueaOh?S.gold:S.border2}`,background:bloqueaOh?`${S.gold}18`:'transparent',color:bloqueaOh?S.gold:S.t3,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+            🦉 Oh Yeah {bloqueaOh?'✓':''}
+          </button>
+          <button onClick={()=>setBloqueaGoogle(!bloqueaGoogle)}
+            style={{padding:'7px 12px',borderRadius:8,border:`1px solid ${bloqueaGoogle?S.blue:S.border2}`,background:bloqueaGoogle?`${S.blue}18`:'transparent',color:bloqueaGoogle?S.blue:S.t3,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+            🔎 Google {bloqueaGoogle?'✓':''}
+          </button>
+        </div>
+
+        <button onClick={guardar} disabled={saving}
+          style={{width:'100%',marginTop:16,padding:'12px',borderRadius:10,border:'none',background:saving?S.bg3:`linear-gradient(135deg,${S.red},#8E1F36)`,color:'#fff',fontSize:13,fontWeight:800,cursor:'pointer'}}>
+          {saving?'Guardando…':'🚫 Bloquear franja'}
+        </button>
+
+        {/* Lista de franjas ya bloqueadas */}
+        {franjas.length > 0 && (
+          <div style={{marginTop:18,borderTop:`1px solid ${S.border}`,paddingTop:14}}>
+            <div style={{fontSize:10,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:8}}>Bloqueos activos hoy</div>
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {franjas.map((f:any)=>(
+                <div key={f.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:`${S.red}10`,border:`1px solid ${S.red}33`,borderRadius:10}}>
+                  <span style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:800,color:S.red}}>{f.hora_desde.slice(0,5)} → {f.hora_hasta.slice(0,5)}</span>
+                  <span style={{fontSize:11,color:S.t2,flex:1}}>{f.motivo||'Sin motivo'}</span>
+                  <span style={{fontSize:9,color:S.t3,display:'flex',gap:4}}>
+                    {f.bloquea_oh_yeah && <span title="Bloquea Oh Yeah">🦉</span>}
+                    {f.bloquea_google && <span title="Bloquea Google">🔎</span>}
+                  </span>
+                  <button onClick={()=>eliminar(f.id)} style={{background:'transparent',border:'none',color:S.t3,cursor:'pointer',fontSize:14}}>🗑</button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ═════════════════════════════════════════════════════════════════════
 // PLANO SALA · SVG NEON · misma organización que PlanoOMM (zonas + mesas)
 // Fondo oscuro + glow neón sobre dark, drop targets activos.
 // ═════════════════════════════════════════════════════════════════════
-function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignandoMesa }:{
+function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignandoMesa, onNuevaConMesa }:{
   mesas:any[]; activas:any[]; restauranteId:number;
   asignarMesa:(id:any,num:number)=>void;
   setAsignandoMesa:(r:any)=>void;
+  onNuevaConMesa?:(mesaNum:number)=>void;
 }) {
   const conf = ZONAS_POR_RESTAURANTE[restauranteId];
   const zonas = conf?.zonas || {};
@@ -1815,7 +1987,10 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
                  }
                  asignarMesa(id, Number(m.name));
                }}
-               onClick={()=>{ if (reserva) setAsignandoMesa(reserva); }}>
+               onClick={()=>{
+                 if (reserva) setAsignandoMesa(reserva);
+                 else if (onNuevaConMesa) onNuevaConMesa(Number(m.name));
+               }}>
               {/* Halo de hover */}
               {isHover && (
                 <circle cx={cx} cy={cy} r={Math.max(w,h)/2+14} fill="none"
