@@ -66,7 +66,7 @@ const ESTADOS:any = {
 };
 const OCASIONES = ['Cumpleaños','Aniversario','Negocio','Primera cita','Graduación','Despedida','Celebración','Sin ocasión especial'];
 
-type Tab = 'home'|'mapa'|'lista'|'nueva'|'editor';
+type Tab = 'home'|'lista'|'nueva'|'editor';
 
 interface Reserva {
   id:number;cliente_nombre:string;cliente_email?:string;cliente_telefono?:string;
@@ -762,10 +762,10 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
       {/* Tabs */}
       <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg2,padding:'0 24px',flexShrink:0}}>
         {([
-          {id:'home',l:'🏠 Hoy'},{id:'lista',l:'📋 Lista'},
-          {id:'mapa',l:'🗺️ Mapa de mesas'},
-          {id:'editor',l:'⚙️ Plano · Editar mesas'},
-          {id:'nueva',l:'✦ Nueva / Editar'},
+          {id:'home',l:'✦ Sala'},
+          {id:'lista',l:'📋 Lista completa'},
+          {id:'editor',l:'⚙️ Editor de planta'},
+          {id:'nueva',l:'+ Nueva reserva'},
         ] as const).map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
             style={{padding:'11px 16px',background:'none',border:'none',borderBottom:`2px solid ${tab===t.id?S.purple:'transparent'}`,color:tab===t.id?S.purple:S.t3,fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
@@ -1073,37 +1073,6 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         </div>
         );
       })()}
-
-      {/* ── MAPA ── */}
-      {tab==='mapa' && (
-        <>
-        {asignandoMesa && (
-          <div style={{padding:'10px 16px',background:'rgba(255,181,71,0.12)',borderBottom:'2px solid rgba(255,181,71,0.4)',display:'flex',alignItems:'center',gap:10,flexShrink:0}}>
-            <span style={{fontSize:18}}>🗺️</span>
-            <div style={{flex:1}}>
-              <div style={{fontSize:12,fontWeight:700,color:'#FFB547'}}>Asignando mesa — {asignandoMesa.cliente_nombre}</div>
-              <div style={{fontSize:10,color:'#a0a0a0'}}>🕐 {asignandoMesa.hora} · 👥 {asignandoMesa.pax} pax · Toca una mesa libre</div>
-            </div>
-            <button onClick={()=>{setAsignandoMesa(null);setTab('home');}}
-              style={{padding:'4px 12px',borderRadius:8,border:'1px solid rgba(255,181,71,0.4)',background:'transparent',color:'#FFB547',fontSize:11,cursor:'pointer',fontWeight:700}}>
-              ✕ Cancelar
-            </button>
-          </div>
-        )}
-        <MapaInteractivo
-          reservasHoy={reservasHoy}
-          fechaFiltro={fechaFiltro}
-          onAsignarMesa={(id:any,mesa:number)=>{asignarMesa(id,mesa);setAsignandoMesa(null);setTab('home');}}
-          onCambiarEstado={cambiarEstado}
-          plantaDB={plantaDB}
-          mesas={mesas}
-          onToggleVip={async(num:number,vip:boolean)=>{ await supabase.from('tables').update({vip}).eq('name',String(num)); show(vip?`⭐ Mesa ${num} marcada VIP`:`Mesa ${num} ya no es VIP`); fetchData(); }}
-          now={now}
-          busquedaMesa={busquedaMesa}
-          setBusquedaMesa={setBusquedaMesa}
-        />
-        </>
-      )}
 
       {/* ── EDITOR DE PLANTA ── */}
       {tab==='editor' && (
