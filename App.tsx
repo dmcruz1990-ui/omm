@@ -525,7 +525,19 @@ const AppContent: React.FC = () => {
   return user ? <Dashboard /> : <Login />;
 };
 
+// Preview Hallmark — solo visible si la URL trae ?preview=hallmark
+const HallmarkPreview = lazy(() => import('./experiments/hallmark/HallmarkPreview'));
+
 const App: React.FC = () => {
+  // Guard: si está activo el preview, saltarse el flujo normal.
+  // Los usuarios sin la query string jamás llegan al sandbox.
+  if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('preview') === 'hallmark') {
+    return (
+      <Suspense fallback={<div style={{minHeight:'100vh',background:'#06060c'}}/>}>
+        <HallmarkPreview />
+      </Suspense>
+    );
+  }
   return (
     <AuthProvider>
       <RestaurantProvider>
