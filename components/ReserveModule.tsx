@@ -965,6 +965,11 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             restauranteId={restauranteIdActivo}
             asignarMesa={asignarMesa}
             setAsignandoMesa={setAsignandoMesa}
+            onToggleVip={async(mesaId:number, vip:boolean)=>{
+              await supabase.from('tables').update({ vip }).eq('id', mesaId);
+              show(vip?'⭐ Mesa marcada VIP':'Mesa ya no es VIP');
+              fetchData();
+            }}
             onNuevaConMesa={(mesaNum:number)=>{
               // Maitre/Admin/Host pueden clickear una mesa vacía para crear reserva.
               setSelected(null);
@@ -1626,8 +1631,22 @@ function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesa
                   >
                     <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color:isEditing?'#d4943a':isVip?'#FFB547':'rgba(255,255,255,0.8)',lineHeight:1}}>M{mesa.num}</div>
                     {mesa.shape!=='round'&&<div style={{fontSize:'clamp(5px,0.7vw,9px)',color:'rgba(255,255,255,0.4)'}}>{mesa.capacidad||mesa.cap}p</div>}
-                    {isVip&&<div style={{position:'absolute',top:-4,left:-4,fontSize:'clamp(8px,1.1vw,12px)'}}>⭐</div>}
-                    {isEditing&&<div style={{position:'absolute',top:-2,right:-2,width:8,height:8,borderRadius:'50%',background:'#d4943a'}}/>}
+                    {/* Estrella VIP — toggle directo sin abrir el editor */}
+                    <button
+                      onMouseDown={(e)=>e.stopPropagation()}
+                      onClick={(e)=>{
+                        e.stopPropagation();
+                        onToggleVip && onToggleVip(mesa.num, !isVip);
+                      }}
+                      title={isVip?'Quitar VIP':'Marcar como VIP'}
+                      style={{position:'absolute',top:-7,right:-7,width:20,height:20,borderRadius:'50%',
+                        border:`1.5px solid ${isVip?'#FFB547':'rgba(255,255,255,0.25)'}`,
+                        background:isVip?'#1a1a2e':'rgba(255,255,255,0.06)',
+                        color:isVip?'#FFB547':'rgba(255,255,255,0.45)',
+                        fontSize:12,fontWeight:900,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',padding:0,lineHeight:1,zIndex:10}}>
+                      {isVip?'★':'☆'}
+                    </button>
+                    {isEditing&&<div style={{position:'absolute',top:-2,left:-2,width:8,height:8,borderRadius:'50%',background:'#d4943a'}}/>}
                   </div>
                 );
               })}
@@ -1890,43 +1909,44 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, 
 // PLANO SALA · SVG NEON · misma organización que PlanoOMM (zonas + mesas)
 // Fondo oscuro + glow neón sobre dark, drop targets activos.
 // ═════════════════════════════════════════════════════════════════════
-function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignandoMesa, onNuevaConMesa }:{
+function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignandoMesa, onNuevaConMesa, onToggleVip }:{
   mesas:any[]; activas:any[]; restauranteId:number;
   asignarMesa:(id:any,num:number)=>void;
   setAsignandoMesa:(r:any)=>void;
   onNuevaConMesa?:(mesaNum:number)=>void;
+  onToggleVip?:(mesaId:number, vip:boolean)=>void;
 }) {
   const conf = ZONAS_POR_RESTAURANTE[restauranteId];
   const zonas = conf?.zonas || {};
   const orden = conf?.orden || [];
   const [hoverMesa, setHoverMesa] = React.useState<number|null>(null);
 
-  // Paleta neon (dark)
+  // Paleta neon · TONO SUAVE para que el texto sea legible
   const NEON = {
-    bgOuter: '#06060c',
-    bgInner: '#0a0a14',
-    grid: 'rgba(120,120,180,0.06)',
-    libre:    { fill:'#0a1a14', stroke:'#22FFAA', glow:'#22FFAA', text:'#22FFAA' },
-    reservada:{ fill:'#1a1208', stroke:'#FFB547', glow:'#FFB547', text:'#FFD08A' },
-    ocupada:  { fill:'#1a0a12', stroke:'#FF3D6E', glow:'#FF3D6E', text:'#FF9DB8' },
-    vip:      { stroke:'#FFD700', glow:'#FFE05C' },
+    bgOuter: '#0e0e18',
+    bgInner: '#13131f',
+    grid: 'rgba(120,120,180,0.05)',
+    libre:    { fill:'#162621', stroke:'#3DBE8B', glow:'#3DBE8B', text:'#D8F4E5' },
+    reservada:{ fill:'#241B10', stroke:'#C99245', glow:'#C99245', text:'#F4E2C5' },
+    ocupada:  { fill:'#241218', stroke:'#C04464', glow:'#C04464', text:'#F4D0DC' },
+    vip:      { stroke:'#D4AF3D', glow:'#D4AF3D' },
   };
 
   return (
     <div style={{flex:1,overflow:'auto',padding:18,background:NEON.bgOuter}}>
       <svg viewBox={`0 0 ${VW_PLANO} ${VH_PLANO}`} width="100%"
-        style={{display:'block',background:`radial-gradient(circle at 50% 30%, #12122a 0%, ${NEON.bgInner} 70%)`,borderRadius:14,boxShadow:'inset 0 0 80px rgba(0,0,0,0.7)'}}>
+        style={{display:'block',background:`radial-gradient(circle at 50% 30%, #1a1a2a 0%, ${NEON.bgInner} 70%)`,borderRadius:14,boxShadow:'inset 0 0 60px rgba(0,0,0,0.6)'}}>
         <defs>
-          {/* glow filter para mesas */}
+          {/* glow filter suave para mesas */}
           <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feGaussianBlur stdDeviation="1.2" result="blur"/>
             <feMerge>
               <feMergeNode in="blur"/>
               <feMergeNode in="SourceGraphic"/>
             </feMerge>
           </filter>
           <filter id="strongGlow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feGaussianBlur stdDeviation="3" result="blur"/>
             <feMerge>
               <feMergeNode in="blur"/>
               <feMergeNode in="SourceGraphic"/>
@@ -1940,20 +1960,20 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
         {/* Grid sutil */}
         <rect x={0} y={0} width={VW_PLANO} height={VH_PLANO} fill="url(#gridPattern)"/>
 
-        {/* ── ZONAS · borde neon translúcido ── */}
+        {/* ── ZONAS · borde tenue ── */}
         {orden.map(z => {
           const zona = zonas[z]; if (!zona) return null;
           return (
             <g key={z}>
               <rect x={zona.area.x} y={zona.area.y} width={zona.area.w} height={zona.area.h}
                 rx={14}
-                fill={zona.chipBg} fillOpacity={0.07}
-                stroke={zona.chipBg} strokeWidth={1.5} strokeDasharray="8 6" strokeOpacity={0.55}/>
-              <g transform={`translate(${zona.area.x+12}, ${zona.area.y+12})`} filter="url(#neonGlow)">
+                fill={zona.chipBg} fillOpacity={0.04}
+                stroke={zona.chipBg} strokeWidth={1.2} strokeDasharray="8 6" strokeOpacity={0.4}/>
+              <g transform={`translate(${zona.area.x+12}, ${zona.area.y+12})`}>
                 <rect width={zona.label.length*8.4+20} height={24} rx={4}
-                  fill="none" stroke={zona.chipBg} strokeWidth={1.5}/>
+                  fill="none" stroke={zona.chipBg} strokeWidth={1.2} strokeOpacity={0.7}/>
                 <text x={10} y={16} fill={zona.chipBg} fontSize={11} fontWeight={800}
-                  fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.18em">
+                  fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.18em" opacity={0.85}>
                   {zona.label}
                 </text>
               </g>
@@ -1961,7 +1981,7 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
           );
         })}
 
-        {/* ── MESAS NEON ── */}
+        {/* ── MESAS NEON SUAVE ── */}
         {mesas.filter((m:any)=>m.posicion_x!=null && m.posicion_y!=null).map((m:any) => {
           const reserva = activas.find((r:any) => Number(r.mesa_num) === Number(m.name) || String(r.mesa_num)===String(m.name));
           const ocupada = ['ocupada','asignada','sentada'].includes(m.estado);
@@ -1994,52 +2014,44 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
               {/* Halo de hover */}
               {isHover && (
                 <circle cx={cx} cy={cy} r={Math.max(w,h)/2+14} fill="none"
-                  stroke="#00E5FF" strokeWidth={2.5} strokeDasharray="6 4" opacity={0.9} filter="url(#strongGlow)">
+                  stroke="#5BC0E8" strokeWidth={2} strokeDasharray="6 4" opacity={0.85} filter="url(#strongGlow)">
                   <animate attributeName="stroke-dashoffset" from="0" to="20" dur="0.6s" repeatCount="indefinite"/>
                 </circle>
-              )}
-
-              {/* Glow exterior si tiene reserva o está ocupada */}
-              {(tieneReserva || ocupada) && (
-                isRound
-                  ? <circle cx={cx} cy={cy} r={w/2+2} fill="none" stroke={glowCol} strokeWidth={6} opacity={0.18}/>
-                  : <rect x={cx-w/2-2} y={cy-h/2-2} width={w+4} height={h+4} rx={9} fill="none" stroke={glowCol} strokeWidth={6} opacity={0.18}/>
               )}
 
               {/* Cuerpo mesa */}
               {isRound
                 ? <circle cx={cx} cy={cy} r={w/2}
                     fill={tone.fill}
-                    stroke={strokeCol} strokeWidth={m.vip?3:2}
-                    filter="url(#neonGlow)"/>
+                    stroke={strokeCol} strokeWidth={m.vip?2.5:1.8}/>
                 : <rect x={cx-w/2} y={cy-h/2} width={w} height={h} rx={8}
                     fill={tone.fill}
-                    stroke={strokeCol} strokeWidth={m.vip?3:2}
-                    filter="url(#neonGlow)"/>}
+                    stroke={strokeCol} strokeWidth={m.vip?2.5:1.8}/>}
 
-              {/* Estrella VIP */}
-              {m.vip && (
-                <>
-                  <circle cx={cx+w/2-8} cy={cy-h/2+8} r={11} fill={NEON.bgInner} stroke={NEON.vip.stroke} strokeWidth={1.5} filter="url(#neonGlow)"/>
-                  <text x={cx+w/2-8} y={cy-h/2+12} fill={NEON.vip.stroke} fontSize={12} fontWeight={800} textAnchor="middle">★</text>
-                </>
-              )}
+              {/* Estrella VIP / no-VIP — toggle */}
+              <g onClick={(e)=>{ e.stopPropagation(); onToggleVip && onToggleVip(m.id, !m.vip); }} style={{cursor:'pointer'}}>
+                <circle cx={cx+w/2-9} cy={cy-h/2+9} r={11}
+                  fill={NEON.bgInner} stroke={m.vip?NEON.vip.stroke:'rgba(255,255,255,0.18)'}
+                  strokeWidth={m.vip?2:1}/>
+                <text x={cx+w/2-9} y={cy-h/2+13} fill={m.vip?NEON.vip.stroke:'rgba(255,255,255,0.35)'}
+                  fontSize={13} fontWeight={800} textAnchor="middle">{m.vip?'★':'☆'}</text>
+              </g>
 
-              {/* Nombre mesa (neon text) */}
+              {/* Nombre mesa · texto limpio sin glow exagerado */}
               <text x={cx} y={cy-3} fill={tone.text} fontSize={14} fontWeight={900} textAnchor="middle"
-                fontFamily="'Syne', serif" style={{textShadow:`0 0 8px ${glowCol}`}} filter="url(#neonGlow)">
+                fontFamily="'Syne', serif">
                 {m.name}
               </text>
 
               {/* Capacidad o nombre del cliente */}
-              <text x={cx} y={cy+12} fill={tone.text} fontSize={9} fontWeight={700} textAnchor="middle" opacity={0.85}
+              <text x={cx} y={cy+12} fill={tone.text} fontSize={9} fontWeight={700} textAnchor="middle" opacity={0.9}
                 fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.08em">
                 {tieneReserva ? (reserva.cliente_nombre||'').split(' ')[0]?.slice(0,9).toUpperCase() : `${m.capacidad}P`}
               </text>
 
               {tieneReserva && (
                 <text x={cx} y={cy+24} fill={glowCol} fontSize={9} fontWeight={800} textAnchor="middle"
-                  fontFamily="'IBM Plex Mono', monospace" style={{textShadow:`0 0 6px ${glowCol}`}}>
+                  fontFamily="'IBM Plex Mono', monospace">
                   {(reserva.hora||'').slice(0,5)}
                 </text>
               )}
