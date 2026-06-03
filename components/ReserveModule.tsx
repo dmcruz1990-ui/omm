@@ -96,10 +96,10 @@ export default function ReserveModule() {
   const [franjaModalOpen, setFranjaModalOpen] = useState(false);
   const [franjasBloqueadas, setFranjasBloqueadas] = useState<any[]>([]);
   useEffect(()=>{ const t=setInterval(()=>setNow(Date.now()),30000); return ()=>clearInterval(t); },[]);
-  const [form, setForm]         = useState({
+  const [form, setForm]         = useState<any>({
     cliente_nombre:'',cliente_email:'',cliente_telefono:'',
     fecha:new Date().toISOString().split('T')[0],hora:'20:00',
-    pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0,
+    pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0, canal:'',
   });
   const [walkin, setWalkin] = useState<{nombre:string;pax:number;mesa:number;telefono:string;email:string;vip:boolean}|null>(null);
   const [walkinCRM, setWalkinCRM] = useState<any>(null);
@@ -189,7 +189,7 @@ export default function ReserveModule() {
     if (ms.data) setMesas(ms.data);
     // Meseros = usuarios reales que hacen login (profiles role='mesero').
     // La identidad debe coincidir con la del POS: nombre_completo || full_name.
-    supabase.from('profiles').select('id,nombre_completo,full_name,role,restaurante_id').eq('role','mesero').eq('restaurante_id', restauranteIdActivo)
+    supabase.from('profiles').select('id,nombre_completo,full_name,role,restaurante_id,color').eq('role','mesero').eq('restaurante_id', restauranteIdActivo)
       .then(({data})=>{ if(data) setMeserosLista((data||[]).filter((m:any)=>m.nombre_completo||m.full_name)); });
     // Franjas bloqueadas para la fecha activa — afectan Oh Yeah / Google
     supabase.from('reservas_franjas_bloqueadas').select('*').eq('restaurante_id',restauranteIdActivo).eq('fecha',fechaFiltro)
@@ -814,7 +814,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             style={{padding:'8px 16px',borderRadius:10,border:`1px solid ${S.green}`,background:`${S.green}18`,color:S.green,fontSize:12,fontWeight:700,cursor:'pointer'}}>
             🚶 Walk-in
           </button>
-          <button onClick={()=>{setSelected(null);setReservaCRM(null);setForm({cliente_nombre:'',cliente_email:'',cliente_telefono:'',fecha:hoy,hora:'20:00',pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0});setTab('nueva');}}
+          <button onClick={()=>{setSelected(null);setReservaCRM(null);setForm({cliente_nombre:'',cliente_email:'',cliente_telefono:'',fecha:hoy,hora:'20:00',pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0,canal:''});setTab('nueva');}}
             style={{padding:'8px 20px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.purple},${S.blue})`,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>
             + Nueva reserva
           </button>
@@ -991,7 +991,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
               setForm({
                 cliente_nombre:'',cliente_email:'',cliente_telefono:'',
                 fecha:fechaFiltro,hora:'20:00',pax:2,
-                ocasion:'Sin ocasión especial',notas:'',mesa_num:mesaNum
+                ocasion:'Sin ocasión especial',notas:'',mesa_num:mesaNum,canal:''
               });
               setTab('nueva');
             }}
@@ -1129,6 +1129,41 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         <div style={{flex:1,overflowY:'auto',padding:24}}>
           <div style={{maxWidth:680,margin:'0 auto'}}>
             <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,marginBottom:20}}>{selected?'Editar reserva':'Nueva reserva'}</div>
+
+            {/* ── CANAL DE RESERVA · cómo llegó el cliente ── */}
+            <div style={{marginBottom:18,padding:14,background:`${S.cyan}0a`,border:`1px solid ${S.cyan}33`,borderRadius:12}}>
+              <div style={{fontSize:10,color:S.cyan,fontWeight:800,marginBottom:8,textTransform:'uppercase',letterSpacing:'.16em'}}>📡 Canal de reserva</div>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(4, 1fr)',gap:8}}>
+                {[
+                  {v:'whatsapp', l:'WhatsApp',  ico:'💬', col:'#25D366'},
+                  {v:'telefono', l:'Teléfono',  ico:'📞', col:S.blue},
+                  {v:'walk_in',  l:'Walk-in',   ico:'🚶', col:S.green},
+                  {v:'conserje', l:'Conserje',  ico:'🛎️', col:S.purple},
+                ].map(c=>{
+                  const sel = form.canal === c.v;
+                  return (
+                    <button key={c.v} type="button" onClick={()=>setF('canal', sel?'':c.v)}
+                      style={{
+                        padding:'12px 10px',
+                        borderRadius:10,
+                        border:`1.5px solid ${sel?c.col:S.border2}`,
+                        background: sel?`${c.col}18`:'transparent',
+                        color: sel?c.col:S.t2,
+                        fontSize:12,fontWeight:800,cursor:'pointer',
+                        display:'flex',flexDirection:'column',alignItems:'center',gap:4,
+                        transition:'all .15s',
+                      }}>
+                      <span style={{fontSize:20}}>{c.ico}</span>
+                      <span>{c.l}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              {form.canal && (
+                <div style={{fontSize:10,color:S.t3,marginTop:6}}>Se registrará para reporte de captación · podés cambiarlo después.</div>
+              )}
+            </div>
+
             <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14}}>
               {/* CELULAR primero — carga datos del sistema (CRM + última encuesta) */}
               <div style={{gridColumn:'1/-1'}}>
@@ -2058,10 +2093,17 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, 
 // ═════════════════════════════════════════════════════════════════════
 // DASHBOARD DE RESERVAS · vista 360° del team con datos reales
 // ═════════════════════════════════════════════════════════════════════
-function DashboardReservas({ reservas, reservasHoy, mesas, meserosLista, franjasBloqueadas, fechaFiltro, S }:{
-  reservas:any[]; reservasHoy:any[]; mesas:any[]; meserosLista:any[];
-  franjasBloqueadas:any[]; fechaFiltro:string; S:any;
+function DashboardReservas(props:{
+  reservas?:any[]; reservasHoy?:any[]; mesas?:any[]; meserosLista?:any[];
+  franjasBloqueadas?:any[]; fechaFiltro:string; S:any;
 }) {
+  const { fechaFiltro, S } = props;
+  // Defaults defensivos para evitar crashes si algún array llega null en el primer render
+  const reservas = props.reservas || [];
+  const reservasHoy = props.reservasHoy || [];
+  const mesas = props.mesas || [];
+  const meserosLista = props.meserosLista || [];
+  const franjasBloqueadas = props.franjasBloqueadas || [];
   // ── Métricas globales del día ────────────────────────────────────
   const activas = reservasHoy.filter((r:any) => !['cancelada'].includes(r.estado));
   const sentadas = activas.filter((r:any)=>r.estado==='sentada').length;
