@@ -100,8 +100,8 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
 
   const cargar = useCallback(async ()=>{
     const [emp, tur, asi, nov] = await Promise.all([
-      supabase.from('empleados').select('*').eq('restaurante_id',REST_ID).order('nombre_completo'),
-      supabase.from('turnos').select('*').gte('fecha',weekStartStr).lte('fecha',weekEndStr),
+      supabase.from('empleados').select('*').eq('restaurante_id',REST_ID).eq('activo',true).order('nombre_completo'),
+      supabase.from('turnos').select('*').eq('complejo_id', COMPLEJO_ID).gte('fecha',weekStartStr).lte('fecha',weekEndStr),
       supabase.from('attendance').select('*').eq('fecha',hoy),
       supabase.from('workforce_novedades').select('*').eq('restaurante_id',REST_ID).order('created_at',{ascending:false}),
     ]);
@@ -110,7 +110,7 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
     setAsistencia(asi.data||[]);
     setNovedades(nov.data||[]);
     setLoading(false);
-  }, [weekStartStr, weekEndStr, hoy, REST_ID]);
+  }, [weekStartStr, weekEndStr, hoy, REST_ID, COMPLEJO_ID]);
 
   useEffect(()=>{ cargar(); }, [cargar]);
   useEffect(()=>{
@@ -461,7 +461,7 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
         </div>
       )}
 
-      {tab==='ia' && <IATurnoOptimo restauranteId={REST_ID} empleados={empleados} turnos={turnos}/>}
+      {tab==='ia' && <IATurnoOptimo restauranteId={REST_ID} complejoId={COMPLEJO_ID} empleados={empleados} turnos={turnos} weekBase={weekBase} onAplicar={(creados:number)=>{ showToast(`✨ ${creados} turnos creados por IA`); logAudit('ia.simulacion','turnos',{creados}); cargar(); }}/>}
 
       {/* Modal nuevo turno */}
       {shiftModal && <ShiftModal empleado={empById[shiftModal.empId]} fecha={shiftModal.fecha} complejoId={COMPLEJO_ID} onClose={()=>setShiftModal(null)} onSaved={(msg)=>{ setShiftModal(null); showToast(msg); logAudit('turno.creado','turnos',{empleado_id:shiftModal.empId, fecha:shiftModal.fecha}); cargar(); }} />}
@@ -601,7 +601,7 @@ function NovedadModal({empleados, userName, onClose, onSaved}:{empleados:any[], 
 // Analiza los últimos 90 días de cobros_trazabilidad y ranking de meseros
 // para sugerir cuántas personas necesitas por día/hora y a quién asignar.
 // ═══════════════════════════════════════════════════════════════════════
-function IATurnoOptimo({ restauranteId, empleados, turnos }: { restauranteId: number; empleados: any[]; turnos: any[] }) {
+function IATurnoOptimo({ restauranteId, complejoId, empleados, turnos, weekBase, onAplicar }: { restauranteId: number; complejoId: number; empleados: any[]; turnos: any[]; weekBase: Date; onAplicar:(creados:number)=>void }) {
   const [loading, setLoading] = React.useState(true);
   const [datos, setDatos] = React.useState<{
     porDia: Record<number, { vol: number; tickets: number }>;
@@ -796,6 +796,228 @@ function IATurnoOptimo({ restauranteId, empleados, turnos }: { restauranteId: nu
           {datos.topMeseros[0] && <li>• Top venta: <strong className="text-[#3dba6f]">{datos.topMeseros[0].nombre}</strong> ({fmtK(datos.topMeseros[0].ventas)}) → cuidar su retención y ofrecer mejores turnos.</li>}
         </ul>
       </div>
+
+      {/* SIMULACIÓN DE TURNOS POR IA */}
+      <SimuladorTurnos
+        complejoId={complejoId}
+        empleados={empleados}
+        turnos={turnos}
+        weekBase={weekBase}
+        recomMeseros={recomMeseros}
+        horasPico={horasPico}
+        onAplicar={onAplicar}
+      />
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// SIMULADOR DE TURNOS · genera un horario semanal con asignaciones por
+// rol basado en la recomendación del análisis IA. Permite aplicar con
+// un click — crea los registros en `turnos` (estado='programado').
+// ═════════════════════════════════════════════════════════════════════
+function SimuladorTurnos({ complejoId, empleados, turnos, weekBase, recomMeseros, horasPico, onAplicar }:{
+  complejoId:number; empleados:any[]; turnos:any[]; weekBase:Date;
+  recomMeseros:(d:number)=>number; horasPico:string[]; onAplicar:(n:number)=>void;
+}) {
+  // Roles agrupados por función operativa
+  const ROL_GRUPOS = {
+    meseros:  ['mesero','capitan','maitre','host','runner'],
+    cocina:   ['chef','sous_chef','auxiliar_cocina','cocinero'],
+    barra:    ['bartender','barback','auxiliar_barra'],
+    soporte:  ['cajero','call_center','administrativo'],
+  };
+  const grupoDe = (rol?:string) => {
+    const r = (rol||'').toLowerCase();
+    for (const [k,arr] of Object.entries(ROL_GRUPOS)) if ((arr as string[]).some(x => r.includes(x))) return k;
+    return 'soporte';
+  };
+  const empleadosPorGrupo = React.useMemo(() => {
+    const groups: Record<string, any[]> = { meseros:[], cocina:[], barra:[], soporte:[] };
+    empleados.forEach((e:any) => {
+      if (!e.activo && e.activo !== undefined) return;
+      const g = grupoDe(e.rol);
+      groups[g].push(e);
+    });
+    return groups;
+  }, [empleados]);
+
+  // Ventanas operativas
+  const VENTANAS = {
+    almuerzo: { ini:'11:00', fin:'16:00', tipo:'servicio', label:'Almuerzo' },
+    cena:     { ini:'17:30', fin:'23:30', tipo:'servicio', label:'Cena' },
+    apertura: { ini:'09:00', fin:'13:00', tipo:'apertura', label:'Apertura cocina' },
+    cierre:   { ini:'21:00', fin:'01:00', tipo:'cierre',   label:'Cierre' },
+  };
+
+  // Generar la simulación: para cada día de la semana base, decide qué
+  // turnos abrir y a quién asignar.
+  const ymdLocal = (d:Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  const simulacion = React.useMemo(() => {
+    const semana:{ fecha:string; dia:number; turnos:{ grupo:string; ventana:string; empleado:any; ini:string; fin:string; tipo:string; label:string }[] }[] = [];
+    for (let i=0;i<7;i++) {
+      const d = new Date(weekBase); d.setDate(d.getDate()+i);
+      const fecha = ymdLocal(d);
+      const diaSemana = d.getDay(); // 0=dom, 6=sab
+      const nMeseros = recomMeseros(diaSemana);
+      const fuerte = nMeseros >= 5;
+      const turnosDia:any[] = [];
+
+      // Asignar meseros (mitad almuerzo, mitad cena en días fuertes; cena solo en suaves)
+      const meseros = [...empleadosPorGrupo.meseros];
+      const nAlmuerzo = fuerte ? Math.ceil(nMeseros/2) : Math.max(1, Math.floor(nMeseros/3));
+      const nCena     = nMeseros - nAlmuerzo;
+      for (let k=0;k<nAlmuerzo && meseros.length>0;k++) {
+        const e = meseros.shift();
+        turnosDia.push({ grupo:'meseros', ventana:'almuerzo', empleado:e, ini:VENTANAS.almuerzo.ini, fin:VENTANAS.almuerzo.fin, tipo:VENTANAS.almuerzo.tipo, label:VENTANAS.almuerzo.label });
+      }
+      for (let k=0;k<nCena && meseros.length>0;k++) {
+        const e = meseros.shift();
+        turnosDia.push({ grupo:'meseros', ventana:'cena', empleado:e, ini:VENTANAS.cena.ini, fin:VENTANAS.cena.fin, tipo:VENTANAS.cena.tipo, label:VENTANAS.cena.label });
+      }
+      // Asignar cocina (apertura + cierre)
+      const cocina = [...empleadosPorGrupo.cocina];
+      const nCocina = Math.max(2, Math.ceil(nMeseros*0.7));
+      for (let k=0;k<nCocina && cocina.length>0;k++) {
+        const e = cocina.shift();
+        const ventana = k < Math.ceil(nCocina/2) ? 'apertura' : 'cierre';
+        const v = VENTANAS[ventana as 'apertura'|'cierre'];
+        turnosDia.push({ grupo:'cocina', ventana, empleado:e, ini:v.ini, fin:v.fin, tipo:v.tipo, label:v.label });
+      }
+      // Asignar barra (siempre 1, en fuerte 2)
+      const barra = [...empleadosPorGrupo.barra];
+      const nBarra = fuerte ? 2 : 1;
+      for (let k=0;k<nBarra && barra.length>0;k++) {
+        const e = barra.shift();
+        turnosDia.push({ grupo:'barra', ventana:'cena', empleado:e, ini:VENTANAS.cena.ini, fin:VENTANAS.cena.fin, tipo:'servicio', label:'Barra cena' });
+      }
+      semana.push({ fecha, dia:diaSemana, turnos:turnosDia });
+    }
+    return semana;
+  }, [empleadosPorGrupo, recomMeseros, weekBase]);
+
+  const totalSugeridos = simulacion.reduce((s,d) => s + d.turnos.length, 0);
+
+  // ¿Cuáles de los sugeridos colisionan con un turno ya existente?
+  const yaExiste = (fecha:string, empleadoId:any, ini:string) => turnos.some((t:any) =>
+    t.fecha === fecha && t.empleado_id === empleadoId && t.hora_inicio?.slice(0,5) === ini
+  );
+  const nuevos = simulacion.flatMap(d => d.turnos.filter(t => !yaExiste(d.fecha, t.empleado.id, t.ini)).map(t => ({...t, fecha:d.fecha})));
+
+  const [aplicando, setAplicando] = React.useState(false);
+  const aplicar = async () => {
+    if (nuevos.length === 0) { onAplicar(0); return; }
+    if (!confirm(`¿Crear ${nuevos.length} turnos sugeridos por la IA en la semana del ${ymdLocal(weekBase)}? Quedarán en estado 'programado' y podés editarlos antes de publicar.`)) return;
+    setAplicando(true);
+    try {
+      const insertRows = nuevos.map((t:any) => ({
+        empleado_id: t.empleado.id,
+        complejo_id: complejoId,
+        fecha: t.fecha,
+        hora_inicio: t.ini+':00',
+        hora_fin: t.fin+':00',
+        estado: 'programado',
+        tipo_turno: t.tipo,
+        horas_trabajadas: ((toMin(t.fin+':00') + (toMin(t.fin+':00')<=toMin(t.ini+':00')?1440:0) - toMin(t.ini+':00'))/60),
+        nota: '🤖 IA · simulación',
+        confirmado: false,
+        publicado: false,
+      }));
+      const { error } = await supabase.from('turnos').insert(insertRows);
+      if (error) throw error;
+      onAplicar(insertRows.length);
+    } catch (e:any) {
+      alert('Error: '+(e?.message||'No se pudo aplicar la simulación'));
+    } finally {
+      setAplicando(false);
+    }
+  };
+
+  const colorGrupo = { meseros:'#3dba6f', cocina:'#d4943a', barra:'#9b72ff', soporte:'#4a8fd4' } as Record<string,string>;
+  const iconoGrupo = { meseros:'🪑', cocina:'🔥', barra:'🍸', soporte:'🛟' } as Record<string,string>;
+
+  return (
+    <div className="rounded-2xl p-5 mt-5" style={{background:'linear-gradient(135deg, rgba(212,148,58,0.1), rgba(155,114,255,0.06))', border:'2px solid rgba(212,148,58,0.4)'}}>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-[#d4943a]/20 border border-[#d4943a]/50 flex items-center justify-center">
+            <Sparkles size={20} className="text-[#d4943a]"/>
+          </div>
+          <div>
+            <div className="font-['Syne'] text-[16px] font-black text-white">Simulación de turnos · IA</div>
+            <div className="text-[11px] text-[#a0a0a0]">Distribución sugerida para la semana del <strong className="text-[#d4943a]">{ymdLocal(weekBase)}</strong></div>
+          </div>
+        </div>
+        <button onClick={aplicar} disabled={aplicando || nuevos.length === 0}
+          className="px-5 py-2.5 rounded-xl font-bold text-[13px] disabled:opacity-40 disabled:cursor-not-allowed"
+          style={{background:'linear-gradient(135deg,#d4943a,#9b72ff)', color:'#fff', boxShadow:'0 6px 18px rgba(212,148,58,0.35)'}}>
+          {aplicando ? '⏳ Aplicando…' : nuevos.length === 0 ? '✓ Ya aplicada esta semana' : `✨ Crear ${nuevos.length} turnos`}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-4">
+        <SimStat label="Turnos sugeridos" v={totalSugeridos} c="#d4943a"/>
+        <SimStat label="Nuevos a crear" v={nuevos.length} c="#3dba6f"/>
+        <SimStat label="Empleados disponibles" v={empleados.length} c="#4a8fd4"/>
+        <SimStat label="Horas pico" v={horasPico.join(', ')||'—'} c="#9b72ff"/>
+      </div>
+
+      {/* Grid semanal */}
+      <div className="grid grid-cols-7 gap-1.5">
+        {simulacion.map((d) => {
+          const fecha = new Date(d.fecha+'T12:00:00');
+          const diaTxt = fecha.toLocaleDateString('es-CO',{weekday:'short'}).replace('.','');
+          const dayNum = fecha.getDate();
+          const fuerte = d.turnos.length >= 6;
+          return (
+            <div key={d.fecha} className="bg-[#0f0f14] border rounded-xl p-2"
+              style={{borderColor: fuerte?'#d4943a55':'#2a2a3a', boxShadow: fuerte?'inset 0 0 18px rgba(212,148,58,0.08)':'none'}}>
+              <div className="flex items-baseline justify-between mb-2">
+                <div>
+                  <div className="text-[9px] text-[#7a7a8c] font-bold uppercase">{diaTxt}</div>
+                  <div className="font-['Syne'] text-[16px] font-black text-white">{dayNum}</div>
+                </div>
+                <span className="text-[10px] font-bold" style={{color: fuerte?'#d4943a':'#7a7a8c'}}>{d.turnos.length}t</span>
+              </div>
+              <div className="space-y-1">
+                {d.turnos.length === 0 && (
+                  <div className="text-[9px] text-[#5a5a64] text-center py-2">—</div>
+                )}
+                {d.turnos.map((t,i)=>(
+                  <div key={i} className="text-[8.5px] px-1.5 py-1 rounded-md"
+                    style={{background:`${colorGrupo[t.grupo]}15`, borderLeft:`2px solid ${colorGrupo[t.grupo]}`}}
+                    title={`${t.empleado.nombre_completo} · ${t.ini}–${t.fin} · ${t.label}`}>
+                    <div className="flex items-center gap-1">
+                      <span>{iconoGrupo[t.grupo]}</span>
+                      <span className="font-bold truncate" style={{color:colorGrupo[t.grupo]}}>{(t.empleado.nombre_completo||'').split(' ')[0]}</span>
+                    </div>
+                    <div className="text-[7.5px] text-[#a0a0a0]">{t.ini.slice(0,5)}–{t.fin.slice(0,5)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Leyenda */}
+      <div className="flex flex-wrap gap-3 mt-3 text-[10px]">
+        {Object.entries(colorGrupo).map(([k,c])=>(
+          <span key={k} className="flex items-center gap-1.5">
+            <span style={{width:7,height:7,borderRadius:'50%',background:c,display:'inline-block'}}/>
+            <span style={{color:c,textTransform:'capitalize',fontWeight:700}}>{iconoGrupo[k]} {k}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function SimStat({ label, v, c }:{ label:string; v:any; c:string }) {
+  return (
+    <div className="bg-[#0f0f14] border border-[#1a1a24] rounded-lg p-2.5">
+      <div className="text-[9px] text-[#7a7a8c] font-bold uppercase tracking-wider">{label}</div>
+      <div className="font-['Syne'] text-[16px] font-black mt-0.5" style={{color:c}}>{v}</div>
     </div>
   );
 }
