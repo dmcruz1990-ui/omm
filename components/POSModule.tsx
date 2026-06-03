@@ -4,6 +4,7 @@ import { Table, RitualTask } from '../types.ts';
 import { BellRing, Settings, MonitorPlay, MessageSquare, Sparkles, Receipt, X, ShoppingCart, Lock, Zap, BarChart3, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useRestaurant } from '../contexts/RestaurantContext';
+import { ZONAS_POR_RESTAURANTE, VW_PLANO, VH_PLANO, sizeForMesa } from './PlanoOMM.tsx';
 
 // ── Cerebro POS: persistencia de las 15 mesas ────────────────────────
 // Conserva pedidos (enviados + pendientes), cliente y notas por mesa
@@ -1630,12 +1631,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       }
     };
 
-    // Estado real de las mesas en tiempo real
+    // Estado real de las mesas en tiempo real (incluye posición, vip, forma — para el plano SVG)
     const fetchMesasEstado = async () => {
       const { data } = await supabase.from('tables')
-        .select('id,name,seats,zona,estado,mesero_nombre,abierta_en,pax_actual,cliente_nombre,order_id_activo,capacidad,meseros_compartidos')
+        .select('id,name,seats,zona,estado,mesero_nombre,abierta_en,pax_actual,cliente_nombre,order_id_activo,capacidad,meseros_compartidos,posicion_x,posicion_y,vip,shape,restaurante_id,activa')
+        .eq('restaurante_id', restauranteId)
         .order('name');
-      if (data) setMesasEstado(data);
+      if (data) setMesasEstado((data||[]).filter((m:any)=>m.activa!==false));
     };
     fetchMesasEstado();
 
@@ -1749,7 +1751,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       })
       .subscribe();
     return () => { supabase.removeChannel(ch); };
-  }, []);
+  }, [restauranteId]);
 
   // ── Historial de facturas del mesero ──────────────────────────────────
   const fetchHistorial = async () => {
@@ -6590,151 +6592,21 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 </div>
               );
             })()}
-            {/* ── CANVAS VISUAL DEL PLANO — igual que Reserve ── */}
-            <div style={{flex:1,overflow:'auto',padding:16}}>
-              <div style={{position:'relative',width:'100%',paddingBottom:'70%',background:'#0a0a12',borderRadius:18,border:'1px solid rgba(255,255,255,0.07)',overflow:'hidden',boxShadow:'inset 0 0 80px rgba(0,0,0,0.6)'}}>
-                <div style={{position:'absolute',inset:0,backgroundImage:'linear-gradient(rgba(255,255,255,0.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.025) 1px,transparent 1px)',backgroundSize:'5% 7%',pointerEvents:'none'}}/>
-                <div style={{position:'absolute',inset:0}}>
-
-                  {/* Zonas de fondo */}
-                  {Object.entries(ZONA_AREAS_OMM).map(([zona,area])=>(
-                    <div key={zona} style={{position:'absolute',left:`${area.x}%`,top:`${area.y}%`,width:`${area.w}%`,height:`${area.h}%`,background:ZONA_COLS_OMM[zona]?.bg||'transparent',border:`1px solid ${ZONA_COLS_OMM[zona]?.border||'transparent'}`,borderRadius:12,zIndex:0}}>
-                      <div style={{position:'absolute',top:5,left:8,fontSize:8,color:'rgba(255,255,255,0.25)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em'}}>
-                        {ZONA_COLS_OMM[zona]?.icon} {zona}
-                      </div>
-                    </div>
-                  ))}
-
-                  {/* COCINA — arriba derecha */}
-                  <div style={{position:'absolute',left:'69%',top:'7%',width:'29%',height:'33%',background:'linear-gradient(135deg,rgba(255,82,82,0.09),rgba(255,82,82,0.03))',border:'1.5px solid rgba(255,82,82,0.3)',borderRadius:10,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:2,zIndex:0}}>
-                    <div style={{fontSize:'clamp(11px,1.8vw,20px)'}}>🔥</div>
-                    <div style={{fontSize:'clamp(6px,0.9vw,10px)',color:'rgba(255,82,82,0.85)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.12em'}}>Cocina</div>
-                    <div style={{position:'absolute',bottom:'-4%',left:'15%',width:'70%',height:'7%',background:'rgba(255,82,82,0.22)',borderRadius:'0 0 3px 3px',display:'flex',alignItems:'center',justifyContent:'center'}}>
-                      <div style={{fontSize:'clamp(4px,0.6vw,7px)',color:'rgba(255,82,82,0.75)',fontWeight:700,letterSpacing:'.1em'}}>DESPACHO</div>
-                    </div>
-                  </div>
-
-                  {/* HOST — podio de entrada */}
-                  <div style={{position:'absolute',left:'17%',top:'8%',width:'18%',height:'7%',background:'rgba(255,181,71,0.10)',border:'1.5px solid rgba(255,181,71,0.35)',borderRadius:'40px',display:'flex',alignItems:'center',justifyContent:'center',gap:4,zIndex:0}}>
-                    <span style={{fontSize:'clamp(7px,1vw,12px)'}}>🛎️</span>
-                    <span style={{fontSize:'clamp(6px,0.8vw,9px)',color:'rgba(255,181,71,0.85)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.12em'}}>Host</span>
-                  </div>
-
-                  {/* SAKE EXP — vitrina vertical izquierda */}
-                  <div style={{position:'absolute',left:'2%',top:'10%',width:'6%',height:'27%',background:'rgba(179,136,255,0.06)',border:'1.5px solid rgba(179,136,255,0.22)',borderRadius:8,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'space-around',padding:'8px 0',zIndex:0}}>
-                    {[0,1,2,3,4].map(i=><div key={i} style={{width:'clamp(4px,0.9vw,10px)',height:'clamp(4px,0.9vw,10px)',borderRadius:'50%',background:'rgba(179,136,255,0.25)',border:'1px solid rgba(179,136,255,0.4)'}}/>)}
-                    <div style={{fontSize:'clamp(4px,0.55vw,7px)',color:'rgba(179,136,255,0.7)',fontWeight:800,writingMode:'vertical-rl',letterSpacing:'.1em'}}>SAKE EXP</div>
-                  </div>
-
-                  {/* CAVA — izquierda */}
-                  <div style={{position:'absolute',left:'2%',top:'39%',width:'9%',height:'9%',background:'rgba(255,181,71,0.06)',border:'1.5px solid rgba(255,181,71,0.25)',borderRadius:8,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:1,zIndex:0}}>
-                    <div style={{fontSize:'clamp(7px,1vw,13px)'}}>🍷</div>
-                    <div style={{fontSize:'clamp(5px,0.7vw,9px)',color:'rgba(255,181,71,0.75)',fontWeight:800,textTransform:'uppercase'}}>Cava</div>
-                  </div>
-
-                  {/* MESA APOYO */}
-                  <div style={{position:'absolute',left:'27%',top:'44%',width:'10%',height:'4.5%',background:'rgba(255,255,255,0.04)',border:'1px dashed rgba(255,255,255,0.18)',borderRadius:6,display:'flex',alignItems:'center',justifyContent:'center',zIndex:0}}>
-                    <div style={{fontSize:'clamp(4px,0.6vw,8px)',color:'rgba(255,255,255,0.35)',fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em'}}>Mesa apoyo</div>
-                  </div>
-
-                  {/* BARRA SUSHI — counter con asientos numerados */}
-                  <div style={{position:'absolute',left:'34%',top:'24.5%',width:'33%',height:'2.4%',display:'flex',gap:'1.4%',alignItems:'center',justifyContent:'center',zIndex:0}}>
-                    {[1,2,3,4,5,6,7,8,9,10].map(n=>(
-                      <div key={n} style={{flex:1,aspectRatio:'1',maxWidth:14,borderRadius:'50%',background:'rgba(68,139,255,0.18)',border:'1px solid rgba(68,139,255,0.45)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:'clamp(3px,0.55vw,7px)',color:'rgba(120,170,255,0.9)',fontWeight:900}}>{n}</div>
-                    ))}
-                  </div>
-
-                  {/* TORRE BAR — torre central + banquetas */}
-                  <div style={{position:'absolute',left:'80%',top:'70%',width:'8%',height:'14%',background:'linear-gradient(135deg,rgba(155,114,255,0.18),rgba(155,114,255,0.06))',border:'1.5px solid rgba(155,114,255,0.45)',borderRadius:8,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',zIndex:0}}>
-                    <div style={{fontSize:'clamp(8px,1.3vw,16px)'}}>🍸</div>
-                    <div style={{fontSize:'clamp(4px,0.55vw,7px)',color:'rgba(155,114,255,0.9)',fontWeight:900,textTransform:'uppercase',letterSpacing:'.08em'}}>Torre</div>
-                  </div>
-
-                  {/* VENTANAL — línea de ventana inferior */}
-                  <div style={{position:'absolute',left:'2%',bottom:'2.2%',width:'96%',height:2,background:'repeating-linear-gradient(90deg,rgba(34,211,238,0.3) 0 14px,transparent 14px 22px)',zIndex:0}}/>
-                  <div style={{position:'absolute',left:'4%',bottom:'3%',fontSize:'clamp(4px,0.6vw,8px)',color:'rgba(34,211,238,0.35)',fontWeight:700,letterSpacing:'.1em'}}>VENTANAL</div>
-
-                  {/* ENTRADA */}
-                  <div style={{position:'absolute',top:'1%',left:'40%',display:'flex',alignItems:'center',gap:3,zIndex:0}}>
-                    <div style={{width:'clamp(16px,2.5vw,32px)',height:1,background:'rgba(255,255,255,0.12)'}}/>
-                    <div style={{fontSize:'clamp(5px,0.65vw,8px)',color:'rgba(255,255,255,0.2)',fontWeight:700}}>↑ ACCESO</div>
-                    <div style={{width:'clamp(16px,2.5vw,32px)',height:1,background:'rgba(255,255,255,0.12)'}}/>
-                  </div>
-
-                  {/* Mesas */}
-                  {(() => {
-                    const meseroActual = miNombre;
-                    const privilegiado = accesoSalon;
-                    return Object.entries(PLANTA_OMM).map(([key,mesa])=>{
-                      const est = mesasEstado.find((m:any)=>String(m.name)===String(mesa.num));
-                      const estado    = est?.estado || 'libre';
-                      const libre     = !est || estado==='libre';
-                      const asignada  = estado==='asignada';   // 🟢 sentada — esperando mesero
-                      const ocupada   = estado==='ocupada';
-                      const bloqueada = estado==='bloqueada';
-                      const enDisplay = displayTables.find((t:any)=>String(t.num)===String(mesa.num));
-                      // ¿la mesa es de este mesero, o se la compartieron?
-                      const compartida = Array.isArray(est?.meseros_compartidos) && est.meseros_compartidos.includes(meseroActual);
-                      const meseroDeMesa = est?.mesero_nombre || '';
-                      // Maître asigna mesa + mesero: mía / pool (libre para tomar) / de otro
-                      const asignadaMia    = asignada && (meseroDeMesa===meseroActual || compartida);
-                      const asignadaPool   = asignada && !meseroDeMesa;
-                      const asignadaDeOtro = asignada && !!meseroDeMesa && meseroDeMesa!==meseroActual && !compartida;
-                      const esMia = (ocupada || asignada) && (!meseroDeMesa || meseroDeMesa===meseroActual || compartida);
-                      const puedeEntrar = esMia || privilegiado;
-                      // Color por mesero (cada mesero tiene su HEX en profiles.color):
-                      //   asignada/ocupada con mesero conocido → color del mesero
-                      //   asignadaMia → mi propio color
-                      //   pool (asignada sin mesero) → verde "tomar"
-                      //   libre → gris
-                      //   bloqueada → oscuro
-                      const colorMesero = colorDeMesero(meseroDeMesa || (asignadaMia ? miNombre : ''));
-                      const col = bloqueada ? '#404040'
-                        : asignadaPool ? '#3dba6f'                 // verde · libre para tomar
-                        : asignadaMia ? (profile?.color || '#3dba6f')
-                        : asignadaDeOtro ? (privilegiado ? colorMesero : '#e05050')
-                        : ocupada ? (puedeEntrar ? colorMesero : '#e05050')
-                        : '#5a6472';
-                      return (
-                        <div key={key}
-                          onClick={()=>{
-                            if (bloqueada) { setMesaDesbloquear(est); }
-                            else if (asignada) {
-                              if (asignadaDeOtro && !privilegiado) { showToast(`🔒 Mesa ${mesa.num} asignada a ${meseroDeMesa}`); return; }
-                              tomarMesaAsignada(mesa, est);
-                            }
-                            else if (libre) { setFormAbrirMesa({mesa:{...mesa,name:String(mesa.num)},pax:mesa.cap,cliente:'',telefono:'',email:'',vip:false}); }
-                            else if (ocupada && enDisplay) {
-                              if (!puedeEntrar) {
-                                showToast(`🔒 Mesa ${mesa.num} la atiende ${est?.mesero_nombre} — pídele compartir o llama a un capitán`);
-                                return;
-                              }
-                              setSelectedTableId(enDisplay.id); setShowMapaMesas(false);
-                            }
-                          }}
-                          style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w}%`,height:`${mesa.h}%`,
-                            borderRadius:mesa.shape==='round'?'50%':12,
-                            background:`radial-gradient(circle at 50% 35%, ${col}26, ${col}0d)`,
-                            border:`2px solid ${col}75`,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-                            transition:'all .18s cubic-bezier(.34,1.4,.64,1)',zIndex:2,
-                            boxShadow:asignada?`0 0 16px ${col}80, inset 0 0 12px ${col}30`:`0 2px 10px rgba(0,0,0,0.4), inset 0 1px 0 ${col}25`}}
-                          onMouseEnter={e=>{const d=e.currentTarget as HTMLDivElement;d.style.transform='scale(1.06)';d.style.boxShadow=`0 0 20px ${col}80, inset 0 0 14px ${col}30`;}}
-                          onMouseLeave={e=>{const d=e.currentTarget as HTMLDivElement;d.style.transform='scale(1)';d.style.boxShadow=asignada?`0 0 16px ${col}80, inset 0 0 12px ${col}30`:`0 2px 10px rgba(0,0,0,0.4), inset 0 1px 0 ${col}25`;}}>
-                          <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(8px,1.2vw,15px)',fontWeight:900,color:'#fff',lineHeight:1,textShadow:`0 1px 6px ${col}`}}>M{mesa.num}</div>
-                          {asignada
-                            ? <div style={{fontSize:'clamp(4px,0.65vw,8px)',color:col,fontWeight:700,textAlign:'center',padding:'0 1px',lineHeight:1.1,marginTop:1}}>{est?.cliente_nombre?String(est.cliente_nombre).split(' ')[0]:'Sentada'}</div>
-                            : <div style={{fontSize:'clamp(4px,0.62vw,8px)',color:col,fontWeight:700,marginTop:1,background:`${col}22`,padding:'0 5px',borderRadius:8}}>{mesa.cap}p</div>}
-                          {asignada&&<div style={{position:'absolute',top:2,right:2,width:6,height:6,borderRadius:'50%',background:'#3dba6f',boxShadow:'0 0 6px #3dba6f'}}/>}
-                          {ocupada&&<div style={{position:'absolute',top:2,right:2,width:5,height:5,borderRadius:'50%',background:col}}/>}
-                        </div>
-                      );
-                    });
-                  })()}
-
-                  <div style={{position:'absolute',bottom:'1%',right:'2%',fontSize:'clamp(5px,0.65vw,8px)',color:'rgba(255,255,255,0.1)',fontWeight:700}}>OMM · Bogotá</div>
-                </div>
-              </div>
-            </div>
+            {/* ── PLANO SVG · mismo que Reserve/Sala · realtime ── */}
+            <PlanoPOSSala
+              mesasEstado={mesasEstado}
+              restauranteId={restauranteId}
+              miNombre={miNombre}
+              accesoSalon={accesoSalon}
+              profile={profile}
+              colorDeMesero={colorDeMesero}
+              displayTables={displayTables}
+              onLibre={(mesa:any)=>setFormAbrirMesa({mesa:{...mesa,name:String(mesa.name)},pax:mesa.capacidad||4,cliente:'',telefono:'',email:'',vip:!!mesa.vip})}
+              onAsignada={(mesa:any,est:any)=>tomarMesaAsignada({num:Number(mesa.name),zona:mesa.zona,shape:mesa.shape,cap:mesa.capacidad,x:mesa.posicion_x,y:mesa.posicion_y,w:0,h:0}, est)}
+              onOcupada={(enDisplay:any)=>{ setSelectedTableId(enDisplay.id); setShowMapaMesas(false); }}
+              onBloqueada={(est:any)=>setMesaDesbloquear(est)}
+              showToast={showToast}
+            />
           </div>
         </div>
       )}
@@ -6884,3 +6756,157 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 };
 
 export default ServiceOSModule;
+
+// ═════════════════════════════════════════════════════════════════════
+// PLANO POS · SALA — mismo SVG que Reserve/Sala, con la lógica POS
+// Realtime: lee `mesasEstado` (que se refresca por subscription a tables).
+// Color por mesero, libre/asignada/ocupada/bloqueada, click contextual.
+// ═════════════════════════════════════════════════════════════════════
+function PlanoPOSSala({ mesasEstado, restauranteId, miNombre, accesoSalon, profile, colorDeMesero, displayTables, onLibre, onAsignada, onOcupada, onBloqueada, showToast }:any) {
+  const conf = ZONAS_POR_RESTAURANTE[restauranteId];
+  const zonas = conf?.zonas || {};
+  const orden = conf?.orden || [];
+
+  // Paleta neon suave (igual que Sala) — pero el borde toma el color del mesero
+  const NEON = {
+    bgOuter:'#0e0e18', bgInner:'#13131f',
+    grid:'rgba(120,120,180,0.05)',
+    libreFill:'#162621', libreStroke:'#3DBE8B', libreText:'#D8F4E5',
+    reservadaFill:'#241B10', reservadaText:'#F4E2C5',
+    ocupadaFill:'#241218', ocupadaText:'#F4D0DC',
+    bloqueadaFill:'#1d1d28', bloqueadaStroke:'#5C6470', bloqueadaText:'#9CA3AF',
+    vip:'#D4AF3D',
+  };
+
+  const visibles = (mesasEstado||[]).filter((m:any)=>m.activa!==false && m.posicion_x!=null && m.posicion_y!=null);
+
+  return (
+    <div style={{flex:1,overflow:'auto',padding:16,background:NEON.bgOuter}}>
+      <svg viewBox={`0 0 ${VW_PLANO} ${VH_PLANO}`} width="100%"
+        style={{display:'block',background:`radial-gradient(circle at 50% 30%, #1a1a2a 0%, ${NEON.bgInner} 70%)`,borderRadius:14,boxShadow:'inset 0 0 60px rgba(0,0,0,0.6)'}}>
+        <defs>
+          <pattern id="posGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke={NEON.grid} strokeWidth="1"/>
+          </pattern>
+        </defs>
+        <rect x={0} y={0} width={VW_PLANO} height={VH_PLANO} fill="url(#posGrid)"/>
+
+        {/* Zonas */}
+        {orden.map(z => {
+          const zona = zonas[z]; if (!zona) return null;
+          return (
+            <g key={z}>
+              <rect x={zona.area.x} y={zona.area.y} width={zona.area.w} height={zona.area.h}
+                rx={14} fill={zona.chipBg} fillOpacity={0.04}
+                stroke={zona.chipBg} strokeWidth={1.2} strokeDasharray="8 6" strokeOpacity={0.4}/>
+              <g transform={`translate(${zona.area.x+12}, ${zona.area.y+12})`}>
+                <rect width={zona.label.length*8.4+20} height={24} rx={4} fill="none" stroke={zona.chipBg} strokeWidth={1.2} strokeOpacity={0.7}/>
+                <text x={10} y={16} fill={zona.chipBg} fontSize={11} fontWeight={800}
+                  fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.18em" opacity={0.85}>
+                  {zona.label}
+                </text>
+              </g>
+            </g>
+          );
+        })}
+
+        {/* Mesas */}
+        {visibles.map((m:any) => {
+          const estado = m.estado || 'libre';
+          const libre = estado==='libre';
+          const asignada = estado==='asignada';
+          const ocupada = estado==='ocupada';
+          const bloqueada = estado==='bloqueada';
+          const compartida = Array.isArray(m.meseros_compartidos) && m.meseros_compartidos.includes(miNombre);
+          const meseroDeMesa = m.mesero_nombre || '';
+          const asignadaMia = asignada && (meseroDeMesa===miNombre || compartida);
+          const asignadaPool = asignada && !meseroDeMesa;
+          const asignadaDeOtro = asignada && !!meseroDeMesa && meseroDeMesa!==miNombre && !compartida;
+          const esMia = (ocupada || asignada) && (!meseroDeMesa || meseroDeMesa===miNombre || compartida);
+          const puedeEntrar = esMia || accesoSalon;
+          const colorMesero = colorDeMesero(meseroDeMesa || (asignadaMia ? miNombre : ''));
+          const stroke = bloqueada ? NEON.bloqueadaStroke
+            : asignadaPool ? '#3DBE8B'
+            : asignadaMia ? (profile?.color || '#3DBE8B')
+            : asignadaDeOtro ? (accesoSalon ? colorMesero : '#C04464')
+            : ocupada ? (puedeEntrar ? colorMesero : '#C04464')
+            : NEON.libreStroke;
+          const fill = bloqueada ? NEON.bloqueadaFill
+            : ocupada ? NEON.ocupadaFill
+            : asignada ? NEON.reservadaFill
+            : NEON.libreFill;
+          const text = bloqueada ? NEON.bloqueadaText
+            : ocupada ? NEON.ocupadaText
+            : asignada ? NEON.reservadaText
+            : NEON.libreText;
+          const { w, h } = sizeForMesa({ zona:m.zona||'', capacidad:m.capacidad||m.seats||4, name:m.name });
+          const isRound = (m.shape||'round')==='round' || (m.zona||'').startsWith('Barra');
+          const cx = m.posicion_x, cy = m.posicion_y;
+          const enDisplay = (displayTables||[]).find((t:any)=>String(t.num)===String(m.name));
+
+          const click = () => {
+            if (bloqueada) onBloqueada(m);
+            else if (asignada) {
+              if (asignadaDeOtro && !accesoSalon) { showToast(`🔒 Mesa ${m.name} asignada a ${meseroDeMesa}`); return; }
+              onAsignada(m, m);
+            }
+            else if (libre) onLibre(m);
+            else if (ocupada && enDisplay) {
+              if (!puedeEntrar) { showToast(`🔒 Mesa ${m.name} la atiende ${meseroDeMesa} — pídele compartir`); return; }
+              onOcupada(enDisplay);
+            }
+          };
+
+          return (
+            <g key={m.id} style={{cursor:'pointer'}} onClick={click}>
+              {isRound
+                ? <circle cx={cx} cy={cy} r={w/2} fill={fill} stroke={m.vip?NEON.vip:stroke} strokeWidth={m.vip?2.5:1.8}/>
+                : <rect x={cx-w/2} y={cy-h/2} width={w} height={h} rx={8} fill={fill} stroke={m.vip?NEON.vip:stroke} strokeWidth={m.vip?2.5:1.8}/>}
+
+              {/* Indicador VIP */}
+              {m.vip && (
+                <>
+                  <circle cx={cx-w/2+9} cy={cy-h/2+9} r={10} fill={NEON.bgInner} stroke={NEON.vip} strokeWidth={1.5}/>
+                  <text x={cx-w/2+9} y={cy-h/2+13} textAnchor="middle" fontSize={12} fontWeight={800} fill={NEON.vip}>★</text>
+                </>
+              )}
+
+              {/* Iniciales del mesero (esquina sup-der) cuando ocupada/asignada */}
+              {!libre && meseroDeMesa && (
+                <>
+                  <circle cx={cx+w/2-9} cy={cy-h/2+9} r={10} fill="#1a1a2e" stroke={stroke} strokeWidth={1.4}/>
+                  <text x={cx+w/2-9} y={cy-h/2+13} textAnchor="middle" fontSize={9} fontWeight={800} fill="#fff">
+                    {meseroDeMesa.split(' ').slice(0,2).map((s:string)=>s[0]).join('').toUpperCase()}
+                  </text>
+                </>
+              )}
+
+              {/* Punto verde si la mesa está asignada esperando ser tomada */}
+              {asignadaPool && (
+                <circle cx={cx+w/2-6} cy={cy+h/2-6} r={5} fill="#3DBE8B">
+                  <animate attributeName="opacity" values="0.4;1;0.4" dur="1.4s" repeatCount="indefinite"/>
+                </circle>
+              )}
+
+              <text x={cx} y={cy-2} fill={text} fontSize={14} fontWeight={900} textAnchor="middle"
+                fontFamily="'Syne', serif" pointerEvents="none">M{m.name}</text>
+              <text x={cx} y={cy+12} fill={text} fontSize={9} fontWeight={700} textAnchor="middle" opacity={0.9}
+                fontFamily="'IBM Plex Mono', monospace" pointerEvents="none">
+                {(asignada||ocupada) && m.cliente_nombre
+                  ? String(m.cliente_nombre).split(' ')[0].slice(0,9).toUpperCase()
+                  : `${m.capacidad||m.seats||4}P`}
+              </text>
+            </g>
+          );
+        })}
+
+        {visibles.length===0 && (
+          <text x={VW_PLANO/2} y={VH_PLANO/2} textAnchor="middle" fill="#666" fontSize={16}
+            fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.2em">
+            SIN PLANO CARGADO · CONFIGURAR DESDE RESERVE → EDITOR DE PLANTA
+          </text>
+        )}
+      </svg>
+    </div>
+  );
+}
