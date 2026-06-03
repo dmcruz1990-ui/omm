@@ -95,6 +95,32 @@ export default function ReserveModule() {
   const [now, setNow] = useState(Date.now());
   const [franjaModalOpen, setFranjaModalOpen] = useState(false);
   const [franjasBloqueadas, setFranjasBloqueadas] = useState<any[]>([]);
+  // Modal "asignar mesa" tiene dos pestañas: ficha del cliente + selector de mesa.
+  const [modalTab, setModalTab] = useState<'info'|'mesa'>('info');
+  const [asignandoInfo, setAsignandoInfo] = useState<any>(null);
+  useEffect(() => {
+    setModalTab('info');
+    setAsignandoInfo(null);
+    if (!asignandoMesa) return;
+    // Cargar datos del CRM cuando se abre el modal — sin bloquear el render.
+    const tel = String((asignandoMesa as any).cliente_telefono || '').trim();
+    if (!tel) { setAsignandoInfo({ noTel:true }); return; }
+    (async () => {
+      const [c1, c2, encUlt, encExtrema] = await Promise.all([
+        supabase.from('customers').select('id,name,email,vip_status,total_visits,total_spent,promedio_ticket,score,alergias,preferencias,ultima_visita').eq('phone', tel).limit(1).maybeSingle(),
+        supabase.from('nexum_clientes_ohyeah').select('id,nombre,nivel,visitas,preferencias,restricciones,notas').eq('telefono', tel).limit(1).maybeSingle(),
+        supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_telefono', tel).order('created_at',{ascending:false}).limit(3),
+        supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_telefono', tel).or('estrellas.eq.1,estrellas.eq.5').order('created_at',{ascending:false}).limit(1).maybeSingle(),
+      ]);
+      const base = c1.data || (c2.data ? { name:c2.data.nombre, total_visits:c2.data.visitas, vip_status:String(c2.data.nivel||'').toUpperCase()==='VIP', alergias:c2.data.restricciones, preferencias:c2.data.preferencias, nivel:c2.data.nivel } : null);
+      const ultimas3 = (encUlt.data||[]).map((e:any)=>Math.round(e.estrellas||0)).filter((n:number)=>n>0);
+      setAsignandoInfo({
+        base,
+        ultimas3,
+        comentarioRelevante: encExtrema.data ? { estrellas: encExtrema.data.estrellas, texto: encExtrema.data.comentario||'' } : null,
+      });
+    })();
+  }, [asignandoMesa]);
   useEffect(()=>{ const t=setInterval(()=>setNow(Date.now()),30000); return ()=>clearInterval(t); },[]);
   const [form, setForm]         = useState<any>({
     cliente_nombre:'',cliente_email:'',cliente_telefono:'',
@@ -606,13 +632,105 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                   {(r.cliente_nombre||'?').charAt(0).toUpperCase()}
                 </div>
                 <div style={{flex:1}}>
-                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:900}}>Asignar mesa</div>
-                  <div style={{fontSize:11,color:S.t2}}>{r.cliente_nombre} · <span style={{color:S.blue,fontWeight:700}}>{pax} {pax===1?'persona':'personas'}</span> · {r.hora}</div>
+                  <div style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:900}}>{r.cliente_nombre}</div>
+                  <div style={{fontSize:11,color:S.t2}}>{r.hora} · <span style={{color:S.blue,fontWeight:700}}>{pax} {pax===1?'persona':'personas'}</span>{r.mesa_num?` · M${r.mesa_num}`:''}</div>
                 </div>
                 <button onClick={()=>setAsignandoMesa(null)} style={{width:30,height:30,borderRadius:9,border:`1px solid ${S.border2}`,background:'transparent',color:S.t3,cursor:'pointer',fontSize:14}}>✕</button>
               </div>
-              {/* Cuerpo: mesas por zona */}
+              {/* Pestañas: Info cliente / Asignar mesa */}
+              <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg3}}>
+                {([{id:'info',l:'👤 Ficha del cliente'},{id:'mesa',l:'🗺️ Asignar mesa'}] as const).map(t=>(
+                  <button key={t.id} onClick={()=>setModalTab(t.id)}
+                    style={{flex:1,padding:'12px 10px',background:'transparent',border:'none',borderBottom:`2px solid ${modalTab===t.id?S.purple:'transparent'}`,color:modalTab===t.id?S.purple:S.t3,fontSize:12,fontWeight:800,cursor:'pointer',transition:'all .15s'}}>
+                    {t.l}
+                  </button>
+                ))}
+              </div>
+              {/* Cuerpo */}
               <div style={{flex:1,overflowY:'auto',padding:'16px 22px'}}>
+                {modalTab==='info' && (() => {
+                  const info = asignandoInfo;
+                  const base = info?.base;
+                  return (
+                    <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                      {/* Datos de la reserva */}
+                      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:8}}>
+                        <InfoChip label="Hora"   v={(r.hora||'').slice(0,5)} c={S.gold}/>
+                        <InfoChip label="Pax"    v={String(pax)} c={S.blue}/>
+                        <InfoChip label="Mesa"   v={r.mesa_num?`M${r.mesa_num}`:'Sin'} c={r.mesa_num?S.green:S.red}/>
+                      </div>
+                      {r.ocasion && r.ocasion!=='Sin ocasión especial' && (
+                        <div style={{background:`${S.purple}10`,border:`1px solid ${S.purple}40`,borderRadius:10,padding:'10px 14px',fontSize:12,color:S.purple,fontWeight:700}}>
+                          🎉 Ocasión especial: <b>{r.ocasion}</b>
+                        </div>
+                      )}
+                      {r.notas && (
+                        <div style={{background:S.bg3,border:`1px solid ${S.border}`,borderRadius:10,padding:'10px 14px'}}>
+                          <div style={{fontSize:9,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:4}}>Notas de la reserva</div>
+                          <div style={{fontSize:12,color:S.t1,lineHeight:1.5}}>{r.notas}</div>
+                        </div>
+                      )}
+                      {/* Contacto */}
+                      <div style={{background:S.bg3,border:`1px solid ${S.border}`,borderRadius:10,padding:'10px 14px',display:'flex',flexDirection:'column',gap:6}}>
+                        <div style={{fontSize:9,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em'}}>Contacto</div>
+                        {r.cliente_telefono && <div style={{fontSize:12,color:S.t1}}>📱 {r.cliente_telefono}</div>}
+                        {r.cliente_email && <div style={{fontSize:12,color:S.t1}}>✉ {r.cliente_email}</div>}
+                        {r.origen==='ohyeah' && <span style={{alignSelf:'flex-start',fontSize:10,color:'#FFE600',background:'rgba(255,230,0,0.12)',border:'1px solid rgba(255,230,0,0.3)',padding:'2px 8px',borderRadius:8,fontWeight:700}}>🦉 Reserva Oh Yeah</span>}
+                      </div>
+                      {/* CRM */}
+                      {!info && <div style={{textAlign:'center',color:S.t3,fontSize:11,padding:10}}>Cargando ficha CRM…</div>}
+                      {info?.noTel && <div style={{textAlign:'center',color:S.t3,fontSize:11,padding:10}}>Sin teléfono para buscar en CRM</div>}
+                      {info && !info.noTel && !base && (
+                        <div style={{background:`${S.purple}10`,border:`2px solid ${S.purple}`,borderRadius:12,padding:'12px 14px',display:'flex',alignItems:'center',gap:10}}>
+                          <span style={{fontSize:24}}>🆕</span>
+                          <div>
+                            <div style={{fontSize:13,fontWeight:900,color:S.purple,textTransform:'uppercase',letterSpacing:'.04em'}}>Cliente nuevo</div>
+                            <div style={{fontSize:11,color:S.t2,marginTop:2}}>Sin historial · primera visita registrada</div>
+                          </div>
+                        </div>
+                      )}
+                      {base && (
+                        <div style={{background:`${S.green}0a`,border:`1px solid ${S.green}33`,borderRadius:12,padding:'12px 14px',display:'flex',flexDirection:'column',gap:8}}>
+                          <div style={{display:'flex',alignItems:'center',gap:10}}>
+                            <span style={{fontSize:22}}>{base.vip_status?'⭐':'✓'}</span>
+                            <div style={{flex:1}}>
+                              <div style={{fontSize:13,fontWeight:800,color:S.green}}>Cliente conocido{base.vip_status?' · VIP':''}{base.nivel?` · ${base.nivel}`:''}</div>
+                              <div style={{fontSize:11,color:S.t3}}>{base.total_visits||0} visita{(base.total_visits||0)===1?'':'s'}{base.ultima_visita?` · última ${new Date(base.ultima_visita).toLocaleDateString('es-CO',{day:'numeric',month:'short'})}`:''}</div>
+                            </div>
+                          </div>
+                          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                            {base.promedio_ticket > 0 && <span style={{fontSize:10,background:`${S.blue}1f`,color:S.blue,padding:'3px 9px',borderRadius:8,fontWeight:800}}>🎟️ Ticket prom. ${Number(base.promedio_ticket).toLocaleString('es-CO')}</span>}
+                            {info.ultimas3?.length > 0 && (
+                              <span style={{fontSize:10,background:`${S.gold}1f`,color:S.gold,padding:'3px 9px',borderRadius:8,fontWeight:800}}>
+                                ⭐ Últimas: {info.ultimas3.map((s:number)=>'★'.repeat(s)).join(' · ')}
+                              </span>
+                            )}
+                            {base.alergias && <span style={{fontSize:10,background:`${S.red}1f`,color:S.red,padding:'3px 9px',borderRadius:8,fontWeight:800}}>🚫 Alergias: {Array.isArray(base.alergias)?base.alergias.join(', '):base.alergias}</span>}
+                            {base.preferencias && <span style={{fontSize:10,background:`${S.purple}1f`,color:S.purple,padding:'3px 9px',borderRadius:8,fontWeight:800}}>💜 {Array.isArray(base.preferencias)?base.preferencias.join(', '):base.preferencias}</span>}
+                          </div>
+                          {info.comentarioRelevante && (
+                            <div style={{fontSize:11,color:info.comentarioRelevante.estrellas===5?S.green:S.red,fontStyle:'italic',borderLeft:`3px solid ${info.comentarioRelevante.estrellas===5?S.green:S.red}`,paddingLeft:10}}>
+                              {info.comentarioRelevante.estrellas===5?'💚':'❤️‍🩹'} {'★'.repeat(info.comentarioRelevante.estrellas)} — "{info.comentarioRelevante.texto}"
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      {/* CTAs */}
+                      <div style={{display:'flex',gap:8,marginTop:4}}>
+                        <button onClick={()=>setModalTab('mesa')}
+                          style={{flex:1,padding:'12px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.purple},${S.blue})`,color:'#fff',fontSize:13,fontWeight:800,cursor:'pointer'}}>
+                          🗺️ Asignar mesa →
+                        </button>
+                        <button onClick={()=>{ setAsignandoMesa(null); setTab('home'); }}
+                          style={{padding:'12px 16px',borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t2,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                          Ver en Sala
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {modalTab==='mesa' && (<>
                 {pax > MAX_PAX_RESERVA ? (
                   <div style={{textAlign:'center',padding:'30px 10px'}}>
                     <div style={{fontSize:40,marginBottom:10}}>🎉</div>
@@ -753,6 +871,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                   ) : null;
                 })()}
                 </>)}
+                </>)}
               </div>
             </div>
           </div>
@@ -828,9 +947,9 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         {([
           {id:'home',l:'✦ Sala'},
           {id:'lista',l:'📋 Lista completa'},
-          {id:'dashboard',l:'📊 Dashboard'},
-          {id:'editor',l:'⚙️ Editor de planta'},
           {id:'nueva',l:'+ Nueva reserva'},
+          {id:'editor',l:'⚙️ Editor de planta'},
+          {id:'dashboard',l:'📊 Dashboard'},
         ] as const).map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
             style={{padding:'11px 16px',background:'none',border:'none',borderBottom:`2px solid ${tab===t.id?S.purple:'transparent'}`,color:tab===t.id?S.purple:S.t3,fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
@@ -1892,6 +2011,15 @@ function FooterStat({ label, v, c }:{ label:string; v:number|string; c:string })
     <div style={{display:'flex',flexDirection:'column',gap:2}}>
       <span style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:9,color:'#6E6E84',letterSpacing:'.18em',textTransform:'uppercase'}}>{label}</span>
       <span style={{fontFamily:"'Syne', serif",fontSize:22,fontWeight:700,color:c,lineHeight:1}}>{v}</span>
+    </div>
+  );
+}
+
+function InfoChip({ label, v, c }:{ label:string; v:string; c:string }) {
+  return (
+    <div style={{padding:'10px 12px',borderRadius:10,border:`1px solid ${c}33`,background:`${c}10`,textAlign:'center'}}>
+      <div style={{fontSize:9,color:c,fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em'}}>{label}</div>
+      <div style={{fontFamily:"'Syne',serif",fontSize:17,fontWeight:900,color:c,lineHeight:1.1,marginTop:2}}>{v}</div>
     </div>
   );
 }
