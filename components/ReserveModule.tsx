@@ -67,7 +67,7 @@ const ESTADOS:any = {
 };
 const OCASIONES = ['Cumpleaños','Aniversario','Negocio','Primera cita','Graduación','Despedida','Celebración','Sin ocasión especial'];
 
-type Tab = 'home'|'lista'|'nueva'|'editor';
+type Tab = 'home'|'lista'|'dashboard'|'nueva'|'editor';
 
 interface Reserva {
   id:number;cliente_nombre:string;cliente_email?:string;cliente_telefono?:string;
@@ -261,6 +261,14 @@ const guardar = async () => {
       }
     }
     setSugerenciasHora([]);
+    // Bloqueo por franjas: si la hora cae dentro de una franja bloqueada, avisar
+    const horaForm = (form.hora||'').slice(0,5);
+    const franjaBloqueada = (franjasBloqueadas||[]).find((f:any) =>
+      form.fecha === fechaFiltro && horaForm >= f.hora_desde.slice(0,5) && horaForm < f.hora_hasta.slice(0,5)
+    );
+    if (franjaBloqueada) {
+      if (!confirm(`🚫 La hora ${horaForm} está en una franja bloqueada (${franjaBloqueada.hora_desde.slice(0,5)}–${franjaBloqueada.hora_hasta.slice(0,5)}${franjaBloqueada.motivo?' · '+franjaBloqueada.motivo:''}). ¿Crear igual? (las reservas manuales pueden sobreescribir el bloqueo)`)) return;
+    }
     setSaving(true);
     const payload = {...form,restaurante_id: restauranteIdActivo,estado:'confirmada',mesa_num:form.mesa_num||null};
     if (selected?.id) {
@@ -630,53 +638,55 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                     {meseroAsignar ? `La mesa aparecerá en el home de ${meseroAsignar}.` : 'Cualquier mesero podrá tomarla desde su home.'}
                   </div>
                 </div>
-                <div style={{fontSize:11,color:S.t3,marginBottom:14,display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
-                  <span><strong style={{color:S.t1}}>{libres.length}</strong> libre{libres.length===1?'':'s'}</span>
-                  <span style={{color:S.green}}>● apta para {pax}p</span>
-                  <span style={{color:S.gold}}>⭐ VIP</span>
-                  <span style={{color:'#FFB547'}}>● reservada otra hora</span>
-                  <span style={{color:S.red}}>● ocupada/sentada</span>
-                  {clienteVip && <span style={{color:S.gold,fontWeight:700,marginLeft:'auto'}}>Cliente VIP — prioriza las ⭐</span>}
-                </div>
+                {(() => {
+                  // Solo mostramos mesas disponibles (libres + aptas para el pax).
+                  // El arrastre desde el timeline al plano sigue funcionando para
+                  // forzar asignaciones (sobreescribir o resolver conflictos).
+                  const disponiblesPax = tablesList.filter((t:any) => {
+                    const libre = t.estado === 'libre' || !t.estado;
+                    const rg = rangoMesa(t.cap);
+                    return libre && pax >= rg.min && pax <= rg.max;
+                  });
+                  return (
+                    <div style={{fontSize:11,color:S.t3,marginBottom:14,display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
+                      <span><strong style={{color:S.green,fontSize:13}}>{disponiblesPax.length}</strong> {disponiblesPax.length===1?'mesa disponible':'mesas disponibles'} para {pax}p</span>
+                      <span style={{color:S.gold,marginLeft:8}}>⭐ VIP</span>
+                      {clienteVip && <span style={{color:S.gold,fontWeight:700,marginLeft:'auto'}}>Cliente VIP — prioriza las ⭐</span>}
+                      <span style={{flexBasis:'100%',fontSize:10,color:S.t3,marginTop:4}}>💡 Para forzar otra mesa, arrastrá la reserva desde el timeline al plano de Sala.</span>
+                    </div>
+                  );
+                })()}
 
-                {/* Mini-mapa visual del salón — sólo si hay coordenadas X/Y reales */}
+                {/* Mini-mapa visual del salón — sólo mesas disponibles */}
                 {tieneCoordsXY && (
                   <div style={{marginBottom:18, padding:12, background:S.bg3, borderRadius:12, border:`1px solid ${S.border}`}}>
-                    <div style={{fontSize:10,color:S.t2,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>🗺️ Plano del salón</div>
+                    <div style={{fontSize:10,color:S.t2,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>🗺️ Plano · solo mesas disponibles</div>
                     <div style={{position:'relative',width:'100%',paddingBottom:'52%',background:S.bg,borderRadius:10,border:`1px solid ${S.border}`,overflow:'hidden'}}>
-                      {tablesList.map((t:any) => {
-                        const rg = rangoMesa(t.cap);
-                        const apta = pax >= rg.min && pax <= rg.max;
+                      {tablesList.filter((t:any)=>{
                         const libre = t.estado === 'libre' || !t.estado;
-                        const ocupada = t.estado === 'ocupada' || t.estado === 'asignada' || t.estado === 'sentada';
-                        const reservadaOtra = t.estado === 'reservada' && t.conflicto;
-                        const col = ocupada ? S.red
-                          : reservadaOtra ? '#FFB547'
-                          : libre && t.vip ? S.gold
-                          : libre && apta ? S.green
-                          : libre ? S.t2 : S.t3;
-                        const seleccionable = libre && apta;
+                        const rg = rangoMesa(t.cap);
+                        return libre && pax >= rg.min && pax <= rg.max;
+                      }).map((t:any) => {
+                        const col = t.vip ? S.gold : S.green;
                         const xPos = typeof t.x === 'number' ? t.x : 50;
                         const yPos = typeof t.y === 'number' ? t.y : 50;
                         const wSize = typeof t.w === 'number' && t.w > 0 ? t.w : 9;
                         const hSize = typeof t.h === 'number' && t.h > 0 ? t.h : 9;
                         return (
-                          <button key={t.num} disabled={!seleccionable}
+                          <button key={t.num}
                             onClick={() => { asignarMesa(r.id, t.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
-                            title={`M${t.num} · ${t.cap}p · ${t.zona}${reservadaOtra && t.conflicto ? ` · Reservada ${t.conflicto.hora} (${t.conflicto.cliente_nombre})` : ''}`}
+                            title={`M${t.num} · ${t.cap}p · ${t.zona}`}
                             style={{
                               position:'absolute',
                               left: `${xPos}%`, top: `${yPos}%`,
                               width: `${wSize}%`, height: `${hSize}%`,
                               borderRadius: t.shape === 'round' ? '50%' : 8,
                               border: `2px solid ${col}`,
-                              background: `${col}${seleccionable ? '22' : '0d'}`,
-                              cursor: seleccionable ? 'pointer' : 'not-allowed',
-                              opacity: seleccionable ? 1 : 0.55,
+                              background: `${col}22`,
+                              cursor: 'pointer',
                               display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:1,
-                              transition:'all .15s',
-                              padding: 0,
-                              boxShadow: seleccionable && t.vip ? `0 0 10px ${S.gold}40` : 'none',
+                              transition:'all .15s',padding: 0,
+                              boxShadow: t.vip ? `0 0 10px ${S.gold}55` : 'none',
                             }}>
                             {t.vip && <span style={{position:'absolute',top:0,right:1,fontSize:8}}>⭐</span>}
                             <span style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(8px,1.1vw,12px)',fontWeight:900,color:col,lineHeight:1}}>{t.num}</span>
@@ -688,7 +698,13 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                   </div>
                 )}
                 {zonas.map((zona:any)=>{
-                  const delZona = tablesList.filter((t:any)=>t.zona===zona);
+                  const delZona = tablesList.filter((t:any)=>{
+                    if (t.zona !== zona) return false;
+                    const libre = t.estado === 'libre' || !t.estado;
+                    const rg = rangoMesa(t.cap);
+                    return libre && pax >= rg.min && pax <= rg.max;
+                  });
+                  if (delZona.length === 0) return null;
                   return (
                     <div key={zona} style={{marginBottom:18}}>
                       <div style={{fontSize:10,color:S.t2,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>
@@ -696,39 +712,24 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                       </div>
                       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(78px,1fr))',gap:8}}>
                         {delZona.map((t:any)=>{
-                          const libre = (t.estado === 'libre' || !t.estado);
-                          const reservadaOtra = t.estado === 'reservada' && t.conflicto;
-                          const ocupada = ['ocupada','asignada','sentada'].includes(t.estado);
                           const rg = rangoMesa(t.cap);
-                          const apta = libre && pax>=rg.min && pax<=rg.max;
-                          const motivo = pax<rg.min ? `mín ${rg.min}` : pax>rg.max ? `máx ${rg.max}` : '';
-                          const seleccionable = libre && apta;
-                          const col = ocupada ? S.red
-                            : reservadaOtra ? '#FFB547'
-                            : libre && t.vip ? S.gold
-                            : libre && apta ? S.green
-                            : libre ? S.t2 : S.t3;
+                          const col = t.vip ? S.gold : S.green;
                           return (
-                            <button key={t.num} disabled={!seleccionable}
+                            <button key={t.num}
                               onClick={()=>{ asignarMesa(r.id, t.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
-                              title={reservadaOtra && t.conflicto ? `Reservada por ${t.conflicto.cliente_nombre} a las ${t.conflicto.hora}` : ''}
                               style={{
                                 padding:'12px 6px',borderRadius:12,position:'relative',
-                                border:`2px solid ${seleccionable?col:`${col}40`}`,
-                                background:seleccionable?`${col}${t.vip?'1f':'12'}`:`${col}08`,
-                                cursor:seleccionable?'pointer':'not-allowed',opacity:seleccionable?1:0.55,
+                                border:`2px solid ${col}`,
+                                background:`${col}${t.vip?'1f':'12'}`,
+                                cursor:'pointer',
                                 display:'flex',flexDirection:'column',alignItems:'center',gap:2,transition:'all .15s',
-                                boxShadow: t.vip&&seleccionable ? `0 0 10px ${S.gold}40` : 'none',
+                                boxShadow: t.vip ? `0 0 10px ${S.gold}55` : 'none',
                               }}>
                               {t.vip && <span style={{position:'absolute',top:3,right:5,fontSize:11}}>⭐</span>}
                               <span style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:col}}>M{t.num}</span>
                               <span style={{fontSize:9,color:S.t2,fontWeight:600}}>{rg.min}-{rg.max} pers.</span>
                               <span style={{fontSize:8,color:col,fontWeight:700,textTransform:'uppercase'}}>
-                                {ocupada ? (t.estado==='ocupada'?'Ocupada':t.estado==='asignada'?'Sentada':'En uso')
-                                  : reservadaOtra ? `${t.conflicto.hora}`
-                                  : !apta ? `No apta · ${motivo}`
-                                  : t.vip ? (clienteVip ? 'VIP ⭐ ideal' : 'VIP · guárdala')
-                                  : 'Apta'}
+                                {t.vip ? (clienteVip ? 'VIP ⭐ ideal' : 'VIP') : 'Disponible'}
                               </span>
                             </button>
                           );
@@ -737,7 +738,20 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                     </div>
                   );
                 })}
-                {tablesList.length===0 && <div style={{textAlign:'center',color:S.t3,padding:30}}>No hay mesas configuradas</div>}
+                {(() => {
+                  const dispCount = tablesList.filter((t:any) => {
+                    const libre = t.estado === 'libre' || !t.estado;
+                    const rg = rangoMesa(t.cap);
+                    return libre && pax >= rg.min && pax <= rg.max;
+                  }).length;
+                  return dispCount === 0 ? (
+                    <div style={{textAlign:'center',color:S.t3,padding:30,background:`${S.red}08`,borderRadius:12,border:`1px dashed ${S.red}33`}}>
+                      <div style={{fontSize:30,marginBottom:6}}>🚫</div>
+                      <div style={{fontSize:13,fontWeight:700,color:S.red,marginBottom:4}}>No hay mesas disponibles para {pax}p</div>
+                      <div style={{fontSize:11,color:S.t3}}>Arrastrá la reserva desde el timeline al plano para forzar una asignación.</div>
+                    </div>
+                  ) : null;
+                })()}
                 </>)}
               </div>
             </div>
@@ -814,6 +828,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         {([
           {id:'home',l:'✦ Sala'},
           {id:'lista',l:'📋 Lista completa'},
+          {id:'dashboard',l:'📊 Dashboard'},
           {id:'editor',l:'⚙️ Editor de planta'},
           {id:'nueva',l:'+ Nueva reserva'},
         ] as const).map(t=>(
@@ -868,7 +883,6 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
           <div style={{padding:'16px 20px 12px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'baseline',gap:10}}>
             <span style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:10,color:S.gold,letterSpacing:'0.22em',textTransform:'uppercase'}}>{activas.length === 1 ? 'Reserva hoy' : 'Reservas hoy'}</span>
             <span style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,letterSpacing:'-0.02em'}}>{activas.length}</span>
-            <button onClick={()=>setTab('nueva')} style={{marginLeft:'auto',padding:'6px 12px',borderRadius:8,border:`1px solid ${S.gold}50`,background:`${S.gold}10`,color:S.gold,fontSize:11,fontWeight:700,cursor:'pointer'}}>+ Nueva</button>
           </div>
 
           <div style={{flex:1,overflowY:'auto',padding:'8px 16px 16px'}}>
@@ -1084,6 +1098,19 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         </div>
         );
       })()}
+
+      {/* ── DASHBOARD · vista 360° del team de reservas ── */}
+      {tab==='dashboard' && (
+        <DashboardReservas
+          reservas={reservas}
+          reservasHoy={reservasHoy}
+          mesas={mesas}
+          meserosLista={meserosLista}
+          franjasBloqueadas={franjasBloqueadas}
+          fechaFiltro={fechaFiltro}
+          S={S}
+        />
+      )}
 
       {/* ── EDITOR DE PLANTA · SVG con mismas zonas que Sala ── */}
       {tab==='editor' && (
@@ -1862,11 +1889,11 @@ function NavegadorFecha({ fecha, setFecha, totalReservas }:{ fecha:string; setFe
       <button onClick={()=>shiftDay(1)} title="Día siguiente"
         style={{width:30,height:30,borderRadius:8,border:'none',background:'rgba(255,255,255,0.06)',color:'#fff',cursor:'pointer',fontSize:16,fontWeight:800}}>›</button>
       {picker && (
-        <div style={{position:'absolute',top:'calc(100% + 6px)',left:0,zIndex:100,background:'#1a1a2e',border:'1px solid rgba(255,255,255,0.12)',borderRadius:10,padding:10,boxShadow:'0 12px 30px rgba(0,0,0,0.55)'}}>
+        <div style={{position:'absolute',top:'calc(100% + 6px)',left:0,zIndex:100,background:'linear-gradient(135deg, #2a1430 0%, #1f0d24 100%)',border:'1px solid rgba(216, 73, 158, 0.45)',borderRadius:10,padding:10,boxShadow:'0 12px 30px rgba(216, 73, 158, 0.25), 0 0 0 1px rgba(216,73,158,0.15)'}}>
           <input type="date" value={fecha} autoFocus
             onChange={e=>{ setFecha(e.target.value); setPicker(false); }}
             onBlur={()=>setTimeout(()=>setPicker(false),120)}
-            style={{background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:8,padding:'8px 12px',color:'#fff',fontSize:13,outline:'none',colorScheme:'dark'}}/>
+            style={{background:'rgba(216, 73, 158, 0.08)',border:'1px solid rgba(216, 73, 158, 0.3)',borderRadius:8,padding:'8px 12px',color:'#fff',fontSize:13,outline:'none',colorScheme:'dark',accentColor:'#D8499E'}}/>
         </div>
       )}
     </div>
@@ -1885,8 +1912,29 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, 
   const [bloqueaGoogle, setBloqueaGoogle] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
 
+  // Calcular duración total de la franja en formato Xh Ym (ej. 2h 30m)
+  const calcDuracion = (desde:string, hasta:string) => {
+    const [h1,m1] = desde.split(':').map(Number);
+    const [h2,m2] = hasta.split(':').map(Number);
+    const totalMin = (h2*60+m2) - (h1*60+m1);
+    if (totalMin <= 0) return '—';
+    const h = Math.floor(totalMin/60), m = totalMin%60;
+    return h>0 && m>0 ? `${h}h ${m}min` : h>0 ? `${h}h` : `${m}min`;
+  };
+  const duracion = calcDuracion(horaDesde, horaHasta);
+  const horasTotalesHoy = franjas.reduce((acc:number, f:any) => {
+    const [h1,m1] = f.hora_desde.split(':').map(Number);
+    const [h2,m2] = f.hora_hasta.split(':').map(Number);
+    return acc + Math.max(0, (h2*60+m2)-(h1*60+m1));
+  }, 0);
+
   const guardar = async () => {
     if (horaDesde >= horaHasta) { show('⚠️ La hora de inicio debe ser menor a la de fin'); return; }
+    // Detectar solapamientos con franjas existentes
+    const solapa = franjas.find((f:any) =>
+      !(horaHasta <= f.hora_desde.slice(0,5) || horaDesde >= f.hora_hasta.slice(0,5))
+    );
+    if (solapa && !confirm(`⚠️ Se solapa con la franja ${solapa.hora_desde.slice(0,5)}–${solapa.hora_hasta.slice(0,5)}. ¿Continuar?`)) return;
     setSaving(true);
     const { error } = await supabase.from('reservas_franjas_bloqueadas').insert({
       restaurante_id: restauranteId, fecha,
@@ -1896,7 +1944,7 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, 
     });
     setSaving(false);
     if (error) { show('✗ '+error.message); return; }
-    show('✓ Franja bloqueada');
+    show(`✓ ${duracion} bloqueados`);
     onChange();
     setMotivo('');
   };
@@ -1921,7 +1969,7 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, 
 
         <div style={{fontSize:10,color:S.gold,fontWeight:800,textTransform:'uppercase',letterSpacing:'.16em',marginTop:14}}>📅 {new Date(fecha+'T12:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
 
-        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginTop:12}}>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:10,marginTop:12,alignItems:'end'}}>
           <div>
             <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:4}}>DESDE</div>
             <input type="time" value={horaDesde} onChange={e=>setHoraDesde(e.target.value)}
@@ -1932,6 +1980,24 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, 
             <input type="time" value={horaHasta} onChange={e=>setHoraHasta(e.target.value)}
               style={{width:'100%',background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 12px',color:'#fff',fontSize:13,outline:'none',colorScheme:'dark'}}/>
           </div>
+          <div title="Duración de esta franja" style={{padding:'10px 14px',borderRadius:10,background:`${S.red}18`,border:`1px solid ${S.red}55`,textAlign:'center',minWidth:80}}>
+            <div style={{fontSize:9,color:S.red,fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em'}}>Total</div>
+            <div style={{fontFamily:"'Syne',serif",fontSize:15,fontWeight:900,color:S.red,lineHeight:1.1,marginTop:2}}>{duracion}</div>
+          </div>
+        </div>
+        {/* Atajos rápidos */}
+        <div style={{display:'flex',gap:5,marginTop:8,flexWrap:'wrap'}}>
+          {[
+            {l:'Almuerzo',d:'12:00',h:'15:00'},
+            {l:'Tarde',d:'15:00',h:'18:00'},
+            {l:'Cena',d:'19:00',h:'22:30'},
+            {l:'Día completo',d:'10:00',h:'23:30'},
+          ].map(p=>(
+            <button key={p.l} onClick={()=>{ setHoraDesde(p.d); setHoraHasta(p.h); }}
+              style={{padding:'4px 10px',borderRadius:7,border:`1px solid ${S.border2}`,background:'transparent',color:S.t3,fontSize:10,fontWeight:700,cursor:'pointer'}}>
+              {p.l}
+            </button>
+          ))}
         </div>
 
         <div style={{marginTop:12}}>
@@ -1959,22 +2025,285 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, 
         {/* Lista de franjas ya bloqueadas */}
         {franjas.length > 0 && (
           <div style={{marginTop:18,borderTop:`1px solid ${S.border}`,paddingTop:14}}>
-            <div style={{fontSize:10,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:8}}>Bloqueos activos hoy</div>
+            <div style={{display:'flex',alignItems:'baseline',gap:10,marginBottom:8}}>
+              <div style={{fontSize:10,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em'}}>Bloqueos activos hoy</div>
+              <div style={{marginLeft:'auto',fontSize:10,color:S.red,fontWeight:800}}>
+                Total bloqueado: <span style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:900}}>{Math.floor(horasTotalesHoy/60)}h {horasTotalesHoy%60}min</span>
+              </div>
+            </div>
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {franjas.map((f:any)=>(
-                <div key={f.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:`${S.red}10`,border:`1px solid ${S.red}33`,borderRadius:10}}>
-                  <span style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:800,color:S.red}}>{f.hora_desde.slice(0,5)} → {f.hora_hasta.slice(0,5)}</span>
-                  <span style={{fontSize:11,color:S.t2,flex:1}}>{f.motivo||'Sin motivo'}</span>
-                  <span style={{fontSize:9,color:S.t3,display:'flex',gap:4}}>
-                    {f.bloquea_oh_yeah && <span title="Bloquea Oh Yeah">🦉</span>}
-                    {f.bloquea_google && <span title="Bloquea Google">🔎</span>}
-                  </span>
-                  <button onClick={()=>eliminar(f.id)} style={{background:'transparent',border:'none',color:S.t3,cursor:'pointer',fontSize:14}}>🗑</button>
-                </div>
-              ))}
+              {franjas.map((f:any)=>{
+                const dur = calcDuracion(f.hora_desde.slice(0,5), f.hora_hasta.slice(0,5));
+                return (
+                  <div key={f.id} style={{display:'flex',alignItems:'center',gap:10,padding:'8px 12px',background:`${S.red}10`,border:`1px solid ${S.red}33`,borderRadius:10}}>
+                    <span style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:800,color:S.red}}>{f.hora_desde.slice(0,5)} → {f.hora_hasta.slice(0,5)}</span>
+                    <span style={{fontSize:10,color:S.red,fontWeight:700,background:`${S.red}22`,padding:'2px 7px',borderRadius:6}}>⏱ {dur}</span>
+                    <span style={{fontSize:11,color:S.t2,flex:1}}>{f.motivo||'Sin motivo'}</span>
+                    <span style={{fontSize:9,color:S.t3,display:'flex',gap:4}}>
+                      {f.bloquea_oh_yeah && <span title="Bloquea Oh Yeah">🦉</span>}
+                      {f.bloquea_google && <span title="Bloquea Google">🔎</span>}
+                    </span>
+                    <button onClick={()=>eliminar(f.id)} style={{background:'transparent',border:'none',color:S.t3,cursor:'pointer',fontSize:14}}>🗑</button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// DASHBOARD DE RESERVAS · vista 360° del team con datos reales
+// ═════════════════════════════════════════════════════════════════════
+function DashboardReservas({ reservas, reservasHoy, mesas, meserosLista, franjasBloqueadas, fechaFiltro, S }:{
+  reservas:any[]; reservasHoy:any[]; mesas:any[]; meserosLista:any[];
+  franjasBloqueadas:any[]; fechaFiltro:string; S:any;
+}) {
+  // ── Métricas globales del día ────────────────────────────────────
+  const activas = reservasHoy.filter((r:any) => !['cancelada'].includes(r.estado));
+  const sentadas = activas.filter((r:any)=>r.estado==='sentada').length;
+  const confirmadas = activas.filter((r:any)=>r.estado==='confirmada').length;
+  const completadas = activas.filter((r:any)=>r.estado==='completada').length;
+  const canceladas = reservasHoy.filter((r:any)=>r.estado==='cancelada').length;
+  const sinMesa = activas.filter((r:any)=>!r.mesa_num).length;
+  const paxTotal = activas.reduce((s:number,r:any)=>s+(r.pax||0), 0);
+  const paxPromedio = activas.length ? (paxTotal/activas.length).toFixed(1) : '0';
+  const ohYeahCnt = activas.filter((r:any)=>r.origen==='ohyeah').length;
+  const nexumCnt = activas.filter((r:any)=>r.origen!=='ohyeah').length;
+  const vipCnt = activas.filter((r:any)=>{
+    const tier = String(r.gourmand_level||'').toUpperCase();
+    return ['VIP','CONSAGRADO','ÉLITE','ELITE','GRAND GOURMAND','LA CREME'].includes(tier);
+  }).length;
+
+  // ── Distribución por hora ────────────────────────────────────────
+  const porHora: Record<string, number> = {};
+  activas.forEach((r:any) => {
+    const h = (r.hora||'').slice(0,2);
+    if (h) porHora[h] = (porHora[h]||0) + 1;
+  });
+  const horasOrden = Object.keys(porHora).sort();
+  const maxPorHora = Math.max(1, ...Object.values(porHora));
+
+  // ── Asignación por mesero ────────────────────────────────────────
+  // Cruzamos reservas asignadas con mesas en vivo para saber quién atiende qué
+  const statsPorMesero = meserosLista.map((ms:any) => {
+    const nombre = ms.nombre_completo || ms.full_name || '';
+    if (!nombre) return null;
+    // Mesas en vivo asignadas a este mesero
+    const susMesasEnVivo = mesas.filter((m:any) => m.mesero_nombre === nombre || (Array.isArray(m.meseros_compartidos) && m.meseros_compartidos.includes(nombre)));
+    const numerosMesa = new Set(susMesasEnVivo.map((m:any) => Number(m.name)));
+    // Reservas del día que caen en esas mesas
+    const susReservas = activas.filter((r:any) => r.mesa_num && numerosMesa.has(Number(r.mesa_num)));
+    const susPax = susReservas.reduce((s:number,r:any)=>s+(r.pax||0), 0);
+    const susSentadas = susReservas.filter((r:any)=>r.estado==='sentada').length;
+    return { nombre, color: ms.color || '#5a6472', mesasAtendidas: susMesasEnVivo.length, reservasAsignadas: susReservas.length, paxTotal: susPax, sentadas: susSentadas };
+  }).filter(Boolean).sort((a:any,b:any) => b.paxTotal - a.paxTotal);
+
+  // ── Tendencia de los últimos 7 días ──────────────────────────────
+  const semana: { fecha:string; total:number }[] = [];
+  for (let i=6; i>=0; i--) {
+    const d = new Date(fechaFiltro+'T12:00:00');
+    d.setDate(d.getDate()-i);
+    const k = d.toISOString().split('T')[0];
+    const count = reservas.filter((r:any)=>r.fecha===k).length;
+    semana.push({ fecha: k, total: count });
+  }
+  const maxSem = Math.max(1, ...semana.map(d=>d.total));
+
+  // ── Próximas reservas (siguientes 3 horas) ───────────────────────
+  const ahora = new Date();
+  const nowMin = ahora.getHours()*60 + ahora.getMinutes();
+  const proximas = activas.filter((r:any) => {
+    if (r.estado === 'sentada' || r.estado === 'completada') return false;
+    if (r.fecha !== new Date().toISOString().split('T')[0]) return false;
+    const [h,m] = (r.hora||'00:00').split(':').map(Number);
+    const rmin = h*60+m;
+    return rmin >= nowMin && rmin <= nowMin+180;
+  }).sort((a:any,b:any)=>(a.hora||'').localeCompare(b.hora||'')).slice(0,8);
+
+  // ── Top clientes recurrentes del día ─────────────────────────────
+  const topVips = activas.filter((r:any) => r.visit_count && r.visit_count >= 3)
+    .sort((a:any,b:any)=>(b.visit_count||0) - (a.visit_count||0)).slice(0,5);
+
+  // ── Card helper ───────────────────────────────────────────────────
+  const Card = ({title, value, sub, color, icon}:any) => (
+    <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:'14px 16px',display:'flex',alignItems:'flex-start',gap:12}}>
+      <div style={{width:38,height:38,borderRadius:10,background:`${color}18`,border:`1px solid ${color}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>{icon}</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:9,color:S.t3,letterSpacing:'.16em',fontWeight:800,textTransform:'uppercase'}}>{title}</div>
+        <div style={{fontFamily:"'Syne',serif",fontSize:26,fontWeight:900,color,lineHeight:1.05,marginTop:2}}>{value}</div>
+        {sub && <div style={{fontSize:10,color:S.t3,marginTop:2}}>{sub}</div>}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{flex:1,overflowY:'auto',padding:'18px 22px',background:S.bg,color:S.t1}}>
+      {/* KPIs principales */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))',gap:12,marginBottom:18}}>
+        <Card title="Reservas activas" value={activas.length} sub={`${confirmadas} confirmadas · ${sentadas} sentadas`} color={S.gold} icon="🗓️"/>
+        <Card title="Pax total" value={paxTotal} sub={`Promedio ${paxPromedio} pax / reserva`} color={S.blue} icon="👥"/>
+        <Card title="Sin mesa asignada" value={sinMesa} sub={sinMesa>0?'Acción requerida':'Todo en orden'} color={sinMesa>0?S.red:S.green} icon="🪑"/>
+        <Card title="Oh Yeah hoy" value={ohYeahCnt} sub={`${nexumCnt} manuales`} color="#FFE600" icon="🦉"/>
+        <Card title="Clientes VIP" value={vipCnt} sub={vipCnt>0?'Prioridad alta':'Sin VIPs hoy'} color={S.purple} icon="⭐"/>
+        <Card title="Canceladas" value={canceladas} sub={`${completadas} completadas`} color={canceladas>3?S.red:S.t2} icon="✕"/>
+      </div>
+
+      {/* Equipo de meseros */}
+      <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16,marginBottom:18}}>
+        <div style={{display:'flex',alignItems:'baseline',gap:10,marginBottom:12}}>
+          <div style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:900,color:S.t1}}>👥 Team del turno</div>
+          <div style={{fontSize:10,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase'}}>{statsPorMesero.length} meseros · datos en vivo</div>
+        </div>
+        {statsPorMesero.length === 0 ? (
+          <div style={{padding:20,textAlign:'center',color:S.t3,fontSize:12}}>Sin meseros registrados en este restaurante.</div>
+        ) : (
+          <div style={{overflowX:'auto'}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:560}}>
+              <thead>
+                <tr style={{borderBottom:`1px solid ${S.border}`}}>
+                  {['Mesero','Mesas en vivo','Reservas','Sentadas','Pax atendidos'].map(h=>(
+                    <th key={h} style={{textAlign:'left',padding:'8px 12px',fontSize:9,color:S.t3,fontWeight:800,letterSpacing:'.1em',textTransform:'uppercase'}}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {statsPorMesero.map((s:any,i:number)=>(
+                  <tr key={s.nombre} style={{borderBottom:`1px solid ${S.border}`,background:i%2===0?'transparent':`${S.bg}55`}}>
+                    <td style={{padding:'10px 12px'}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8}}>
+                        <span style={{width:9,height:9,borderRadius:'50%',background:s.color,display:'inline-block',boxShadow:`0 0 8px ${s.color}99`}}/>
+                        <span style={{fontWeight:700,color:S.t1}}>{s.nombre}</span>
+                      </div>
+                    </td>
+                    <td style={{padding:'10px 12px'}}>
+                      <span style={{fontFamily:"'Syne',serif",fontSize:15,fontWeight:900,color:s.mesasAtendidas>0?S.green:S.t3}}>{s.mesasAtendidas}</span>
+                    </td>
+                    <td style={{padding:'10px 12px'}}>
+                      <span style={{fontFamily:"'Syne',serif",fontSize:15,fontWeight:900,color:S.gold}}>{s.reservasAsignadas}</span>
+                    </td>
+                    <td style={{padding:'10px 12px'}}>
+                      <span style={{fontFamily:"'Syne',serif",fontSize:15,fontWeight:900,color:s.sentadas>0?S.green:S.t3}}>{s.sentadas}</span>
+                    </td>
+                    <td style={{padding:'10px 12px'}}>
+                      <span style={{fontFamily:"'Syne',serif",fontSize:15,fontWeight:900,color:S.blue}}>{s.paxTotal}</span>
+                      <span style={{fontSize:10,color:S.t3,marginLeft:4}}>p</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* Distribución por hora + Tendencia semanal */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:18}}>
+        {/* Por hora */}
+        <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+          <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:14,color:S.t1}}>⏱ Reservas por hora · hoy</div>
+          {horasOrden.length === 0 ? (
+            <div style={{textAlign:'center',color:S.t3,fontSize:11,padding:20}}>Sin reservas hoy</div>
+          ) : (
+            <div style={{display:'flex',gap:6,alignItems:'flex-end',height:120}}>
+              {horasOrden.map(h=>{
+                const v = porHora[h];
+                const pct = (v/maxPorHora)*100;
+                return (
+                  <div key={h} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4,minWidth:0}}>
+                    <div style={{fontSize:10,fontWeight:800,color:S.gold}}>{v}</div>
+                    <div style={{width:'100%',height:`${pct}%`,minHeight:4,background:`linear-gradient(180deg, ${S.gold}, ${S.gold}55)`,borderRadius:'4px 4px 0 0'}}/>
+                    <div style={{fontSize:9,color:S.t3,fontFamily:"'IBM Plex Mono',monospace"}}>{h}h</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Semana */}
+        <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+          <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:14,color:S.t1}}>📈 Tendencia · últimos 7 días</div>
+          <div style={{display:'flex',gap:6,alignItems:'flex-end',height:120}}>
+            {semana.map(d=>{
+              const dia = new Date(d.fecha+'T12:00:00').toLocaleDateString('es-CO',{weekday:'short'});
+              const pct = (d.total/maxSem)*100;
+              const esHoy = d.fecha === fechaFiltro;
+              return (
+                <div key={d.fecha} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4,minWidth:0}}>
+                  <div style={{fontSize:10,fontWeight:800,color:esHoy?S.gold:S.blue}}>{d.total}</div>
+                  <div style={{width:'100%',height:`${pct}%`,minHeight:4,background:esHoy?`linear-gradient(180deg, ${S.gold}, ${S.gold}55)`:`linear-gradient(180deg, ${S.blue}, ${S.blue}55)`,borderRadius:'4px 4px 0 0'}}/>
+                  <div style={{fontSize:9,color:esHoy?S.gold:S.t3,fontFamily:"'IBM Plex Mono',monospace",fontWeight:esHoy?800:500}}>{dia}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Próximas reservas + Top VIPs + Franjas bloqueadas */}
+      <div style={{display:'grid',gridTemplateColumns:'1.4fr 1fr',gap:14}}>
+        {/* Próximas 3h */}
+        <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+          <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:12,color:S.t1}}>⏭ Próximas 3 horas</div>
+          {proximas.length === 0 ? (
+            <div style={{textAlign:'center',color:S.t3,fontSize:11,padding:20}}>Sin reservas próximas</div>
+          ) : (
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {proximas.map((r:any)=>{
+                const esOh = r.origen === 'ohyeah';
+                return (
+                  <div key={r.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:S.bg,borderRadius:10,border:`1px solid ${esOh?`${S.gold}30`:S.border}`}}>
+                    <span style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900,color:S.gold,minWidth:55}}>{(r.hora||'').slice(0,5)}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,fontWeight:700,color:S.t1}}>{r.cliente_nombre} {esOh && <span style={{fontSize:9,color:S.gold,marginLeft:5}}>🦉</span>}</div>
+                      <div style={{fontSize:10,color:S.t3}}>{r.pax}p · {r.ocasion||'reserva'} {r.mesa_num?`· Mesa M${r.mesa_num}`:`· `}<span style={{color:!r.mesa_num?S.red:S.t3,fontWeight:700}}>{!r.mesa_num?'⚠ Sin mesa':''}</span></div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Top VIPs */}
+        <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+          <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:12,color:S.t1}}>⭐ Clientes top hoy</div>
+          {topVips.length === 0 ? (
+            <div style={{textAlign:'center',color:S.t3,fontSize:11,padding:20}}>Sin clientes recurrentes</div>
+          ) : (
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {topVips.map((r:any)=>(
+                <div key={r.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:`${S.purple}10`,border:`1px solid ${S.purple}30`,borderRadius:10}}>
+                  <div style={{width:30,height:30,borderRadius:'50%',background:`${S.purple}30`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,color:S.purple,fontSize:11}}>{(r.cliente_nombre||'?').charAt(0).toUpperCase()}</div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:11,fontWeight:700,color:S.t1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.cliente_nombre}</div>
+                    <div style={{fontSize:9,color:S.purple,fontWeight:700}}>{r.visit_count} visitas{r.gourmand_level?` · ${r.gourmand_level}`:''}</div>
+                  </div>
+                  <span style={{fontSize:11,color:S.gold,fontWeight:800}}>{(r.hora||'').slice(0,5)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Franjas bloqueadas */}
+          {franjasBloqueadas.length > 0 && (
+            <div style={{marginTop:16,paddingTop:14,borderTop:`1px solid ${S.border}`}}>
+              <div style={{fontSize:10,color:S.red,fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>🚫 Franjas bloqueadas</div>
+              <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                {franjasBloqueadas.map((f:any)=>(
+                  <div key={f.id} style={{display:'flex',gap:8,fontSize:11,color:S.t2,alignItems:'center'}}>
+                    <span style={{fontFamily:"'Syne',serif",fontWeight:800,color:S.red}}>{f.hora_desde.slice(0,5)}–{f.hora_hasta.slice(0,5)}</span>
+                    <span style={{color:S.t3,flex:1}}>{f.motivo||'Sin motivo'}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
