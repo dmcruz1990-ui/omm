@@ -24,6 +24,7 @@ import { useMediaPipe } from './hooks/useMediaPipe.ts';
 import Login from './components/Login.tsx';
 
 const OhYeahPage = lazy(() => import('./components/OhYeahPage.tsx'));
+const OhYeahCombined = lazy(() => import('./components/OhYeahCombined.tsx'));
 const MobileManagerApp = lazy(() => import('./components/MobileManagerApp.tsx'));
 const ReserveModule = lazy(() => import('./components/ReserveModule.tsx'));
 const MenuModule = lazy(() => import('./components/MenuModule.tsx'));
@@ -279,22 +280,28 @@ const Dashboard: React.FC = () => {
               icon: <Sparkles size={14} className="text-blue-500" />,
               modules: [
                 { type: ModuleType.RESERVE,        label: 'RESERVE',       sub: 'MAPA & AGENDA',      icon: <CalendarDays size={18} /> },
-                 // PLANO MESAS eliminado del sidebar — vive dentro de RESERVE (pestaña Editor de planta)
-                 { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> },
-                 { type: ModuleType.OH_YEAH_ADMIN,  label: 'OH YEAH ADMIN', sub: 'RESTAURANTES',       icon: <Store size={18} /> },
-                 { type: ModuleType.OH_YEAH_RESTAURANTE, label: 'OH YEAH REG.', sub: 'REGISTRO EXTERNO', icon: <Store size={18} /> },
-               ]
-             },
-             {
-               id: 'operaciones', label: 'PAQUETE OPERACIONES',
+                { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> },
+                { type: ModuleType.OH_YEAH_ADMIN,  label: 'OH YEAH',       sub: 'PLATAFORMA · ADMIN & REG', icon: <span style={{fontSize:18}}>😎</span> },
+              ]
+            },
+            {
+              id: 'showtime', label: 'SHOWTIME',
               modules: [
-                { type: ModuleType.SERVICE_OS,   label: 'SMART POS',   sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
-                { type: ModuleType.PROPINAS,    label: 'PROPINAS',     sub: 'Bolsa del turno',  icon: <DollarSign size={18} /> },
-                { type: ModuleType.PUNTOS_NX,   label: 'PUNTOS NX',    sub: 'Wallet · Beneficios · Retos · Canjes', icon: <span style={{fontSize:18,color:'#9b72ff'}}>✦</span> },
-                { type: ModuleType.CREW_ADMIN,  label: 'CREW ADMIN',   sub: 'Backoffice app Seratta Crew', icon: <span style={{fontSize:16,color:'#FF5C35'}}>📱</span> },
-                { type: ModuleType.FLOW,        label: 'FLOW',         sub: 'ESTACIONES · TIEMPOS', icon: <ChefHat size={18} /> },
-                { type: ModuleType.TERMINAL_PAGO, label: 'TERMINAL DE PAGO', sub: 'CAJA · CUENTAS POR COBRAR', icon: <Receipt size={18} /> },
-                { type: ModuleType.VISION_AI,   label: 'VISION AI',    sub: 'CÁMARAS · IA TIEMPO REAL', icon: <Eye size={18} /> },
+                { type: ModuleType.SERVICE_OS,    label: 'SMART POS',         sub: 'POS & RITUALES',   icon: <ShoppingCart size={18} /> },
+                { type: ModuleType.FLOW,          label: 'FLOW',              sub: 'ESTACIONES · TIEMPOS', icon: <ChefHat size={18} /> },
+                { type: ModuleType.VISION_AI,     label: 'VISION AI',         sub: 'CÁMARAS · IA TIEMPO REAL', icon: <Eye size={18} /> },
+                { type: ModuleType.TERMINAL_PAGO, label: 'TERMINAL DE PAGO',  sub: 'CAJA · CUENTAS POR COBRAR', icon: <Receipt size={18} /> },
+              ]
+            },
+            {
+              id: 'teamcore', label: 'TEAM CORE',
+              icon: <Brain size={14} className="text-orange-500" />,
+              modules: [
+                { type: ModuleType.STAFF_HUB,   label: 'TEAM IQ™',   sub: 'HUMAN PERFORMANCE', icon: <Brain size={18} /> },
+                { type: ModuleType.WORKFORCE,   label: 'WORKFORCE',  sub: 'HORARIOS · ASISTENCIA · NÓMINA', icon: <CalendarDays size={18} /> },
+                { type: ModuleType.PROPINAS,    label: 'PROPINAS',   sub: 'Bolsa del turno',   icon: <DollarSign size={18} /> },
+                { type: ModuleType.PUNTOS_NX,   label: 'PUNTOS NX',  sub: 'Wallet · Beneficios · Retos · Canjes', icon: <span style={{fontSize:18,color:'#9b72ff'}}>✦</span> },
+                { type: ModuleType.CREW_ADMIN,  label: 'CREW ADMIN', sub: 'Backoffice app Seratta Crew', icon: <span style={{fontSize:16,color:'#FF5C35'}}>📱</span> },
               ]
             },
             {
@@ -306,9 +313,6 @@ const Dashboard: React.FC = () => {
                 { type: ModuleType.MENU,      label: 'MI MENÚ',   sub: 'Carta · Recetas · Food Cost · Supply', icon: <span style={{ fontSize: 16 }}>🍽️</span> },
                 { type: ModuleType.MARKETPLACE, label: 'MARKETPLACE', sub: 'Tienda', icon: <Store size={18} /> },
                 { type: ModuleType.CARE,      label: 'CARE',      sub: 'SOPORTE CX',        icon: <HeartPulse size={18} /> },
-                // ── CAMBIO 2: Label y sub actualizados ──────────────────────
-                { type: ModuleType.STAFF_HUB, label: 'TEAM IQ™',  sub: 'HUMAN PERFORMANCE', icon: <Brain size={18} /> },
-                { type: ModuleType.WORKFORCE, label: 'WORKFORCE', sub: 'HORARIOS · ASISTENCIA · NÓMINA', icon: <CalendarDays size={18} /> }
               ]
             },
             {
@@ -316,8 +320,7 @@ const Dashboard: React.FC = () => {
               icon: <Globe size={14} className="text-purple-500" />,
               modules: [
                 { type: ModuleType.COMMAND,       label: 'COMANDANTE',   sub: 'ESTRATEGIA IA',        icon: <Globe size={18} /> },
-                { type: ModuleType.PROPINAS, label: 'PROPINAS ADMIN', sub: 'Team & Config', icon: <DollarSign size={18} /> },
-                 { type: ModuleType.FINANCE_HUB,  label: 'FINANCE HUB',  sub: 'DINERO & KPI',         icon: <DollarSign size={18} /> },
+                { type: ModuleType.FINANCE_HUB,  label: 'FINANCE HUB',  sub: 'DINERO & KPI',         icon: <DollarSign size={18} /> },
                 { type: ModuleType.PAYROLL,       label: 'NÓMINA DIAN',  sub: 'INTELIGENCIA LABORAL', icon: <Briefcase size={18} /> },
                 { type: ModuleType.DIAN,          label: 'FACTURACIÓN',  sub: 'DIAN · UBL 2.1',       icon: <Receipt size={18} /> },
                 { type: ModuleType.CONTABILIDAD,  label: 'CONTABILIDAD', sub: 'P&G · CIERRE · KPI',   icon: <BarChart3 size={18} /> },
@@ -464,8 +467,7 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.DIAN           && <DIANModule />}
                 {activeModule === ModuleType.CONTABILIDAD   && <ContabilidadModule />}
                 {/* Oh Yeah B2B (Admin / Registro Externo) ocultos del sidebar pero el código sigue disponible */}
-                {activeModule === ModuleType.OH_YEAH_ADMIN  && <OhYeahAdminModule />}
-                {activeModule === ModuleType.OH_YEAH_RESTAURANTE && <OhYeahRestauranteModule />}
+                {(activeModule === ModuleType.OH_YEAH_ADMIN || activeModule === ModuleType.OH_YEAH_RESTAURANTE) && <OhYeahCombined />}
                 {activeModule === ModuleType.CONFIG         && <SettingsModule />}
                 {activeModule === ModuleType.MARKETPLACE    && <MarketplaceModule />}
                 {activeModule === ModuleType.FOOD_INTELLIGENCE && <FoodIntelligenceModule />}

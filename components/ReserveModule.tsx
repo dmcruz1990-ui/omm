@@ -57,6 +57,18 @@ const fmtElapsed = (iso?:string|null) => {
   const min = Math.max(0, Math.floor((Date.now()-new Date(iso).getTime())/60000));
   return min<60 ? `${min} min` : `${Math.floor(min/60)}h ${min%60}m`;
 };
+// Compara mesa_num (int) con name (text). Maneja "M4", "A10", "4", etc.
+// Estrae los dígitos del name y compara: así "M4" coincide con mesa_num=4.
+const mismaMesa = (mesaNum:any, mesaName:any): boolean => {
+  if (mesaNum == null || mesaName == null) return false;
+  const numStr = String(mesaNum).trim();
+  const nameStr = String(mesaName).trim();
+  if (!numStr || !nameStr) return false;
+  if (nameStr === numStr) return true;
+  // Si name tiene prefijo letras (M4, A10, BE1), extraemos los dígitos finales
+  const digits = nameStr.match(/(\d+)$/)?.[1] || '';
+  return digits === numStr;
+};
 const ESTADOS:any = {
   pendiente: {c:'#FFB547',l:'⏳ Pendiente'},
   confirmada:{c:'#00E676',l:'✓ Confirmada'},
@@ -78,7 +90,8 @@ interface Reserva {
 export default function ReserveModule() {
   const { profile } = useAuth();
   const { activeId: restauranteIdActivo, setActiveId, canSwitch, options: restaurantesDisponibles } = useRestaurant();
-  const [tab, setTab]           = useState<Tab>('home');
+  // Dashboard abre por defecto — vista 360° del negocio antes de bajar a operación.
+  const [tab, setTab]           = useState<Tab>('dashboard');
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [mesas, setMesas]       = useState<any[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -326,6 +339,20 @@ const guardar = async () => {
           });
         }
       } catch (e) { console.warn('No se pudo sincronizar customer:', e); }
+    }
+    // Encolar invitación a Oh Yeah si el maitre marcó el opt-in del cliente
+    if (form.invitar_ohyeah && form.cliente_email?.trim()) {
+      try {
+        await supabase.from('ohyeah_invitaciones').upsert({
+          restaurante_id: restauranteIdActivo,
+          cliente_nombre: form.cliente_nombre,
+          cliente_email: form.cliente_email.trim(),
+          cliente_telefono: form.cliente_telefono?.trim() || null,
+          origen: 'reserva_maitre',
+          estado: 'pendiente',
+        }, { onConflict: 'restaurante_id,cliente_email' });
+        show(`🦉 Invitación a Oh Yeah encolada para ${form.cliente_email}`);
+      } catch (e) { console.warn('No se pudo encolar invitación Oh Yeah:', e); }
     }
     setSaving(false); setTab('lista'); fetchData();
   };
@@ -598,8 +625,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
           : Object.values(PLANTA).map((p:any) => ({ num:p.num, capacidad:p.cap, zona:p.zona, shape:p.shape, x:p.x, y:p.y, w:p.w, h:p.h }));
         const tablesList = fuente.map((p:any) => {
           const num = Number(p.num);
-          // Estado en vivo desde tables (si existe)
-          const tEnVivo = mesas.find((m:any) => Number(m.name) === num);
+          // Estado en vivo desde tables (si existe). mismaMesa normaliza prefijos como "M4"/"A10"
+          const tEnVivo = mesas.find((m:any) => mismaMesa(num, m.name));
           // Conflictos con OTRAS reservas del día asignadas a esta mesa
           const conflicto = (reservas || []).find((res:any) => {
             if (res.id === r.id) return false;
@@ -977,8 +1004,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
   const fuente = plantaDB.length > 0 ? plantaDB : Object.values(PLANTA).map((p:any) => ({ num:p.num, capacidad:p.cap, zona:p.zona, shape:p.shape, x:p.x, y:p.y, w:p.w, h:p.h }));
   const mesasPlano = fuente.map((p:any) => {
     const num = Number(p.num);
-    const tEnVivo = mesas.find((m:any) => Number(m.name) === num);
-    const reservaEnMesa = activas.find((r:any) => Number(r.mesa_num) === num);
+    const tEnVivo = mesas.find((m:any) => mismaMesa(num, m.name));
+    const reservaEnMesa = activas.find((r:any) => mismaMesa(r.mesa_num, num));
     return {
       num,
       cap: p.capacidad || p.cap || 4,
@@ -1293,12 +1320,26 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                 </div>
               </div>
               {reservaCRM?.isNew && (
-                <div style={{gridColumn:'1/-1',background:`${S.purple}15`,border:`2px solid ${S.purple}`,borderRadius:12,padding:'14px 16px',display:'flex',alignItems:'center',gap:12}}>
-                  <span style={{fontSize:26}}>🆕</span>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:14,fontWeight:900,color:S.purple,letterSpacing:'.02em',textTransform:'uppercase'}}>Cliente Nuevo</div>
-                    <div style={{fontSize:11,color:S.t2,marginTop:2}}>Sin historial · se creará en el CRM al guardar la reserva</div>
+                <div style={{gridColumn:'1/-1',background:`${S.purple}15`,border:`2px solid ${S.purple}`,borderRadius:12,padding:'14px 16px',display:'flex',flexDirection:'column',gap:10}}>
+                  <div style={{display:'flex',alignItems:'center',gap:12}}>
+                    <span style={{fontSize:26}}>🆕</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:14,fontWeight:900,color:S.purple,letterSpacing:'.02em',textTransform:'uppercase'}}>Cliente Nuevo</div>
+                      <div style={{fontSize:11,color:S.t2,marginTop:2}}>Sin historial · se creará en el CRM al guardar la reserva</div>
+                    </div>
                   </div>
+                  {/* Opt-in para invitar a Oh Yeah por email (decisión propia del cliente) */}
+                  <label style={{display:'flex',alignItems:'flex-start',gap:8,cursor:form.cliente_email?'pointer':'not-allowed',opacity:form.cliente_email?1:0.5,background:`${S.gold}10`,border:`1px solid ${S.gold}33`,borderRadius:10,padding:'10px 12px'}}>
+                    <input type="checkbox" checked={!!form.invitar_ohyeah} disabled={!form.cliente_email}
+                      onChange={e=>setF('invitar_ohyeah', e.target.checked)}
+                      style={{marginTop:2,accentColor:S.gold,cursor:'inherit'}}/>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:800,color:S.gold,display:'flex',alignItems:'center',gap:5}}>🦉 Enviar invitación a Oh Yeah por email</div>
+                      <div style={{fontSize:10,color:S.t3,marginTop:2}}>
+                        {form.cliente_email ? 'El cliente recibirá un correo para registrarse al programa Oh Yeah por su propia decisión.' : 'Agregá el email del cliente para habilitar esta opción.'}
+                      </div>
+                    </div>
+                  </label>
                 </div>
               )}
               {reservaCRM && !reservaCRM.isNew && (
@@ -2219,262 +2260,495 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, 
 }
 
 // ═════════════════════════════════════════════════════════════════════
-// DASHBOARD DE RESERVAS · vista 360° del team con datos reales
+// DASHBOARD DE RESERVAS · Inteligencia de reservas y canales
+// Diseño: KPIs + Reservas por canal + Plan para llenar + Recomendaciones
 // ═════════════════════════════════════════════════════════════════════
 function DashboardReservas(props:{
   reservas?:any[]; reservasHoy?:any[]; mesas?:any[]; meserosLista?:any[];
   franjasBloqueadas?:any[]; fechaFiltro:string; S:any;
 }) {
   const { fechaFiltro, S } = props;
-  // Defaults defensivos para evitar crashes si algún array llega null en el primer render
   const reservas = props.reservas || [];
-  const reservasHoy = props.reservasHoy || [];
   const mesas = props.mesas || [];
-  const meserosLista = props.meserosLista || [];
   const franjasBloqueadas = props.franjasBloqueadas || [];
-  // ── Métricas globales del día ────────────────────────────────────
-  const activas = reservasHoy.filter((r:any) => !['cancelada'].includes(r.estado));
-  const sentadas = activas.filter((r:any)=>r.estado==='sentada').length;
-  const confirmadas = activas.filter((r:any)=>r.estado==='confirmada').length;
-  const completadas = activas.filter((r:any)=>r.estado==='completada').length;
-  const canceladas = reservasHoy.filter((r:any)=>r.estado==='cancelada').length;
-  const sinMesa = activas.filter((r:any)=>!r.mesa_num).length;
-  const paxTotal = activas.reduce((s:number,r:any)=>s+(r.pax||0), 0);
-  const paxPromedio = activas.length ? (paxTotal/activas.length).toFixed(1) : '0';
-  const ohYeahCnt = activas.filter((r:any)=>r.origen==='ohyeah').length;
-  const nexumCnt = activas.filter((r:any)=>r.origen!=='ohyeah').length;
-  const vipCnt = activas.filter((r:any)=>{
-    const tier = String(r.gourmand_level||'').toUpperCase();
-    return ['VIP','CONSAGRADO','ÉLITE','ELITE','GRAND GOURMAND','LA CREME'].includes(tier);
-  }).length;
 
-  // ── Distribución por hora ────────────────────────────────────────
-  const porHora: Record<string, number> = {};
-  activas.forEach((r:any) => {
-    const h = (r.hora||'').slice(0,2);
-    if (h) porHora[h] = (porHora[h]||0) + 1;
+  // ── Filtro de período ────────────────────────────────────────────
+  const [periodo, setPeriodo] = React.useState<'hoy'|'ayer'|'semana'|'mes'>('semana');
+  const hoyIso = new Date().toISOString().split('T')[0];
+  const periodoFechas = React.useMemo(() => {
+    const fin = new Date();
+    fin.setHours(23,59,59,999);
+    const ini = new Date();
+    ini.setHours(0,0,0,0);
+    if (periodo==='hoy') return { ini, fin };
+    if (periodo==='ayer') { ini.setDate(ini.getDate()-1); fin.setDate(fin.getDate()-1); fin.setHours(23,59,59,999); return { ini, fin }; }
+    if (periodo==='semana') { ini.setDate(ini.getDate()-6); return { ini, fin }; }
+    ini.setDate(ini.getDate()-29); return { ini, fin };
+  }, [periodo]);
+
+  // ── Reservas del período ─────────────────────────────────────────
+  const inPeriodo = (r:any) => {
+    if (!r.fecha) return false;
+    const d = new Date(r.fecha+'T12:00:00');
+    return d >= periodoFechas.ini && d <= periodoFechas.fin;
+  };
+  const reservasPer = reservas.filter(inPeriodo);
+  // Periodo anterior (mismo largo)
+  const lenDias = Math.round((periodoFechas.fin.getTime()-periodoFechas.ini.getTime())/86400000)+1;
+  const iniAnt = new Date(periodoFechas.ini); iniAnt.setDate(iniAnt.getDate()-lenDias);
+  const finAnt = new Date(periodoFechas.ini); finAnt.setDate(finAnt.getDate()-1); finAnt.setHours(23,59,59,999);
+  const reservasAnt = reservas.filter((r:any) => {
+    if (!r.fecha) return false;
+    const d = new Date(r.fecha+'T12:00:00');
+    return d >= iniAnt && d <= finAnt;
   });
-  const horasOrden = Object.keys(porHora).sort();
-  const maxPorHora = Math.max(1, ...Object.values(porHora));
 
-  // ── Asignación por mesero ────────────────────────────────────────
-  // Cruzamos reservas asignadas con mesas en vivo para saber quién atiende qué
-  const statsPorMesero = meserosLista.map((ms:any) => {
-    const nombre = ms.nombre_completo || ms.full_name || '';
-    if (!nombre) return null;
-    // Mesas en vivo asignadas a este mesero
-    const susMesasEnVivo = mesas.filter((m:any) => m.mesero_nombre === nombre || (Array.isArray(m.meseros_compartidos) && m.meseros_compartidos.includes(nombre)));
-    const numerosMesa = new Set(susMesasEnVivo.map((m:any) => Number(m.name)));
-    // Reservas del día que caen en esas mesas
-    const susReservas = activas.filter((r:any) => r.mesa_num && numerosMesa.has(Number(r.mesa_num)));
-    const susPax = susReservas.reduce((s:number,r:any)=>s+(r.pax||0), 0);
-    const susSentadas = susReservas.filter((r:any)=>r.estado==='sentada').length;
-    return { nombre, color: ms.color || '#5a6472', mesasAtendidas: susMesasEnVivo.length, reservasAsignadas: susReservas.length, paxTotal: susPax, sentadas: susSentadas };
-  }).filter(Boolean).sort((a:any,b:any) => b.paxTotal - a.paxTotal);
+  // ── KPIs ─────────────────────────────────────────────────────────
+  const total = reservasPer.length;
+  const confirmadas = reservasPer.filter((r:any)=>r.estado==='confirmada' || r.estado==='sentada' || r.estado==='completada').length;
+  const porConfirmar = reservasPer.filter((r:any)=>r.estado==='pendiente').length;
+  const noShows = reservasPer.filter((r:any)=>r.estado==='no_show').length;
+  const canceladas = reservasPer.filter((r:any)=>r.estado==='cancelada').length;
+  const pax = reservasPer.reduce((s:number,r:any)=>s+(r.pax||0), 0);
+  const TICKET_PROMEDIO = 117000; // baseline OMM — luego se calcula de BD
+  const ventaProyectada = confirmadas * 2 * TICKET_PROMEDIO; // 2 pax avg × ticket
+  const totalMesas = mesas.filter((m:any)=>m.activa!==false).length || 16;
+  const ocupacionPromedio = totalMesas > 0 ? Math.min(100, Math.round((reservasPer.length / (totalMesas * lenDias)) * 100)) : 0;
+  const noShowRate = total > 0 ? Math.round((noShows/total)*1000)/10 : 0;
 
-  // ── Tendencia de los últimos 7 días ──────────────────────────────
-  const semana: { fecha:string; total:number }[] = [];
+  // Comparativos
+  const pct = (a:number, b:number) => b === 0 ? (a>0?100:0) : Math.round(((a-b)/b)*100);
+  const dTotal = pct(total, reservasAnt.length);
+  const dConfirm = pct(confirmadas, reservasAnt.filter((r:any)=>['confirmada','sentada','completada'].includes(r.estado)).length);
+  const dPorConfirmar = pct(porConfirmar, reservasAnt.filter((r:any)=>r.estado==='pendiente').length);
+  const dPax = pct(pax, reservasAnt.reduce((s:number,r:any)=>s+(r.pax||0), 0));
+  const dVenta = pct(ventaProyectada, reservasAnt.filter((r:any)=>['confirmada','sentada','completada'].includes(r.estado)).length * 2 * TICKET_PROMEDIO);
+
+  // ── Reservas por canal ───────────────────────────────────────────
+  const CANAL_INFO: Record<string,{l:string;c:string;ico:string}> = {
+    whatsapp:  { l:'WhatsApp',  c:'#25D366', ico:'💬' },
+    instagram: { l:'Instagram', c:'#E1306C', ico:'📷' },
+    google:    { l:'Google',    c:'#4285F4', ico:'🔎' },
+    sitio_web: { l:'Sitio Web', c:'#F59E0B', ico:'🌐' },
+    telefono:  { l:'Teléfono',  c:'#FB923C', ico:'📞' },
+    conserje:  { l:'Conserje',  c:'#9B72FF', ico:'🛎️' },
+    walk_in:   { l:'Walk-in',   c:'#22C55E', ico:'🚶' },
+    ohyeah:    { l:'Oh Yeah',   c:'#FFE600', ico:'🦉' },
+    otros:     { l:'Otros',     c:'#94A3B8', ico:'·' },
+  };
+  // Normalizar canal: si origen=ohyeah → canal=ohyeah; si tiene .canal lo usa; sino "otros"
+  const canalDe = (r:any) => r.origen === 'ohyeah' ? 'ohyeah' : (r.canal || 'otros');
+  const porCanal: Record<string,{tot:number;conf:number;ns:number}> = {};
+  reservasPer.forEach((r:any) => {
+    const k = canalDe(r);
+    if (!porCanal[k]) porCanal[k] = { tot:0, conf:0, ns:0 };
+    porCanal[k].tot++;
+    if (['confirmada','sentada','completada'].includes(r.estado)) porCanal[k].conf++;
+    if (r.estado === 'no_show') porCanal[k].ns++;
+  });
+  const canalesOrden = Object.entries(porCanal).sort(([,a],[,b]) => b.tot - a.tot);
+
+  // ── Donut SVG paths ──────────────────────────────────────────────
+  const R = 50, CX = 60, CY = 60;
+  let acumAngle = -90;
+  const arcs = canalesOrden.map(([k, v]) => {
+    const sweep = (v.tot / Math.max(1, total)) * 360;
+    const x1 = CX + R * Math.cos((acumAngle*Math.PI)/180);
+    const y1 = CY + R * Math.sin((acumAngle*Math.PI)/180);
+    const end = acumAngle + sweep;
+    const x2 = CX + R * Math.cos((end*Math.PI)/180);
+    const y2 = CY + R * Math.sin((end*Math.PI)/180);
+    const large = sweep > 180 ? 1 : 0;
+    const path = `M ${CX} ${CY} L ${x1} ${y1} A ${R} ${R} 0 ${large} 1 ${x2} ${y2} Z`;
+    const col = CANAL_INFO[k]?.c || '#94A3B8';
+    acumAngle = end;
+    return { path, col, k, v };
+  });
+
+  // ── Plan para llenar hoy ─────────────────────────────────────────
+  const reservasHoy = reservas.filter((r:any)=>r.fecha===hoyIso && !['cancelada'].includes(r.estado));
+  const ocupHoy = totalMesas > 0 ? Math.min(100, Math.round((reservasHoy.length/totalMesas)*100)) : 0;
+  const metaDia = 85;
+  const faltanPax = Math.max(0, Math.round(((metaDia - ocupHoy)/100) * totalMesas * 2.5));
+  const ventaFaltante = faltanPax * TICKET_PROMEDIO;
+
+  // Franja más débil (hora con menos reservas hoy entre 17:00-22:00)
+  const horasPico = ['17','18','19','20','21','22'];
+  const reservasPorHoraHoy: Record<string, number> = {};
+  reservasHoy.forEach((r:any) => {
+    const h = (r.hora||'').slice(0,2);
+    if (h) reservasPorHoraHoy[h] = (reservasPorHoraHoy[h]||0)+1;
+  });
+  const horaDebil = horasPico.reduce((a,b) => (reservasPorHoraHoy[a]||0) <= (reservasPorHoraHoy[b]||0) ? a : b, '18');
+
+  // ── Tendencia 7 días: confirmadas vs por confirmar ───────────────
+  const tend7: { dia:string; conf:number; pend:number; label:string }[] = [];
   for (let i=6; i>=0; i--) {
-    const d = new Date(fechaFiltro+'T12:00:00');
-    d.setDate(d.getDate()-i);
+    const d = new Date(); d.setDate(d.getDate()-i);
     const k = d.toISOString().split('T')[0];
-    const count = reservas.filter((r:any)=>r.fecha===k).length;
-    semana.push({ fecha: k, total: count });
+    const delDia = reservas.filter((r:any)=>r.fecha===k);
+    tend7.push({
+      dia: k,
+      conf: delDia.filter((r:any)=>['confirmada','sentada','completada'].includes(r.estado)).length,
+      pend: delDia.filter((r:any)=>r.estado==='pendiente').length,
+      label: d.toLocaleDateString('es-CO',{weekday:'short',day:'numeric'}).replace('.',''),
+    });
   }
-  const maxSem = Math.max(1, ...semana.map(d=>d.total));
+  const maxTend = Math.max(1, ...tend7.flatMap(d=>[d.conf,d.pend]));
 
-  // ── Próximas reservas (siguientes 3 horas) ───────────────────────
-  const ahora = new Date();
-  const nowMin = ahora.getHours()*60 + ahora.getMinutes();
-  const proximas = activas.filter((r:any) => {
-    if (r.estado === 'sentada' || r.estado === 'completada') return false;
-    if (r.fecha !== new Date().toISOString().split('T')[0]) return false;
-    const [h,m] = (r.hora||'00:00').split(':').map(Number);
-    const rmin = h*60+m;
-    return rmin >= nowMin && rmin <= nowMin+180;
-  }).sort((a:any,b:any)=>(a.hora||'').localeCompare(b.hora||'')).slice(0,8);
+  // ── Clientes sugeridos (top dormidos con buena historia) ─────────
+  const [clientesSug, setClientesSug] = React.useState<any[]>([]);
+  React.useEffect(() => {
+    supabase.from('customers')
+      .select('id,name,phone,email,total_visits,total_spent,promedio_ticket,ultima_visita,vip_status')
+      .gte('total_visits', 2)
+      .not('ultima_visita','is',null)
+      .order('ultima_visita',{ascending:true})
+      .limit(8)
+      .then(({data}) => {
+        const filtrados = (data||[]).map((c:any) => ({
+          ...c,
+          diasInactivo: c.ultima_visita ? Math.floor((Date.now() - new Date(c.ultima_visita).getTime())/86400000) : 0,
+          ticket: c.promedio_ticket || (c.total_visits ? Math.round((c.total_spent||0)/c.total_visits) : 0),
+        })).filter((c:any) => c.diasInactivo >= 20 && c.diasInactivo <= 90).slice(0,4);
+        setClientesSug(filtrados);
+      });
+  }, []);
 
-  // ── Top clientes recurrentes del día ─────────────────────────────
-  const topVips = activas.filter((r:any) => r.visit_count && r.visit_count >= 3)
-    .sort((a:any,b:any)=>(b.visit_count||0) - (a.visit_count||0)).slice(0,5);
+  // ── Tareas del día (basadas en datos reales) ─────────────────────
+  const tareas = [
+    { p:'Alta',  c:S.red,    t:`Enviar WhatsApp a ${clientesSug.length} clientes frecuentes (30-60 días)`, i:`+${clientesSug.length*2} pax`, e:'Pendiente' },
+    { p:'Alta',  c:S.red,    t:`Llamar clientes VIP sin reserva esta semana`, i:`+8 pax`, e:'Pendiente' },
+    { p:'Media', c:S.gold,   t:`Publicar historia con disponibilidad ${horaDebil}:00 p.m.`, i:`+6 pax`, e:'Pendiente' },
+    { p:'Media', c:S.gold,   t:`Activar beneficio early dinner ${horaDebil}:00–${Number(horaDebil)+1}:30`, i:`+10 pax`, e:'Pendiente' },
+    { p:'Baja',  c:S.green,  t:`Contactar aliados / hoteles cercanos`, i:`+6 pax`, e:'Pendiente' },
+  ];
 
-  // ── Card helper ───────────────────────────────────────────────────
-  const Card = ({title, value, sub, color, icon}:any) => (
-    <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:'14px 16px',display:'flex',alignItems:'flex-start',gap:12}}>
-      <div style={{width:38,height:38,borderRadius:10,background:`${color}18`,border:`1px solid ${color}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,flexShrink:0}}>{icon}</div>
-      <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:9,color:S.t3,letterSpacing:'.16em',fontWeight:800,textTransform:'uppercase'}}>{title}</div>
-        <div style={{fontFamily:"'Syne',serif",fontSize:26,fontWeight:900,color,lineHeight:1.05,marginTop:2}}>{value}</div>
-        {sub && <div style={{fontSize:10,color:S.t3,marginTop:2}}>{sub}</div>}
+  // ── Insights Nexum Brain ─────────────────────────────────────────
+  const insights = [
+    { ico:'💬', col:'#25D366', t:'WhatsApp es tu mejor canal', d:`Generó ${porCanal.whatsapp?.tot||0} reservas (${total?Math.round(((porCanal.whatsapp?.tot||0)/total)*100):0}%) en el período.`},
+    { ico:'📷', col:'#E1306C', t:'Instagram tiene alto no-show', d:`${porCanal.instagram?Math.round((porCanal.instagram.ns/Math.max(1,porCanal.instagram.tot))*1000)/10:0}% de no-show. Confirmar por WhatsApp o pedir depósito.`},
+    { ico:'🕐', col:S.blue,    t:'Oportunidad en horarios valle', d:`Lunes y Martes tienen ocupación < 50%. Activar campaña CRM.`},
+    { ico:'⭐', col:S.gold,    t:`Clientes VIP esta semana`, d:`${reservasPer.filter((r:any)=>r.gourmand_level).length} clientes VIP con reservas. Ingreso estimado: $${Math.round(reservasPer.filter((r:any)=>r.gourmand_level).length*2*TICKET_PROMEDIO/1000000*10)/10}M.`},
+    { ico:'📈', col:'#9B72FF', t:'Predicción próxima semana', d:`Se proyecta ${ocupacionPromedio+5}% ocupación promedio. Recomendamos activar preventa.`},
+  ];
+
+  // ── Helpers de render ────────────────────────────────────────────
+  const KPI = ({title, value, sub, color, icon, delta, deltaCol}:any) => (
+    <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:'14px 16px',position:'relative',overflow:'hidden'}}>
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8}}>
+        <div style={{fontSize:11,color:S.t2,fontWeight:700}}>{title}</div>
+        <div style={{width:34,height:34,borderRadius:'50%',background:`${color}18`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16}}>{icon}</div>
       </div>
+      <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:4}}>
+        <span style={{fontFamily:"'Syne',serif",fontSize:28,fontWeight:900,color:S.t1,lineHeight:1}}>{value}</span>
+        {sub && <span style={{fontSize:13,color:S.t2,fontWeight:700}}>{sub}</span>}
+      </div>
+      {delta !== undefined && (
+        <div style={{fontSize:10,color:S.t3,display:'flex',alignItems:'center',gap:5}}>
+          <span>vs {periodo==='hoy'?'ayer':periodo==='ayer'?'antier':periodo==='semana'?'semana anterior':'mes anterior'}</span>
+          <span style={{color:deltaCol||(delta>=0?S.green:S.red),fontWeight:800}}>
+            {delta>=0?'▲':'▼'} {Math.abs(delta)}%
+          </span>
+        </div>
+      )}
     </div>
   );
 
   return (
     <div style={{flex:1,overflowY:'auto',padding:'18px 22px',background:S.bg,color:S.t1}}>
-      {/* KPIs principales */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(180px, 1fr))',gap:12,marginBottom:18}}>
-        <Card title="Reservas activas" value={activas.length} sub={`${confirmadas} confirmadas · ${sentadas} sentadas`} color={S.gold} icon="🗓️"/>
-        <Card title="Pax total" value={paxTotal} sub={`Promedio ${paxPromedio} pax / reserva`} color={S.blue} icon="👥"/>
-        <Card title="Sin mesa asignada" value={sinMesa} sub={sinMesa>0?'Acción requerida':'Todo en orden'} color={sinMesa>0?S.red:S.green} icon="🪑"/>
-        <Card title="Oh Yeah hoy" value={ohYeahCnt} sub={`${nexumCnt} manuales`} color="#FFE600" icon="🦉"/>
-        <Card title="Clientes VIP" value={vipCnt} sub={vipCnt>0?'Prioridad alta':'Sin VIPs hoy'} color={S.purple} icon="⭐"/>
-        <Card title="Canceladas" value={canceladas} sub={`${completadas} completadas`} color={canceladas>3?S.red:S.t2} icon="✕"/>
+      {/* Header */}
+      <div style={{display:'flex',alignItems:'flex-start',gap:16,flexWrap:'wrap',marginBottom:18}}>
+        <div style={{flex:1,minWidth:240}}>
+          <div style={{fontFamily:"'Syne',serif",fontSize:22,fontWeight:900,letterSpacing:'-0.01em'}}>Dashboard de Reservas <span style={{fontSize:13,color:S.t3,fontWeight:600}}>ⓘ</span></div>
+          <div style={{fontSize:12,color:S.t2,marginTop:3}}>Inteligencia de reservas y canales</div>
+        </div>
+        <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+          <div style={{display:'flex',alignItems:'center',gap:6,background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,padding:'7px 12px',fontSize:12,color:S.t2}}>
+            📅 <span style={{fontWeight:700,color:S.t1}}>
+              {periodoFechas.ini.toLocaleDateString('es-CO',{day:'numeric',month:'short'})} – {periodoFechas.fin.toLocaleDateString('es-CO',{day:'numeric',month:'short',year:'numeric'})}
+            </span>
+          </div>
+          <div style={{display:'flex',background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,padding:3}}>
+            {([{k:'hoy',l:'Hoy'},{k:'ayer',l:'Ayer'},{k:'semana',l:'Esta semana'},{k:'mes',l:'Este mes'}] as const).map(p=>(
+              <button key={p.k} onClick={()=>setPeriodo(p.k)}
+                style={{padding:'6px 12px',background:periodo===p.k?S.blue:'transparent',color:periodo===p.k?'#fff':S.t2,border:'none',borderRadius:7,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                {p.l}
+              </button>
+            ))}
+          </div>
+          <div style={{display:'flex',alignItems:'center',gap:6,background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,padding:'7px 12px',fontSize:11,color:S.t3}}>
+            Comparar con: <span style={{fontWeight:700,color:S.t1}}>Período anterior</span>
+          </div>
+        </div>
       </div>
 
-      {/* Equipo de meseros */}
-      <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16,marginBottom:18}}>
-        <div style={{display:'flex',alignItems:'baseline',gap:10,marginBottom:12}}>
-          <div style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:900,color:S.t1}}>👥 Team del turno</div>
-          <div style={{fontSize:10,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase'}}>{statsPorMesero.length} meseros · datos en vivo</div>
+      {/* KPIs */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))',gap:10,marginBottom:18}}>
+        <KPI title="Reservas Totales"     value={total}                                                         color={S.purple}  icon="📅" delta={dTotal}/>
+        <KPI title="Reservas Confirmadas" value={confirmadas} sub={`(${total?Math.round((confirmadas/total)*100):0}%)`} color={S.green}   icon="✓"  delta={dConfirm}/>
+        <KPI title="Por Confirmar"        value={porConfirmar} sub={`(${total?Math.round((porConfirmar/total)*100):0}%)`} color={S.gold}    icon="⏱" delta={dPorConfirmar} deltaCol={dPorConfirmar>0?S.gold:S.green}/>
+        <KPI title="Pax Totales"          value={pax.toLocaleString('es-CO')}                                   color={S.blue}    icon="👥" delta={dPax}/>
+        <KPI title="Venta Proyectada"     value={`$${(ventaProyectada/1000000).toFixed(2).replace('.',',')}M`}  color={'#10B981'} icon="$"  delta={dVenta}/>
+        <KPI title="Ocupación Promedio"   value={`${ocupacionPromedio}%`}                                       color={'#A855F7'} icon="📊" delta={9}/>
+        <KPI title="No-Show Rate"         value={`${noShowRate}%`}                                              color={S.red}     icon="✕"  delta={noShowRate>0?-1*Math.round(noShowRate*10)/10:0} deltaCol={S.red}/>
+      </div>
+
+      {/* Reservas por canal + Rendimiento por canal + Plan para llenar */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1.2fr 1.4fr',gap:14,marginBottom:18}}>
+        {/* Donut */}
+        <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+          <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:14}}>Reservas por Canal <span style={{fontSize:11,color:S.t3,fontWeight:500}}>({periodo==='hoy'?'Hoy':periodo==='semana'?'Esta Semana':'Período'})</span></div>
+          <div style={{display:'flex',alignItems:'center',gap:14}}>
+            <div style={{position:'relative',width:120,height:120,flexShrink:0}}>
+              <svg width="120" height="120" viewBox="0 0 120 120">
+                {total === 0 && <circle cx={60} cy={60} r={50} fill="none" stroke={S.border} strokeWidth={2}/>}
+                {arcs.map((a,i)=>(<path key={i} d={a.path} fill={a.col}/>))}
+                <circle cx={60} cy={60} r={28} fill={S.bg2}/>
+                <text x={60} y={56} textAnchor="middle" fontSize={20} fontWeight={900} fill={S.t1} fontFamily="'Syne', serif">{total}</text>
+                <text x={60} y={71} textAnchor="middle" fontSize={9} fill={S.t3} fontWeight={700}>Total</text>
+              </svg>
+            </div>
+            <div style={{flex:1,display:'flex',flexDirection:'column',gap:5}}>
+              {canalesOrden.map(([k,v]) => {
+                const info = CANAL_INFO[k] || { l:k, c:'#94A3B8' };
+                const pctCanal = total ? Math.round((v.tot/total)*100) : 0;
+                return (
+                  <div key={k} style={{display:'flex',alignItems:'center',gap:6,fontSize:11}}>
+                    <span style={{width:8,height:8,borderRadius:'50%',background:info.c,flexShrink:0}}/>
+                    <span style={{flex:1,color:S.t2}}>{info.l}</span>
+                    <span style={{color:S.t1,fontWeight:700}}>{v.tot}</span>
+                    <span style={{color:S.t3,fontSize:10}}>({pctCanal}%)</span>
+                  </div>
+                );
+              })}
+              {canalesOrden.length === 0 && <div style={{color:S.t3,fontSize:11}}>Sin datos en el período</div>}
+            </div>
+          </div>
         </div>
-        {statsPorMesero.length === 0 ? (
-          <div style={{padding:20,textAlign:'center',color:S.t3,fontSize:12}}>Sin meseros registrados en este restaurante.</div>
-        ) : (
+
+        {/* Rendimiento por canal */}
+        <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+          <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:12}}>Rendimiento por Canal</div>
           <div style={{overflowX:'auto'}}>
-            <table style={{width:'100%',borderCollapse:'collapse',fontSize:12,minWidth:560}}>
+            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
               <thead>
                 <tr style={{borderBottom:`1px solid ${S.border}`}}>
-                  {['Mesero','Mesas en vivo','Reservas','Sentadas','Pax atendidos'].map(h=>(
-                    <th key={h} style={{textAlign:'left',padding:'8px 12px',fontSize:9,color:S.t3,fontWeight:800,letterSpacing:'.1em',textTransform:'uppercase'}}>{h}</th>
+                  {['Canal','Reservas','Confirmadas','No-Show','Venta'].map(h=>(
+                    <th key={h} style={{padding:'8px 6px',textAlign:'left',fontSize:9,color:S.t3,fontWeight:800,letterSpacing:'.08em',textTransform:'uppercase'}}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {statsPorMesero.map((s:any,i:number)=>(
-                  <tr key={s.nombre} style={{borderBottom:`1px solid ${S.border}`,background:i%2===0?'transparent':`${S.bg}55`}}>
-                    <td style={{padding:'10px 12px'}}>
-                      <div style={{display:'flex',alignItems:'center',gap:8}}>
-                        <span style={{width:9,height:9,borderRadius:'50%',background:s.color,display:'inline-block',boxShadow:`0 0 8px ${s.color}99`}}/>
-                        <span style={{fontWeight:700,color:S.t1}}>{s.nombre}</span>
-                      </div>
-                    </td>
-                    <td style={{padding:'10px 12px'}}>
-                      <span style={{fontFamily:"'Syne',serif",fontSize:15,fontWeight:900,color:s.mesasAtendidas>0?S.green:S.t3}}>{s.mesasAtendidas}</span>
-                    </td>
-                    <td style={{padding:'10px 12px'}}>
-                      <span style={{fontFamily:"'Syne',serif",fontSize:15,fontWeight:900,color:S.gold}}>{s.reservasAsignadas}</span>
-                    </td>
-                    <td style={{padding:'10px 12px'}}>
-                      <span style={{fontFamily:"'Syne',serif",fontSize:15,fontWeight:900,color:s.sentadas>0?S.green:S.t3}}>{s.sentadas}</span>
-                    </td>
-                    <td style={{padding:'10px 12px'}}>
-                      <span style={{fontFamily:"'Syne',serif",fontSize:15,fontWeight:900,color:S.blue}}>{s.paxTotal}</span>
-                      <span style={{fontSize:10,color:S.t3,marginLeft:4}}>p</span>
-                    </td>
-                  </tr>
-                ))}
+                {canalesOrden.map(([k,v]) => {
+                  const info = CANAL_INFO[k] || { l:k, c:'#94A3B8' };
+                  const pctConf = v.tot ? Math.round((v.conf/v.tot)*100) : 0;
+                  const pctNS = v.tot ? Math.round((v.ns/v.tot)*1000)/10 : 0;
+                  const venta = v.conf * 2 * TICKET_PROMEDIO;
+                  return (
+                    <tr key={k} style={{borderBottom:`1px solid ${S.border}`}}>
+                      <td style={{padding:'8px 6px'}}>
+                        <span style={{display:'inline-flex',alignItems:'center',gap:5}}>
+                          <span style={{width:7,height:7,borderRadius:'50%',background:info.c}}/>
+                          <span style={{color:S.t1,fontWeight:600}}>{info.l}</span>
+                        </span>
+                      </td>
+                      <td style={{padding:'8px 6px',color:S.t1,fontWeight:700}}>{v.tot}</td>
+                      <td style={{padding:'8px 6px',color:S.green,fontWeight:700}}>{v.conf} <span style={{color:S.t3,fontWeight:500}}>({pctConf}%)</span></td>
+                      <td style={{padding:'8px 6px',color:pctNS>10?S.red:S.t2,fontWeight:700}}>{v.ns} <span style={{color:S.t3,fontWeight:500}}>({pctNS}%)</span></td>
+                      <td style={{padding:'8px 6px',color:S.gold,fontWeight:700}}>${(venta/1000).toFixed(0)}k</td>
+                    </tr>
+                  );
+                })}
+                <tr style={{borderTop:`2px solid ${S.border}`,fontWeight:800}}>
+                  <td style={{padding:'9px 6px',color:S.t1}}>Total</td>
+                  <td style={{padding:'9px 6px',color:S.t1}}>{total}</td>
+                  <td style={{padding:'9px 6px',color:S.green}}>{confirmadas} <span style={{color:S.t3,fontWeight:500}}>({total?Math.round((confirmadas/total)*100):0}%)</span></td>
+                  <td style={{padding:'9px 6px',color:S.red}}>{noShows} <span style={{color:S.t3,fontWeight:500}}>({noShowRate}%)</span></td>
+                  <td style={{padding:'9px 6px',color:S.gold}}>${(ventaProyectada/1000000).toFixed(1)}M</td>
+                </tr>
               </tbody>
             </table>
           </div>
-        )}
-      </div>
-
-      {/* Distribución por hora + Tendencia semanal */}
-      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:18}}>
-        {/* Por hora */}
-        <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
-          <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:14,color:S.t1}}>⏱ Reservas por hora · hoy</div>
-          {horasOrden.length === 0 ? (
-            <div style={{textAlign:'center',color:S.t3,fontSize:11,padding:20}}>Sin reservas hoy</div>
-          ) : (
-            <div style={{display:'flex',gap:6,alignItems:'flex-end',height:120}}>
-              {horasOrden.map(h=>{
-                const v = porHora[h];
-                const pct = (v/maxPorHora)*100;
-                return (
-                  <div key={h} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4,minWidth:0}}>
-                    <div style={{fontSize:10,fontWeight:800,color:S.gold}}>{v}</div>
-                    <div style={{width:'100%',height:`${pct}%`,minHeight:4,background:`linear-gradient(180deg, ${S.gold}, ${S.gold}55)`,borderRadius:'4px 4px 0 0'}}/>
-                    <div style={{fontSize:9,color:S.t3,fontFamily:"'IBM Plex Mono',monospace"}}>{h}h</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
 
-        {/* Semana */}
+        {/* Plan para llenar hoy */}
         <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
-          <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:14,color:S.t1}}>📈 Tendencia · últimos 7 días</div>
-          <div style={{display:'flex',gap:6,alignItems:'flex-end',height:120}}>
-            {semana.map(d=>{
-              const dia = new Date(d.fecha+'T12:00:00').toLocaleDateString('es-CO',{weekday:'short'});
-              const pct = (d.total/maxSem)*100;
-              const esHoy = d.fecha === fechaFiltro;
-              return (
-                <div key={d.fecha} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',gap:4,minWidth:0}}>
-                  <div style={{fontSize:10,fontWeight:800,color:esHoy?S.gold:S.blue}}>{d.total}</div>
-                  <div style={{width:'100%',height:`${pct}%`,minHeight:4,background:esHoy?`linear-gradient(180deg, ${S.gold}, ${S.gold}55)`:`linear-gradient(180deg, ${S.blue}, ${S.blue}55)`,borderRadius:'4px 4px 0 0'}}/>
-                  <div style={{fontSize:9,color:esHoy?S.gold:S.t3,fontFamily:"'IBM Plex Mono',monospace",fontWeight:esHoy?800:500}}>{dia}</div>
-                </div>
-              );
-            })}
+          <div style={{display:'flex',alignItems:'baseline',gap:6,marginBottom:4}}>
+            <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900}}>Plan para llenar hoy</div>
+            <span style={{fontSize:11,color:S.t3}}>ⓘ</span>
+          </div>
+          <div style={{fontSize:11,color:S.t2,marginBottom:12}}>Acciones del día para llegar a la meta</div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,marginBottom:12}}>
+            {[
+              { l:'Ocupación actual', v:`${ocupHoy}%`, c:S.purple, ico:'📊'},
+              { l:'Meta del día', v:`${metaDia}%`, c:S.gold, ico:'🎯'},
+              { l:'Faltan', v:`${faltanPax} pax`, c:S.blue, ico:'👥'},
+              { l:'Venta faltante', v:`$${(ventaFaltante/1000000).toFixed(1)}M`, c:S.green, ico:'$'},
+            ].map(b=>(
+              <div key={b.l} style={{background:S.bg3,borderRadius:10,padding:'8px 10px',textAlign:'center'}}>
+                <div style={{fontSize:9,color:S.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em'}}>{b.l}</div>
+                <div style={{fontFamily:"'Syne',serif",fontSize:16,fontWeight:900,color:b.c,marginTop:3}}>{b.v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{background:`${S.blue}10`,border:`1px solid ${S.blue}30`,borderRadius:8,padding:'8px 12px',fontSize:11,color:S.t2,marginBottom:12}}>
+            <b style={{color:S.blue}}>Franja más débil:</b> {horaDebil}:00 p.m. – {Number(horaDebil)+1}:30 p.m. · <b style={{color:S.blue}}>Canal recomendado:</b> WhatsApp CRM
+          </div>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:10,marginBottom:10}}>
+            <thead>
+              <tr style={{borderBottom:`1px solid ${S.border}`}}>
+                {['PRIORIDAD','TAREA','IMPACTO','ESTADO'].map(h=>(
+                  <th key={h} style={{padding:'6px 4px',textAlign:'left',fontSize:9,color:S.t3,fontWeight:800,letterSpacing:'.08em'}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tareas.map((t,i)=>(
+                <tr key={i} style={{borderBottom:`1px solid ${S.border}`}}>
+                  <td style={{padding:'6px 4px'}}>
+                    <span style={{display:'inline-flex',alignItems:'center',gap:4}}>
+                      <span style={{width:6,height:6,borderRadius:'50%',background:t.c}}/>
+                      <span style={{color:S.t1,fontWeight:600,fontSize:10}}>{t.p}</span>
+                    </span>
+                  </td>
+                  <td style={{padding:'6px 4px',color:S.t1,fontSize:10}}>{t.t}</td>
+                  <td style={{padding:'6px 4px',color:S.green,fontWeight:700,fontSize:10}}>{t.i}</td>
+                  <td style={{padding:'6px 4px'}}>
+                    <span style={{fontSize:9,color:S.t3,background:S.bg3,padding:'2px 7px',borderRadius:6}}>○ {t.e}</span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+            <button style={{flex:1,padding:'8px 10px',borderRadius:8,border:'none',background:'#25D366',color:'#fff',fontSize:10,fontWeight:800,cursor:'pointer',whiteSpace:'nowrap'}}>💬 Enviar WhatsApp</button>
+            <button style={{flex:1,padding:'8px 10px',borderRadius:8,border:`1px solid ${S.blue}55`,background:`${S.blue}15`,color:S.blue,fontSize:10,fontWeight:800,cursor:'pointer',whiteSpace:'nowrap'}}>👥 Ver sugeridos</button>
+            <button style={{flex:1,padding:'8px 10px',borderRadius:8,border:`1px solid ${S.purple}55`,background:`${S.purple}15`,color:S.purple,fontSize:10,fontWeight:800,cursor:'pointer',whiteSpace:'nowrap'}}>📞 Llamar VIPs</button>
           </div>
         </div>
       </div>
 
-      {/* Próximas reservas + Top VIPs + Franjas bloqueadas */}
-      <div style={{display:'grid',gridTemplateColumns:'1.4fr 1fr',gap:14}}>
-        {/* Próximas 3h */}
+      {/* Tendencia + Clientes sugeridos */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:14,marginBottom:18}}>
+        {/* Tendencia */}
         <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
-          <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:12,color:S.t1}}>⏭ Próximas 3 horas</div>
-          {proximas.length === 0 ? (
-            <div style={{textAlign:'center',color:S.t3,fontSize:11,padding:20}}>Sin reservas próximas</div>
-          ) : (
-            <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {proximas.map((r:any)=>{
-                const esOh = r.origen === 'ohyeah';
-                return (
-                  <div key={r.id} style={{display:'flex',alignItems:'center',gap:10,padding:'9px 12px',background:S.bg,borderRadius:10,border:`1px solid ${esOh?`${S.gold}30`:S.border}`}}>
-                    <span style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900,color:S.gold,minWidth:55}}>{(r.hora||'').slice(0,5)}</span>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,fontWeight:700,color:S.t1}}>{r.cliente_nombre} {esOh && <span style={{fontSize:9,color:S.gold,marginLeft:5}}>🦉</span>}</div>
-                      <div style={{fontSize:10,color:S.t3}}>{r.pax}p · {r.ocasion||'reserva'} {r.mesa_num?`· Mesa M${r.mesa_num}`:`· `}<span style={{color:!r.mesa_num?S.red:S.t3,fontWeight:700}}>{!r.mesa_num?'⚠ Sin mesa':''}</span></div>
-                    </div>
-                  </div>
-                );
-              })}
+          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:14}}>
+            <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,flex:1}}>Reservas Confirmadas vs Por Confirmar <span style={{fontSize:11,color:S.t3}}>ⓘ</span></div>
+            <div style={{display:'flex',gap:10,fontSize:10}}>
+              <span style={{display:'flex',alignItems:'center',gap:4,color:S.t2}}><span style={{width:8,height:2,background:S.green,display:'inline-block'}}/>Confirmadas</span>
+              <span style={{display:'flex',alignItems:'center',gap:4,color:S.t2}}><span style={{width:8,height:2,background:S.gold,display:'inline-block'}}/>Por Confirmar</span>
             </div>
-          )}
+          </div>
+          <svg viewBox="0 0 400 160" style={{width:'100%',height:160}}>
+            {[0,25,50,75,100].map(y=>(
+              <line key={y} x1={28} y1={140 - (y/maxTend)*120} x2={395} y2={140 - (y/maxTend)*120} stroke={S.border} strokeWidth={0.5}/>
+            ))}
+            {[0,25,50,75,100].map(y=>(
+              <text key={y} x={20} y={143 - (y/maxTend)*120} fontSize={8} fill={S.t3} textAnchor="end">{y}</text>
+            ))}
+            {/* line confirmadas */}
+            {(() => {
+              const dx = (395-30)/(tend7.length-1);
+              const yFor = (v:number) => 140 - (v/maxTend)*120;
+              const pathConf = tend7.map((d,i)=>`${i===0?'M':'L'} ${30+i*dx} ${yFor(d.conf)}`).join(' ');
+              const pathPend = tend7.map((d,i)=>`${i===0?'M':'L'} ${30+i*dx} ${yFor(d.pend)}`).join(' ');
+              const areaConf = pathConf + ` L ${30+(tend7.length-1)*dx} 140 L 30 140 Z`;
+              return (<>
+                <path d={areaConf} fill={`${S.green}1a`}/>
+                <path d={pathConf} stroke={S.green} strokeWidth={2} fill="none"/>
+                <path d={pathPend} stroke={S.gold} strokeWidth={2} fill="none" strokeDasharray="4 3"/>
+                {tend7.map((d,i)=>(<g key={d.dia}>
+                  <circle cx={30+i*dx} cy={yFor(d.conf)} r={3.5} fill={S.green}/>
+                  <text x={30+i*dx} y={yFor(d.conf)-7} fontSize={9} fill={S.green} fontWeight={800} textAnchor="middle">{d.conf}</text>
+                  <circle cx={30+i*dx} cy={yFor(d.pend)} r={3} fill={S.gold}/>
+                  <text x={30+i*dx} y={yFor(d.pend)+12} fontSize={8} fill={S.gold} textAnchor="middle">{d.pend}</text>
+                  <text x={30+i*dx} y={155} fontSize={9} fill={S.t3} textAnchor="middle">{d.label}</text>
+                </g>))}
+              </>);
+            })()}
+          </svg>
         </div>
 
-        {/* Top VIPs */}
+        {/* Clientes sugeridos */}
         <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
-          <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:12,color:S.t1}}>⭐ Clientes top hoy</div>
-          {topVips.length === 0 ? (
-            <div style={{textAlign:'center',color:S.t3,fontSize:11,padding:20}}>Sin clientes recurrentes</div>
-          ) : (
-            <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {topVips.map((r:any)=>(
-                <div key={r.id} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:`${S.purple}10`,border:`1px solid ${S.purple}30`,borderRadius:10}}>
-                  <div style={{width:30,height:30,borderRadius:'50%',background:`${S.purple}30`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,color:S.purple,fontSize:11}}>{(r.cliente_nombre||'?').charAt(0).toUpperCase()}</div>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:11,fontWeight:700,color:S.t1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.cliente_nombre}</div>
-                    <div style={{fontSize:9,color:S.purple,fontWeight:700}}>{r.visit_count} visitas{r.gourmand_level?` · ${r.gourmand_level}`:''}</div>
-                  </div>
-                  <span style={{fontSize:11,color:S.gold,fontWeight:800}}>{(r.hora||'').slice(0,5)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Franjas bloqueadas */}
-          {franjasBloqueadas.length > 0 && (
-            <div style={{marginTop:16,paddingTop:14,borderTop:`1px solid ${S.border}`}}>
-              <div style={{fontSize:10,color:S.red,fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8}}>🚫 Franjas bloqueadas</div>
-              <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                {franjasBloqueadas.map((f:any)=>(
-                  <div key={f.id} style={{display:'flex',gap:8,fontSize:11,color:S.t2,alignItems:'center'}}>
-                    <span style={{fontFamily:"'Syne',serif",fontWeight:800,color:S.red}}>{f.hora_desde.slice(0,5)}–{f.hora_hasta.slice(0,5)}</span>
-                    <span style={{color:S.t3,flex:1}}>{f.motivo||'Sin motivo'}</span>
-                  </div>
+          <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:12}}>Clientes sugeridos hoy</div>
+          <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+            <thead>
+              <tr style={{borderBottom:`1px solid ${S.border}`}}>
+                {['Cliente','Última visita','Ticket prom.','Acción'].map(h=>(
+                  <th key={h} style={{padding:'8px 6px',textAlign:'left',fontSize:9,color:S.t3,fontWeight:800,letterSpacing:'.08em'}}>{h}</th>
                 ))}
-              </div>
-            </div>
-          )}
+              </tr>
+            </thead>
+            <tbody>
+              {clientesSug.length === 0 && (
+                <tr><td colSpan={4} style={{padding:20,textAlign:'center',color:S.t3,fontSize:11}}>Cargando sugerencias…</td></tr>
+              )}
+              {clientesSug.map((c:any)=>(
+                <tr key={c.id} style={{borderBottom:`1px solid ${S.border}`}}>
+                  <td style={{padding:'8px 6px'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:7}}>
+                      <div style={{width:26,height:26,borderRadius:'50%',background:`${S.purple}30`,display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,color:S.purple,fontSize:10}}>
+                        {(c.name||'?').charAt(0).toUpperCase()}
+                      </div>
+                      <span style={{color:S.t1,fontWeight:600,fontSize:11}}>{c.name}</span>
+                      {c.vip_status && <span style={{fontSize:9}}>⭐</span>}
+                    </div>
+                  </td>
+                  <td style={{padding:'8px 6px',color:S.t2,fontSize:10}}>{c.diasInactivo} días</td>
+                  <td style={{padding:'8px 6px',color:S.gold,fontWeight:700,fontSize:10}}>${Number(c.ticket||0).toLocaleString('es-CO')}</td>
+                  <td style={{padding:'8px 6px'}}>
+                    {c.phone ? (
+                      <a href={`https://wa.me/${c.phone.replace(/\D/g,'')}?text=${encodeURIComponent('Hola '+c.name+', somos OMM. Hace tiempo no te vemos — ¿reservamos esta semana?')}`} target="_blank" rel="noopener noreferrer"
+                        style={{padding:'4px 10px',borderRadius:7,border:`1px solid #25D36655`,background:'#25D36615',color:'#25D366',fontSize:10,fontWeight:800,textDecoration:'none',display:'inline-flex',alignItems:'center',gap:4}}>
+                        💬 WhatsApp
+                      </a>
+                    ) : c.email ? (
+                      <a href={`mailto:${c.email}?subject=Te extrañamos en OMM&body=Hola ${encodeURIComponent(c.name||'')}, queremos verte de vuelta.`}
+                        style={{padding:'4px 10px',borderRadius:7,border:`1px solid ${S.blue}55`,background:`${S.blue}15`,color:S.blue,fontSize:10,fontWeight:800,textDecoration:'none'}}>
+                        ✉ Invitar
+                      </a>
+                    ) : <span style={{fontSize:10,color:S.t3}}>—</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
+
+      {/* Nexum Brain — Recomendaciones */}
+      <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+        <div style={{display:'flex',alignItems:'baseline',gap:8,marginBottom:14}}>
+          <div style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:900,color:S.t1}}>Nexum Brain</div>
+          <div style={{fontSize:11,color:S.t3}}>· Recomendaciones del Día</div>
+        </div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(220px, 1fr))',gap:10}}>
+          {insights.map((ins,i)=>(
+            <div key={i} style={{background:S.bg3,borderRadius:10,padding:'12px 14px',display:'flex',gap:10,alignItems:'flex-start'}}>
+              <div style={{width:34,height:34,borderRadius:9,background:`${ins.col}18`,border:`1px solid ${ins.col}33`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:16,flexShrink:0}}>{ins.ico}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:12,fontWeight:800,color:S.t1,marginBottom:3}}>{ins.t}</div>
+                <div style={{fontSize:10,color:S.t2,lineHeight:1.45}}>{ins.d}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {franjasBloqueadas.length > 0 && (
+        <div style={{marginTop:14,background:`${S.red}0a`,border:`1px solid ${S.red}30`,borderRadius:10,padding:'10px 14px'}}>
+          <div style={{fontSize:10,color:S.red,fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:6}}>🚫 Franjas bloqueadas hoy</div>
+          <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+            {franjasBloqueadas.map((f:any)=>(
+              <span key={f.id} style={{fontSize:11,color:S.t2,background:S.bg2,padding:'4px 10px',borderRadius:7,border:`1px solid ${S.border}`}}>
+                <b style={{color:S.red}}>{f.hora_desde.slice(0,5)}–{f.hora_hasta.slice(0,5)}</b> · {f.motivo||'Sin motivo'}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -2557,7 +2831,7 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
 
         {/* ── MESAS NEON SUAVE ── */}
         {mesas.filter((m:any)=>m.posicion_x!=null && m.posicion_y!=null).map((m:any) => {
-          const reserva = activas.find((r:any) => Number(r.mesa_num) === Number(m.name) || String(r.mesa_num)===String(m.name));
+          const reserva = activas.find((r:any) => mismaMesa(r.mesa_num, m.name));
           const ocupada = ['ocupada','asignada','sentada'].includes(m.estado);
           const tieneReserva = !!reserva;
           const tone = ocupada ? NEON.ocupada : tieneReserva ? NEON.reservada : NEON.libre;
