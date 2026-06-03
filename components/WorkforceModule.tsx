@@ -20,6 +20,13 @@ const HORAS_MES = 230;
 const RECARGO_NOCTURNO = 0.35;
 const RECARGO_DOMINICAL = 0.75;
 const RECARGO_EXTRA = 0.25;
+// ── Reglas de turno por jornada (Colombia · OMM) ─────────────────
+// Un turno normal = 7h trabajo + 1h alimentación = 8h en planta
+const HORA_ALMUERZO = 1; // hora obligatoria de alimentación
+const JORNADA_NORMAL = 8; // total en planta
+const HORAS_SEMANA_LEGAL = 42; // semana laboral max (reforma 2024)
+const MAX_EXTRAS_SEMANA = 12; // tope de horas extras a la semana
+const SIMULADOR_MAX_DIAS = 15; // tope de simulación IA
 const NOCHE_INICIO = 19; // 7:00 p.m. (reforma vigente)
 const NOCHE_FIN = 6;
 const FESTIVOS_2026 = new Set([
@@ -62,6 +69,11 @@ const toMin = (t?:string)=>{ if(!t) return 0; const [h,m]=t.split(':'); return N
 const hhmm = (t?:string)=> t? t.slice(0,5) : '';
 const nowHHMMSS = ()=>{ const d=new Date(); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}:00`; };
 const shiftHours = (ini?:string, fin?:string)=>{ if(!ini||!fin) return 0; let s=toMin(ini), e=toMin(fin); if(e<=s) e+=1440; return (e-s)/60; };
+// Horas EFECTIVAS de trabajo (descuenta la hora de alimentación si el turno >= 6h)
+const horasEfectivas = (ini?:string, fin?:string) => {
+  const total = shiftHours(ini, fin);
+  return total >= 6 ? Math.max(0, total - HORA_ALMUERZO) : total;
+};
 const nightFraction = (ini?:string, fin?:string)=>{ if(!ini||!fin) return 0; let s=toMin(ini), e=toMin(fin); if(e<=s) e+=1440; let night=0,total=0; for(let m=s;m<e;m+=15){ const h=Math.floor((m%1440)/60); total+=15; if(h>=NOCHE_INICIO||h<NOCHE_FIN) night+=15; } return total? night/total : 0; };
 const esFestivo = (fecha:string)=> { const d=new Date(fecha+'T12:00:00'); return d.getDay()===0 || FESTIVOS_2026.has(fecha); };
 const cop = (n:number)=> '$'+Math.round(n||0).toLocaleString('es-CO');
@@ -134,12 +146,31 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
   const costoSemana = useMemo(()=> turnos.reduce((acc,t)=>{ const e=empById[t.empleado_id]; if(!e) return acc; return acc + shiftHours(t.hora_inicio,t.hora_fin)*valorHora(e); },0), [turnos, empById]);
   const coberturaHoy = turnosHoy.length? Math.round((asistencia.filter(a=>a.estado==='presente'||a.estado==='tarde').length/turnosHoy.length)*100) : 0;
 
+  // ─────────────── Horas semanales por empleado (vs 42 legales) ───────
+  // efectivas = total en planta - 1h almuerzo. Lo que pase de 42 = extra.
+  const horasPorEmp = useMemo(() => {
+    const map: Record<string|number, { planta:number; efectivas:number; base:number; extras:number; faltan:number; nTurnos:number }> = {};
+    empleados.forEach(e => { map[e.id] = { planta:0, efectivas:0, base:0, extras:0, faltan:HORAS_SEMANA_LEGAL, nTurnos:0 }; });
+    turnos.forEach(t => {
+      if (!map[t.empleado_id]) return;
+      map[t.empleado_id].planta    += shiftHours(t.hora_inicio, t.hora_fin);
+      map[t.empleado_id].efectivas += horasEfectivas(t.hora_inicio, t.hora_fin);
+      map[t.empleado_id].nTurnos++;
+    });
+    Object.values(map).forEach((s:any) => {
+      s.base    = Math.min(HORAS_SEMANA_LEGAL, s.efectivas);
+      s.extras  = Math.max(0, s.efectivas - HORAS_SEMANA_LEGAL);
+      s.faltan  = Math.max(0, HORAS_SEMANA_LEGAL - s.efectivas);
+    });
+    return map;
+  }, [empleados, turnos]);
+
   // ─────────────── Preliquidación (periodo = semana visible) ───────────────
   const preliq = useMemo(()=>{
     return empleados.map(e=>{
       const ts = turnos.filter(t=>t.empleado_id===e.id);
       let hOrd=0, hNoct=0, hDom=0;
-      ts.forEach(t=>{ const h=shiftHours(t.hora_inicio,t.hora_fin); hOrd+=h; hNoct+=h*nightFraction(t.hora_inicio,t.hora_fin); if(esFestivo(t.fecha)) hDom+=h; });
+      ts.forEach(t=>{ const h=horasEfectivas(t.hora_inicio,t.hora_fin); hOrd+=h; hNoct+=h*nightFraction(t.hora_inicio,t.hora_fin); if(esFestivo(t.fecha)) hDom+=h; });
       const vh = valorHora(e);
       let extrasVal=0, deducc=0, bonos=0;
       novedades.filter(n=>n.estado==='aprobada' && n.empleado_id===e.id && (!n.fecha_inicio || (n.fecha_inicio<=weekEndStr && (!n.fecha_fin || n.fecha_fin>=weekStartStr)))).forEach(n=>{
@@ -170,23 +201,88 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
   const publicarSemana = async ()=>{
     const ids = turnos.map(t=>t.id);
     if(ids.length===0){ showToast('No hay turnos en la semana'); return; }
+    const warnings:string[] = [];
+    const errors:string[] = [];
+    empleados.forEach((e:any) => {
+      const h = (horasPorEmp as any)[e.id];
+      if (!h || h.nTurnos === 0) return;
+      if (h.efectivas > HORAS_SEMANA_LEGAL + MAX_EXTRAS_SEMANA) {
+        errors.push(`🚫 ${e.nombre_completo}: ${h.efectivas.toFixed(1)}h excede el tope (${HORAS_SEMANA_LEGAL}+${MAX_EXTRAS_SEMANA}h)`);
+      } else if (h.extras > 0) {
+        warnings.push(`⚠️ ${e.nombre_completo}: ${h.extras.toFixed(1)}h extras (requieren autorización en novedades)`);
+      } else if (h.efectivas < HORAS_SEMANA_LEGAL && h.faltan > 8) {
+        warnings.push(`ℹ️ ${e.nombre_completo}: ${h.faltan.toFixed(1)}h sin cubrir bajo el contrato`);
+      }
+    });
+    const porEmpFecha:Record<string, any[]> = {};
+    turnos.forEach(t => { const k=`${t.empleado_id}-${t.fecha}`; (porEmpFecha[k]=porEmpFecha[k]||[]).push(t); });
+    Object.values(porEmpFecha).forEach(ts => {
+      if (ts.length < 2) return;
+      const sorted = [...ts].sort((a,b)=> (a.hora_inicio||'').localeCompare(b.hora_inicio||''));
+      for (let i=0;i<sorted.length-1;i++) {
+        if (toMin(sorted[i].hora_fin) > toMin(sorted[i+1].hora_inicio)) {
+          const emp = empById[sorted[i].empleado_id];
+          errors.push(`🚫 Solape en ${emp?.nombre_completo||'empleado'} (${sorted[i].fecha})`);
+        }
+      }
+    });
+    if (errors.length > 0) {
+      alert(`No se puede publicar todavía:\n\n${errors.join('\n')}\n\nResolvé los conflictos primero.`);
+      return;
+    }
+    const aviso = warnings.length > 0
+      ? `Se publicarán ${ids.length} turnos con ${warnings.length} avisos:\n\n${warnings.slice(0,8).join('\n')}${warnings.length>8?`\n…y ${warnings.length-8} más`:''}\n\n¿Publicar y enviar a los empleados?`
+      : `¿Publicar ${ids.length} turnos de la semana ${weekStartStr} y notificar a los empleados?`;
+    if (!confirm(aviso)) return;
     await supabase.from('turnos').update({ publicado:true, estado:'publicado' }).in('id',ids);
-    logAudit('horario.publicado','turnos',{semana:weekStartStr, turnos:ids.length});
-    showToast(`✓ Horario publicado · ${ids.length} turnos · notificado a empleados`);
+    logAudit('horario.publicado','turnos',{semana:weekStartStr, turnos:ids.length, warnings:warnings.length});
+    showToast(`✓ Horario publicado · ${ids.length} turnos · ${warnings.length} avisos`);
   };
 
   // Check-in / Check-out (kiosk)
   const checkIn = async (t:any)=>{
     const e = empById[t.empleado_id]; if(!e) return;
     const ahora = nowHHMMSS();
-    const minTarde = Math.max(0, toMin(ahora)-toMin(t.hora_inicio));
+    const min = toMin(ahora) - toMin(t.hora_inicio);
+    // Ventana de check-in: -15 min (anticipado) a +30 min (descuento)
+    // 0-10 min late = en hora · 10-20 min = retardo · 20-30 min = retardo grave (descuenta 1h) · >30 = no-show
+    let estado:'presente'|'tarde'|'no_show' = 'presente';
+    let descuentoHora = 0; // horas descontadas del turno
+    let etiquetaTarde = '';
+    if (min > 30) {
+      // Más de 30 min de tardanza → tratar como no-show (debería marcarse a mano si llega)
+      estado = 'no_show';
+      descuentoHora = 1;
+      etiquetaTarde = '🚫 >30 min — no-show';
+    } else if (min > 20) {
+      estado = 'tarde';
+      descuentoHora = 1; // descuento de 1 hora del salario
+      etiquetaTarde = `⚠️ ${min} min — descuenta 1h`;
+    } else if (min >= 10) {
+      estado = 'tarde';
+      etiquetaTarde = `⏱ ${min} min — retardo formal`;
+    } else if (min > 0) {
+      etiquetaTarde = `${min} min — en hora (margen 10 min)`;
+    } else if (min < -15) {
+      etiquetaTarde = `${Math.abs(min)} min de anticipación`;
+    }
+    const minTarde = Math.max(0, min);
     await supabase.from('attendance').insert({
       restaurante_id:REST_ID, staff_id:e.staff_nexum_id, empleado_nombre:e.nombre_completo, fecha:hoy,
       turno:`${hhmm(t.hora_inicio)}–${hhmm(t.hora_fin)}`, hora_entrada_esperada:t.hora_inicio, hora_entrada_real:ahora,
-      hora_salida_esperada:t.hora_fin, minutos_tarde:minTarde, estado: minTarde>5?'tarde':'presente', presence_multiplier:1,
+      hora_salida_esperada:t.hora_fin, minutos_tarde:minTarde, estado, presence_multiplier: descuentoHora>0?0.875:1,
     });
-    logAudit('checkin','attendance',{empleado:e.nombre_completo, hora:ahora, minutos_tarde:minTarde});
-    showToast(`✓ Check-in ${e.nombre_completo}${minTarde>5?` · ${minTarde} min tarde`:''}`);
+    // Si descuenta hora, encolarse como novedad de descuento automático
+    if (descuentoHora > 0) {
+      await supabase.from('workforce_novedades').insert({
+        restaurante_id:REST_ID, empleado_id:e.id, tipo:'permiso_no_pago',
+        fecha_inicio:hoy, fecha_fin:hoy, horas:descuentoHora, dias:0,
+        motivo:`Descuento automático · llegó ${min} min tarde (>${20})`,
+        estado:'pendiente', valor:0,
+      });
+    }
+    logAudit('checkin','attendance',{empleado:e.nombre_completo, hora:ahora, minutos_tarde:minTarde, descuento:descuentoHora});
+    showToast(`✓ Check-in ${e.nombre_completo.split(' ')[0]}${etiquetaTarde?` · ${etiquetaTarde}`:''}`);
   };
   const checkOut = async (a:any)=>{
     const ahora = nowHHMMSS();
@@ -212,11 +308,11 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
   // ─────────────── Render ───────────────
   const TABS:{id:Tab,label:string,icon:any,badge?:number}[] = [
     { id:'resumen', label:'Resumen', icon:ShieldCheck },
-    { id:'horarios', label:'Horarios', icon:Calendar },
-    { id:'asistencia', label:'Asistencia', icon:Clock },
     { id:'novedades', label:'Novedades', icon:FileText, badge:novPendientes },
-    { id:'preliquidacion', label:'Preliquidación', icon:DollarSign },
     { id:'ia', label:'IA · Turno óptimo', icon:Sparkles },
+    { id:'horarios', label:'Horarios', icon:Calendar },
+    { id:'preliquidacion', label:'Preliquidación', icon:DollarSign },
+    { id:'asistencia', label:'Asistencia', icon:Clock },
   ];
 
   if (loading) return <div className="flex items-center justify-center h-[60vh] text-[#a0a0a0]"><Loader2 className="animate-spin mr-2" size={20}/> Cargando workforce…</div>;
@@ -540,7 +636,7 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
       {tab==='ia' && <IATurnoOptimo restauranteId={REST_ID} complejoId={COMPLEJO_ID} empleados={empleados} turnos={turnos} weekBase={weekBase} onAplicar={(creados:number)=>{ showToast(`✨ ${creados} turnos creados por IA`); logAudit('ia.simulacion','turnos',{creados}); cargar(); }}/>}
 
       {/* Modal nuevo turno */}
-      {shiftModal && <ShiftModal empleado={empById[shiftModal.empId]} fecha={shiftModal.fecha} complejoId={COMPLEJO_ID} onClose={()=>setShiftModal(null)} onSaved={(msg)=>{ setShiftModal(null); showToast(msg); logAudit('turno.creado','turnos',{empleado_id:shiftModal.empId, fecha:shiftModal.fecha}); cargar(); }} />}
+      {shiftModal && <ShiftModal empleado={empById[shiftModal.empId]} fecha={shiftModal.fecha} complejoId={COMPLEJO_ID} horasSemana={(horasPorEmp as any)[shiftModal.empId]?.efectivas || 0} onClose={()=>setShiftModal(null)} onSaved={(msg)=>{ setShiftModal(null); showToast(msg); logAudit('turno.creado','turnos',{empleado_id:shiftModal.empId, fecha:shiftModal.fecha}); cargar(); }} />}
       {/* Modal nueva novedad */}
       {novModal && <NovedadModal empleados={empleados} userName={userName} onClose={()=>setNovModal(false)} onSaved={(msg)=>{ setNovModal(false); showToast(msg); }} />}
 
@@ -565,21 +661,73 @@ function AsisChip({a}:{a:any}){
 }
 
 // ── Modal: crear turno ──
-function ShiftModal({empleado, fecha, complejoId, onClose, onSaved}:{empleado:any, fecha:string, complejoId:number, onClose:()=>void, onSaved:(m:string)=>void}){
+function ShiftModal({empleado, fecha, complejoId, horasSemana, onClose, onSaved}:{empleado:any, fecha:string, complejoId:number, horasSemana?:number, onClose:()=>void, onSaved:(m:string)=>void}){
   const [ini,setIni]=useState('17:00');
   const [fin,setFin]=useState('23:00');
   const [tipo,setTipo]=useState('servicio');
   const [nota,setNota]=useState('');
+  const [partido,setPartido]=useState(false);
+  const [ini2,setIni2]=useState('19:00');
+  const [fin2,setFin2]=useState('23:00');
+  const [autoExtras,setAutoExtras]=useState(false);
   const [saving,setSaving]=useState(false);
   const [error,setError]=useState<string|null>(null);
+
+  // Cálculo dinámico de horas con almuerzo + extras
+  const turnoMain = horasEfectivas(ini+':00', fin+':00');
+  const turnoExtra = partido ? horasEfectivas(ini2+':00', fin2+':00') : 0;
+  const horasTurnoTotal = turnoMain + turnoExtra;
+  const horasYaSemana = horasSemana || 0;
+  const horasFinal = horasYaSemana + horasTurnoTotal;
+  const sobreLegal = Math.max(0, horasFinal - HORAS_SEMANA_LEGAL);
+  const requiereExtras = sobreLegal > 0;
+  const finDeSemana = (() => {
+    const d = new Date(fecha+'T12:00:00').getDay();
+    return d === 0 || d === 6; // sábado o domingo
+  })();
+
   const guardar = async ()=>{
+    if (requiereExtras && !autoExtras) {
+      setError(`Este turno excede ${HORAS_SEMANA_LEGAL}h legales por ${sobreLegal.toFixed(1)}h. Confirmá horas extras autorizadas.`);
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
-      const horas = shiftHours(ini+':00', fin+':00');
-      const { error: insErr } = await supabase.from('turnos').insert({ empleado_id:empleado.id, complejo_id:complejoId, fecha, hora_inicio:ini+':00', hora_fin:fin+':00', estado:'programado', tipo_turno:tipo, horas_trabajadas:horas, nota, confirmado:false, publicado:false });
+      const horas1 = shiftHours(ini+':00', fin+':00');
+      const horasEf1 = horasEfectivas(ini+':00', fin+':00');
+      const nota1 = `${nota||''}${horasEf1>=7?' · +1h almuerzo':''}${finDeSemana?' · FIN DE SEMANA':''}${requiereExtras?` · EXTRAS +${sobreLegal.toFixed(1)}h`:''}`.trim();
+      const inserts:any[] = [{
+        empleado_id:empleado.id, complejo_id:complejoId, fecha,
+        hora_inicio:ini+':00', hora_fin:fin+':00',
+        estado:'programado', tipo_turno: partido?'partido':tipo,
+        horas_trabajadas:horas1, nota:nota1,
+        confirmado:false, publicado:false,
+      }];
+      if (partido) {
+        const horas2 = shiftHours(ini2+':00', fin2+':00');
+        inserts.push({
+          empleado_id:empleado.id, complejo_id:complejoId, fecha,
+          hora_inicio:ini2+':00', hora_fin:fin2+':00',
+          estado:'programado', tipo_turno:'partido',
+          horas_trabajadas:horas2, nota:`Partido bloque 2${requiereExtras?` · EXTRAS`:''}`,
+          confirmado:false, publicado:false,
+        });
+      }
+      const { error: insErr } = await supabase.from('turnos').insert(inserts);
       if (insErr) throw insErr;
-      onSaved(`✓ Turno ${ini}–${fin} · ${empleado.nombre_completo}`);
+      // Si autorizó horas extras, crear novedad de hora extra en el día siguiente
+      if (requiereExtras && autoExtras) {
+        const proxDia = new Date(fecha+'T12:00:00'); proxDia.setDate(proxDia.getDate()+1);
+        await supabase.from('workforce_novedades').insert({
+          empleado_id:empleado.id, empleado_nombre:empleado.nombre_completo, tipo:'hora_extra',
+          fecha_inicio: proxDia.toISOString().split('T')[0],
+          fecha_fin: proxDia.toISOString().split('T')[0],
+          horas: sobreLegal, motivo: `Hora extra autorizada por turno del ${fecha} (excede ${HORAS_SEMANA_LEGAL}h semanales)`,
+          estado:'enviada', impacto_pago:'pago',
+        });
+      }
+      onSaved(`✓ ${partido?'Turno partido':'Turno'} ${ini}–${fin}${partido?` / ${ini2}–${fin2}`:''} · ${empleado.nombre_completo}${requiereExtras?` · +${sobreLegal.toFixed(1)}h extras`:''}`);
     } catch (e:any) {
       setError(e?.message || 'No se pudo guardar el turno');
     } finally {
@@ -588,21 +736,72 @@ function ShiftModal({empleado, fecha, complejoId, onClose, onSaved}:{empleado:an
   };
   return (
     <div className="fixed inset-0 bg-black/80 z-[700] flex items-center justify-center p-4" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-      <div className="rounded-2xl w-full max-w-[380px] p-5" style={{background:C.card2, border:`1px solid ${C.border}`}}>
+      <div className="rounded-2xl w-full max-w-[420px] p-5 max-h-[92vh] overflow-y-auto" style={{background:C.card2, border:`1px solid ${C.border}`}}>
         <div className="flex items-center justify-between mb-3">
-          <div><div className="text-[14px] font-black">Nuevo turno</div><div className="text-[11px]" style={{color:C.t2}}>{empleado?.nombre_completo} · {fecha}</div></div>
+          <div>
+            <div className="text-[14px] font-black">Nuevo turno</div>
+            <div className="text-[11px]" style={{color:C.t2}}>{empleado?.nombre_completo} · {fecha}{finDeSemana && <span className="ml-2" style={{color:C.gold}}>· Fin de semana</span>}</div>
+          </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t2}}><X size={16}/></button>
         </div>
+
+        {/* Toggle turno partido */}
+        <button onClick={()=>setPartido(p=>!p)}
+          className="w-full px-3 py-2 rounded-lg text-[11px] font-bold mb-3 flex items-center justify-between"
+          style={{background: partido?'#4a8fd418':C.bg, border:`1px solid ${partido?'#4a8fd4':C.border}`, color: partido?'#4a8fd4':C.t2}}>
+          <span>↕ Turno partido (dos bloques)</span>
+          <span className="text-[14px]">{partido?'●':'○'}</span>
+        </button>
+
         <div className="flex gap-2 mb-3">
-          <label className="flex-1 text-[11px]" style={{color:C.t2}}>Inicio<input type="time" value={ini} onChange={e=>setIni(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/></label>
-          <label className="flex-1 text-[11px]" style={{color:C.t2}}>Fin<input type="time" value={fin} onChange={e=>setFin(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/></label>
+          <label className="flex-1 text-[11px]" style={{color:C.t2}}>Inicio {partido && '· bloque 1'}<input type="time" value={ini} onChange={e=>setIni(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/></label>
+          <label className="flex-1 text-[11px]" style={{color:C.t2}}>Fin {partido && '· bloque 1'}<input type="time" value={fin} onChange={e=>setFin(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/></label>
         </div>
-        <div className="text-[11px] mb-1" style={{color:C.t2}}>Tipo de turno</div>
-        <div className="grid grid-cols-2 gap-1.5 mb-3">
-          {TIPOS_TURNO.map(t=>(
-            <button key={t.id} onClick={()=>setTipo(t.id)} className="px-2 py-1.5 rounded-lg text-[10px] font-bold text-left" style={{background: tipo===t.id?`${t.color}22`:C.bg, border:`1px solid ${tipo===t.id?t.color:C.border}`, color: tipo===t.id?t.color:C.t2}}>{t.label}</button>
-          ))}
+
+        {partido && (
+          <div className="flex gap-2 mb-3 p-2 rounded-lg" style={{background:'rgba(74,143,212,0.06)',border:'1px solid rgba(74,143,212,0.25)'}}>
+            <label className="flex-1 text-[11px]" style={{color:'#4a8fd4'}}>Inicio · bloque 2<input type="time" value={ini2} onChange={e=>setIni2(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/></label>
+            <label className="flex-1 text-[11px]" style={{color:'#4a8fd4'}}>Fin · bloque 2<input type="time" value={fin2} onChange={e=>setFin2(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/></label>
+          </div>
+        )}
+
+        {/* Cálculo en vivo */}
+        <div className="rounded-lg p-3 mb-3 text-[11px]" style={{background:C.bg, border:`1px solid ${C.border}`}}>
+          <div className="flex items-center justify-between mb-1">
+            <span style={{color:C.t3}}>Horas efectivas (planta − 1h alm.)</span>
+            <span className="font-bold" style={{color:C.goldL}}>{horasTurnoTotal.toFixed(1)} h</span>
+          </div>
+          <div className="flex items-center justify-between mb-1">
+            <span style={{color:C.t3}}>Acumuladas en la semana</span>
+            <span className="font-bold" style={{color: horasFinal > HORAS_SEMANA_LEGAL?C.gold:C.t1}}>{horasFinal.toFixed(1)} / {HORAS_SEMANA_LEGAL} h</span>
+          </div>
+          {requiereExtras && (
+            <div className="flex items-center justify-between mt-2 pt-2 border-t" style={{borderColor:C.border}}>
+              <span style={{color:C.red,fontWeight:700}}>⚠ Excede {HORAS_SEMANA_LEGAL}h</span>
+              <span className="font-black" style={{color:C.red}}>+{sobreLegal.toFixed(1)} h extras</span>
+            </div>
+          )}
         </div>
+
+        {requiereExtras && (
+          <button onClick={()=>setAutoExtras(p=>!p)}
+            className="w-full px-3 py-2.5 rounded-lg text-[11px] font-bold mb-3 flex items-center justify-between"
+            style={{background: autoExtras?'#e0505018':C.bg, border:`1px solid ${autoExtras?'#e05050':'#e0505055'}`, color: autoExtras?'#e05050':C.t2}}>
+            <span>✓ Autorizo {sobreLegal.toFixed(1)}h extras (se crea novedad próximo día)</span>
+            <span className="text-[14px]">{autoExtras?'●':'○'}</span>
+          </button>
+        )}
+
+        {!partido && (
+          <>
+            <div className="text-[11px] mb-1" style={{color:C.t2}}>Tipo de turno</div>
+            <div className="grid grid-cols-2 gap-1.5 mb-3">
+              {TIPOS_TURNO.map(t=>(
+                <button key={t.id} onClick={()=>setTipo(t.id)} className="px-2 py-1.5 rounded-lg text-[10px] font-bold text-left" style={{background: tipo===t.id?`${t.color}22`:C.bg, border:`1px solid ${tipo===t.id?t.color:C.border}`, color: tipo===t.id?t.color:C.t2}}>{t.label}</button>
+              ))}
+            </div>
+          </>
+        )}
         <input value={nota} onChange={e=>setNota(e.target.value)} placeholder="Nota (opcional)" className="w-full px-2 py-2 rounded-lg text-[12px] mb-3" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/>
         {error && <div className="text-[11px] mb-2 px-3 py-2 rounded-lg" style={{background:'rgba(255,82,82,0.12)',border:'1px solid rgba(255,82,82,0.30)',color:'#ff7878'}}>⚠ {error}</div>}
         <button onClick={guardar} disabled={saving} className="w-full py-2.5 rounded-xl text-[13px] font-black flex items-center justify-center gap-2" style={{background:C.gold,color:'#000'}}>{saving?<Loader2 size={15} className="animate-spin"/>:<Plus size={15}/>} Crear turno</button>
@@ -929,9 +1128,12 @@ function SimuladorTurnos({ complejoId, empleados, turnos, weekBase, recomMeseros
   // Generar la simulación: para cada día de la semana base, decide qué
   // turnos abrir y a quién asignar.
   const ymdLocal = (d:Date) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  // Tope simulador: 7 (semana) o hasta 15 días para planificar quincena
+  const [diasSimulacion, setDiasSimulacion] = React.useState(7);
   const simulacion = React.useMemo(() => {
     const semana:{ fecha:string; dia:number; turnos:{ grupo:string; ventana:string; empleado:any; ini:string; fin:string; tipo:string; label:string }[] }[] = [];
-    for (let i=0;i<7;i++) {
+    const dias = Math.min(SIMULADOR_MAX_DIAS, Math.max(1, diasSimulacion));
+    for (let i=0;i<dias;i++) {
       const d = new Date(weekBase); d.setDate(d.getDate()+i);
       const fecha = ymdLocal(d);
       const diaSemana = d.getDay(); // 0=dom, 6=sab
@@ -970,7 +1172,7 @@ function SimuladorTurnos({ complejoId, empleados, turnos, weekBase, recomMeseros
       semana.push({ fecha, dia:diaSemana, turnos:turnosDia });
     }
     return semana;
-  }, [empleadosPorGrupo, recomMeseros, weekBase]);
+  }, [empleadosPorGrupo, recomMeseros, weekBase, diasSimulacion]);
 
   const totalSugeridos = simulacion.reduce((s,d) => s + d.turnos.length, 0);
 
@@ -1021,8 +1223,18 @@ function SimuladorTurnos({ complejoId, empleados, turnos, weekBase, recomMeseros
           </div>
           <div>
             <div className="font-['Syne'] text-[16px] font-black text-white">Simulación de turnos · IA</div>
-            <div className="text-[11px] text-[#a0a0a0]">Distribución sugerida para la semana del <strong className="text-[#d4943a]">{ymdLocal(weekBase)}</strong></div>
+            <div className="text-[11px] text-[#a0a0a0]">Distribución sugerida desde <strong className="text-[#d4943a]">{ymdLocal(weekBase)}</strong> · {diasSimulacion} días (máx {SIMULADOR_MAX_DIAS})</div>
           </div>
+        </div>
+        {/* Selector de días a simular (1 semana / 10 / 15 días) */}
+        <div className="flex gap-1 p-1 rounded-xl" style={{background:'rgba(0,0,0,0.3)', border:'1px solid rgba(255,255,255,0.06)'}}>
+          {[7,10,SIMULADOR_MAX_DIAS].map(n => (
+            <button key={n} onClick={()=>setDiasSimulacion(n)}
+              className="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all"
+              style={{background: diasSimulacion===n ? 'rgba(212,148,58,0.2)':'transparent', color: diasSimulacion===n ? '#d4943a':'#a0a0a0'}}>
+              {n}d
+            </button>
+          ))}
         </div>
         <button onClick={aplicar} disabled={aplicando || nuevos.length === 0}
           className="px-5 py-2.5 rounded-xl font-bold text-[13px] disabled:opacity-40 disabled:cursor-not-allowed"
@@ -1038,8 +1250,8 @@ function SimuladorTurnos({ complejoId, empleados, turnos, weekBase, recomMeseros
         <SimStat label="Horas pico" v={horasPico.join(', ')||'—'} c="#9b72ff"/>
       </div>
 
-      {/* Grid semanal */}
-      <div className="grid grid-cols-7 gap-1.5">
+      {/* Grid de días — adaptable a 7/10/15 días */}
+      <div className="grid gap-1.5" style={{gridTemplateColumns: `repeat(${Math.min(7, diasSimulacion)}, minmax(0,1fr))`}}>
         {simulacion.map((d) => {
           const fecha = new Date(d.fecha+'T12:00:00');
           const diaTxt = fecha.toLocaleDateString('es-CO',{weekday:'short'}).replace('.','');
