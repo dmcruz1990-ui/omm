@@ -275,12 +275,14 @@ const Dashboard: React.FC = () => {
         <div className="space-y-10 mb-10">
           {[
             {
-              id: 'marketing', label: 'PAQUETE MARKETING',
+              id: 'guesthub', label: 'GUESTHUB',
               icon: <Sparkles size={14} className="text-blue-500" />,
               modules: [
                 { type: ModuleType.RESERVE,        label: 'RESERVE',       sub: 'MAPA & AGENDA',      icon: <CalendarDays size={18} /> },
                  // PLANO MESAS eliminado del sidebar — vive dentro de RESERVE (pestaña Editor de planta)
                  { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> },
+                 { type: ModuleType.OH_YEAH_ADMIN,  label: 'OH YEAH ADMIN', sub: 'RESTAURANTES',       icon: <Store size={18} /> },
+                 { type: ModuleType.OH_YEAH_RESTAURANTE, label: 'OH YEAH REG.', sub: 'REGISTRO EXTERNO', icon: <Store size={18} /> },
                ]
              },
              {
