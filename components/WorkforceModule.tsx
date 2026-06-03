@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { useRestaurant } from '../contexts/RestaurantContext';
+import { useAuth } from '../contexts/AuthContext';
 import {
   Calendar, Clock, Users, CheckCircle2, AlertTriangle, FileText, DollarSign,
   Plus, X, Check, ChevronLeft, ChevronRight, LogIn, LogOut, Loader2, ShieldCheck, Ban, Sparkles
@@ -15,18 +16,41 @@ import {
 // REST_ID y COMPLEJO_ID se leen del RestaurantContext (multi-restaurante)
 const COMPLEJO_POR_RESTAURANTE: Record<number, number> = { 6: 2, 23: 3 };
 
-// Policy laboral (parametrizable — PRD §10). Colombia, valores demo.
-const HORAS_MES = 230;
-const RECARGO_NOCTURNO = 0.35;
-const RECARGO_DOMINICAL = 0.75;
-const RECARGO_EXTRA = 0.25;
-// ── Reglas de turno por jornada (Colombia · OMM) ─────────────────
-// Un turno normal = 7h trabajo + 1h alimentación = 8h en planta
-const HORA_ALMUERZO = 1; // hora obligatoria de alimentación
-const JORNADA_NORMAL = 8; // total en planta
-const HORAS_SEMANA_LEGAL = 42; // semana laboral max (reforma 2024)
-const MAX_EXTRAS_SEMANA = 12; // tope de horas extras a la semana
-const SIMULADOR_MAX_DIAS = 15; // tope de simulación IA
+// ══════════════════════════════════════════════════════════════════
+// Policy laboral Colombia 2026 (reforma vigente + guía Díaz Jurídico)
+// 42h/sem · 168h/mes · base $7.959 hora ordinaria (SMMLV 2026)
+// Multiplicadores oficiales sobre hora ordinaria
+// ══════════════════════════════════════════════════════════════════
+const HORAS_SEMANA_LEGAL = 42;   // semana laboral max (reforma 2024)
+const HORAS_MES = 168;            // 42 × 4 — base para valor hora
+const HORA_ALMUERZO = 1;          // obligatoria
+const JORNADA_NORMAL = 8;         // total en planta (7 trab + 1 alm)
+const MAX_EXTRAS_SEMANA = 12;
+const SIMULADOR_MAX_DIAS = 15;
+// Multiplicadores sobre valor hora ordinaria
+const RECARGO_NOCTURNO   = 0.35;   // solo recargo
+const RECARGO_DOMINICAL  = 0.80;   // solo recargo (actualizado a 2026)
+const RECARGO_EXTRA      = 0.25;   // hora extra diurna sobre ordinaria
+const MULT_NOCTURNA_FULL = 1.35;
+const MULT_DOMINICAL     = 1.80;
+const MULT_EXTRA_DIURNA  = 1.25;
+const MULT_EXTRA_NOCTURNA= 1.75;
+const MULT_EXTRA_DOM_DIU = 2.05;   // 80% + 25%
+const MULT_EXTRA_DOM_NOC = 2.55;   // 80% + 75%
+
+// Deducciones y parafiscales (Colombia)
+const APORTE_SALUD_EMP     = 0.04;  // 4% del trabajador
+const APORTE_PENSION_EMP   = 0.04;  // 4% del trabajador
+const APORTE_SALUD_PATRON  = 0.085;
+const APORTE_PENSION_PATRON= 0.12;
+const ARL_NIVEL_II         = 0.00522;
+const CESANTIAS_FACTOR     = 0.0833;
+const INT_CESANTIAS_FACTOR = 0.01;
+const PRIMA_FACTOR         = 0.0833;
+const VACACIONES_FACTOR    = 0.0417;
+const CAJA_COMPENSACION    = 0.04;
+const SENA                 = 0.02;  // exonerado para algunos
+const ICBF                 = 0.03;  // exonerado para algunos
 const NOCHE_INICIO = 19; // 7:00 p.m. (reforma vigente)
 const NOCHE_FIN = 6;
 const FESTIVOS_2026 = new Set([
@@ -89,6 +113,9 @@ type Tab = 'resumen'|'horarios'|'asistencia'|'novedades'|'preliquidacion'|'ia';
 
 export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: string }) {
   const { activeId: REST_ID, activeRestaurant } = useRestaurant();
+  const { profile } = useAuth();
+  const userRole = profile?.role || 'mesero';
+  const userNombre = profile?.nombre_completo || profile?.full_name || userName;
   const COMPLEJO_ID = COMPLEJO_POR_RESTAURANTE[REST_ID] || 2;
   const [tab, setTab] = useState<Tab>('resumen');
   const [loading, setLoading] = useState(true);
@@ -165,26 +192,76 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
     return map;
   }, [empleados, turnos]);
 
-  // ─────────────── Preliquidación (periodo = semana visible) ───────────────
+  // ── Preliquidación (semana visible) + acumulado mensual ─────────
+  // Desglose por tipo de recargo según guía Colombia 2026.
   const preliq = useMemo(()=>{
     return empleados.map(e=>{
       const ts = turnos.filter(t=>t.empleado_id===e.id);
-      let hOrd=0, hNoct=0, hDom=0;
-      ts.forEach(t=>{ const h=horasEfectivas(t.hora_inicio,t.hora_fin); hOrd+=h; hNoct+=h*nightFraction(t.hora_inicio,t.hora_fin); if(esFestivo(t.fecha)) hDom+=h; });
+      let hOrd=0, hNoct=0, hDom=0, hDomNoct=0;
+      ts.forEach(t=>{
+        const h = horasEfectivas(t.hora_inicio,t.hora_fin);
+        const frNoct = nightFraction(t.hora_inicio, t.hora_fin);
+        const esDom = esFestivo(t.fecha);
+        if (esDom) {
+          hDomNoct += h * frNoct;
+          hDom     += h * (1 - frNoct);
+        } else {
+          hNoct += h * frNoct;
+          hOrd  += h * (1 - frNoct);
+        }
+      });
       const vh = valorHora(e);
       let extrasVal=0, deducc=0, bonos=0;
       novedades.filter(n=>n.estado==='aprobada' && n.empleado_id===e.id && (!n.fecha_inicio || (n.fecha_inicio<=weekEndStr && (!n.fecha_fin || n.fecha_fin>=weekStartStr)))).forEach(n=>{
-        if(n.tipo==='hora_extra') extrasVal += (Number(n.horas)||0)*vh*(1+RECARGO_EXTRA);
+        if(n.tipo==='hora_extra') extrasVal += (Number(n.horas)||0)*vh*MULT_EXTRA_DIURNA;
         else if(n.tipo==='ausencia'||n.tipo==='permiso_no_pago') deducc += (Number(n.dias)||0)*((Number(e.salario_base)||0)/30);
         else if(n.tipo==='bonificacion') bonos += (Number(n.valor)||0);
       });
-      const valNoct = hNoct*vh*RECARGO_NOCTURNO;
-      const valDom = hDom*vh*RECARGO_DOMINICAL;
-      const devengado = hOrd*vh + valNoct + valDom + extrasVal + bonos - deducc;
-      return { emp:e, hOrd, hNoct, hDom, valNoct, valDom, extrasVal, bonos, deducc, devengado, turnos:ts.length };
+      // Valores monetarios por recargo
+      const valOrd     = hOrd     * vh;
+      const valNoct    = hNoct    * vh * MULT_NOCTURNA_FULL;
+      const valDom     = hDom     * vh * MULT_DOMINICAL;
+      const valDomNoct = hDomNoct * vh * (MULT_DOMINICAL + RECARGO_NOCTURNO);
+      const totalHoras = hOrd + hNoct + hDom + hDomNoct;
+      const devengado  = valOrd + valNoct + valDom + valDomNoct + extrasVal + bonos - deducc;
+      // Deducciones empleado (4% salud + 4% pensión sobre devengado base)
+      const baseAportes = Math.max(0, devengado - bonos);
+      const deducSalud   = baseAportes * APORTE_SALUD_EMP;
+      const deducPension = baseAportes * APORTE_PENSION_EMP;
+      const netoEmpleado = devengado - deducSalud - deducPension;
+      // Costo total empleador (devengado + parafiscales + prestaciones)
+      const aportesPatrono = baseAportes * (APORTE_SALUD_PATRON + APORTE_PENSION_PATRON + ARL_NIVEL_II + CAJA_COMPENSACION);
+      const provPrestaciones = baseAportes * (CESANTIAS_FACTOR + INT_CESANTIAS_FACTOR + PRIMA_FACTOR + VACACIONES_FACTOR);
+      const costoEmpleador = devengado + aportesPatrono + provPrestaciones;
+      return {
+        emp:e,
+        hOrd, hNoct, hDom, hDomNoct, totalHoras,
+        valOrd, valNoct, valDom, valDomNoct,
+        extrasVal, bonos, deducc,
+        deducSalud, deducPension,
+        devengado, netoEmpleado, costoEmpleador,
+        aportesPatrono, provPrestaciones,
+        turnos:ts.length
+      };
     }).filter(r=>r.turnos>0 || r.devengado!==0);
   }, [empleados, turnos, novedades, weekStartStr, weekEndStr]);
-  const costoPeriodo = preliq.reduce((a,r)=>a+r.devengado,0);
+  const costoPeriodo  = preliq.reduce((a,r)=>a+r.devengado,0);
+  const costoPatronal = preliq.reduce((a,r)=>a+r.costoEmpleador, 0);
+  const totalDeducc   = preliq.reduce((a,r)=>a+r.deducSalud+r.deducPension, 0);
+
+  // Mensual estimado (4 semanas)
+  const preliqMensual = useMemo(() => {
+    return preliq.map(r => ({
+      ...r,
+      devengado_mes:        r.devengado * 4,
+      neto_mes:             r.netoEmpleado * 4,
+      costo_empleador_mes:  r.costoEmpleador * 4,
+      deduc_mes:            (r.deducSalud + r.deducPension) * 4,
+      cesantias_mes:        r.emp.salario_base ? r.emp.salario_base * CESANTIAS_FACTOR : 0,
+      prima_mes:            r.emp.salario_base ? r.emp.salario_base * PRIMA_FACTOR : 0,
+      vacac_mes:            r.emp.salario_base ? r.emp.salario_base * VACACIONES_FACTOR : 0,
+    }));
+  }, [preliq]);
 
   // ─────────────── Acciones ───────────────
   const [shiftModal, setShiftModal] = useState<{empId:number, fecha:string}|null>(null);
@@ -562,36 +639,55 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
       {/* ════════ NOVEDADES ════════ */}
       {tab==='novedades' && (
         <div>
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-[12px]" style={{color:C.t2}}>{novedades.length} novedades · {novPendientes} pendientes de aprobación</div>
-            <button onClick={()=>setNovModal(true)} className="px-3 py-2 rounded-lg text-[12px] font-black flex items-center gap-2" style={{background:C.gold,color:'#000'}}><Plus size={15}/> Nueva novedad</button>
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div className="text-[12px]" style={{color:C.t2}}>
+              <span className="font-bold" style={{color:'#FF2D78'}}>{novedades.length}</span> novedades ·
+              <span className="font-bold ml-1" style={{color:C.gold}}>{novPendientes}</span> pendientes
+            </div>
+            <button onClick={()=>setNovModal(true)}
+              className="px-4 py-2 rounded-xl text-[12px] font-black flex items-center gap-2"
+              style={{background:'linear-gradient(135deg,#FF2D78,#B388FF)',color:'#fff',boxShadow:'0 6px 16px rgba(255,45,120,0.35)'}}>
+              <Plus size={15}/> Nueva novedad
+            </button>
           </div>
           <div className="flex flex-col gap-2">
             {novedades.length===0 && <div className="text-center py-12 text-[12px]" style={{color:C.t3}}>Sin novedades registradas.</div>}
             {novedades.map(n=>{
               const meta=novedadMeta(n.tipo);
-              const estC = n.estado==='aprobada'?C.green : n.estado==='rechazada'?C.red : C.gold;
+              const estC = n.estado==='aprobada'?C.green : n.estado==='rechazada'?C.red : '#FF2D78';
+              const esExtra = n.tipo === 'hora_extra';
+              const esDeduccion = ['ausencia','permiso_no_pago'].includes(n.tipo);
               return (
-                <div key={n.id} className="rounded-xl border p-3 flex items-center gap-3" style={{borderColor:C.border, background:C.card}}>
+                <div key={n.id} className="rounded-xl border p-3 flex items-center gap-3"
+                  style={{borderColor: esExtra?'#FF2D7833':esDeduccion?`${C.red}33`:C.border, background:C.card}}>
+                  <div className="w-9 h-9 rounded-lg flex items-center justify-center text-[16px] shrink-0"
+                    style={{background: esExtra?'rgba(255,45,120,0.12)':esDeduccion?`${C.red}18`:`${C.blue}1f`, border:`1px solid ${esExtra?'#FF2D7855':esDeduccion?`${C.red}44`:`${C.blue}44`}`}}>
+                    {esExtra?'⚡':esDeduccion?'➖':'📋'}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-[12px] font-bold">{n.empleado_nombre||'—'}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{background:`${C.blue}1f`,color:C.blue}}>{meta.label}</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full uppercase" style={{background:`${estC}1f`,color:estC}}>{n.estado}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{background: esExtra?'rgba(255,45,120,0.15)':esDeduccion?`${C.red}18`:`${C.blue}1f`, color: esExtra?'#FF2D78':esDeduccion?C.red:C.blue}}>{meta.label}</span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full uppercase font-bold" style={{background:`${estC}1f`,color:estC}}>{n.estado}</span>
                     </div>
                     <div className="text-[10px] mt-0.5" style={{color:C.t3}}>
-                      {n.fecha_inicio||''}{n.fecha_fin&&n.fecha_fin!==n.fecha_inicio?` → ${n.fecha_fin}`:''}
-                      {n.dias?` · ${n.dias} día(s)`:''}{n.horas?` · ${n.horas} h`:''}{n.valor?` · ${cop(n.valor)}`:''}
-                      {n.motivo?` · ${n.motivo}`:''}
+                      📅 {n.fecha_inicio||'—'}{n.fecha_fin&&n.fecha_fin!==n.fecha_inicio?` → ${n.fecha_fin}`:''}
+                      {n.dias?` · ${n.dias} día(s)`:''}{n.horas?` · ${n.horas}h`:''}{n.valor?` · ${cop(n.valor)}`:''}
                     </div>
+                    {n.motivo && <div className="text-[10px] mt-0.5" style={{color:C.t2}}>💬 {n.motivo}</div>}
+                    {(n.creado_por || n.aprobado_por) && (
+                      <div className="text-[9px] mt-1 flex gap-2" style={{color:C.t3}}>
+                        {n.creado_por && <span>👤 Creado por: <strong>{n.creado_por}</strong></span>}
+                        {n.aprobado_por && <span>✓ {n.estado === 'aprobada'?'Aprobado':'Revisado'} por: <strong>{n.aprobado_por}</strong></span>}
+                      </div>
+                    )}
                   </div>
                   {n.estado==='enviada' && (
-                    <div className="flex gap-1">
-                      <button onClick={()=>aprobarNovedad(n,true)} className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1" style={{background:`${C.green}22`,color:C.green}}><Check size={13}/> Aprobar</button>
-                      <button onClick={()=>aprobarNovedad(n,false)} className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1" style={{background:`${C.red}18`,color:C.red}}><X size={13}/> Rechazar</button>
+                    <div className="flex gap-1 shrink-0">
+                      <button onClick={()=>aprobarNovedad(n,true)} className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1" style={{background:`${C.green}22`,color:C.green,border:`1px solid ${C.green}55`}}><Check size={13}/> Aprobar</button>
+                      <button onClick={()=>aprobarNovedad(n,false)} className="px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1" style={{background:`${C.red}18`,color:C.red,border:`1px solid ${C.red}44`}}><X size={13}/> Rechazar</button>
                     </div>
                   )}
-                  {n.estado!=='enviada' && <span className="text-[10px]" style={{color:C.t3}}>{n.aprobado_por||''}</span>}
                 </div>
               );
             })}
@@ -601,35 +697,105 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
 
       {/* ════════ PRELIQUIDACIÓN ════════ */}
       {tab==='preliquidacion' && (
-        <div>
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-            <div className="text-[12px]" style={{color:C.t2}}>Periodo: {weekStart.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} – {addDays(weekStart,6).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} · valor hora = salario / {HORAS_MES}h</div>
-            <div className="text-[13px] font-black" style={{color:C.goldL}}>Costo periodo: {cop(costoPeriodo)}</div>
+        <div className="space-y-4">
+          {/* Header con totales */}
+          <div className="rounded-2xl p-5"
+            style={{background:'linear-gradient(135deg, rgba(212,148,58,0.12), rgba(155,114,255,0.06))', border:'1px solid rgba(212,148,58,0.30)'}}>
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <div className="text-[10px] uppercase tracking-[0.16em]" style={{color:C.gold}}>📊 Preliquidación</div>
+                <div className="font-['Syne'] text-[18px] font-black mt-0.5">{weekStart.toLocaleDateString('es-CO',{day:'2-digit',month:'short'})} – {addDays(weekStart,6).toLocaleDateString('es-CO',{day:'2-digit',month:'short'})}</div>
+                <div className="text-[10px] mt-1" style={{color:C.t3}}>
+                  Valor hora = salario base ÷ {HORAS_MES}h ({HORAS_SEMANA_LEGAL}h × 4 sem) · Guía Colombia 2026
+                </div>
+              </div>
+              <div className="flex gap-2 flex-wrap">
+                <KPIBox label="Devengado semana" v={cop(costoPeriodo)} c={C.goldL}/>
+                <KPIBox label="× 4 mensual" v={cop(costoPeriodo*4)} c={C.green}/>
+                <KPIBox label="Costo patronal" v={cop(costoPatronal*4)} c="#9b72ff"/>
+                <KPIBox label="Deduc empleados" v={cop(totalDeducc*4)} c={C.red}/>
+              </div>
+            </div>
+
+            {/* Multiplicadores oficiales — referencia visual */}
+            <div className="grid grid-cols-3 md:grid-cols-5 gap-1.5 mt-4 pt-4 border-t" style={{borderColor:C.border}}>
+              <RecargoChip label="Ordinaria" mult="×1.00" c="#4a8fd4"/>
+              <RecargoChip label="Recargo noct" mult="+35%" c="#9b72ff"/>
+              <RecargoChip label="Nocturna full" mult="×1.35" c="#9b6dd4"/>
+              <RecargoChip label="Recargo dom" mult="+80%" c="#FFB547"/>
+              <RecargoChip label="Dominical" mult="×1.80" c="#d4943a"/>
+              <RecargoChip label="Extra diurna" mult="×1.25" c="#e0a050"/>
+              <RecargoChip label="Extra nocturna" mult="×1.75" c="#e05050"/>
+              <RecargoChip label="Extra dom diu" mult="×2.05" c="#FF6B6B"/>
+              <RecargoChip label="Extra dom noc" mult="×2.55" c="#FF2D78"/>
+            </div>
           </div>
-          <div className="overflow-x-auto rounded-xl border" style={{borderColor:C.border}}>
-            <table className="w-full border-collapse text-[12px]" style={{minWidth:760}}>
-              <thead><tr style={{background:C.card2, color:C.t3}}>
-                {['Empleado','H. ord','Recargo noct','Recargo dom/fest','Extras','Deducciones','Devengado est.'].map((h,i)=>(
-                  <th key={i} className={`p-2 text-[10px] uppercase ${i===0?'text-left':'text-right'}`}>{h}</th>
-                ))}
-              </tr></thead>
+
+          {/* Tabla detalle por empleado */}
+          <div className="overflow-x-auto rounded-2xl border" style={{borderColor:C.border, background:C.card}}>
+            <table className="w-full border-collapse text-[11px]" style={{minWidth:980}}>
+              <thead>
+                <tr style={{background:C.card2, color:C.t3}}>
+                  {['Empleado','Total horas','Ordinaria','Nocturna','Dominical','Dom.Noct','Extras','Bonos','Deducc','Devengado','Salud 4%','Pensión 4%','Neto','× 4 mes'].map((h,i)=>(
+                    <th key={i} className={`p-2 text-[9px] uppercase font-bold ${i===0?'text-left':'text-right'}`}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
               <tbody>
                 {preliq.map(r=>(
                   <tr key={r.emp.id} style={{borderTop:`1px solid ${C.border}`}}>
-                    <td className="p-2"><div className="font-bold">{r.emp.nombre_completo}</div><div className="text-[10px]" style={{color:C.t3}}>{r.emp.cargo_display||r.emp.rol}</div></td>
-                    <td className="p-2 text-right">{r.hOrd.toFixed(1)}h</td>
-                    <td className="p-2 text-right">{r.hNoct>0?<span style={{color:C.gold}}>{cop(r.valNoct)}</span>:<span style={{color:C.t3}}>—</span>}</td>
-                    <td className="p-2 text-right">{r.hDom>0?<span style={{color:C.gold}}>{cop(r.valDom)}</span>:<span style={{color:C.t3}}>—</span>}</td>
-                    <td className="p-2 text-right">{r.extrasVal>0?<span style={{color:C.green}}>{cop(r.extrasVal)}</span>:<span style={{color:C.t3}}>—</span>}</td>
-                    <td className="p-2 text-right">{r.deducc>0?<span style={{color:C.red}}>-{cop(r.deducc)}</span>:<span style={{color:C.t3}}>—</span>}</td>
-                    <td className="p-2 text-right font-black" style={{color:C.goldL}}>{cop(r.devengado)}</td>
+                    <td className="p-2">
+                      <div className="font-bold text-[12px]">{r.emp.nombre_completo}</div>
+                      <div className="text-[9px]" style={{color:C.t3}}>{r.emp.cargo_display || r.emp.rol}</div>
+                      <div className="text-[9px]" style={{color:C.t3}}>Hora: {cop(r.emp.salario_base ? r.emp.salario_base/HORAS_MES : 0)}</div>
+                    </td>
+                    <td className="p-2 text-right tabular-nums">
+                      <div className="font-bold" style={{color:r.totalHoras > HORAS_SEMANA_LEGAL?C.gold:C.t1}}>{r.totalHoras.toFixed(1)}h</div>
+                      <div className="text-[9px]" style={{color:C.t3}}>/ {HORAS_SEMANA_LEGAL}h</div>
+                    </td>
+                    <td className="p-2 text-right tabular-nums">{r.hOrd>0?<div><div>{r.hOrd.toFixed(1)}h</div><div className="text-[9px]" style={{color:C.t3}}>{cop(r.valOrd)}</div></div>:<span style={{color:C.t3}}>—</span>}</td>
+                    <td className="p-2 text-right tabular-nums">{r.hNoct>0?<div><div style={{color:'#9b72ff'}}>{r.hNoct.toFixed(1)}h</div><div className="text-[9px]" style={{color:C.t3}}>{cop(r.valNoct)}</div></div>:<span style={{color:C.t3}}>—</span>}</td>
+                    <td className="p-2 text-right tabular-nums">{r.hDom>0?<div><div style={{color:C.gold}}>{r.hDom.toFixed(1)}h</div><div className="text-[9px]" style={{color:C.t3}}>{cop(r.valDom)}</div></div>:<span style={{color:C.t3}}>—</span>}</td>
+                    <td className="p-2 text-right tabular-nums">{r.hDomNoct>0?<div><div style={{color:'#FF2D78'}}>{r.hDomNoct.toFixed(1)}h</div><div className="text-[9px]" style={{color:C.t3}}>{cop(r.valDomNoct)}</div></div>:<span style={{color:C.t3}}>—</span>}</td>
+                    <td className="p-2 text-right tabular-nums">{r.extrasVal>0?<span style={{color:C.green}}>{cop(r.extrasVal)}</span>:<span style={{color:C.t3}}>—</span>}</td>
+                    <td className="p-2 text-right tabular-nums">{r.bonos>0?<span style={{color:C.green}}>{cop(r.bonos)}</span>:<span style={{color:C.t3}}>—</span>}</td>
+                    <td className="p-2 text-right tabular-nums">{r.deducc>0?<span style={{color:C.red}}>-{cop(r.deducc)}</span>:<span style={{color:C.t3}}>—</span>}</td>
+                    <td className="p-2 text-right font-black tabular-nums" style={{color:C.goldL}}>{cop(r.devengado)}</td>
+                    <td className="p-2 text-right tabular-nums" style={{color:C.red}}>-{cop(r.deducSalud)}</td>
+                    <td className="p-2 text-right tabular-nums" style={{color:C.red}}>-{cop(r.deducPension)}</td>
+                    <td className="p-2 text-right font-bold tabular-nums" style={{color:C.green}}>{cop(r.netoEmpleado)}</td>
+                    <td className="p-2 text-right font-black tabular-nums" style={{color:'#9b72ff'}}>{cop(r.netoEmpleado*4)}</td>
                   </tr>
                 ))}
-                {preliq.length===0 && <tr><td colSpan={7} className="p-8 text-center" style={{color:C.t3}}>Sin turnos en el periodo. Programa horarios para ver la preliquidación.</td></tr>}
+                {preliq.length===0 && <tr><td colSpan={14} className="p-8 text-center" style={{color:C.t3}}>Sin turnos en el periodo. Programa horarios para ver la preliquidación.</td></tr>}
               </tbody>
             </table>
           </div>
-          <p className="text-[10px] mt-2" style={{color:C.t3}}>Cálculo demo trazable a turnos + novedades aprobadas. Recargos parametrizables (noct {Math.round(RECARGO_NOCTURNO*100)}% · dom/fest {Math.round(RECARGO_DOMINICAL*100)}% · extra {Math.round(RECARGO_EXTRA*100)}%). No reemplaza revisión laboral formal.</p>
+
+          {/* Parafiscales y prestaciones (resumen) */}
+          {preliq.length > 0 && (
+            <div className="rounded-2xl p-4 border" style={{background:C.card, borderColor:C.border}}>
+              <div className="text-[10px] font-bold uppercase tracking-wider mb-3" style={{color:'#9b72ff'}}>💼 Aportes patronales + prestaciones (estimado mensual)</div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[12px]">
+                <div><div className="text-[9px]" style={{color:C.t3}}>Salud 8.5% patrono</div><div className="font-bold">{cop(costoPeriodo*4*APORTE_SALUD_PATRON)}</div></div>
+                <div><div className="text-[9px]" style={{color:C.t3}}>Pensión 12% patrono</div><div className="font-bold">{cop(costoPeriodo*4*APORTE_PENSION_PATRON)}</div></div>
+                <div><div className="text-[9px]" style={{color:C.t3}}>ARL Riesgo II 0.52%</div><div className="font-bold">{cop(costoPeriodo*4*ARL_NIVEL_II)}</div></div>
+                <div><div className="text-[9px]" style={{color:C.t3}}>Caja Compensación 4%</div><div className="font-bold">{cop(costoPeriodo*4*CAJA_COMPENSACION)}</div></div>
+                <div><div className="text-[9px]" style={{color:C.t3}}>Cesantías 8.33%</div><div className="font-bold">{cop(costoPeriodo*4*CESANTIAS_FACTOR)}</div></div>
+                <div><div className="text-[9px]" style={{color:C.t3}}>Int. Cesantías 1%</div><div className="font-bold">{cop(costoPeriodo*4*INT_CESANTIAS_FACTOR)}</div></div>
+                <div><div className="text-[9px]" style={{color:C.t3}}>Prima servicios 8.33%</div><div className="font-bold">{cop(costoPeriodo*4*PRIMA_FACTOR)}</div></div>
+                <div><div className="text-[9px]" style={{color:C.t3}}>Vacaciones 4.17%</div><div className="font-bold">{cop(costoPeriodo*4*VACACIONES_FACTOR)}</div></div>
+              </div>
+              <div className="mt-3 pt-3 border-t flex items-center justify-between text-[14px] font-bold" style={{borderColor:C.border}}>
+                <span style={{color:C.t2}}>TOTAL COSTO EMPLEADOR (mes estimado)</span>
+                <span className="font-['Syne'] text-[20px] font-black" style={{color:'#9b72ff'}}>{cop(costoPatronal*4)}</span>
+              </div>
+            </div>
+          )}
+
+          <p className="text-[10px]" style={{color:C.t3}}>
+            ⚠️ Cálculo trazable basado en turnos efectivos (descontada 1h de alimentación) + novedades aprobadas. Multiplicadores conforme Guía Salarial Colombia 2026. No reemplaza revisión laboral formal. Mensual = semana × 4.
+          </p>
         </div>
       )}
 
@@ -638,9 +804,27 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
       {/* Modal nuevo turno */}
       {shiftModal && <ShiftModal empleado={empById[shiftModal.empId]} fecha={shiftModal.fecha} complejoId={COMPLEJO_ID} horasSemana={(horasPorEmp as any)[shiftModal.empId]?.efectivas || 0} onClose={()=>setShiftModal(null)} onSaved={(msg)=>{ setShiftModal(null); showToast(msg); logAudit('turno.creado','turnos',{empleado_id:shiftModal.empId, fecha:shiftModal.fecha}); cargar(); }} />}
       {/* Modal nueva novedad */}
-      {novModal && <NovedadModal empleados={empleados} userName={userName} onClose={()=>setNovModal(false)} onSaved={(msg)=>{ setNovModal(false); showToast(msg); }} />}
+      {novModal && <NovedadModal empleados={empleados} userName={userNombre} userRole={userRole} onClose={()=>setNovModal(false)} onSaved={(msg)=>{ setNovModal(false); showToast(msg); cargar(); }} />}
 
       {toast && <div className="fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-2.5 rounded-lg text-[13px] z-[9999] shadow-2xl" style={{background:'#222',border:`1px solid ${C.border}`,color:C.t1}}>{toast}</div>}
+    </div>
+  );
+}
+
+function KPIBox({label, v, c}:{label:string; v:string; c:string}) {
+  return (
+    <div className="px-3 py-2 rounded-xl border" style={{background:'rgba(0,0,0,0.3)', borderColor:`${c}33`}}>
+      <div className="text-[9px] uppercase tracking-wider font-bold" style={{color:C.t3}}>{label}</div>
+      <div className="font-['Syne'] text-[16px] font-black" style={{color:c}}>{v}</div>
+    </div>
+  );
+}
+
+function RecargoChip({label, mult, c}:{label:string; mult:string; c:string}) {
+  return (
+    <div className="px-2 py-1.5 rounded-lg text-center" style={{background:`${c}12`, border:`1px solid ${c}33`}}>
+      <div className="text-[8px] uppercase font-bold" style={{color:c}}>{label}</div>
+      <div className="text-[11px] font-black tabular-nums" style={{color:c}}>{mult}</div>
     </div>
   );
 }
@@ -811,7 +995,7 @@ function ShiftModal({empleado, fecha, complejoId, horasSemana, onClose, onSaved}
 }
 
 // ── Modal: crear novedad ──
-function NovedadModal({empleados, userName, onClose, onSaved}:{empleados:any[], userName:string, onClose:()=>void, onSaved:(m:string)=>void}){
+function NovedadModal({empleados, userName, userRole, onClose, onSaved}:{empleados:any[], userName:string, userRole?:string, onClose:()=>void, onSaved:(m:string)=>void}){
   const [empId,setEmpId]=useState<number|''>('');
   const [tipo,setTipo]=useState('incapacidad');
   const [ini,setIni]=useState('');
@@ -824,15 +1008,23 @@ function NovedadModal({empleados, userName, onClose, onSaved}:{empleados:any[], 
   const usaHoras = tipo==='hora_extra';
   const usaValor = tipo==='bonificacion';
   const usaDias = !usaHoras && !usaValor;
+  // Solo admin/gerencia/dev pueden crear novedad de hora_extra
+  const puedeExtras = ['admin','gerencia','desarrollo','gerente'].includes(String(userRole||'').toLowerCase());
+  const restringido = usaHoras && !puedeExtras;
+
+  // Filtrar tipos según permisos (extras solo para admin/gerente)
+  const tiposVisibles = TIPOS_NOVEDAD.filter(t => t.id !== 'hora_extra' || puedeExtras);
+
   const guardar = async ()=>{
     if(!empId){ return; }
+    if (restringido) return;
     setSaving(true);
     const emp = empleados.find(e=>e.id===empId);
     let dias:number|null=null;
     if(usaDias && ini && fin){ const d=(new Date(fin+'T12:00').getTime()-new Date(ini+'T12:00').getTime())/86400000; dias=Math.max(1,Math.round(d)+1); }
     else if(usaDias && ini){ dias=1; }
     await supabase.from('workforce_novedades').insert({
-      restaurante_id:REST_ID, empleado_id:empId, empleado_nombre:emp?.nombre_completo, tipo, impacto_pago:meta.impacto,
+      empleado_id:empId, empleado_nombre:emp?.nombre_completo, tipo, impacto_pago:meta.impacto,
       fecha_inicio:ini||null, fecha_fin:fin||ini||null, dias, horas:usaHoras?Number(horas)||null:null, valor:usaValor?Number(valor)||null:null,
       estado:'enviada', motivo, creado_por:userName,
     });
@@ -841,31 +1033,114 @@ function NovedadModal({empleados, userName, onClose, onSaved}:{empleados:any[], 
   };
   return (
     <div className="fixed inset-0 bg-black/80 z-[700] flex items-center justify-center p-4" onClick={e=>{ if(e.target===e.currentTarget) onClose(); }}>
-      <div className="rounded-2xl w-full max-w-[400px] p-5" style={{background:C.card2, border:`1px solid ${C.border}`}}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-[14px] font-black">Nueva novedad laboral</div>
+      <div className="rounded-2xl w-full max-w-[440px] p-5 max-h-[92vh] overflow-y-auto"
+        style={{background:C.card2, border:'2px solid rgba(255,45,120,0.4)', boxShadow:'0 20px 60px rgba(255,45,120,0.2)'}}>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+              style={{background:'rgba(255,45,120,0.18)', border:'1px solid rgba(255,45,120,0.5)'}}>
+              <FileText size={20} className="text-[#FF2D78]"/>
+            </div>
+            <div>
+              <div className="font-['Syne'] text-[16px] font-black" style={{color:'#fff'}}>Nueva novedad laboral</div>
+              <div className="text-[10px]" style={{color:C.t3}}>Creada por <strong style={{color:'#FF2D78'}}>{userName}</strong> {userRole && <span>· {userRole}</span>}</div>
+            </div>
+          </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full flex items-center justify-center" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t2}}><X size={16}/></button>
         </div>
-        <div className="text-[11px] mb-1" style={{color:C.t2}}>Empleado</div>
-        <select value={empId} onChange={e=>setEmpId(e.target.value?Number(e.target.value):'')} className="w-full px-2 py-2 rounded-lg text-[13px] mb-3" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}>
-          <option value="">Selecciona…</option>
-          {empleados.map(e=><option key={e.id} value={e.id}>{e.nombre_completo}</option>)}
-        </select>
-        <div className="text-[11px] mb-1" style={{color:C.t2}}>Tipo</div>
-        <div className="grid grid-cols-2 gap-1.5 mb-3">
-          {TIPOS_NOVEDAD.map(t=>(<button key={t.id} onClick={()=>setTipo(t.id)} className="px-2 py-1.5 rounded-lg text-[10px] font-bold text-left" style={{background:tipo===t.id?`${C.blue}22`:C.bg,border:`1px solid ${tipo===t.id?C.blue:C.border}`,color:tipo===t.id?C.blue:C.t2}}>{t.label}</button>))}
+
+        {/* Categorías visuales (extras / deducciones / otros) */}
+        <div className="text-[10px] uppercase tracking-wider font-bold mb-2" style={{color:'#FF2D78'}}>Categoría</div>
+        <div className="flex gap-1.5 mb-3 flex-wrap">
+          {(['extras','deducciones','otros'] as const).map(cat => {
+            const map:any = { extras:['hora_extra','bonificacion'], deducciones:['ausencia','permiso_no_pago','incapacidad'], otros:['permiso_pago','vacaciones','cambio_turno'] };
+            const tipos = (map[cat] as string[]);
+            const esActiva = tipos.includes(tipo);
+            return (
+              <button key={cat} onClick={()=>{ const primero = tipos.find(id => tiposVisibles.find(t=>t.id===id)); if (primero) setTipo(primero); }}
+                className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider"
+                style={{
+                  background: esActiva?'rgba(255,45,120,0.18)':'transparent',
+                  border: `1px solid ${esActiva?'#FF2D78':C.border}`,
+                  color: esActiva?'#FF2D78':C.t3,
+                }}>
+                {cat === 'extras' ? '⚡ Extras y bonos' : cat === 'deducciones' ? '➖ Deducciones' : '📋 Otros'}
+              </button>
+            );
+          })}
         </div>
-        {usaDias && (
-          <div className="flex gap-2 mb-3">
-            <label className="flex-1 text-[11px]" style={{color:C.t2}}>Desde<input type="date" value={ini} onChange={e=>setIni(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/></label>
-            <label className="flex-1 text-[11px]" style={{color:C.t2}}>Hasta<input type="date" value={fin} onChange={e=>setFin(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/></label>
+
+        <div className="text-[11px] mb-1" style={{color:C.t2}}>👤 Empleado</div>
+        <select value={empId} onChange={e=>setEmpId(e.target.value?Number(e.target.value):'')} className="w-full px-2 py-2 rounded-lg text-[13px] mb-3" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1, colorScheme:'dark'}}>
+          <option value="">Selecciona empleado…</option>
+          {empleados.map(e=><option key={e.id} value={e.id}>{e.nombre_completo} {e.cargo_display?`· ${e.cargo_display}`:''}</option>)}
+        </select>
+
+        <div className="text-[11px] mb-1" style={{color:C.t2}}>Tipo de novedad</div>
+        <div className="grid grid-cols-2 gap-1.5 mb-3">
+          {tiposVisibles.map(t=>{
+            const esExtra = t.id==='hora_extra';
+            const esDeduc = ['ausencia','permiso_no_pago'].includes(t.id);
+            const col = esExtra?'#FF2D78':esDeduc?C.red:C.blue;
+            return (
+              <button key={t.id} onClick={()=>setTipo(t.id)} className="px-2 py-1.5 rounded-lg text-[10px] font-bold text-left"
+                style={{background:tipo===t.id?`${col}22`:C.bg,border:`1px solid ${tipo===t.id?col:C.border}`,color:tipo===t.id?col:C.t2}}>
+                {esExtra?'⚡ ':esDeduc?'➖ ':''}{t.label}
+              </button>
+            );
+          })}
+        </div>
+        {!puedeExtras && (
+          <div className="text-[10px] p-2 rounded-lg mb-3" style={{background:'rgba(212,148,58,0.1)', border:'1px solid rgba(212,148,58,0.3)', color:'#d4943a'}}>
+            🔒 Las horas extras solo pueden crearlas perfiles de admin / gerencia.
           </div>
         )}
-        {usaHoras && <label className="block text-[11px] mb-3" style={{color:C.t2}}>Horas extra<input type="number" value={horas} onChange={e=>setHoras(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/></label>}
-        {usaValor && <label className="block text-[11px] mb-3" style={{color:C.t2}}>Valor bonificación<input type="number" value={valor} onChange={e=>setValor(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/></label>}
-        <input value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Motivo / soporte" className="w-full px-2 py-2 rounded-lg text-[12px] mb-3" style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/>
-        <button onClick={guardar} disabled={saving||!empId} className="w-full py-2.5 rounded-xl text-[13px] font-black flex items-center justify-center gap-2 disabled:opacity-40" style={{background:C.gold,color:'#000'}}>{saving?<Loader2 size={15} className="animate-spin"/>:<FileText size={15}/>} Enviar novedad</button>
-        <p className="text-[10px] mt-2" style={{color:C.t3}}>Queda en estado “enviada”. No impacta nómina hasta ser aprobada (PRD §8).</p>
+
+        {/* CALENDARIO — adjunto siempre visible para todos los tipos */}
+        <div className="rounded-lg p-3 mb-3" style={{background:'rgba(255,45,120,0.05)', border:'1px solid rgba(255,45,120,0.2)'}}>
+          <div className="text-[10px] uppercase tracking-wider font-bold mb-2" style={{color:'#FF2D78'}}>📅 Calendario · fechas afectadas</div>
+          <div className="flex gap-2">
+            <label className="flex-1 text-[10px]" style={{color:C.t2}}>Desde
+              <input type="date" value={ini} onChange={e=>setIni(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]"
+                style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1, colorScheme:'dark', accentColor:'#FF2D78'}}/>
+            </label>
+            <label className="flex-1 text-[10px]" style={{color:C.t2}}>Hasta {usaHoras?'(día del extra)':'(opcional)'}
+              <input type="date" value={fin} onChange={e=>setFin(e.target.value)} className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]"
+                style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1, colorScheme:'dark', accentColor:'#FF2D78'}}/>
+            </label>
+          </div>
+          <div className="text-[9px] mt-2" style={{color:C.t3}}>
+            {empId ? `⚡ Esta novedad afectará los turnos de ${empleados.find(e=>e.id===empId)?.nombre_completo?.split(' ')[0]||'el empleado'} en las fechas seleccionadas.` : 'Selecciona un empleado para previsualizar el impacto.'}
+          </div>
+        </div>
+
+        {usaHoras && (
+          <label className="block text-[11px] mb-3" style={{color:'#FF2D78'}}>
+            ⚡ Horas extras a autorizar
+            <input type="number" step="0.5" value={horas} onChange={e=>setHoras(e.target.value)} placeholder="1.0"
+              className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]"
+              style={{background:C.bg,border:'1px solid #FF2D78',color:C.t1}}/>
+          </label>
+        )}
+        {usaValor && (
+          <label className="block text-[11px] mb-3" style={{color:'#FF2D78'}}>
+            💰 Valor bonificación (COP)
+            <input type="number" value={valor} onChange={e=>setValor(e.target.value)} placeholder="100000"
+              className="w-full mt-1 px-2 py-2 rounded-lg text-[13px]"
+              style={{background:C.bg,border:'1px solid #FF2D78',color:C.t1}}/>
+          </label>
+        )}
+        <textarea value={motivo} onChange={e=>setMotivo(e.target.value)} placeholder="Motivo / soporte (obligatorio para auditoría)" rows={2}
+          className="w-full px-2 py-2 rounded-lg text-[12px] mb-3 resize-none"
+          style={{background:C.bg,border:`1px solid ${C.border}`,color:C.t1}}/>
+
+        <button onClick={guardar} disabled={saving||!empId||restringido}
+          className="w-full py-3 rounded-xl text-[13px] font-black flex items-center justify-center gap-2 disabled:opacity-40"
+          style={{background:'linear-gradient(135deg,#FF2D78,#B388FF)', color:'#fff', boxShadow:'0 6px 18px rgba(255,45,120,0.35)'}}>
+          {saving?<Loader2 size={15} className="animate-spin"/>:<FileText size={15}/>}
+          Enviar novedad
+        </button>
+        <p className="text-[10px] mt-2 text-center" style={{color:C.t3}}>Queda en estado <strong style={{color:'#FF2D78'}}>enviada</strong>. No impacta nómina hasta ser <strong style={{color:C.green}}>aprobada</strong> por gerencia.</p>
       </div>
     </div>
   );
