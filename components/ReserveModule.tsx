@@ -135,6 +135,37 @@ export default function ReserveModule() {
     })();
   }, [asignandoMesa]);
   useEffect(()=>{ const t=setInterval(()=>setNow(Date.now()),30000); return ()=>clearInterval(t); },[]);
+
+  // ── Auto NO-SHOW ─────────────────────────────────────────────────
+  // Si una reserva confirmada pasa de su hora + 30 min sin haberse
+  // sentado, el sistema la marca automáticamente como 'no_show'.
+  // Esto libera la mesa para walk-ins y mejora la métrica del Dashboard.
+  const GRACIA_NO_SHOW_MIN = 30;
+  useEffect(() => {
+    const hoyIso = new Date().toISOString().split('T')[0];
+    if (fechaFiltro !== hoyIso) return; // solo para reservas de hoy
+    const ahora = new Date();
+    const ahoraMin = ahora.getHours()*60 + ahora.getMinutes();
+    const candidatos = reservas.filter((r:any) => {
+      if (r.estado !== 'confirmada' && r.estado !== 'pendiente') return false;
+      if (r.origen === 'ohyeah') return false; // Oh Yeah tiene su propia lógica
+      const [hh,mm] = (r.hora||'00:00').split(':').map(Number);
+      const rmin = hh*60+mm;
+      return rmin + GRACIA_NO_SHOW_MIN < ahoraMin;
+    });
+    if (candidatos.length === 0) return;
+    // Actualizar en BD sin bloquear UI
+    (async () => {
+      for (const r of candidatos) {
+        try {
+          await supabase.from('reservations').update({ estado:'no_show' }).eq('id', r.id);
+        } catch (e) { console.warn('auto no-show:', e); }
+      }
+      // Toast solo si fue una cantidad significativa
+      if (candidatos.length >= 1) show(`👻 ${candidatos.length} no-show automático${candidatos.length===1?'':'s'} (>${GRACIA_NO_SHOW_MIN}min sin llegar)`);
+      fetchData();
+    })();
+  }, [now, fechaFiltro, reservas]);
   const [form, setForm]         = useState<any>({
     cliente_nombre:'',cliente_email:'',cliente_telefono:'',
     fecha:new Date().toISOString().split('T')[0],hora:'20:00',
@@ -1048,19 +1079,31 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                 const sin = !r.mesa_num;
                 const NIVEL_C: Record<string,string> = {ÉLITE:'#FFD700',VIP:'#B388FF',REGULAR:'#448AFF',INICIADO:'#a0a0a0'};
                 const nc = NIVEL_C[r.gourmand_level||''] || S.t3;
+                // Una reserva SENTADA no se arrastra — para reubicar primero hay
+                // que levantar a los comensales explícitamente desde el menú de la mesa.
+                const yaSentada = r.estado === 'sentada';
                 return (
                   <div key={r.id}
-                    draggable
-                    onDragStart={(e) => { e.dataTransfer.setData('text/reserva', String(r.id)); e.dataTransfer.effectAllowed = 'move'; }}
+                    draggable={!yaSentada}
+                    onDragStart={(e) => {
+                      if (yaSentada) { e.preventDefault(); return; }
+                      e.dataTransfer.setData('text/reserva', String(r.id));
+                      e.dataTransfer.effectAllowed = 'move';
+                    }}
                     onClick={() => setAsignandoMesa(r)}
-                    title={`Arrastra a una mesa del plano para asignar`}
+                    title={yaSentada
+                      ? `🪑 ${r.cliente_nombre} ya está sentado en M${r.mesa_num}. Levantar primero para reubicar.`
+                      : (r.mesa_num
+                          ? `Arrastra para CAMBIAR de mesa (M${r.mesa_num} → otra)`
+                          : `Arrastra a una mesa del plano para asignar`)}
                     style={{
                       background:S.bg2,
                       border:`1px solid ${sin?`${S.red}45`:esOhYeah?`${S.gold}30`:S.border}`,
                       borderLeft:`3px solid ${sin?S.red:esOhYeah?S.gold:est.c}`,
                       borderRadius:10,
                       padding:'10px 12px',
-                      cursor:'grab',
+                      cursor: yaSentada ? 'default' : 'grab',
+                      opacity: yaSentada ? 0.7 : 1,
                       display:'flex',alignItems:'center',gap:10,
                       transition:'transform .12s, box-shadow .12s',
                     }}
@@ -2105,10 +2148,21 @@ function NavegadorFecha({ fecha, setFecha, totalReservas }:{ fecha:string; setFe
 }
 
 // ══ MODAL FRANJA BLOQUEADA — bloquea horas para Oh Yeah / Google ══
-function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, show, S }:{
+function FranjaBloqueoModal({ fecha, restauranteId, franjas: franjasInicial, onClose, onChange, show, S }:{
   fecha:string; restauranteId:number; franjas:any[];
   onClose:()=>void; onChange:()=>void; show:(m:string)=>void; S:any;
 }) {
+  // Fecha es editable dentro del modal — se puede bloquear cualquier día.
+  const [fechaModal, setFechaModal] = React.useState<string>(fecha);
+  const [franjas, setFranjas] = React.useState<any[]>(franjasInicial || []);
+  // Refetch franjas cada vez que cambia la fecha seleccionada
+  React.useEffect(() => {
+    if (fechaModal === fecha) { setFranjas(franjasInicial || []); return; }
+    supabase.from('reservas_franjas_bloqueadas')
+      .select('*').eq('restaurante_id', restauranteId).eq('fecha', fechaModal)
+      .then(({data}) => setFranjas(data || []));
+  }, [fechaModal, fecha, franjasInicial, restauranteId]);
+
   const [horaDesde, setHoraDesde] = React.useState('12:00');
   const [horaHasta, setHoraHasta] = React.useState('15:00');
   const [motivo, setMotivo] = React.useState('');
@@ -2141,7 +2195,7 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, 
     if (solapa && !confirm(`⚠️ Se solapa con la franja ${solapa.hora_desde.slice(0,5)}–${solapa.hora_hasta.slice(0,5)}. ¿Continuar?`)) return;
     setSaving(true);
     const { error } = await supabase.from('reservas_franjas_bloqueadas').insert({
-      restaurante_id: restauranteId, fecha,
+      restaurante_id: restauranteId, fecha: fechaModal,
       hora_desde: horaDesde, hora_hasta: horaHasta,
       motivo: motivo || null,
       bloquea_oh_yeah: bloqueaOh, bloquea_google: bloqueaGoogle,
@@ -2149,12 +2203,17 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, 
     setSaving(false);
     if (error) { show('✗ '+error.message); return; }
     show(`✓ ${duracion} bloqueados`);
+    // Refrescar la lista local para reflejar el nuevo bloqueo
+    const { data: nuevas } = await supabase.from('reservas_franjas_bloqueadas')
+      .select('*').eq('restaurante_id', restauranteId).eq('fecha', fechaModal);
+    setFranjas(nuevas || []);
     onChange();
     setMotivo('');
   };
   const eliminar = async (id:string) => {
     if (!confirm('¿Eliminar este bloqueo? Las nuevas reservas Oh Yeah / Google volverán a entrar.')) return;
     await supabase.from('reservas_franjas_bloqueadas').delete().eq('id', id);
+    setFranjas(prev => prev.filter((f:any) => f.id !== id));
     show('✓ Bloqueo eliminado');
     onChange();
   };
@@ -2171,7 +2230,85 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas, onClose, onChange, 
           <button onClick={onClose} style={{background:'transparent',border:'none',color:S.t3,fontSize:22,cursor:'pointer'}}>×</button>
         </div>
 
-        <div style={{fontSize:10,color:S.gold,fontWeight:800,textTransform:'uppercase',letterSpacing:'.16em',marginTop:14}}>📅 {new Date(fecha+'T12:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}</div>
+        {/* CALENDARIO — fecha editable */}
+        <div style={{marginTop:14,padding:'12px 14px',background:`${S.gold}0a`,border:`1px solid ${S.gold}33`,borderRadius:10}}>
+          <div style={{fontSize:10,color:S.gold,fontWeight:800,textTransform:'uppercase',letterSpacing:'.16em',marginBottom:6}}>📅 Fecha del bloqueo</div>
+          <div style={{display:'flex',alignItems:'center',gap:10,flexWrap:'wrap'}}>
+            <input type="date" value={fechaModal} onChange={e=>setFechaModal(e.target.value)}
+              style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.gold}55`,borderRadius:8,padding:'8px 12px',color:'#fff',fontSize:13,outline:'none',colorScheme:'dark'}}/>
+            <span style={{fontSize:12,color:S.t2,fontWeight:700}}>
+              {new Date(fechaModal+'T12:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long',year:'numeric'})}
+            </span>
+          </div>
+          {/* Atajos rápidos de fecha */}
+          <div style={{display:'flex',gap:5,marginTop:8,flexWrap:'wrap'}}>
+            {[
+              { l:'Hoy', d:0 },{ l:'Mañana', d:1 },{ l:'+3 días', d:3 },{ l:'+1 semana', d:7 },
+            ].map(f=>{
+              const dt = new Date(); dt.setDate(dt.getDate()+f.d);
+              const iso = dt.toISOString().split('T')[0];
+              const sel = fechaModal === iso;
+              return (
+                <button key={f.l} onClick={()=>setFechaModal(iso)}
+                  style={{padding:'4px 10px',borderRadius:7,border:`1px solid ${sel?S.gold:S.border2}`,background:sel?`${S.gold}22`:'transparent',color:sel?S.gold:S.t3,fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                  {f.l}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* GRID DE HORAS — todas visibles de 10:00 a 23:30, click para seleccionar */}
+        <div style={{marginTop:14}}>
+          <div style={{fontSize:10,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:8,display:'flex',justifyContent:'space-between'}}>
+            <span>🕐 Horario (click para definir rango)</span>
+            <span style={{color:S.red,fontWeight:700}}>{horaDesde} → {horaHasta}</span>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(8, 1fr)',gap:4,background:S.bg3,borderRadius:8,padding:8}}>
+            {(() => {
+              const slots:string[] = [];
+              for (let h=10; h<24; h++) {
+                slots.push(`${String(h).padStart(2,'0')}:00`);
+                slots.push(`${String(h).padStart(2,'0')}:30`);
+              }
+              return slots.map(s => {
+                // ¿Cae dentro del rango actual seleccionado?
+                const dentroRango = s >= horaDesde && s < horaHasta;
+                // ¿Choca con una franja ya bloqueada?
+                const yaBloqueada = franjas.some((f:any) =>
+                  s >= f.hora_desde.slice(0,5) && s < f.hora_hasta.slice(0,5)
+                );
+                const bg = yaBloqueada ? `${S.red}22` : dentroRango ? `${S.gold}33` : 'transparent';
+                const col = yaBloqueada ? S.red : dentroRango ? S.gold : S.t2;
+                const border = yaBloqueada ? `${S.red}55` : dentroRango ? S.gold : S.border;
+                return (
+                  <button key={s}
+                    title={yaBloqueada ? 'Ya bloqueado en otra franja' : `Click: inicio · Shift+Click: fin`}
+                    onClick={(e)=>{
+                      if (yaBloqueada) return;
+                      if (e.shiftKey) {
+                        // Fin del rango
+                        if (s <= horaDesde) { show('⚠️ La hora final debe ser mayor a la inicial'); return; }
+                        setHoraHasta(s);
+                      } else {
+                        // Inicio del rango — y ajustar fin si quedaba antes
+                        setHoraDesde(s);
+                        if (horaHasta <= s) {
+                          const [h,m] = s.split(':').map(Number);
+                          const fin = new Date(); fin.setHours(h, m+30, 0, 0);
+                          setHoraHasta(`${String(fin.getHours()).padStart(2,'0')}:${String(fin.getMinutes()).padStart(2,'0')}`);
+                        }
+                      }
+                    }}
+                    style={{padding:'5px 4px',borderRadius:5,border:`1px solid ${border}`,background:bg,color:col,fontSize:10,fontWeight:700,cursor:yaBloqueada?'not-allowed':'pointer',fontFamily:"'IBM Plex Mono', monospace",transition:'all .12s'}}>
+                    {s}
+                  </button>
+                );
+              });
+            })()}
+          </div>
+          <div style={{fontSize:9,color:S.t3,marginTop:5,textAlign:'center'}}>💡 Click = inicio del bloqueo · Shift+Click = fin</div>
+        </div>
 
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr auto',gap:10,marginTop:12,alignItems:'end'}}>
           <div>
@@ -2850,8 +2987,27 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
                  const id = e.dataTransfer.getData('text/reserva');
                  setHoverMesa(null);
                  if (!id) return;
+                 // Buscar la reserva arrastrada en el estado activo
+                 const reservaArrastrada = activas.find((rr:any) => String(rr.id) === id);
+                 // Regla 1: si la reserva YA está sentada, no permite arrastre
+                 if (reservaArrastrada && reservaArrastrada.estado === 'sentada') {
+                   alert(`🪑 ${reservaArrastrada.cliente_nombre} ya está sentado en M${reservaArrastrada.mesa_num}.\nLevantá la mesa primero para reubicar.`);
+                   return;
+                 }
+                 // Regla 2: si la mesa destino ya tiene una reserva SENTADA distinta, no se puede ocupar
+                 if (reserva && String(reserva.id)!==id && reserva.estado === 'sentada') {
+                   alert(`🚫 M${m.name} ya tiene comensales sentados (${reserva.cliente_nombre}).\nNo se puede asignar otra reserva ahí hasta que se libere.`);
+                   return;
+                 }
+                 // Regla 3: si la mesa destino ya tiene OTRA reserva confirmada (no sentada),
+                 // confirmar el reemplazo (toma la mesa, la anterior queda sin mesa).
                  if (reserva && String(reserva.id)!==id) {
-                   if (!confirm(`La mesa ${m.name} ya tiene a ${reserva.cliente_nombre} (${reserva.hora}). ¿Reemplazar?`)) return;
+                   if (!confirm(`M${m.name} ya tiene asignada la reserva de ${reserva.cliente_nombre} (${reserva.hora}). ¿Reemplazar? La otra reserva quedará sin mesa.`)) return;
+                 }
+                 // Regla 4: si la reserva arrastrada ya tenía otra mesa asignada,
+                 // se trata de un CAMBIO DE MESA (no doble asignación).
+                 if (reservaArrastrada?.mesa_num && Number(reservaArrastrada.mesa_num) !== Number(m.name)) {
+                   if (!confirm(`Cambiar la mesa de ${reservaArrastrada.cliente_nombre}: M${reservaArrastrada.mesa_num} → M${m.name}?`)) return;
                  }
                  asignarMesa(id, Number(m.name));
                }}
