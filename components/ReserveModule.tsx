@@ -1085,17 +1085,15 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         );
       })()}
 
-      {/* ── EDITOR DE PLANTA ── */}
+      {/* ── EDITOR DE PLANTA · SVG con mismas zonas que Sala ── */}
       {tab==='editor' && (
         <EditorPlanta
-          plantaDB={plantaDB}
-          setPlantaDB={setPlantaDB}
           editMesa={editMesa}
           setEditMesa={setEditMesa}
           show={show}
           mesas={mesas}
           restauranteId={restauranteIdActivo}
-          onToggleVip={async(num:number,vip:boolean)=>{ await supabase.from('tables').update({vip}).eq('name',String(num)).eq('restaurante_id',restauranteIdActivo); show(vip?`⭐ Mesa ${num} marcada VIP`:`Mesa ${num} ya no es VIP`); fetchData(); }}
+          onRefresh={fetchData}
         />
       )}
 
@@ -1495,164 +1493,240 @@ function MapaInteractivo({ reservasHoy, fechaFiltro, onCambiarEstado, plantaDB, 
 // ═══════════════════════════════════════════════════════════════════════
 // EDITOR DE PLANTA
 // ═══════════════════════════════════════════════════════════════════════
-function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesas, onToggleVip, restauranteId }:any) {
-  const esVip = editMesa ? (mesas||[]).some((m:any)=>Number(m.name)===Number(editMesa.num) && m.vip) : false;
-  const inp: React.CSSProperties = {width:'100%',padding:'7px 10px',borderRadius:7,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:12,outline:'none'};
-  const canvasRef = React.useRef<HTMLDivElement>(null);
+function EditorPlanta({ editMesa, setEditMesa, show, mesas, restauranteId, onRefresh }:any) {
+  // Editor de planta SVG · misma estética que la Sala (zonas + posiciones en
+  // pixeles 1280×920). Edita directamente la tabla `tables`.
+  const conf = ZONAS_POR_RESTAURANTE[restauranteId];
+  const zonas = conf?.zonas || {};
+  const orden = conf?.orden || [];
+  const svgRef = React.useRef<SVGSVGElement>(null);
   const dragRef = React.useRef<{ id:any; offX:number; offY:number; moved:boolean } | null>(null);
   const [dragging, setDragging] = React.useState<any>(null);
+  const [localMesas, setLocalMesas] = React.useState<any[]>(mesas||[]);
+  React.useEffect(()=>setLocalMesas(mesas||[]), [mesas]);
 
-  const agregarMesa = async () => {
-    const newNum = Math.max(...(plantaDB.map((m:any)=>m.num)||[0]),0)+1;
-    const newMesa = {restaurante_id: restauranteId, mesa_key:`X${newNum}`,num:newNum,zona:'Salón',shape:'round',capacidad:4,x:45,y:45,w:10,h:10,activa:true};
-    const {data, error} = await supabase.from('planta_mesas').insert(newMesa).select().single();
-    if (error) { show(`⚠ ${error.message}`); return; }
-    if (data) setPlantaDB((p:any)=>[...p,data]);
-    show(`✓ Mesa ${newNum} agregada`);
+  const inp: React.CSSProperties = {width:'100%',padding:'7px 10px',borderRadius:7,border:'1px solid rgba(255,255,255,0.12)',background:'rgba(255,255,255,0.04)',color:'#fff',fontSize:12,outline:'none'};
+
+  const svgPoint = (clientX:number, clientY:number) => {
+    const svg = svgRef.current; if (!svg) return { x:0, y:0 };
+    const pt = svg.createSVGPoint(); pt.x = clientX; pt.y = clientY;
+    const ctm = svg.getScreenCTM(); if (!ctm) return { x:0, y:0 };
+    const p = pt.matrixTransform(ctm.inverse());
+    return { x: Math.round(p.x), y: Math.round(p.y) };
   };
 
-  // ── Drag & drop de mesas en el canvas (mover con click + arrastre) ──
+  const inferZona = (x:number, y:number):string => {
+    for (const z of orden) {
+      const a = zonas[z]?.area; if (!a) continue;
+      if (x>=a.x && x<=a.x+a.w && y>=a.y && y<=a.y+a.h) return z;
+    }
+    return orden[0] || 'Salón';
+  };
+
+  const agregarMesaEn = async (px:number, py:number) => {
+    // Calcular el siguiente número libre
+    const usados = (localMesas||[]).map((m:any)=>parseInt(m.name,10)).filter((n:number)=>!isNaN(n));
+    const newNum = (usados.length?Math.max(...usados):0) + 1;
+    const zona = inferZona(px, py);
+    const payload = {
+      restaurante_id: restauranteId,
+      name: String(newNum),
+      capacidad: 4,
+      zona,
+      shape: 'round',
+      posicion_x: px,
+      posicion_y: py,
+      activa: true,
+      estado: 'libre',
+      vip: false,
+    };
+    const { data, error } = await supabase.from('tables').insert(payload).select().single();
+    if (error) { show(`⚠ ${error.message}`); return; }
+    if (data) {
+      setLocalMesas(p=>[...p, data]);
+      setEditMesa({ ...data });
+      show(`✓ Mesa ${newNum} agregada en ${zona}`);
+      onRefresh && onRefresh();
+    }
+  };
+
   const onMesaMouseDown = (e: React.MouseEvent, mesa: any) => {
-    if (!canvasRef.current) return;
-    const rect = canvasRef.current.getBoundingClientRect();
-    const xPct = ((e.clientX - rect.left) / rect.width) * 100;
-    const yPct = ((e.clientY - rect.top) / rect.height) * 100;
-    dragRef.current = { id: mesa.id, offX: xPct - mesa.x, offY: yPct - mesa.y, moved: false };
+    e.stopPropagation();
+    const p = svgPoint(e.clientX, e.clientY);
+    dragRef.current = { id: mesa.id, offX: p.x - mesa.posicion_x, offY: p.y - mesa.posicion_y, moved: false };
     setDragging(mesa.id);
     e.preventDefault();
   };
+
   React.useEffect(() => {
     const onMove = (e: MouseEvent) => {
-      const d = dragRef.current; if (!d || !canvasRef.current) return;
-      const rect = canvasRef.current.getBoundingClientRect();
-      const xPct = Math.max(0, Math.min(95, ((e.clientX - rect.left) / rect.width) * 100 - d.offX));
-      const yPct = Math.max(0, Math.min(95, ((e.clientY - rect.top) / rect.height) * 100 - d.offY));
+      const d = dragRef.current; if (!d) return;
+      const p = svgPoint(e.clientX, e.clientY);
+      const nx = Math.max(20, Math.min(VW_PLANO-20, p.x - d.offX));
+      const ny = Math.max(20, Math.min(VH_PLANO-20, p.y - d.offY));
       d.moved = true;
-      setPlantaDB((p:any) => p.map((m:any) => m.id === d.id ? { ...m, x: Math.round(xPct), y: Math.round(yPct) } : m));
-      if (editMesa?.id === d.id) setEditMesa((p:any) => ({ ...p, x: Math.round(xPct), y: Math.round(yPct) }));
+      setLocalMesas(prev => prev.map(m => m.id===d.id ? { ...m, posicion_x: Math.round(nx), posicion_y: Math.round(ny) } : m));
+      if (editMesa?.id === d.id) setEditMesa((p:any) => ({ ...p, posicion_x: Math.round(nx), posicion_y: Math.round(ny) }));
     };
     const onUp = async () => {
       const d = dragRef.current; if (!d) return;
-      const moved = d.moved;
-      const id = d.id;
-      dragRef.current = null;
-      setDragging(null);
+      const moved = d.moved; const id = d.id;
+      dragRef.current = null; setDragging(null);
       if (moved) {
-        // Persistir nueva posición en BD
-        const m = (plantaDB || []).find((x:any) => x.id === id);
+        const m = localMesas.find(x => x.id === id);
         if (m) {
-          await supabase.from('planta_mesas').update({ x: m.x, y: m.y, updated_at: new Date().toISOString() }).eq('id', id);
+          await supabase.from('tables').update({ posicion_x: m.posicion_x, posicion_y: m.posicion_y, zona: inferZona(m.posicion_x, m.posicion_y) }).eq('id', id);
         }
       }
     };
     document.addEventListener('mousemove', onMove);
     document.addEventListener('mouseup', onUp);
-    return () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-    };
-  }, [plantaDB, editMesa, setPlantaDB, setEditMesa]);
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+  }, [localMesas, editMesa]);
+
+  const toggleVip = async (mesa:any, vipNuevo:boolean) => {
+    await supabase.from('tables').update({ vip: vipNuevo }).eq('id', mesa.id);
+    setLocalMesas(p=>p.map(m=>m.id===mesa.id?{...m, vip:vipNuevo}:m));
+    if (editMesa?.id===mesa.id) setEditMesa((p:any)=>({...p, vip:vipNuevo}));
+    show(vipNuevo?`⭐ ${mesa.name} VIP`:`Mesa ${mesa.name} sin VIP`);
+    onRefresh && onRefresh();
+  };
 
   const guardarMesa = async () => {
-    await supabase.from('planta_mesas').update({
-      num:editMesa.num,zona:editMesa.zona,shape:editMesa.shape,
-      capacidad:editMesa.capacidad,x:editMesa.x,y:editMesa.y,
-      w:editMesa.w,h:editMesa.h,updated_at:new Date().toISOString()
-    }).eq('id',editMesa.id);
-    setPlantaDB((p:any)=>p.map((m:any)=>m.id===editMesa.id?{...m,...editMesa}:m));
+    const { id, name, capacidad, shape, zona, vip, posicion_x, posicion_y } = editMesa;
+    await supabase.from('tables').update({ name, capacidad, shape, zona, vip, posicion_x, posicion_y }).eq('id', id);
+    setLocalMesas(p=>p.map(m=>m.id===id?{...m, name, capacidad, shape, zona, vip, posicion_x, posicion_y}:m));
     setEditMesa(null);
     show('✓ Mesa actualizada');
+    onRefresh && onRefresh();
   };
 
   const eliminarMesa = async () => {
-    await supabase.from('planta_mesas').update({activa:false}).eq('id',editMesa.id);
-    setPlantaDB((p:any)=>p.filter((m:any)=>m.id!==editMesa.id));
-    const num = editMesa.num;
+    if (!confirm(`¿Eliminar la mesa ${editMesa.name}? No se puede deshacer.`)) return;
+    await supabase.from('tables').update({ activa: false }).eq('id', editMesa.id);
+    setLocalMesas(p=>p.filter(m=>m.id!==editMesa.id));
+    const nm = editMesa.name;
     setEditMesa(null);
-    show(`Mesa ${num} eliminada`);
+    show(`Mesa ${nm} eliminada`);
+    onRefresh && onRefresh();
   };
 
-  const plantaVis = plantaDB.length > 0 ? plantaDB : Object.values(PLANTA);
+  // ── Render del SVG (misma paleta neon suave que PlanoSalaSVG) ──
+  const NEON = {
+    bgOuter:'#0e0e18', bgInner:'#13131f',
+    grid:'rgba(120,120,180,0.05)',
+    libre:    { fill:'#162621', stroke:'#3DBE8B', text:'#D8F4E5' },
+    vip:      { stroke:'#D4AF3D' },
+  };
+
+  const visibles = localMesas.filter((m:any)=>m.activa!==false && m.posicion_x!=null && m.posicion_y!=null);
 
   return (
     <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
       {/* Toolbar */}
       <div style={{padding:'10px 20px',borderBottom:'1px solid rgba(255,255,255,0.07)',background:'#0f0f1a',display:'flex',gap:10,alignItems:'center',flexShrink:0,flexWrap:'wrap'}}>
-        <div style={{fontSize:12,color:'#A0A0B8',fontWeight:700}}>⚙️ Plano de mesas (modo edición)</div>
-        <div style={{fontSize:11,color:'#50506A'}}>Click para editar · Arrastra para mover · ⭐ marca mesas VIP · Para ver estados en vivo usa la pestaña "Mapa de mesas"</div>
-        <button onClick={agregarMesa} style={{marginLeft:'auto',padding:'7px 16px',borderRadius:9,border:'none',background:'linear-gradient(135deg,#00E676,#009944)',color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+        <div style={{fontSize:12,color:'#A0A0B8',fontWeight:700}}>⚙️ Editor de planta — mismo plano que Sala</div>
+        <div style={{fontSize:11,color:'#50506A'}}>Click vacío para agregar · Click mesa para editar · Arrastra para mover · ★ marca VIP</div>
+        <button onClick={()=>{
+            // Si no hay zonas configuradas, ponemos la mesa en el centro
+            const cx = VW_PLANO/2, cy = VH_PLANO/2;
+            agregarMesaEn(cx, cy);
+          }}
+          style={{marginLeft:'auto',padding:'7px 16px',borderRadius:9,border:'none',background:'linear-gradient(135deg,#3DBE8B,#1d8a5d)',color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
           + Agregar mesa
         </button>
       </div>
 
       <div style={{flex:1,overflow:'hidden',display:'flex'}}>
-        {/* Canvas */}
-        <div style={{flex:1,overflow:'auto',padding:16}}>
-          <div ref={canvasRef} style={{position:'relative',width:'100%',paddingBottom:'70%',background:'#0a0a12',borderRadius:16,border:'1px solid rgba(255,255,255,0.08)',overflow:'hidden',userSelect:'none'}}>
-            <div style={{position:'absolute',inset:0}}>
-              {Object.entries(ZONA_AREAS).map(([zona,area])=>(
-                <div key={zona} style={{position:'absolute',left:`${area.x}%`,top:`${area.y}%`,width:`${area.w}%`,height:`${area.h}%`,background:ZONA_COLORES[zona]?.bg,border:`1px dashed ${ZONA_COLORES[zona]?.border}`,borderRadius:12}}>
-                  <div style={{position:'absolute',top:5,left:8,fontSize:8,color:'rgba(255,255,255,0.2)',fontWeight:700,textTransform:'uppercase'}}>{ZONA_COLORES[zona]?.label}</div>
-                </div>
-              ))}
-              {/* Cocina + Barra simples en modo editor */}
-              <div style={{position:'absolute',left:'73%',top:'54%',width:'25%',height:'43%',background:'rgba(255,82,82,0.06)',border:'1px dashed rgba(255,82,82,0.2)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:4}}>
-                <div>🔥</div><div style={{fontSize:9,color:'rgba(255,82,82,0.5)',fontWeight:700}}>Cocina</div>
-              </div>
-              <div style={{position:'absolute',left:'2%',top:'76%',width:'68%',height:'12%',background:'rgba(68,139,255,0.05)',border:'1px dashed rgba(68,139,255,0.2)',borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
-                <div>🍸</div><div style={{fontSize:9,color:'rgba(68,139,255,0.5)',fontWeight:700}}>Barra</div>
-              </div>
-              {/* Mesas editables — arrastrables con mousedown */}
-              {plantaVis.filter((m:any)=>m.activa!==false).map((mesa:any)=>{
-                const isEditing = editMesa?.id===mesa.id;
-                const isDragging = dragging === mesa.id;
-                const isVip = (mesas||[]).some((m:any)=>Number(m.name)===Number(mesa.num) && m.vip);
-                const key = mesa.mesa_key || `M${mesa.num}`;
-                const borderColor = isEditing ? '#d4943a' : isVip ? '#FFB547' : 'rgba(255,255,255,0.25)';
-                const bgColor = isEditing ? 'rgba(212,148,58,0.25)' : isVip ? 'rgba(255,181,71,0.15)' : 'rgba(255,255,255,0.07)';
-                return (
-                  <div key={key}
-                    onMouseDown={(e)=>onMesaMouseDown(e, mesa)}
-                    onClick={(e)=>{
-                      // Si arrastramos, no abrir el editor
-                      if (dragRef.current?.moved) { dragRef.current.moved = false; return; }
-                      setEditMesa(isEditing?null:{...mesa});
-                    }}
-                    style={{position:'absolute',left:`${mesa.x}%`,top:`${mesa.y}%`,width:`${mesa.w||10}%`,height:`${mesa.h||10}%`,
-                      borderRadius:mesa.shape==='round'?'50%':10,
-                      background:bgColor,border:`2px solid ${borderColor}`,
-                      cursor:isDragging?'grabbing':'grab',
-                      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
-                      boxShadow:isEditing?'0 0 12px rgba(212,148,58,0.4)':isVip?'0 0 8px rgba(255,181,71,0.3)':'none',
-                      zIndex:isDragging?5:isEditing?3:1,
-                      transition: isDragging ? 'none' : 'all .15s',
-                      opacity: isDragging ? 0.85 : 1,
-                    }}
-                  >
-                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(7px,1.1vw,13px)',fontWeight:900,color:isEditing?'#d4943a':isVip?'#FFB547':'rgba(255,255,255,0.8)',lineHeight:1}}>M{mesa.num}</div>
-                    {mesa.shape!=='round'&&<div style={{fontSize:'clamp(5px,0.7vw,9px)',color:'rgba(255,255,255,0.4)'}}>{mesa.capacidad||mesa.cap}p</div>}
-                    {/* Estrella VIP — toggle directo sin abrir el editor */}
-                    <button
-                      onMouseDown={(e)=>e.stopPropagation()}
-                      onClick={(e)=>{
-                        e.stopPropagation();
-                        onToggleVip && onToggleVip(mesa.num, !isVip);
-                      }}
-                      title={isVip?'Quitar VIP':'Marcar como VIP'}
-                      style={{position:'absolute',top:-7,right:-7,width:20,height:20,borderRadius:'50%',
-                        border:`1.5px solid ${isVip?'#FFB547':'rgba(255,255,255,0.25)'}`,
-                        background:isVip?'#1a1a2e':'rgba(255,255,255,0.06)',
-                        color:isVip?'#FFB547':'rgba(255,255,255,0.45)',
-                        fontSize:12,fontWeight:900,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',padding:0,lineHeight:1,zIndex:10}}>
-                      {isVip?'★':'☆'}
-                    </button>
-                    {isEditing&&<div style={{position:'absolute',top:-2,left:-2,width:8,height:8,borderRadius:'50%',background:'#d4943a'}}/>}
-                  </div>
-                );
-              })}
-            </div>
+        {/* Canvas SVG */}
+        <div style={{flex:1,overflow:'auto',padding:18,background:NEON.bgOuter}}>
+          <svg ref={svgRef} viewBox={`0 0 ${VW_PLANO} ${VH_PLANO}`} width="100%"
+            style={{display:'block',background:`radial-gradient(circle at 50% 30%, #1a1a2a 0%, ${NEON.bgInner} 70%)`,borderRadius:14,boxShadow:'inset 0 0 60px rgba(0,0,0,0.6)',cursor: dragging?'grabbing':'crosshair',userSelect:'none'}}
+            onDoubleClick={(e)=>{
+              if ((e.target as Element).tagName === 'svg' || (e.target as Element).tagName === 'rect') {
+                const p = svgPoint(e.clientX, e.clientY);
+                agregarMesaEn(p.x, p.y);
+              }
+            }}>
+            <defs>
+              <pattern id="editorGrid" width="40" height="40" patternUnits="userSpaceOnUse">
+                <path d="M 40 0 L 0 0 0 40" fill="none" stroke={NEON.grid} strokeWidth="1"/>
+              </pattern>
+            </defs>
+
+            <rect x={0} y={0} width={VW_PLANO} height={VH_PLANO} fill="url(#editorGrid)"/>
+
+            {/* Zonas */}
+            {orden.map(z => {
+              const zona = zonas[z]; if (!zona) return null;
+              return (
+                <g key={z}>
+                  <rect x={zona.area.x} y={zona.area.y} width={zona.area.w} height={zona.area.h}
+                    rx={14} fill={zona.chipBg} fillOpacity={0.04}
+                    stroke={zona.chipBg} strokeWidth={1.2} strokeDasharray="8 6" strokeOpacity={0.4}/>
+                  <g transform={`translate(${zona.area.x+12}, ${zona.area.y+12})`}>
+                    <rect width={zona.label.length*8.4+20} height={24} rx={4} fill="none" stroke={zona.chipBg} strokeWidth={1.2} strokeOpacity={0.7}/>
+                    <text x={10} y={16} fill={zona.chipBg} fontSize={11} fontWeight={800}
+                      fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.18em" opacity={0.85}>
+                      {zona.label}
+                    </text>
+                  </g>
+                </g>
+              );
+            })}
+
+            {/* Mesas */}
+            {visibles.map((m:any) => {
+              const { w, h } = sizeForMesa({ zona:m.zona||'', capacidad:m.capacidad||4, name:m.name });
+              const isRound = (m.shape||'round') === 'round' || (m.zona||'').startsWith('Barra');
+              const isEditing = editMesa?.id === m.id;
+              const isDragging = dragging === m.id;
+              const stroke = isEditing ? '#d4943a' : m.vip ? NEON.vip.stroke : NEON.libre.stroke;
+              const cx = m.posicion_x, cy = m.posicion_y;
+              return (
+                <g key={m.id}
+                   style={{cursor: isDragging?'grabbing':'grab'}}
+                   onMouseDown={(e)=>onMesaMouseDown(e, m)}
+                   onClick={(e)=>{
+                     e.stopPropagation();
+                     if (dragRef.current?.moved) { dragRef.current.moved = false; return; }
+                     setEditMesa(isEditing ? null : {...m});
+                   }}>
+                  {isRound
+                    ? <circle cx={cx} cy={cy} r={w/2} fill={NEON.libre.fill} stroke={stroke} strokeWidth={isEditing?3:m.vip?2.5:1.8}/>
+                    : <rect x={cx-w/2} y={cy-h/2} width={w} height={h} rx={8} fill={NEON.libre.fill} stroke={stroke} strokeWidth={isEditing?3:m.vip?2.5:1.8}/>}
+
+                  {/* Estrella VIP toggle */}
+                  <g onMouseDown={(e)=>e.stopPropagation()}
+                     onClick={(e)=>{ e.stopPropagation(); toggleVip(m, !m.vip); }}
+                     style={{cursor:'pointer'}}>
+                    <circle cx={cx-w/2+9} cy={cy-h/2+9} r={10}
+                      fill={NEON.bgInner}
+                      stroke={m.vip?NEON.vip.stroke:'rgba(255,255,255,0.22)'} strokeWidth={m.vip?1.8:1}/>
+                    <text x={cx-w/2+9} y={cy-h/2+13} textAnchor="middle" fontSize={12} fontWeight={800}
+                      fill={m.vip?NEON.vip.stroke:'rgba(255,255,255,0.4)'}>
+                      {m.vip?'★':'☆'}
+                    </text>
+                  </g>
+
+                  <text x={cx} y={cy-2} fill={NEON.libre.text} fontSize={14} fontWeight={900} textAnchor="middle"
+                    fontFamily="'Syne', serif" pointerEvents="none">M{m.name}</text>
+                  <text x={cx} y={cy+12} fill={NEON.libre.text} fontSize={9} fontWeight={700} textAnchor="middle" opacity={0.9}
+                    fontFamily="'IBM Plex Mono', monospace" pointerEvents="none">{m.capacidad}P</text>
+                </g>
+              );
+            })}
+
+            {visibles.length === 0 && (
+              <text x={VW_PLANO/2} y={VH_PLANO/2} textAnchor="middle" fill="#666" fontSize={16}
+                fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.2em">
+                DOBLE CLICK PARA AGREGAR LA PRIMERA MESA
+              </text>
+            )}
+          </svg>
+          <div style={{marginTop:8,fontSize:10,color:'#50506A',textAlign:'center'}}>
+            Doble click sobre el plano para agregar mesa en esa posición — la zona se infiere automáticamente.
           </div>
-          <div style={{marginTop:8,fontSize:10,color:'#50506A',textAlign:'center'}}>Click sobre una mesa para editar · Arrastra para reposicionar</div>
         </div>
 
         {/* Panel edición */}
@@ -1661,23 +1735,23 @@ function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesa
             <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,color:'#50506A',textAlign:'center'}}>
               <div style={{fontSize:40,marginBottom:12}}>✏️</div>
               <div style={{fontSize:12,fontWeight:700,marginBottom:6}}>Selecciona una mesa</div>
-              <div style={{fontSize:11,lineHeight:1.6}}>Toca cualquier mesa en el canvas para editar sus propiedades o eliminarla</div>
+              <div style={{fontSize:11,lineHeight:1.6}}>Click en cualquier mesa para editar · doble-click vacío para agregar</div>
             </div>
           ):(
             <div style={{flex:1,overflowY:'auto',padding:16}}>
-              <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:14,color:'#f0f0f0'}}>Mesa {editMesa.num}</div>
+              <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,marginBottom:14,color:'#f0f0f0'}}>Mesa {editMesa.name}</div>
 
               <div style={{marginBottom:12}}>
-                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Número de mesa</div>
-                <input type="number" style={inp} value={editMesa.num} onChange={e=>setEditMesa((p:any)=>({...p,num:Number(e.target.value)}))}/>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:4,textTransform:'uppercase'}}>Nombre / Número</div>
+                <input style={inp} value={editMesa.name} onChange={e=>setEditMesa((p:any)=>({...p,name:e.target.value}))}/>
               </div>
 
               <div style={{marginBottom:12}}>
                 <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Zona</div>
                 <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
-                  {['Terraza','Salón','Privado','Barra'].map(z=>(
+                  {orden.map(z=>(
                     <button key={z} onClick={()=>setEditMesa((p:any)=>({...p,zona:z}))}
-                      style={{padding:'5px 10px',borderRadius:8,border:`1px solid ${editMesa.zona===z?'#FFB547':'rgba(255,255,255,0.12)'}`,background:editMesa.zona===z?'rgba(255,181,71,0.15)':'transparent',color:editMesa.zona===z?'#FFB547':'#50506A',fontSize:11,cursor:'pointer'}}>
+                      style={{padding:'5px 10px',borderRadius:8,border:`1px solid ${editMesa.zona===z?(zonas[z]?.chipBg||'#FFB547'):'rgba(255,255,255,0.12)'}`,background:editMesa.zona===z?`${zonas[z]?.chipBg||'#FFB547'}22`:'transparent',color:editMesa.zona===z?(zonas[z]?.chipBg||'#FFB547'):'#50506A',fontSize:11,cursor:'pointer'}}>
                       {z}
                     </button>
                   ))}
@@ -1701,7 +1775,7 @@ function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesa
                 <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
                   {[1,2,3,4,5,6,7,8,10,12].map(n=>(
                     <button key={n} onClick={()=>setEditMesa((p:any)=>({...p,capacidad:n}))}
-                      style={{padding:'6px 8px',borderRadius:7,border:`1px solid ${editMesa.capacidad===n?'#00E676':'rgba(255,255,255,0.12)'}`,background:editMesa.capacidad===n?'rgba(0,230,118,0.15)':'transparent',color:editMesa.capacidad===n?'#00E676':'#50506A',fontSize:12,fontWeight:700,cursor:'pointer',minWidth:32}}>
+                      style={{padding:'6px 8px',borderRadius:7,border:`1px solid ${editMesa.capacidad===n?'#3DBE8B':'rgba(255,255,255,0.12)'}`,background:editMesa.capacidad===n?'rgba(61,190,139,0.15)':'transparent',color:editMesa.capacidad===n?'#3DBE8B':'#50506A',fontSize:12,fontWeight:700,cursor:'pointer',minWidth:32}}>
                       {n}
                     </button>
                   ))}
@@ -1710,29 +1784,29 @@ function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesa
 
               <div style={{marginBottom:12}}>
                 <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Mesa VIP</div>
-                <button onClick={()=>onToggleVip && onToggleVip(editMesa.num, !esVip)}
+                <button onClick={()=>toggleVip(editMesa, !editMesa.vip)}
                   style={{width:'100%',padding:'9px',borderRadius:9,cursor:'pointer',fontSize:12,fontWeight:700,
-                    border:`1px solid ${esVip?'#FFB547':'rgba(255,255,255,0.12)'}`,
-                    background:esVip?'rgba(255,181,71,0.15)':'transparent',
-                    color:esVip?'#FFB547':'#A0A0B8'}}>
-                  {esVip?'⭐ Mesa VIP — quitar estrella':'☆ Marcar como mesa VIP'}
+                    border:`1px solid ${editMesa.vip?'#D4AF3D':'rgba(255,255,255,0.12)'}`,
+                    background:editMesa.vip?'rgba(212,175,61,0.15)':'transparent',
+                    color:editMesa.vip?'#D4AF3D':'#A0A0B8'}}>
+                  {editMesa.vip?'⭐ Mesa VIP — quitar estrella':'☆ Marcar como mesa VIP'}
                 </button>
               </div>
 
               <div style={{marginBottom:14}}>
-                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Posición en el plano (%)</div>
+                <div style={{fontSize:10,color:'#50506A',fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Posición en el plano (px)</div>
                 <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8}}>
-                  {[{l:'X (horizontal)',k:'x'},{l:'Y (vertical)',k:'y'},{l:'Ancho',k:'w'},{l:'Alto',k:'h'}].map(f=>(
+                  {[{l:'X (horizontal)',k:'posicion_x',max:VW_PLANO},{l:'Y (vertical)',k:'posicion_y',max:VH_PLANO}].map(f=>(
                     <div key={f.k}>
                       <div style={{fontSize:9,color:'#50506A',marginBottom:3}}>{f.l}</div>
-                      <input type="number" min={1} max={95} style={inp} value={editMesa[f.k]} onChange={e=>setEditMesa((p:any)=>({...p,[f.k]:Number(e.target.value)}))}/>
+                      <input type="number" min={0} max={f.max} style={inp} value={editMesa[f.k]||0} onChange={e=>setEditMesa((p:any)=>({...p,[f.k]:Number(e.target.value)}))}/>
                     </div>
                   ))}
                 </div>
               </div>
 
               <div style={{display:'flex',flexDirection:'column',gap:7}}>
-                <button onClick={guardarMesa} style={{width:'100%',padding:'10px',borderRadius:9,border:'none',background:'linear-gradient(135deg,#FFB547,#d4943a)',color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                <button onClick={guardarMesa} style={{width:'100%',padding:'10px',borderRadius:9,border:'none',background:'linear-gradient(135deg,#D4AF3D,#a48530)',color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
                   ✓ Guardar cambios
                 </button>
                 <button onClick={eliminarMesa} style={{width:'100%',padding:'9px',borderRadius:9,border:'1px solid rgba(255,82,82,0.4)',background:'transparent',color:'#FF5252',fontSize:12,cursor:'pointer'}}>
@@ -1749,6 +1823,7 @@ function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesa
     </div>
   );
 }
+
 
 function FooterStat({ label, v, c }:{ label:string; v:number|string; c:string }) {
   return (
