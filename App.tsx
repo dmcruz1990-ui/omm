@@ -278,7 +278,6 @@ const Dashboard: React.FC = () => {
               id: 'marketing', label: 'PAQUETE MARKETING',
               icon: <Sparkles size={14} className="text-blue-500" />,
               modules: [
-                { type: ModuleType.OH_YEAH,       label: 'OH YEAH! B2C',  sub: 'VISTA CLIENTE',      icon: <Smartphone size={18} /> },
                 { type: ModuleType.RESERVE,        label: 'RESERVE',       sub: 'MAPA & AGENDA',      icon: <CalendarDays size={18} /> },
                  // PLANO MESAS eliminado del sidebar — vive dentro de RESERVE (pestaña Editor de planta)
                  { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> },

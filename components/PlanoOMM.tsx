@@ -50,11 +50,12 @@ export const sizeForMesa = (m: { zona:string; capacidad:number; name:string }) =
   return { w:54, h:54 };
 };
 
+// ── Estilo neon suave (dark) — letras legibles, brillo reducido ──
 const ST = {
-  libre:     { bg:'#FFFFFF', border:'#22C55E', text:'#15803D', chip:'#22C55E', label:'LIBRE' },
-  ocupada:   { bg:'#FEE2E2', border:'#DC2626', text:'#7F1D1D', chip:'#EF4444', label:'OCUPADA' },
-  reservada: { bg:'#FEF3C7', border:'#D97706', text:'#78350F', chip:'#F59E0B', label:'RESERVADA' },
-  bloqueada: { bg:'#E5E7EB', border:'#6B7280', text:'#374151', chip:'#9CA3AF', label:'BLOQUEADA' },
+  libre:     { bg:'#162621', border:'#3DBE8B', text:'#D8F4E5', chip:'#3DBE8B', label:'LIBRE' },
+  ocupada:   { bg:'#241218', border:'#C04464', text:'#F4D0DC', chip:'#C04464', label:'OCUPADA' },
+  reservada: { bg:'#241B10', border:'#C99245', text:'#F4E2C5', chip:'#C99245', label:'RESERVADA' },
+  bloqueada: { bg:'#1d1d28', border:'#6B7280', text:'#A8A8B8', chip:'#9CA3AF', label:'BLOQUEADA' },
 };
 
 interface MesaRow {
@@ -421,25 +422,26 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
       {/* ═══ Grid principal: Plano + Sidebar ═══════════════════════════ */}
       <div style={{display:'grid',gridTemplateColumns: sel ? '1fr 340px 320px' : '1fr 320px',gap:12,alignItems:'start'}}>
 
-        {/* ── PLANO SVG ──────────────────────────────────────────── */}
-        <div style={{background:'#fff',borderRadius:18,padding:12,boxShadow:'0 20px 70px rgba(0,0,0,0.6)',position:'relative'}}
+        {/* ── PLANO SVG · estilo neon suave ──────────────────────── */}
+        <div style={{background:'#0e0e18',borderRadius:18,padding:12,boxShadow:'0 20px 70px rgba(0,0,0,0.55), inset 0 0 30px rgba(0,0,0,0.4)',position:'relative',border:'1px solid rgba(255,255,255,0.06)'}}
           onMouseMove={(e)=>{ const r=svgRef.current?.getBoundingClientRect(); if(r) setMouse({x:e.clientX-r.left, y:e.clientY-r.top}); }}>
-          <svg ref={svgRef} viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{display:'block',background:'#FAFAFA',borderRadius:12}}>
-            {/* Áreas de zona */}
+          <svg ref={svgRef} viewBox={`0 0 ${VW} ${VH}`} width="100%" style={{display:'block',background:`radial-gradient(circle at 50% 30%, #1a1a2a 0%, #13131f 70%)`,borderRadius:12}}>
+            {/* Áreas de zona — fill translúcido sobre fondo oscuro */}
             {ZONAS_ORDEN.map(k => {
               const z = ZONAS[k]; if (!z) return null;
               return (
                 <g key={k}>
                   <rect x={z.area.x} y={z.area.y} width={z.area.w} height={z.area.h}
-                    fill={z.fill} stroke={z.stroke} strokeWidth={2.5} rx={14}/>
+                    fill={z.chipBg} fillOpacity={0.06}
+                    stroke={z.chipBg} strokeOpacity={0.5} strokeWidth={1.5} strokeDasharray="8 6" rx={14}/>
                   {!k.startsWith('Barra') && (
                     <text x={z.area.x + z.area.w/2} y={z.area.y + 36} textAnchor="middle"
-                      fontSize={32} fontWeight={900} fill={z.chipBg} opacity={0.18}
+                      fontSize={32} fontWeight={900} fill={z.chipBg} opacity={0.12}
                       letterSpacing="0.12em" pointerEvents="none">{z.label}</text>
                   )}
                   <g transform={`translate(${z.area.x+14}, ${z.area.y+14})`} pointerEvents="none">
-                    <rect width={z.label.length*8.2+18} height={24} rx={6} fill={z.chipBg}/>
-                    <text x={9} y={16.5} fill="#fff" fontSize={11} fontWeight={800} letterSpacing="0.08em">{z.label}</text>
+                    <rect width={z.label.length*8.2+18} height={24} rx={6} fill="none" stroke={z.chipBg} strokeWidth={1.2} strokeOpacity={0.8}/>
+                    <text x={9} y={16.5} fill={z.chipBg} fontSize={11} fontWeight={800} letterSpacing="0.08em" opacity={0.9}>{z.label}</text>
                   </g>
                 </g>
               );
@@ -485,11 +487,27 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
                   )}
                   {(m.shape==='round' || isBarra) ? (
                     <circle cx={m.posicion_x} cy={m.posicion_y} r={w/2}
-                      fill={isVIP ? '#7C1D1D' : c.bg} stroke={hoverDrop ? '#22C55E' : c.border} strokeWidth={hoverDrop ? 4 : 2.5}/>
+                      fill={c.bg}
+                      stroke={hoverDrop ? '#5BC0E8' : isVIP ? '#D4AF3D' : c.border}
+                      strokeWidth={hoverDrop ? 3 : isVIP ? 2.5 : 1.8}/>
                   ) : (
                     <rect x={m.posicion_x-w/2} y={m.posicion_y-h/2} width={w} height={h} rx={7}
-                      fill={isVIP ? '#7C1D1D' : c.bg} stroke={hoverDrop ? '#22C55E' : c.border} strokeWidth={hoverDrop ? 4 : 2.5}/>
+                      fill={c.bg}
+                      stroke={hoverDrop ? '#5BC0E8' : isVIP ? '#D4AF3D' : c.border}
+                      strokeWidth={hoverDrop ? 3 : isVIP ? 2.5 : 1.8}/>
                   )}
+                  {/* Estrella VIP en cada mesa — toggle directo */}
+                  <g onClick={(e)=>{
+                       e.stopPropagation();
+                       supabase.from('tables').update({ vip: !m.vip }).eq('id', m.id).then(()=>setTimeout(()=>fetchAll(),120));
+                     }} style={{cursor:'pointer'}}>
+                    <circle cx={m.posicion_x-w/2+9} cy={m.posicion_y-h/2+9} r={10}
+                      fill="#1a1a2e" stroke={isVIP?'#D4AF3D':'rgba(255,255,255,0.22)'} strokeWidth={isVIP?1.8:1}/>
+                    <text x={m.posicion_x-w/2+9} y={m.posicion_y-h/2+13} textAnchor="middle"
+                      fontSize={12} fontWeight={800} fill={isVIP?'#D4AF3D':'rgba(255,255,255,0.4)'}>
+                      {isVIP?'★':'☆'}
+                    </text>
+                  </g>
                   {!isBarra && estado!=='libre' && m.mesero_nombre && (
                     <g pointerEvents="none">
                       <circle cx={m.posicion_x+w/2-8} cy={m.posicion_y-h/2+8} r={11} fill="#1a1a2e" stroke="#fff" strokeWidth={1.5}/>
@@ -497,16 +515,16 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
                     </g>
                   )}
                   {critical && (
-                    <circle cx={m.posicion_x-w/2+9} cy={m.posicion_y-h/2+9} r={6} fill="#DC2626">
+                    <circle cx={m.posicion_x-w/2+9} cy={m.posicion_y+h/2-9} r={6} fill="#DC2626">
                       <animate attributeName="opacity" values="0.4;1;0.4" dur="1.2s" repeatCount="indefinite"/>
                     </circle>
                   )}
                   <text x={m.posicion_x} y={m.posicion_y - 2} textAnchor="middle" pointerEvents="none"
                     fontSize={isBarra ? 11 : (m.name==='M5' ? 22 : 14)}
-                    fontWeight={900} fill={isVIP ? '#fff' : c.text}>{m.name}</text>
+                    fontWeight={900} fill={c.text}>{m.name}</text>
                   {!isBarra && (
                     <text x={m.posicion_x} y={m.posicion_y + 14} textAnchor="middle" pointerEvents="none"
-                      fontSize={10} fontWeight={600} fill={isVIP ? 'rgba(255,255,255,0.85)' : c.text}>
+                      fontSize={10} fontWeight={600} fill={c.text} opacity={0.85}>
                       {estado==='libre' ? `${m.capacidad}p` : `${m.pax_actual||m.capacidad}p · ${fmtElapsed(min)}`}
                     </text>
                   )}
