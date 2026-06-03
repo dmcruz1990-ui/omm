@@ -269,31 +269,10 @@ const Dashboard: React.FC = () => {
            <RestaurantSelector />
         </div>
 
-        {isAdmin && (
-          <div className="mb-8 px-2 space-y-3">
-             <button 
-              onClick={() => setIsCockpitOpen(true)}
-              className="w-full bg-gradient-to-br from-blue-600 to-blue-800 p-5 rounded-[1.8rem] flex items-center gap-4 shadow-xl border border-white/10 hover:scale-[1.02] transition-all"
-             >
-                <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center text-white"><LayoutPanelLeft size={20} /></div>
-                <div className="text-left">
-                   <span className="text-[10px] font-black uppercase tracking-widest text-white block">Nexum Copilot</span>
-                   <span className="text-[7px] font-bold uppercase text-blue-200">Business Intelligence</span>
-                </div>
-             </button>
-
-             <button 
-              onClick={() => setActiveModule(ModuleType.MOBILE_MGR)}
-              className={`w-full p-5 rounded-[1.8rem] flex items-center gap-4 border transition-all group ${activeModule === ModuleType.MOBILE_MGR ? 'bg-blue-600 border-blue-400 text-white shadow-xl' : 'bg-white/[0.03] border-white/5 hover:bg-blue-600/10'}`}
-             >
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${activeModule === ModuleType.MOBILE_MGR ? 'bg-white/20 text-white' : 'bg-blue-600/20 text-blue-500 group-hover:bg-blue-600 group-hover:text-white'}`}><Smartphone size={20} /></div>
-                <div className="text-left">
-                   <span className={`text-[10px] font-black uppercase tracking-widest block italic ${activeModule === ModuleType.MOBILE_MGR ? 'text-white' : 'text-white'}`}>MODO ANDROID</span>
-                   <span className={`text-[7px] font-bold uppercase ${activeModule === ModuleType.MOBILE_MGR ? 'text-blue-100' : 'text-gray-500'}`}>Vista Gerente Mobile</span>
-                </div>
-             </button>
-          </div>
-        )}
+        {/* Botones grandes NEXUM COPILOT + MODO ANDROID ocultados a pedido
+            de Dale. ExecutiveCockpit y MobileManagerApp siguen montados
+            (se pueden invocar por código si hace falta) pero no aparecen
+            como botones top en el sidebar. */}
 
         <div className="space-y-10 mb-10">
           {[
@@ -303,7 +282,7 @@ const Dashboard: React.FC = () => {
               modules: [
                 { type: ModuleType.OH_YEAH,       label: 'OH YEAH! B2C',  sub: 'VISTA CLIENTE',      icon: <Smartphone size={18} /> },
                 { type: ModuleType.RESERVE,        label: 'RESERVE',       sub: 'MAPA & AGENDA',      icon: <CalendarDays size={18} /> },
-                 { type: ModuleType.PLANO,          label: 'PLANO MESAS',   sub: 'DISTRIBUCIÓN OFICIAL', icon: <span style={{fontSize:16}}>🗺️</span> },
+                 // PLANO MESAS eliminado del sidebar — vive dentro de RESERVE (pestaña Editor de planta)
                  { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> },
                  { type: ModuleType.OH_YEAH_ADMIN,  label: 'OH YEAH ADMIN', sub: 'RESTAURANTES',       icon: <Store size={18} /> },
                  { type: ModuleType.OH_YEAH_RESTAURANTE, label: 'OH YEAH REG.', sub: 'REGISTRO EXTERNO', icon: <Store size={18} /> },
@@ -560,16 +539,41 @@ const RestaurantSelector: React.FC = () => {
       </div>
     );
   }
+  // Flechas ‹ › para saltar al restaurante anterior/siguiente en la lista.
+  const idx = options.findIndex(o => o.id === activeId);
+  const irPrev = () => setActiveId(options[(idx - 1 + options.length) % options.length].id);
+  const irNext = () => setActiveId(options[(idx + 1) % options.length].id);
+  const hayMas = options.length > 1;
+
   return (
     <div className="relative">
-      <button onClick={() => setOpen(v => !v)}
-        className="w-full bg-gradient-to-br from-purple-700/30 to-blue-700/30 border border-purple-500/40 rounded-xl px-4 py-2.5 flex items-center justify-between hover:from-purple-700/50 transition-all">
-        <span className="flex items-center gap-2">
+      <div className="w-full bg-gradient-to-br from-purple-700/30 to-blue-700/30 border border-purple-500/40 rounded-xl flex items-stretch">
+        {/* Flecha izquierda */}
+        <button onClick={irPrev} disabled={!hayMas}
+          aria-label="Restaurante anterior"
+          className="px-2.5 flex items-center justify-center text-purple-200 hover:text-white hover:bg-white/10 transition-all disabled:opacity-30 rounded-l-xl border-r border-white/10">
+          <span className="text-base font-bold leading-none">‹</span>
+        </button>
+
+        {/* Centro: abre dropdown completo */}
+        <button onClick={() => setOpen(v => !v)}
+          className="flex-1 px-2 py-2.5 flex items-center gap-2 hover:bg-white/5 transition-all">
           <span className="text-lg">{activeRestaurant.emoji}</span>
-          <span className="text-[11px] font-black text-white uppercase tracking-wide">{activeRestaurant.nombre}</span>
-        </span>
-        <span className="text-[8px] text-purple-300">▼</span>
-      </button>
+          <div className="text-left flex-1 min-w-0">
+            <div className="text-[11px] font-black text-white uppercase tracking-wide truncate">{activeRestaurant.nombre}</div>
+            <div className="text-[8px] text-purple-200 truncate">{activeRestaurant.categoria}</div>
+          </div>
+          <span className="text-[7px] text-purple-300">▼</span>
+        </button>
+
+        {/* Flecha derecha */}
+        <button onClick={irNext} disabled={!hayMas}
+          aria-label="Restaurante siguiente"
+          className="px-2.5 flex items-center justify-center text-purple-200 hover:text-white hover:bg-white/10 transition-all disabled:opacity-30 rounded-r-xl border-l border-white/10">
+          <span className="text-base font-bold leading-none">›</span>
+        </button>
+      </div>
+
       {open && (
         <div className="absolute top-full mt-1 left-0 right-0 bg-[#0f0f1a] border border-white/15 rounded-xl overflow-hidden z-50 shadow-2xl">
           {options.map(o => (

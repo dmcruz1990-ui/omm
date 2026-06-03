@@ -764,7 +764,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         {([
           {id:'home',l:'🏠 Hoy'},{id:'lista',l:'📋 Lista'},
           {id:'mapa',l:'🗺️ Mapa de mesas'},
-          {id:'editor',l:'⚙️ Editor de planta'},
+          {id:'editor',l:'⚙️ Plano · Editar mesas'},
           {id:'nueva',l:'✦ Nueva / Editar'},
         ] as const).map(t=>(
           <button key={t.id} onClick={()=>setTab(t.id)}
@@ -1484,8 +1484,8 @@ function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesa
     <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
       {/* Toolbar */}
       <div style={{padding:'10px 20px',borderBottom:'1px solid rgba(255,255,255,0.07)',background:'#0f0f1a',display:'flex',gap:10,alignItems:'center',flexShrink:0,flexWrap:'wrap'}}>
-        <div style={{fontSize:12,color:'#A0A0B8',fontWeight:700}}>⚙️ Editor de planta</div>
-        <div style={{fontSize:11,color:'#50506A'}}>Click para editar · Arrastra para mover · ⭐ marca mesas VIP</div>
+        <div style={{fontSize:12,color:'#A0A0B8',fontWeight:700}}>⚙️ Plano de mesas (modo edición)</div>
+        <div style={{fontSize:11,color:'#50506A'}}>Click para editar · Arrastra para mover · ⭐ marca mesas VIP · Para ver estados en vivo usa la pestaña "Mapa de mesas"</div>
         <button onClick={agregarMesa} style={{marginLeft:'auto',padding:'7px 16px',borderRadius:9,border:'none',background:'linear-gradient(135deg,#00E676,#009944)',color:'#000',fontSize:12,fontWeight:700,cursor:'pointer'}}>
           + Agregar mesa
         </button>
