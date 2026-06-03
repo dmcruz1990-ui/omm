@@ -909,24 +909,61 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const isGerencia = ['admin','gerencia','desarrollo'].includes(profile?.role || '');
 
   // ── Carta dinámica multi-restaurante.
-  // OMM (id 6) usa SIEMPRE la carta hardcoded — su carta de BD tiene
-  // categorías y emojis distintos a los que el equipo lleva meses usando.
-  // Gallo (id 23) y futuros restaurantes leen de menu_platos.
+  // OMM (id 6) usa la carta hardcoded como base, pero respeta overrides
+  // de Mi Menú: activo=false → oculto del POS, disponible=false → 86 sombreado.
+  // Gallo (id 23) y futuros restaurantes leen 100% de menu_platos.
   const [productos, setProductos] = useState<Record<string, any[]>>(
     restauranteId === 6 ? PRODUCTOS_OMM_FALLBACK : {}
   );
+  const [menuOverrides, setMenuOverrides] = useState<Record<string,{activo:boolean;disponible:boolean}>>({});
   const categorias = React.useMemo(() => Object.keys(productos), [productos]);
+
+  // Cargar overrides de Mi Menú (activo / disponible) por nombre — aplica para OMM.
   useEffect(() => {
-    // OMM no carga de BD — mantiene la carta hardcoded estable.
+    if (restauranteId !== 6) return;
+    let alive = true;
+    const load = async () => {
+      const { data } = await supabase.from('menu_platos')
+        .select('nombre,activo,disponible')
+        .eq('restaurante_id', restauranteId);
+      if (!alive) return;
+      const map: Record<string,{activo:boolean;disponible:boolean}> = {};
+      (data||[]).forEach((p:any) => {
+        map[String(p.nombre||'').trim().toLowerCase()] = { activo: p.activo !== false, disponible: p.disponible !== false };
+      });
+      setMenuOverrides(map);
+    };
+    load();
+    // Realtime: si en Mi Menú alguien cambia el ojo/86, se refleja en el POS al toque.
+    const ch = supabase.channel('menu-overrides-pos')
+      .on('postgres_changes', { event:'*', schema:'public', table:'menu_platos' }, load)
+      .subscribe();
+    return () => { alive=false; supabase.removeChannel(ch); };
+  }, [restauranteId]);
+
+  useEffect(() => {
     if (restauranteId === 6) {
-      setProductos(PRODUCTOS_OMM_FALLBACK);
+      // OMM: aplicar overrides de Mi Menú sobre la carta base
+      const filtrado: Record<string,any[]> = {};
+      Object.entries(PRODUCTOS_OMM_FALLBACK).forEach(([cat, items]) => {
+        const visibles = items
+          .map((p:any) => {
+            const ov = menuOverrides[String(p.nombre||'').trim().toLowerCase()];
+            if (!ov) return p; // sin override → visible normal
+            if (!ov.activo) return null; // oculto desde Mi Menú
+            return { ...p, _en86: !ov.disponible }; // marcado como 86
+          })
+          .filter(Boolean) as any[];
+        if (visibles.length > 0) filtrado[cat] = visibles;
+      });
+      setProductos(filtrado);
       return;
     }
     let alive = true;
     (async () => {
       const { data } = await supabase.from('menu_platos')
         .select('nombre,descripcion,categoria,estacion,emoji,precio_venta,disponible,featured,modificadores')
-        .eq('restaurante_id', restauranteId).eq('activo', true).eq('disponible', true)
+        .eq('restaurante_id', restauranteId).eq('activo', true)
         .order('categoria').order('nombre');
       if (!alive) return;
       if (!data || data.length === 0) {
@@ -946,6 +983,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           estacion: p.estacion,
           categoria: cat,
           modificadores: Array.isArray(p.modificadores) ? p.modificadores : [],
+          _en86: p.disponible === false, // sombreado si está en 86
         });
       });
       setProductos(grouped);
@@ -5235,31 +5273,52 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     className="w-7 h-7 rounded-lg bg-[#1c1c1c] border border-[#2a2a2a] flex items-center justify-center text-[#a0a0a0] disabled:opacity-30 hover:border-[#d4943a] hover:text-[#d4943a] transition-all text-[14px]">›</button>
                 </div>
 
-                {/* Card de la mesa activa — más grande */}
-                <div className="bg-[#1c1c1c] rounded-2xl p-4 px-4"
+                {/* Card de la mesa activa — protagonista: mesa #, VIP, zona, ticket objetivo */}
+                <div className="bg-[#1c1c1c] rounded-2xl p-4 pb-3.5"
                   style={{ border: `2px solid ${profile?.color || '#d4943a'}` }}>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="font-['Syne'] text-[20px] font-black text-[#f0f0f0] truncate min-w-0">{nombreMesa(m)} · {m.cliente}</span>
-                    <div className="flex gap-1 items-center shrink-0">
-                      {m.vip  && <span className="text-[14px] text-[#ffd700]">⭐</span>}
-                      {m.bday && <span className="text-[14px]">🎂</span>}
-                      {m.alert && <span className="text-[13px] text-[#e07830]">⚠️</span>}
-                      <span className="text-[10px] text-[#606060] ml-1">{m.pax}p</span>
+                  {/* Fila 1 · Número de mesa GRANDE + VIP + pax */}
+                  <div className="flex items-start gap-3 mb-2">
+                    <div className="shrink-0 flex flex-col items-center justify-center rounded-xl"
+                      style={{ background:`${profile?.color || '#d4943a'}18`, border:`1.5px solid ${profile?.color || '#d4943a'}55`, padding:'8px 12px', minWidth:62 }}>
+                      <span className="font-['Syne'] font-black text-[28px] leading-none"
+                        style={{ color: profile?.color || '#d4943a' }}>{nombreMesa(m)}</span>
+                      <span className="text-[9px] text-[#a0a0a0] font-bold mt-0.5">{m.pax} pax</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
+                        {m.vip && (
+                          <span className="flex items-center gap-1 text-[10px] font-black text-[#ffd700] bg-[#ffd700]/12 border border-[#ffd700]/40 rounded-full px-2 py-0.5">
+                            ⭐ VIP
+                          </span>
+                        )}
+                        {m.bday && <span className="text-[14px]" title="Cumpleaños">🎂</span>}
+                        {m.alert && <span className="text-[13px] text-[#e07830]" title="Alerta">⚠️</span>}
+                      </div>
+                      <div className="text-[12px] text-[#f0f0f0] font-bold truncate">{m.cliente || 'Sin nombre'}</div>
+                      <span className="inline-flex items-center gap-1 text-[10px] text-[#a0a0a0] bg-[#1a1a1a] px-2 py-0.5 rounded-full border border-[#2a2a2a] mt-1">
+                        📍 {(m as any).zona || 'Salón'}
+                      </span>
                     </div>
                   </div>
-                  {/* Zona + tiempo */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[9px] text-[#606060] bg-[#1a1a1a] px-2 py-0.5 rounded-full border border-[#2a2a2a] shrink-0">
-                      📍 {(m as any).zona || 'Salón'}
-                    </span>
-                    <span className="text-[11px] text-[#606060] tabular-nums">{m.time}</span>
-                    <span className="text-[11px] text-[#a0a0a0] ml-auto">${formatPrecio(mesaSubtotal)} / ${formatPrecio(m.meta*1000)}</span>
-                  </div>
-                  <div className="h-[5px] bg-[#2a2a2a] rounded-sm overflow-hidden">
-                    <div className={`h-full rounded-sm transition-all duration-500 ${colorClass}`} style={{ width: `${pct}%` }}></div>
-                  </div>
-                  <div className="text-[11px] text-center mt-1.5" style={{ color: pct >= 80 ? '#3dba6f' : pct >= 50 ? '#d4943a' : '#e05050' }}>
-                    {pct}% del objetivo
+
+                  {/* Fila 2 · Objetivo de ticket explícito */}
+                  <div className="bg-[#0e0e14] border border-[#2a2a2a] rounded-lg px-3 py-2 mb-2">
+                    <div className="flex items-baseline gap-1.5 justify-between mb-1.5">
+                      <span className="text-[9px] text-[#606060] font-black uppercase tracking-widest">Objetivo ticket</span>
+                      <span className="text-[12px] text-[#a0a0a0] tabular-nums">{m.time}</span>
+                    </div>
+                    <div className="flex items-baseline justify-between mb-1">
+                      <span className="font-['Syne'] text-[18px] font-black" style={{color: pct >= 80 ? '#3dba6f' : pct >= 50 ? '#d4943a' : '#e05050'}}>
+                        ${formatPrecio(mesaSubtotal)}
+                      </span>
+                      <span className="text-[11px] text-[#606060]">/ <span className="text-[#a0a0a0] font-bold">${formatPrecio(m.meta*1000)}</span></span>
+                    </div>
+                    <div className="h-[6px] bg-[#2a2a2a] rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all duration-500 ${colorClass}`} style={{ width: `${pct}%` }}></div>
+                    </div>
+                    <div className="text-[10px] text-center mt-1 font-bold" style={{ color: pct >= 80 ? '#3dba6f' : pct >= 50 ? '#d4943a' : '#e05050' }}>
+                      {pct}% del objetivo
+                    </div>
                   </div>
                 </div>
 
@@ -5567,9 +5626,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               const isAdded = addedCards.has(p.nombre);
               const isMarchando = addedCards.has(p.nombre + '_marchar');
               const isSelected = selectedPlato?.nombre === p.nombre;
-              const stock = stockFlow[p.nombre] ?? 10;
-              const stockColor = stock <= 0 ? '#e05050' : stock <= 3 ? '#e05050' : stock <= 6 ? '#f0b45a' : '#3dba6f';
-              const stockLabel = stock <= 0 ? '86' : `${stock}`;
+              const flowStock = stockFlow[p.nombre] ?? 99;
+              // Estado 86 = Mi Menú lo marcó como no-disponible O Flow reporta stock 0
+              const en86 = (p as any)._en86 === true || flowStock <= 0;
+              const stock = en86 ? 0 : flowStock;
               const badgeColors: Record<string, string> = { green: 'bg-[#3dba6f]/15 text-[#3dba6f]', gold: 'bg-[#d4943a]/15 text-[#d4943a]', orange: 'bg-[#e07830]/15 text-[#e07830]' };
               return (
                 <div key={i}
@@ -5595,11 +5655,15 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     );
                   })()}
 
-                  {/* Stock badge */}
-                  <div className="absolute top-1.5 right-1.5 z-10 flex items-center gap-0.5 px-2 py-1 rounded-full text-[9px] font-black"
-                    style={{ background: stockColor + '25', color: stockColor, border: `1px solid ${stockColor}50` }}>
-                    {stock <= 0 ? '86' : stock <= 6 ? `⚠ ${stock}` : stock}
-                  </div>
+                  {/* Estado: solo mostramos 86 (no disponible) — los tiempos
+                      de producción los muestra Flow por estación, no hace falta
+                      ver un contador numérico en cada plato. */}
+                  {stock <= 0 && (
+                    <div className="absolute top-1.5 right-1.5 z-10 px-2 py-1 rounded-full text-[10px] font-black"
+                      style={{ background:'#e0505022', color:'#e05050', border:'1px solid #e0505080', letterSpacing:'.1em' }}>
+                      86
+                    </div>
+                  )}
 
                   <div className="w-full aspect-[4/3] bg-[#222] flex items-center justify-center text-[52px]">{p.emoji}</div>
                   <div className="p-3 flex flex-col gap-1.5 flex-1">
@@ -5723,14 +5787,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           <div className="flex items-center justify-center px-3 border-b border-[#2a2a2a] bg-[#141414]" style={{height: 36}}>
             <button
               onClick={() => setBarraColapsada(p => !p)}
-              title={barraColapsada ? 'Mostrar barra (Ritual · Quick-add · IA)' : 'Ocultar barra inferior'}
+              title={barraColapsada ? 'Mostrar barra interior (Ritual)' : 'Ocultar barra interior'}
               className={`flex items-center gap-1.5 px-5 h-8 rounded-full border-2 font-bold text-[12px] shadow-md transition-all ${
                 barraColapsada
                   ? 'bg-[#1c1c1c] border-[#4a8fd4] text-[#4a8fd4] hover:bg-[#4a8fd4] hover:text-white'
                   : 'bg-[#4a8fd4] border-[#4a8fd4] text-white hover:bg-[#3d7fc4]'
               }`}>
               <span style={{fontSize: 12}}>{barraColapsada ? '▲' : '▼'}</span>
-              <span>{barraColapsada ? 'Mostrar barra (Ritual · Quick-add · IA)' : 'Ocultar barra inferior'}</span>
+              <span>{barraColapsada ? 'Mostrar barra interior (Ritual)' : 'Ocultar barra interior'}</span>
             </button>
           </div>
 
@@ -5785,56 +5849,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 </div>
               </div>
 
-              {/* QUICK-ADD */}
-              <div className="border-b border-[#1a1a1a] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-                <div className="flex items-stretch min-w-max">
-                  {[
-                    { cat:'Agua',emoji:'💧',color:'#4a8fd4',items:[{n:'Con Gas',p:'$3k',e:'💧'},{n:'Sin Gas',p:'$3k',e:'🫧'}]},
-                    { cat:'Coctel',emoji:'🍹',color:'#9b72ff',items:[{n:'Yin Peng',p:'$50k',e:'🍹'},{n:'Infinito',p:'$55k',e:'🍍'},{n:'Gin Ken',p:'$56k',e:'🍸'}]},
-                    { cat:'Compartir',emoji:'🥟',color:'#d4943a',items:[{n:'Otosan',p:'$34k',e:'🦀'},{n:'Dumplings',p:'$27k',e:'🥟'},{n:'Burosu',p:'$40k',e:'🍜'}]},
-                    { cat:'Robata',emoji:'🔥',color:'#e05050',items:[{n:'Pulpo',p:'$57k',e:'🐙'},{n:'Yakitori',p:'$43k',e:'🍢'},{n:'Arroz',p:'$80k',e:'🥩'}]},
-                    { cat:'Postre',emoji:'🍮',color:'#f0b45a',items:[{n:'Cheese',p:'$33k',e:'🍰'},{n:'Koujun',p:'$35k',e:'🍮'},{n:'Kyoto',p:'$84k',e:'🍱'}]},
-                    { cat:'Café/Té',emoji:'☕',color:'#cd853f',items:[{n:'Espresso',p:'$8k',e:'☕'},{n:'Americano',p:'$9k',e:'☕'},{n:'Té',p:'$16k',e:'🍵'}]},
-                    { cat:'Vino',emoji:'🍷',color:'#e91e8c',items:[{n:'Malbec',p:'$28k',e:'🍷'},{n:'Rosé',p:'$26k',e:'🥂'},{n:'Blanco',p:'$24k',e:'🍾'}]},
-                    { cat:'Licor',emoji:'🥂',color:'#ffd700',items:[{n:'Sake',p:'$45k',e:'🍶'},{n:'Heineken',p:'$15k',e:'🍺'},{n:'Old F.',p:'$48k',e:'🥃'}]},
-                  ].map(({ cat, emoji, color, items }) => (
-                    <div key={cat} className="flex flex-col shrink-0 border-r border-[#1a1a1a] last:border-r-0">
-                      <div className="flex items-center gap-1 px-2 py-0.5 border-b border-[#1a1a1a]" style={{ background: color+'12' }}>
-                        <span style={{ fontSize: 11 }}>{emoji}</span>
-                        <span style={{ fontSize: 9, color, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, whiteSpace: 'nowrap' }}>{cat}</span>
-                      </div>
-                      <div className="flex gap-1 px-1 py-0.5">
-                        {items.map(item => (
-                          <button key={item.n} onClick={() => agregarAOrden({ nombre: item.n, precio: item.p, emoji: item.e, categoria: cat })}
-                            className="flex flex-col items-center gap-0 px-1.5 py-1 rounded-md border border-[#1a1a1a] bg-[#111] hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/25 active:border-[#3dba6f] transition-all" style={{ minWidth: 48 }}>
-                            <span style={{ fontSize: 15 }}>{item.e}</span>
-                            <span style={{ fontSize: 8, color: '#888', whiteSpace: 'nowrap' }}>{item.n}</span>
-                            <span style={{ fontSize: 8, color, fontWeight: 700 }}>{item.p}</span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* IA RECS */}
-              <div className="flex items-center px-3 py-1 overflow-x-auto gap-2" style={{ scrollbarWidth: 'none', minHeight: 42 }}>
-                <div className="flex flex-col items-center shrink-0 mr-1">
-                  <span style={{ fontSize: 11, color: '#d4943a' }}>✦</span>
-                  <span style={{ fontSize: 8, color: '#606060', fontWeight: 700, textTransform: 'uppercase' }}>IA</span>
-                </div>
-                {recs.map((r, i) => (
-                  <button key={i} onClick={() => addToOrder({ nombre: r.name, precio: r.precio, emoji: r.emoji })}
-                    className={`flex items-center gap-1.5 rounded-md border px-2 py-1 shrink-0 hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/20 transition-all ${r.top ? 'border-[#d4943a]/30 bg-[#d4943a]/5' : 'border-[#1a1a1a] bg-[#111]'}`} style={{ minWidth: 130 }}>
-                    <span style={{ fontSize: 16 }}>{r.emoji}</span>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: '#f0f0f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 100 }}>{r.name}</div>
-                      <div style={{ fontSize: 9, color: '#d4943a', fontWeight: 700 }}>{r.precio}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
+              {/* Quick-add y IA recs removidos — el ritual ocupa todo el ancho.
+                  Las sugerencias IA viven en el panel derecho (Brief / IA). */}
             </>
           )}
         </div>
@@ -6036,7 +6052,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 <div className="flex-1 h-px bg-[#2a2a2a]"></div>
               </div>
 
-              {/* Sugerencias IA — cross-selling visual */}
+              {/* Sugerencias IA — cross-selling: agregar a la orden de la izquierda */}
               <div className="flex flex-col gap-1.5">
                 {recsCliente.map((r: any, i: number) => {
                   const anotado = (notasMesero[selectedTable.id] || []).includes(r.txt);
@@ -6044,18 +6060,49 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   const esPostre = r.txt.toLowerCase().includes('postre') || r.txt.toLowerCase().includes('volcán') || r.txt.toLowerCase().includes('chocolate');
                   const tagColor = esBebida ? '#4a8fd4' : esPostre ? '#9b72ff' : '#d4943a';
                   const tagLabel = esBebida ? '🍷 Bebida' : esPostre ? '🍮 Postre' : '🍽️ Plato';
+                  // Buscar el producto real en la carta para ordenarlo correctamente
+                  const buscarPlato = () => {
+                    const lower = r.txt.toLowerCase();
+                    for (const cat of Object.keys(productos)) {
+                      const found = (productos[cat] || []).find((p:any) =>
+                        lower.includes(String(p.nombre||'').toLowerCase()) ||
+                        String(p.nombre||'').toLowerCase().split(' ').some((w:string) => w.length>3 && lower.includes(w))
+                      );
+                      if (found) return found;
+                    }
+                    return null;
+                  };
+                  const pedirAhora = (e:React.MouseEvent) => {
+                    e.stopPropagation();
+                    const plato = buscarPlato();
+                    if (plato) {
+                      agregarAOrden(plato);
+                      anotarRecomendacion(r.txt);
+                      showToast(`✓ ${plato.nombre} agregado a la orden de M${selectedTable.num}`);
+                    } else {
+                      // Si no está en la carta, lo anotamos como sugerencia
+                      anotarRecomendacion(r.txt);
+                      showToast(`💡 Sugerencia anotada: ${r.txt.slice(0,40)}...`);
+                    }
+                  };
                   return (
-                    <div key={i} onClick={() => anotarRecomendacion(r.txt)}
-                      className={`flex items-start gap-2.5 p-2 px-2.5 rounded-lg border cursor-pointer transition-all active:bg-[#3dba6f]/20 ${anotado ? 'bg-[#3dba6f]/5 border-[#3dba6f]/25' : 'bg-[#1c1c1c] border-[#2a2a2a] hover:border-[#d4943a]/30 hover:bg-[#d4943a]/5'}`}>
+                    <div key={i}
+                      className={`flex items-start gap-2.5 p-2 px-2.5 rounded-lg border transition-all ${anotado ? 'bg-[#3dba6f]/5 border-[#3dba6f]/25' : 'bg-[#1c1c1c] border-[#2a2a2a]'}`}>
                       <span className="text-[15px] shrink-0 mt-px">{r.icon}</span>
                       <div className="flex-1 min-w-0">
                         <div className={`text-[11px] leading-[1.4] ${anotado ? 'line-through text-[#606060]' : 'text-[#f0f0f0]'}`}>{r.txt}</div>
                         <span style={{color:tagColor}} className="text-[9px] font-bold mt-0.5 inline-block">{tagLabel}</span>
                       </div>
-                      {anotado
-                        ? <span className="text-[10px] text-[#3dba6f] shrink-0 mt-px">✓</span>
-                        : <span className="text-[9px] text-[#606060] shrink-0 mt-1">Toca</span>
-                      }
+                      {anotado ? (
+                        <span className="text-[11px] text-[#3dba6f] shrink-0 mt-px font-black">✓</span>
+                      ) : (
+                        <button onClick={pedirAhora}
+                          className="shrink-0 px-2.5 py-1 rounded-md border text-[9px] font-black uppercase tracking-wider hover:bg-[#3dba6f]/15 active:scale-95 transition-all"
+                          style={{borderColor:'#3dba6f80', background:'#3dba6f15', color:'#3dba6f'}}
+                          title="Agregar a la orden">
+                          + Pedir
+                        </button>
+                      )}
                     </div>
                   );
                 })}
