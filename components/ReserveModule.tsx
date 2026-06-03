@@ -1716,8 +1716,8 @@ function FooterStat({ label, v, c }:{ label:string; v:number|string; c:string })
 }
 
 // ═════════════════════════════════════════════════════════════════════
-// PLANO SALA · SVG estilo PlanoOMM (zonas Eterno/Mantra/Amatista/Barras)
-// Recibe drops desde el timeline de reservas — asigna la mesa al soltar.
+// PLANO SALA · SVG NEON · misma organización que PlanoOMM (zonas + mesas)
+// Fondo oscuro + glow neón sobre dark, drop targets activos.
 // ═════════════════════════════════════════════════════════════════════
 function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignandoMesa }:{
   mesas:any[]; activas:any[]; restauranteId:number;
@@ -1729,19 +1729,59 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
   const orden = conf?.orden || [];
   const [hoverMesa, setHoverMesa] = React.useState<number|null>(null);
 
+  // Paleta neon (dark)
+  const NEON = {
+    bgOuter: '#06060c',
+    bgInner: '#0a0a14',
+    grid: 'rgba(120,120,180,0.06)',
+    libre:    { fill:'#0a1a14', stroke:'#22FFAA', glow:'#22FFAA', text:'#22FFAA' },
+    reservada:{ fill:'#1a1208', stroke:'#FFB547', glow:'#FFB547', text:'#FFD08A' },
+    ocupada:  { fill:'#1a0a12', stroke:'#FF3D6E', glow:'#FF3D6E', text:'#FF9DB8' },
+    vip:      { stroke:'#FFD700', glow:'#FFE05C' },
+  };
+
   return (
-    <div style={{flex:1,overflow:'auto',padding:18,background:'#F5F5F2'}}>
-      <svg viewBox={`0 0 ${VW_PLANO} ${VH_PLANO}`} width="100%" style={{display:'block',background:'#FAFAFA',borderRadius:12,boxShadow:'inset 0 0 60px rgba(0,0,0,0.05)'}}>
-        {/* ── ZONAS ── */}
+    <div style={{flex:1,overflow:'auto',padding:18,background:NEON.bgOuter}}>
+      <svg viewBox={`0 0 ${VW_PLANO} ${VH_PLANO}`} width="100%"
+        style={{display:'block',background:`radial-gradient(circle at 50% 30%, #12122a 0%, ${NEON.bgInner} 70%)`,borderRadius:14,boxShadow:'inset 0 0 80px rgba(0,0,0,0.7)'}}>
+        <defs>
+          {/* glow filter para mesas */}
+          <filter id="neonGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="3" result="blur"/>
+            <feMerge>
+              <feMergeNode in="blur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+          <filter id="strongGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="6" result="blur"/>
+            <feMerge>
+              <feMergeNode in="blur"/>
+              <feMergeNode in="SourceGraphic"/>
+            </feMerge>
+          </filter>
+          <pattern id="gridPattern" width="40" height="40" patternUnits="userSpaceOnUse">
+            <path d="M 40 0 L 0 0 0 40" fill="none" stroke={NEON.grid} strokeWidth="1"/>
+          </pattern>
+        </defs>
+
+        {/* Grid sutil */}
+        <rect x={0} y={0} width={VW_PLANO} height={VH_PLANO} fill="url(#gridPattern)"/>
+
+        {/* ── ZONAS · borde neon translúcido ── */}
         {orden.map(z => {
           const zona = zonas[z]; if (!zona) return null;
           return (
             <g key={z}>
               <rect x={zona.area.x} y={zona.area.y} width={zona.area.w} height={zona.area.h}
-                rx={14} fill={zona.fill} stroke={zona.stroke} strokeWidth={2} strokeDasharray="6 6" opacity={0.85}/>
-              <g transform={`translate(${zona.area.x+10}, ${zona.area.y+10})`}>
-                <rect width={zona.label.length*8.2+18} height={24} rx={6} fill={zona.chipBg}/>
-                <text x={9} y={16} fill="#fff" fontSize={12} fontWeight={800} fontFamily="'Syne', serif" letterSpacing="0.06em">
+                rx={14}
+                fill={zona.chipBg} fillOpacity={0.07}
+                stroke={zona.chipBg} strokeWidth={1.5} strokeDasharray="8 6" strokeOpacity={0.55}/>
+              <g transform={`translate(${zona.area.x+12}, ${zona.area.y+12})`} filter="url(#neonGlow)">
+                <rect width={zona.label.length*8.4+20} height={24} rx={4}
+                  fill="none" stroke={zona.chipBg} strokeWidth={1.5}/>
+                <text x={10} y={16} fill={zona.chipBg} fontSize={11} fontWeight={800}
+                  fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.18em">
                   {zona.label}
                 </text>
               </g>
@@ -1749,12 +1789,14 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
           );
         })}
 
-        {/* ── MESAS ── */}
+        {/* ── MESAS NEON ── */}
         {mesas.filter((m:any)=>m.posicion_x!=null && m.posicion_y!=null).map((m:any) => {
           const reserva = activas.find((r:any) => Number(r.mesa_num) === Number(m.name) || String(r.mesa_num)===String(m.name));
           const ocupada = ['ocupada','asignada','sentada'].includes(m.estado);
           const tieneReserva = !!reserva;
-          const st = ocupada ? ST_MESA.ocupada : tieneReserva ? ST_MESA.reservada : ST_MESA.libre;
+          const tone = ocupada ? NEON.ocupada : tieneReserva ? NEON.reservada : NEON.libre;
+          const strokeCol = m.vip ? NEON.vip.stroke : tone.stroke;
+          const glowCol = m.vip ? NEON.vip.glow : tone.glow;
           const { w, h } = sizeForMesa({ zona:m.zona||'', capacidad:m.capacidad||4, name:m.name });
           const isHover = hoverMesa === m.id;
           const isRound = (m.shape||'round') === 'round' || (m.zona||'').startsWith('Barra');
@@ -1774,37 +1816,66 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
                  asignarMesa(id, Number(m.name));
                }}
                onClick={()=>{ if (reserva) setAsignandoMesa(reserva); }}>
+              {/* Halo de hover */}
               {isHover && (
-                <circle cx={cx} cy={cy} r={Math.max(w,h)/2+10} fill="none" stroke="#448AFF" strokeWidth={3} strokeDasharray="4 4">
-                  <animate attributeName="stroke-dashoffset" from="0" to="16" dur="0.6s" repeatCount="indefinite"/>
+                <circle cx={cx} cy={cy} r={Math.max(w,h)/2+14} fill="none"
+                  stroke="#00E5FF" strokeWidth={2.5} strokeDasharray="6 4" opacity={0.9} filter="url(#strongGlow)">
+                  <animate attributeName="stroke-dashoffset" from="0" to="20" dur="0.6s" repeatCount="indefinite"/>
                 </circle>
               )}
+
+              {/* Glow exterior si tiene reserva o está ocupada */}
+              {(tieneReserva || ocupada) && (
+                isRound
+                  ? <circle cx={cx} cy={cy} r={w/2+2} fill="none" stroke={glowCol} strokeWidth={6} opacity={0.18}/>
+                  : <rect x={cx-w/2-2} y={cy-h/2-2} width={w+4} height={h+4} rx={9} fill="none" stroke={glowCol} strokeWidth={6} opacity={0.18}/>
+              )}
+
+              {/* Cuerpo mesa */}
               {isRound
-                ? <circle cx={cx} cy={cy} r={w/2} fill={st.bg} stroke={m.vip?'#E5B23B':st.border} strokeWidth={m.vip?3:2}/>
-                : <rect x={cx-w/2} y={cy-h/2} width={w} height={h} rx={7} fill={st.bg} stroke={m.vip?'#E5B23B':st.border} strokeWidth={m.vip?3:2}/>}
+                ? <circle cx={cx} cy={cy} r={w/2}
+                    fill={tone.fill}
+                    stroke={strokeCol} strokeWidth={m.vip?3:2}
+                    filter="url(#neonGlow)"/>
+                : <rect x={cx-w/2} y={cy-h/2} width={w} height={h} rx={8}
+                    fill={tone.fill}
+                    stroke={strokeCol} strokeWidth={m.vip?3:2}
+                    filter="url(#neonGlow)"/>}
+
+              {/* Estrella VIP */}
               {m.vip && (
                 <>
-                  <circle cx={cx+w/2-8} cy={cy-h/2+8} r={11} fill="#1a1a2e" stroke="#fff" strokeWidth={1.5}/>
-                  <text x={cx+w/2-8} y={cy-h/2+12} fill="#E5B23B" fontSize={12} fontWeight={800} textAnchor="middle">★</text>
+                  <circle cx={cx+w/2-8} cy={cy-h/2+8} r={11} fill={NEON.bgInner} stroke={NEON.vip.stroke} strokeWidth={1.5} filter="url(#neonGlow)"/>
+                  <text x={cx+w/2-8} y={cy-h/2+12} fill={NEON.vip.stroke} fontSize={12} fontWeight={800} textAnchor="middle">★</text>
                 </>
               )}
-              <text x={cx} y={cy-3} fill={st.text} fontSize={14} fontWeight={900} textAnchor="middle" fontFamily="'Syne', serif">
+
+              {/* Nombre mesa (neon text) */}
+              <text x={cx} y={cy-3} fill={tone.text} fontSize={14} fontWeight={900} textAnchor="middle"
+                fontFamily="'Syne', serif" style={{textShadow:`0 0 8px ${glowCol}`}} filter="url(#neonGlow)">
                 {m.name}
               </text>
-              <text x={cx} y={cy+12} fill={st.text} fontSize={9} fontWeight={700} textAnchor="middle" opacity={0.75}>
-                {tieneReserva ? (reserva.cliente_nombre||'').split(' ')[0]?.slice(0,9) : `${m.capacidad}p`}
+
+              {/* Capacidad o nombre del cliente */}
+              <text x={cx} y={cy+12} fill={tone.text} fontSize={9} fontWeight={700} textAnchor="middle" opacity={0.85}
+                fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.08em">
+                {tieneReserva ? (reserva.cliente_nombre||'').split(' ')[0]?.slice(0,9).toUpperCase() : `${m.capacidad}P`}
               </text>
+
               {tieneReserva && (
-                <text x={cx} y={cy+24} fill={st.chip} fontSize={9} fontWeight={800} textAnchor="middle" fontFamily="'IBM Plex Mono', monospace">
+                <text x={cx} y={cy+24} fill={glowCol} fontSize={9} fontWeight={800} textAnchor="middle"
+                  fontFamily="'IBM Plex Mono', monospace" style={{textShadow:`0 0 6px ${glowCol}`}}>
                   {(reserva.hora||'').slice(0,5)}
                 </text>
               )}
             </g>
           );
         })}
+
         {mesas.length===0 && (
-          <text x={VW_PLANO/2} y={VH_PLANO/2} textAnchor="middle" fill="#999" fontSize={18}>
-            Sin plano cargado · Editor de planta
+          <text x={VW_PLANO/2} y={VH_PLANO/2} textAnchor="middle" fill="#666" fontSize={18}
+            fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.2em">
+            SIN PLANO CARGADO · EDITOR DE PLANTA
           </text>
         )}
       </svg>
