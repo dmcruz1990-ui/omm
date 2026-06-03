@@ -110,8 +110,9 @@ export default function CustomersModule() {
 
     // Calificaciones agregadas por cliente (de las encuestas X-CARE)
     const { data: enc } = await supabase.from('xcare_encuestas')
-      .select('customer_id,cliente_id,ohyeah_cliente_id,estrellas,estrellas_comida,estrellas_servicio,estrellas_ambiente');
-    const ratingsById: Record<string, { sum:number; n:number; ult:number }> = {};
+      .select('customer_id,cliente_id,ohyeah_cliente_id,estrellas,estrellas_comida,estrellas_servicio,estrellas_ambiente,created_at')
+      .order('created_at', { ascending:false });
+    const ratingsById: Record<string, { sum:number; n:number; ult:number; ultimas3:number[] }> = {};
     (enc||[]).forEach((e:any) => {
       // El promedio usa la nota general si existe; si no, hace media de las 3 dimensiones
       const dims = [e.estrellas_comida, e.estrellas_servicio, e.estrellas_ambiente].filter((x:any)=>x!=null);
@@ -119,14 +120,15 @@ export default function CustomersModule() {
       if (nota == null) return;
       const id = String(e.customer_id || e.cliente_id || e.ohyeah_cliente_id || '');
       if (!id) return;
-      if (!ratingsById[id]) ratingsById[id] = { sum:0, n:0, ult:0 };
+      if (!ratingsById[id]) ratingsById[id] = { sum:0, n:0, ult:0, ultimas3:[] };
       ratingsById[id].sum += Number(nota);
       ratingsById[id].n += 1;
-      ratingsById[id].ult = Number(nota);
+      if (ratingsById[id].ultimas3.length === 0) ratingsById[id].ult = Number(nota);
+      if (ratingsById[id].ultimas3.length < 3) ratingsById[id].ultimas3.push(Math.round(Number(nota)));
     });
     const aplicarRating = (cl:any) => {
       const r = ratingsById[String(cl.id)];
-      return r ? { ...cl, rating_avg: r.sum / r.n, rating_count: r.n, rating_ult: r.ult } : cl;
+      return r ? { ...cl, rating_avg: r.sum / r.n, rating_count: r.n, rating_ult: r.ult, rating_ultimas3: r.ultimas3 } : cl;
     };
 
     setClientes([
@@ -336,7 +338,7 @@ export default function CustomersModule() {
               <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:13}}>
                 <thead>
                   <tr style={{background:S.bg2,position:'sticky',top:0,zIndex:5}}>
-                    {['Cliente','Contacto','Score','Calificación','Segmento','Visitas','Gasto total','Ticket prom.','Última visita','Puntos','Alergias / Prefs','Origen','Acciones'].map(h=>(
+                    {['Cliente','Contacto','Score','Calificación','Segmento','Visitas','Gasto total','Ticket prom.','Última visita','Alergias','Preferencias','Origen · Últimas 3','Acciones'].map(h=>(
                       <th key={h} style={{padding:'10px 14px',textAlign:'left' as const,fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.06em',borderBottom:`1px solid ${S.border}`,whiteSpace:'nowrap'}}>
                         {h}
                       </th>
@@ -458,40 +460,53 @@ export default function CustomersModule() {
                           )}
                         </td>
 
-                        {/* Puntos */}
-                        <td style={{padding:'11px 14px',textAlign:'center' as const}}>
-                          <div style={{fontSize:13,fontWeight:700,color:S.purple}}>✦ {cliente.puntos||0}</div>
-                          <div style={{fontSize:9,color:S.t3}}>pts</div>
+                        {/* Alergias */}
+                        <td style={{padding:'11px 14px',maxWidth:140}}>
+                          {cliente.alergias?.length ? (
+                            <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                              {cliente.alergias.slice(0,3).map(a=>(
+                                <span key={a} style={{fontSize:9,background:`${S.red}15`,color:S.red,padding:'2px 7px',borderRadius:10,fontWeight:700}}>⚠ {a}</span>
+                              ))}
+                            </div>
+                          ) : <span style={{fontSize:10,color:S.t3}}>—</span>}
                         </td>
 
-                        {/* Alergias / Preferencias */}
-                        <td style={{padding:'11px 14px',maxWidth:180}}>
-                          <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
-                            {cliente.alergias?.slice(0,2).map(a=>(
-                              <span key={a} style={{fontSize:9,background:`${S.red}15`,color:S.red,padding:'1px 6px',borderRadius:10,fontWeight:700}}>⚠ {a}</span>
-                            ))}
-                            {cliente.preferencias?.slice(0,2).map(p=>(
-                              <span key={p} style={{fontSize:9,background:`${S.green}10`,color:S.green,padding:'1px 6px',borderRadius:10}}>✓ {p}</span>
-                            ))}
-                          </div>
-                          <div style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:3}}>
-                            {cliente.tags?.filter(t=>!Object.values(NIVEL_EMOJI).some(e=>t.includes(e))).slice(0,2).map(t=>(
-                              <span key={t} style={{fontSize:9,background:`${S.purple}10`,color:S.purple,padding:'1px 6px',borderRadius:10}}>#{t}</span>
-                            ))}
-                          </div>
+                        {/* Preferencias */}
+                        <td style={{padding:'11px 14px',maxWidth:140}}>
+                          {cliente.preferencias?.length ? (
+                            <div style={{display:'flex',flexWrap:'wrap',gap:3}}>
+                              {cliente.preferencias.slice(0,3).map(p=>(
+                                <span key={p} style={{fontSize:9,background:`${S.green}10`,color:S.green,padding:'2px 7px',borderRadius:10}}>✓ {p}</span>
+                              ))}
+                            </div>
+                          ) : <span style={{fontSize:10,color:S.t3}}>—</span>}
                         </td>
 
-                        {/* Origen */}
+                        {/* Origen + Últimas 3 calificaciones */}
                         <td style={{padding:'11px 14px'}}>
-                          {esOhYeah ? (
-                            <span style={{fontSize:10,color:'#FFE600',background:'rgba(255,230,0,0.1)',border:'1px solid rgba(255,230,0,0.25)',padding:'3px 8px',borderRadius:8,fontWeight:700}}>
-                              🦉 Oh Yeah
-                            </span>
-                          ) : (
-                            <span style={{fontSize:10,color:S.t2,background:S.bg3,padding:'3px 8px',borderRadius:8}}>
-                              {cliente.origen_captacion||'—'}
-                            </span>
-                          )}
+                          <div style={{display:'flex',flexDirection:'column',gap:4}}>
+                            {esOhYeah ? (
+                              <span style={{fontSize:10,color:'#FFE600',background:'rgba(255,230,0,0.1)',border:'1px solid rgba(255,230,0,0.25)',padding:'3px 8px',borderRadius:8,fontWeight:700,alignSelf:'flex-start'}}>
+                                🦉 Oh Yeah
+                              </span>
+                            ) : (
+                              <span style={{fontSize:10,color:S.t2,background:S.bg3,padding:'3px 8px',borderRadius:8,alignSelf:'flex-start'}}>
+                                {cliente.origen_captacion||'—'}
+                              </span>
+                            )}
+                            {(cliente as any).rating_ultimas3?.length > 0 && (
+                              <div style={{display:'flex',gap:4,alignItems:'center'}}>
+                                {(cliente as any).rating_ultimas3.map((n:number,k:number)=>{
+                                  const col = n>=4?S.green:n>=3?S.gold:S.red;
+                                  return (
+                                    <span key={k} title={`Visita ${k+1}: ${n}★`} style={{fontSize:11,color:col,fontWeight:800,letterSpacing:0}}>
+                                      {'★'.repeat(n)}{'☆'.repeat(Math.max(0,5-n))}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
                         </td>
 
                         {/* Acciones */}
