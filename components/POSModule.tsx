@@ -5780,80 +5780,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           })()}
         </div>
 
-        {/* BARRA INFERIOR COLAPSABLE */}
-        <div className="bg-[#141414] border-t-2 border-[#4a8fd4]/30 flex flex-col shrink-0">
-
-          {/* Toggle strip — SIEMPRE visible (altura fija + botón pill centrado) */}
-          <div className="flex items-center justify-center px-3 border-b border-[#2a2a2a] bg-[#141414]" style={{height: 36}}>
-            <button
-              onClick={() => setBarraColapsada(p => !p)}
-              title={barraColapsada ? 'Mostrar barra interior (Ritual)' : 'Ocultar barra interior'}
-              className={`flex items-center gap-1.5 px-5 h-8 rounded-full border-2 font-bold text-[12px] shadow-md transition-all ${
-                barraColapsada
-                  ? 'bg-[#1c1c1c] border-[#4a8fd4] text-[#4a8fd4] hover:bg-[#4a8fd4] hover:text-white'
-                  : 'bg-[#4a8fd4] border-[#4a8fd4] text-white hover:bg-[#3d7fc4]'
-              }`}>
-              <span style={{fontSize: 12}}>{barraColapsada ? '▲' : '▼'}</span>
-              <span>{barraColapsada ? 'Mostrar barra interior (Ritual)' : 'Ocultar barra interior'}</span>
-            </button>
-          </div>
-
-          {/* Contenido colapsable */}
-          {!barraColapsada && (
-            <>
-              {/* FILA RITUAL — solo mesa activa */}
-              <div className="border-b border-[#1a1a1a] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
-                <div className="flex items-center px-2 py-0.5 gap-1">
-                  {/* Botón colapsar barra — al inicio del ritual */}
-                  <button onClick={() => setBarraColapsada((p:boolean) => !p)}
-                    className="shrink-0 flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[9px] font-bold transition-all mr-1"
-                    style={{borderColor: barraColapsada?'#d4943a':'#2a2a2a', background: barraColapsada?'#d4943a15':'#141414', color: barraColapsada?'#d4943a':'#606060'}}>
-                    {barraColapsada ? '▲' : '▼'}
-                  </button>
-                  {/* Label mesa activa + progreso ritual */}
-                  <div className="flex items-center gap-1 shrink-0 mr-2" style={{maxWidth:80}}>
-                    <span className="text-[9px] font-black px-1.5 py-0.5 rounded bg-[#d4943a] text-black shrink-0">M{selectedTable.num}</span>
-                    <div className="flex items-center gap-1">
-                      <div className="w-12 h-1 bg-[#1e1e1e] rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all duration-500"
-                          style={{ width: `${getRitualProgress(selectedTable.id)}%`, background: getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4' }}/>
-                      </div>
-                      <span className="text-[8px] font-black" style={{ color: getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4' }}>
-                        {getRitualProgress(selectedTable.id)}%
-                      </span>
-                    </div>
-                  </div>
-                  {/* Steps solo de la mesa activa */}
-                  {ritualStepsAll.map((step) => {
-                    const state = ritualState[selectedTable.id ?? selectedTableId] || [];
-                    const done = state.includes(step);
-                    const stepEmojis: Record<string,string> = { 'Agua':'💧','Coctel':'🍹','Compartir':'🥟','Robata/Wok':'🔥','Postre':'🍮','Recomendar':'⭐','Pousse-café':'🥃','Café/Té':'☕','Vino':'🍷','Licor':'🥂' };
-                    const stepColors: Record<string,[string,string]> = {
-                      'Agua':['#4a8fd4','#1a2a3a'],'Coctel':['#9b72ff','#1e1a2e'],'Compartir':['#d4943a','#2a1e0a'],
-                      'Robata/Wok':['#e05050','#2a1010'],'Postre':['#f0b45a','#2a200a'],'Recomendar':['#3dba6f','#0a2a16'],
-                      'Pousse-café':['#3dba6f','#0a2a16'],'Café/Té':['#cd853f','#2a1800'],'Vino':['#e91e8c','#2a0a1a'],'Licor':['#ffd700','#2a2000'],
-                    };
-                    const [activeColor, activeBg] = stepColors[step] || ['#3dba6f','#0a2a16'];
-                    const shortLabel = step === 'Robata/Wok' ? 'Rob' : step === 'Pousse-café' ? 'Pouss' : step === 'Recomendar' ? 'Rec' : step.split('/')[0];
-                    return (
-                      <button key={step} onClick={() => toggleRitualStep(selectedTable.id, step)} title={step}
-                        style={done
-                          ? { background: activeBg, borderColor: activeColor+'80', color: activeColor }
-                          : { background: 'transparent', borderColor: '#1e1e1e', color: '#444' }}
-                        className="flex items-center gap-1 px-1.5 py-0.5 rounded-md border text-[9px] font-bold whitespace-nowrap transition-all shrink-0 hover:opacity-90 active:scale-95">
-                        <span style={{ fontSize: 13 }}>{done ? '✓' : stepEmojis[step]}</span>
-                        <span style={{ fontSize: 9 }}>{shortLabel}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Quick-add y IA recs removidos — el ritual ocupa todo el ancho.
-                  Las sugerencias IA viven en el panel derecho (Brief / IA). */}
-            </>
-          )}
-        </div>
+        {/* Barra inferior removida completamente — el ritual y las
+            sugerencias IA viven dentro del panel central de la mesa
+            y en el panel derecho (Brief). Más espacio para la carta. */}
       </div>
 
       {/* RIGHT PANEL — FIJO SIEMPRE VISIBLE */}
