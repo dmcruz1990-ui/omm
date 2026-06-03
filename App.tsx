@@ -38,8 +38,6 @@ const MarketplaceModule = lazy(() => import('./components/MarketplaceModule.tsx'
 const PropinasModule = lazy(() => import('./components/PropinasModule.tsx'));
 const MetricasModule = lazy(() => import('./components/MetricasModule.tsx'));
 const FoodIntelligenceModule = lazy(() => import('./components/FoodIntelligenceModule.tsx'));
-const OhYeahAdminModule = lazy(() => import('./components/OhYeahAdminModule.tsx'));
-const OhYeahRestauranteModule = lazy(() => import('./components/OhYeahRestauranteModule.tsx'));
 const CareModule = lazy(() => import('./components/CareModule.tsx'));
 const FinanceHub = lazy(() => import('./components/FinanceHub.tsx'));
 const CommandModule = lazy(() => import('./components/CommandModule.tsx'));
@@ -284,8 +282,6 @@ const Dashboard: React.FC = () => {
                 { type: ModuleType.RESERVE,        label: 'RESERVE',       sub: 'MAPA & AGENDA',      icon: <CalendarDays size={18} /> },
                  // PLANO MESAS eliminado del sidebar — vive dentro de RESERVE (pestaña Editor de planta)
                  { type: ModuleType.RELATIONSHIP,   label: 'CLIENTES',      sub: 'CRM & VIP',          icon: <Users size={18} /> },
-                 { type: ModuleType.OH_YEAH_ADMIN,  label: 'OH YEAH ADMIN', sub: 'RESTAURANTES',       icon: <Store size={18} /> },
-                 { type: ModuleType.OH_YEAH_RESTAURANTE, label: 'OH YEAH REG.', sub: 'REGISTRO EXTERNO', icon: <Store size={18} /> },
                ]
              },
              {
@@ -466,8 +462,6 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.CARE           && <CareModule />}
                 {activeModule === ModuleType.DIAN           && <DIANModule />}
                 {activeModule === ModuleType.CONTABILIDAD   && <ContabilidadModule />}
-                {activeModule === ModuleType.OH_YEAH_ADMIN  && <OhYeahAdminModule />}
-                {activeModule === ModuleType.OH_YEAH_RESTAURANTE && <OhYeahRestauranteModule />}
                 {activeModule === ModuleType.CONFIG         && <SettingsModule />}
                 {activeModule === ModuleType.MARKETPLACE    && <MarketplaceModule />}
                 {activeModule === ModuleType.FOOD_INTELLIGENCE && <FoodIntelligenceModule />}

@@ -779,118 +779,216 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
 {/* ══════════════════════════════════════════════════
     TAB HOME — Dashboard del día con asignación de mesa
 ═══════════════════════════════════════════════════════ */}
-{tab==='home' && (
-  <div style={{flex:1,overflowY:'auto',display:'flex',flexDirection:'column',gap:0}}>
+{tab==='home' && (() => {
+  // ── Sala unificada: timeline reservas + plano interactivo + KPIs al pie ──
+  // Drag de una reserva → drop en una mesa = asigna y, si está confirmada,
+  // sienta al cliente automáticamente.
+  const activas = reservasHoy.filter((r:any) => !['completada','cancelada'].includes(r.estado));
+  const sinMesa = activas.filter((r:any) => !r.mesa_num).length;
+  const sentadas = activas.filter((r:any) => r.estado === 'sentada').length;
+  const paxTotal = activas.reduce((s:number, r:any) => s + (r.pax || 0), 0);
+  const ohYeahCnt = activas.filter((r:any) => r.origen === 'ohyeah').length;
 
-    {/* ── KPIs del día ── */}
-    <div style={{display:'flex',gap:10,padding:'14px 16px',background:S.bg2,borderBottom:`1px solid ${S.border}`,flexWrap:'wrap'}}>
-      {[
-        {l:'Total hoy',      v:reservasHoy.length,                                                      c:S.gold},
-        {l:'Oh Yeah',        v:reservasHoy.filter((r:any)=>r.origen==='ohyeah').length,                c:'#FFE600'},
-        {l:'Confirmadas',    v:reservasHoy.filter((r:any)=>r.estado==='confirmada').length,            c:S.green},
-        {l:'Sin mesa',       v:reservasHoy.filter((r:any)=>!r.mesa_num&&r.estado!=='cancelada').length,c:S.red},
-        {l:'Pax total',      v:reservasHoy.reduce((s:number,r:any)=>s+(r.pax||0),0),                   c:S.blue},
-      ].map(k=>(
-        <div key={k.l} style={{textAlign:'center',padding:'8px 14px',background:S.bg3,borderRadius:12,border:`1px solid ${k.c}20`,flex:'1 1 80px'}}>
-          <div style={{fontSize:8,color:S.t3,textTransform:'uppercase',marginBottom:2}}>{k.l}</div>
-          <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:k.c}}>{k.v}</div>
-        </div>
-      ))}
-    </div>
+  // Mesas del plano para el drop-area
+  const fuente = plantaDB.length > 0 ? plantaDB : Object.values(PLANTA).map((p:any) => ({ num:p.num, capacidad:p.cap, zona:p.zona, shape:p.shape, x:p.x, y:p.y, w:p.w, h:p.h }));
+  const mesasPlano = fuente.map((p:any) => {
+    const num = Number(p.num);
+    const tEnVivo = mesas.find((m:any) => Number(m.name) === num);
+    const reservaEnMesa = activas.find((r:any) => Number(r.mesa_num) === num);
+    return {
+      num,
+      cap: p.capacidad || p.cap || 4,
+      zona: p.zona || 'Salón',
+      x: p.x, y: p.y, w: p.w || 9, h: p.h || 9,
+      shape: p.shape || 'round',
+      vip: tEnVivo?.vip === true,
+      reserva: reservaEnMesa,
+      estado: tEnVivo?.estado || (reservaEnMesa ? 'reservada' : 'libre'),
+    };
+  }).filter((m:any) => !isNaN(m.num));
 
-    {/* ── Lista de reservas del día como cards ── */}
-    <div style={{flex:1,overflowY:'auto',padding:14}}>
-      {loading && <div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando...</div>}
-      {!loading && reservasHoy.length===0 && (
-        <div style={{textAlign:'center',padding:60,color:S.t3}}>
-          <div style={{fontSize:48,marginBottom:12}}>🗓️</div>
-          <div style={{fontSize:14,fontWeight:700}}>Sin reservas para hoy</div>
-          <button onClick={()=>setTab('nueva')} style={{marginTop:16,padding:'10px 24px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.gold},#d4943a)`,color:'#000',fontWeight:700,fontSize:13,cursor:'pointer'}}>
-            + Crear reserva
-          </button>
-        </div>
-      )}
-      <div style={{display:'flex',flexDirection:'column',gap:8}}>
-        {reservasHoy.filter((r:any)=>!['completada','cancelada'].includes(r.estado)).map((r:any)=>{
-          const est     = ESTADOS[r.estado]||{c:S.t3,l:r.estado};
-          const esOhYeah = r.origen==='ohyeah';
-          const sinMesa  = !r.mesa_num && r.estado!=='cancelada' && r.estado!=='completada';
-          const NIVEL_C: Record<string,string> = {ÉLITE:'#FFD700',VIP:'#B388FF',REGULAR:'#448AFF',INICIADO:'#a0a0a0'};
-          const nc = NIVEL_C[r.gourmand_level||''] || S.t3;
-          return (
-            <div key={r.id} style={{
-              background:S.bg2,
-              border:`1px solid ${sinMesa?`${S.red}40`:esOhYeah?`${S.gold}30`:S.border}`,
-              borderLeft:`4px solid ${sinMesa?S.red:esOhYeah?S.gold:est.c}`,
-              borderRadius:14,padding:'12px 16px',
-              display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',
-            }}>
-              {/* Avatar */}
-              <div style={{width:42,height:42,borderRadius:'50%',background:`${est.c}20`,border:`2px solid ${est.c}40`,display:'flex',alignItems:'center',justifyContent:'center',fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:est.c,flexShrink:0}}>
-                {(r.cliente_nombre||'?').charAt(0).toUpperCase()}
+  return (
+    <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:S.bg}}>
+
+      {/* ─── Cuerpo principal: split timeline + plano ─── */}
+      <div style={{flex:1,display:'grid',gridTemplateColumns:'minmax(360px, 1fr) 1.4fr',gap:0,overflow:'hidden',background:S.bg}}>
+
+        {/* ═══ IZQUIERDA · Timeline de reservas (draggable) ═══ */}
+        <aside style={{borderRight:`1px solid ${S.border}`,display:'flex',flexDirection:'column',overflow:'hidden',background:S.bg}}>
+          <div style={{padding:'16px 20px 12px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'baseline',gap:10}}>
+            <span style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:10,color:S.gold,letterSpacing:'0.22em',textTransform:'uppercase'}}>Reservas hoy</span>
+            <span style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,letterSpacing:'-0.02em'}}>{activas.length}</span>
+            <button onClick={()=>setTab('nueva')} style={{marginLeft:'auto',padding:'6px 12px',borderRadius:8,border:`1px solid ${S.gold}50`,background:`${S.gold}10`,color:S.gold,fontSize:11,fontWeight:700,cursor:'pointer'}}>+ Nueva</button>
+          </div>
+
+          <div style={{flex:1,overflowY:'auto',padding:'8px 16px 16px'}}>
+            {loading && <div style={{textAlign:'center',padding:30,color:S.t3,fontSize:12}}>Cargando…</div>}
+            {!loading && activas.length === 0 && (
+              <div style={{textAlign:'center',padding:50,color:S.t3}}>
+                <div style={{fontSize:38,marginBottom:8}}>🗓️</div>
+                <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>Sin reservas para hoy</div>
+                <div style={{fontSize:11,color:S.t3}}>Crea una desde "+ Nueva" o espera Oh Yeah.</div>
               </div>
+            )}
 
-              {/* Info principal */}
-              <div style={{flex:1,minWidth:160}}>
-                <div style={{display:'flex',alignItems:'center',gap:6,flexWrap:'wrap',marginBottom:3}}>
-                  <span style={{fontWeight:700,fontSize:13,color:S.t1}}>{r.cliente_nombre}</span>
-                  {esOhYeah && <span style={{fontSize:9,background:`${S.gold}20`,color:S.gold,border:`1px solid ${S.gold}30`,padding:'1px 7px',borderRadius:20,fontWeight:700}}>🦉 Oh Yeah</span>}
-                  {r.gourmand_level && esOhYeah && <span style={{fontSize:9,background:`${nc}15`,color:nc,padding:'1px 6px',borderRadius:20,fontWeight:700}}>{r.gourmand_level}</span>}
-                  {r.is_first_visit && esOhYeah && <span style={{fontSize:9,color:S.green,fontWeight:700}}>★ Primera visita</span>}
-                </div>
-                <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-                  <span style={{fontSize:11,color:S.gold,fontWeight:700}}>🕐 {r.hora}</span>
-                  <span style={{fontSize:11,color:S.blue,fontWeight:700}}>👥 {r.pax} pax</span>
-                  {r.ocasion && r.ocasion!=='Sin ocasión especial' && <span style={{fontSize:10,color:S.purple}}>🎉 {r.ocasion}</span>}
-                  {(r.mood||'Sin motivo') !== 'Sin motivo especial' && r.mood && <span style={{fontSize:10,color:'#B388FF'}}>✨ {r.mood}</span>}
-                  {r.cliente_telefono && <span style={{fontSize:10,color:S.t3}}>📱 {r.cliente_telefono}</span>}
-                </div>
-              </div>
-
-              {/* Mesa asignada o botón asignar */}
-              <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,flexShrink:0}}>
-                {r.mesa_num ? (
-                  <button onClick={()=>setAsignandoMesa(r)} style={{textAlign:'center',background:'none',border:'none',cursor:'pointer'}}>
-                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:24,fontWeight:900,color:S.blue,lineHeight:1}}>M{r.mesa_num}</div>
-                    {r.estado==='sentada' && r.sentado_at
-                      ? <div style={{fontSize:9,color:S.green,fontWeight:700}}>🪑 {fmtElapsed(r.sentado_at)}</div>
-                      : <div style={{fontSize:9,color:S.t3}}>asignada · cambiar</div>}
-                  </button>
-                ) : (
-                  <button
-                    onClick={()=>setAsignandoMesa(r)}
+            <div style={{display:'flex',flexDirection:'column',gap:6}}>
+              {activas.map((r:any) => {
+                const est = ESTADOS[r.estado] || {c:S.t3,l:r.estado};
+                const esOhYeah = r.origen === 'ohyeah';
+                const sin = !r.mesa_num;
+                const NIVEL_C: Record<string,string> = {ÉLITE:'#FFD700',VIP:'#B388FF',REGULAR:'#448AFF',INICIADO:'#a0a0a0'};
+                const nc = NIVEL_C[r.gourmand_level||''] || S.t3;
+                return (
+                  <div key={r.id}
+                    draggable
+                    onDragStart={(e) => { e.dataTransfer.setData('text/reserva', String(r.id)); e.dataTransfer.effectAllowed = 'move'; }}
+                    onClick={() => setAsignandoMesa(r)}
+                    title={`Arrastra a una mesa del plano para asignar`}
                     style={{
-                      padding:'8px 14px',borderRadius:10,border:`2px solid ${S.gold}`,
-                      background:`${S.gold}15`,color:S.gold,fontSize:11,fontWeight:700,
-                      cursor:'pointer',whiteSpace:'nowrap',
-                      animation: sinMesa ? 'pulse 2s infinite' : 'none',
-                    }}>
-                    🪑 Asignar mesa
-                  </button>
-                )}
-              </div>
+                      background:S.bg2,
+                      border:`1px solid ${sin?`${S.red}45`:esOhYeah?`${S.gold}30`:S.border}`,
+                      borderLeft:`3px solid ${sin?S.red:esOhYeah?S.gold:est.c}`,
+                      borderRadius:10,
+                      padding:'10px 12px',
+                      cursor:'grab',
+                      display:'flex',alignItems:'center',gap:10,
+                      transition:'transform .12s, box-shadow .12s',
+                    }}
+                    onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateX(2px)'; }}
+                    onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.transform = 'translateX(0)'; }}>
 
-              {/* Estado + acciones */}
-              <div style={{display:'flex',flexDirection:'column',gap:4,alignItems:'flex-end',flexShrink:0}}>
-                <span style={{fontSize:10,background:`${est.c}15`,color:est.c,border:`1px solid ${est.c}30`,padding:'2px 10px',borderRadius:20,fontWeight:700}}>{est.l}</span>
-                <div style={{display:'flex',gap:4}}>
-                  {r.estado==='pendiente'   && <button onClick={()=>cambiarEstado(r.id,'confirmada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,cursor:'pointer',fontWeight:700}}>✓ Confirmar</button>}
-                  {r.estado==='confirmada'  && <button onClick={()=>setAsignandoMesa(r)}
-                    style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,cursor:'pointer',fontWeight:700}}>🪑 Sentar → Mesa</button>}
-                  {r.estado==='sentada'     && <button onClick={()=>cambiarEstado(r.id,'completada',esOhYeah)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,cursor:'pointer',fontWeight:700}}>✅ Completar</button>}
-                  {!['cancelada','completada'].includes(r.estado) && <button onClick={()=>esOhYeah?cancelarOhYeah(r.id,r.cliente_nombre):cambiarEstado(r.id,'cancelada',false)} style={{fontSize:10,padding:'3px 8px',borderRadius:6,border:`1px solid ${S.red}40`,background:`${S.red}10`,color:S.red,cursor:'pointer',fontWeight:700}}>✗ Cancelar</button>}
-                  {esOhYeah && r.estado==='confirmada' && !r.mesa_num && (
-                    <span style={{fontSize:9,color:S.gold,background:`${S.gold}10`,padding:'2px 6px',borderRadius:6}}>Sin mesa</span>
-                  )}
-                </div>
-              </div>
+                    {/* Hora gigante a la izquierda */}
+                    <div style={{textAlign:'center',minWidth:50}}>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:20,fontWeight:800,color:S.gold,letterSpacing:'-0.02em',lineHeight:1}}>{(r.hora||'').slice(0,5)}</div>
+                      <div style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:9,color:S.t3,letterSpacing:'.08em',marginTop:2}}>{r.pax}p</div>
+                    </div>
+
+                    {/* Nombre y badges */}
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap',marginBottom:2}}>
+                        <span style={{fontSize:12,fontWeight:700,color:S.t1}}>{r.cliente_nombre}</span>
+                        {esOhYeah && <span style={{fontSize:8,background:`${S.gold}25`,color:S.gold,padding:'1px 6px',borderRadius:50,fontWeight:700}}>🦉</span>}
+                        {r.gourmand_level && esOhYeah && <span style={{fontSize:8,color:nc,fontWeight:700}}>{r.gourmand_level}</span>}
+                      </div>
+                      <div style={{fontSize:10,color:S.t3,display:'flex',gap:8,flexWrap:'wrap'}}>
+                        {r.ocasion && r.ocasion !== 'Sin ocasión especial' && <span style={{color:S.purple}}>🎉 {r.ocasion}</span>}
+                        {r.cliente_telefono && <span>📱 {r.cliente_telefono.slice(-10)}</span>}
+                      </div>
+                    </div>
+
+                    {/* Mesa asignada o "Arrastra" */}
+                    <div style={{textAlign:'right',minWidth:64}}>
+                      {r.mesa_num ? (
+                        <>
+                          <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:S.blue,lineHeight:1}}>M{r.mesa_num}</div>
+                          {r.estado === 'sentada' && r.sentado_at
+                            ? <div style={{fontSize:9,color:S.green,fontWeight:700,marginTop:2}}>🪑 {fmtElapsed(r.sentado_at)}</div>
+                            : <div style={{fontSize:9,color:S.t3,marginTop:2}}>asignada</div>}
+                        </>
+                      ) : (
+                        <div style={{fontSize:9,color:S.gold,fontWeight:700,letterSpacing:'.05em'}}>↗ ARRASTRA<br/>A MESA</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          );
-        })}
+          </div>
+        </aside>
+
+        {/* ═══ DERECHA · Plano interactivo con drop-receivers ═══ */}
+        <section style={{display:'flex',flexDirection:'column',overflow:'hidden',background:S.bg2}}>
+          <div style={{padding:'16px 20px 12px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'baseline',gap:10,flexWrap:'wrap'}}>
+            <span style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:10,color:S.blue,letterSpacing:'0.22em',textTransform:'uppercase'}}>Plano del salón</span>
+            <span style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,letterSpacing:'-0.02em'}}>{mesasPlano.length}<span style={{fontSize:12,fontWeight:400,color:S.t3,marginLeft:6}}>mesas</span></span>
+            <div style={{marginLeft:'auto',display:'flex',gap:8,fontSize:10,color:S.t3,letterSpacing:'.05em',flexWrap:'wrap'}}>
+              <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:S.green,marginRight:4,verticalAlign:'middle'}}/>libre</span>
+              <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#FFB547',marginRight:4,verticalAlign:'middle'}}/>reservada</span>
+              <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:S.red,marginRight:4,verticalAlign:'middle'}}/>ocupada</span>
+              <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:S.gold,marginRight:4,verticalAlign:'middle'}}/>VIP</span>
+            </div>
+          </div>
+
+          <div style={{flex:1,overflow:'auto',padding:18,display:'flex',alignItems:'flex-start',justifyContent:'center'}}>
+            <div style={{position:'relative',width:'100%',maxWidth:900,paddingBottom:'62%',background:S.bg,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden',boxShadow:'inset 0 0 80px rgba(0,0,0,0.4)'}}>
+              {/* Grid sutil */}
+              <div style={{position:'absolute',inset:0,backgroundImage:'linear-gradient(rgba(255,255,255,0.02) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,0.02) 1px,transparent 1px)',backgroundSize:'5% 7%',pointerEvents:'none'}}/>
+
+              {mesasPlano.map((m:any) => {
+                const tieneXY = typeof m.x === 'number' && typeof m.y === 'number';
+                const xPos = tieneXY ? m.x : 50;
+                const yPos = tieneXY ? m.y : 50;
+                const ocupada = ['ocupada','asignada','sentada'].includes(m.estado);
+                const tieneReserva = !!m.reserva;
+                const col = m.vip ? S.gold
+                  : ocupada ? S.red
+                  : tieneReserva ? '#FFB547'
+                  : S.green;
+                return (
+                  <button key={m.num}
+                    onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1.18)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 0 20px ${col}aa`; }}
+                    onDragLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)'; (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 2px 10px rgba(0,0,0,0.4), inset 0 1px 0 ${col}25`; }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const reservaId = e.dataTransfer.getData('text/reserva');
+                      (e.currentTarget as HTMLButtonElement).style.transform = 'scale(1)';
+                      (e.currentTarget as HTMLButtonElement).style.boxShadow = `0 2px 10px rgba(0,0,0,0.4), inset 0 1px 0 ${col}25`;
+                      if (!reservaId) return;
+                      if (m.reserva && String(m.reserva.id) !== reservaId) {
+                        if (!confirm(`La mesa ${m.num} ya tiene asignada la reserva de ${m.reserva.cliente_nombre} (${m.reserva.hora}). ¿Reemplazar?`)) return;
+                      }
+                      asignarMesa(reservaId, m.num);
+                    }}
+                    onClick={() => {
+                      if (m.reserva) setAsignandoMesa(m.reserva);
+                    }}
+                    title={m.reserva ? `${m.reserva.cliente_nombre} · ${m.reserva.hora} · ${m.reserva.pax}p` : `M${m.num} · libre · ${m.cap}p`}
+                    style={{
+                      position:'absolute',
+                      left:`${xPos}%`,top:`${yPos}%`,width:`${m.w}%`,height:`${m.h}%`,
+                      borderRadius: m.shape === 'round' ? '50%' : 10,
+                      background:`radial-gradient(circle at 50% 35%, ${col}26, ${col}0d)`,
+                      border:`2px solid ${col}80`,
+                      cursor:'pointer',
+                      display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',
+                      color:S.t1,padding:0,
+                      transition:'transform .15s, box-shadow .15s',
+                      boxShadow: tieneReserva ? `0 0 14px ${col}55, inset 0 0 10px ${col}25` : `0 2px 10px rgba(0,0,0,0.4), inset 0 1px 0 ${col}25`,
+                    }}>
+                    {m.vip && <span style={{position:'absolute',top:2,right:4,fontSize:'clamp(7px,0.9vw,11px)'}}>⭐</span>}
+                    <span style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(8px,1.1vw,14px)',fontWeight:900,color:'#fff',lineHeight:1,textShadow:`0 1px 6px ${col}`}}>M{m.num}</span>
+                    {m.reserva
+                      ? <span style={{fontSize:'clamp(5px,0.7vw,9px)',color:col,fontWeight:700,marginTop:1}}>{(m.reserva.cliente_nombre||'').split(' ')[0]?.slice(0,8)}</span>
+                      : <span style={{fontSize:'clamp(5px,0.6vw,8px)',color:col,fontWeight:600,marginTop:1,background:`${col}22`,padding:'0 4px',borderRadius:6}}>{m.cap}p</span>}
+                  </button>
+                );
+              })}
+
+              {mesasPlano.length === 0 && (
+                <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',color:S.t3,fontSize:13,textAlign:'center',padding:30}}>
+                  Sin plano cargado. Ve a <strong style={{color:S.gold}}>"⚙️ Plano · Editar mesas"</strong> para agregar mesas.
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
       </div>
+
+      {/* ═══ KPIs al PIE (no en el header, como pediste) ═══ */}
+      <footer style={{padding:'12px 24px',borderTop:`1px solid ${S.border}`,background:S.bg2,display:'flex',gap:28,alignItems:'center',flexWrap:'wrap'}}>
+        <span style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:9,color:S.t3,letterSpacing:'.22em',textTransform:'uppercase'}}>
+          {new Date(fechaFiltro+'T12:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})}
+        </span>
+        <FooterStat label="Reservas hoy" v={activas.length}  c={S.gold}/>
+        <FooterStat label="Oh Yeah"      v={ohYeahCnt}       c="#FFE600"/>
+        <FooterStat label="Sentadas"     v={sentadas}        c={S.green}/>
+        <FooterStat label="Sin mesa"     v={sinMesa}         c={sinMesa>0?S.red:S.t2}/>
+        <FooterStat label="Pax total"    v={paxTotal}        c={S.blue}/>
+        <span style={{marginLeft:'auto',fontSize:10,color:S.t3,letterSpacing:'.06em'}}>💡 Arrastra una reserva al plano para asignar mesa</span>
+      </footer>
     </div>
-  </div>
-)}
+  );
+})()}
 
 {tab==='lista' && (()=>{
         const activas = reservas.filter((r:any)=>!['completada','cancelada'].includes(r.estado));
@@ -1638,6 +1736,15 @@ function EditorPlanta({ plantaDB, setPlantaDB, editMesa, setEditMesa, show, mesa
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function FooterStat({ label, v, c }:{ label:string; v:number|string; c:string }) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:2}}>
+      <span style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:9,color:'#6E6E84',letterSpacing:'.18em',textTransform:'uppercase'}}>{label}</span>
+      <span style={{fontFamily:"'Syne', serif",fontSize:22,fontWeight:700,color:c,lineHeight:1}}>{v}</span>
     </div>
   );
 }
