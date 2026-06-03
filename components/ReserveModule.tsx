@@ -154,7 +154,7 @@ export default function ReserveModule() {
       .then(({data})=>{ if(data) setSobreventa(Math.min(10, data.sobreventa_pct||0)); });
     const [rv, ms, ohyeah] = await Promise.all([
       supabase.from('reservations').select('*').eq('restaurante_id',restauranteIdActivo).eq('fecha',fechaFiltro).order('hora'),
-      supabase.from('tables').select('*').order('name'),
+      supabase.from('tables').select('*').eq('restaurante_id',restauranteIdActivo).order('name'),
       supabase.from('ohyeah_reservas').select('*').eq('date',fechaFiltro).in('status',['pending','pendiente','confirmed','confirmada','seated','sentada']).order('time'),
     ]);
     const todas = [
@@ -496,20 +496,42 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         // Cliente VIP — score alto (VIP / Consagrado / Élite)
         const VIP_TIERS = ['VIP','CONSAGRADO','ÉLITE','ELITE','GRAND GOURMAND','LA CREME'];
         const clienteVip = VIP_TIERS.includes(String(r.gourmand_level||'').toUpperCase());
-        const tablesList = mesas.map((m:any)=>{
-          const num = Number(m.name);
-          const planta = Object.values(PLANTA).find(p=>p.num===num);
+        // ── Fuente PRINCIPAL: planta_mesas (la planta real del restaurante).
+        // tables (estado en vivo) es complemento opcional.
+        // Cruzamos con reservations del día para detectar conflictos de horario.
+        const horaReserva = (r.hora || '00:00').slice(0,5);
+        const minutoReserva = Number(horaReserva.split(':')[0]) * 60 + Number(horaReserva.split(':')[1]);
+        const VENTANA_CONFLICTO_MIN = 120; // 2 horas de buffer
+        const fuente = plantaDB.length > 0
+          ? plantaDB
+          : Object.values(PLANTA).map((p:any) => ({ num:p.num, capacidad:p.cap, zona:p.zona, shape:p.shape, x:p.x, y:p.y, w:p.w, h:p.h }));
+        const tablesList = fuente.map((p:any) => {
+          const num = Number(p.num);
+          // Estado en vivo desde tables (si existe)
+          const tEnVivo = mesas.find((m:any) => Number(m.name) === num);
+          // Conflictos con OTRAS reservas del día asignadas a esta mesa
+          const conflicto = (reservas || []).find((res:any) => {
+            if (res.id === r.id) return false;
+            if (Number(res.mesa_num) !== num) return false;
+            const h = (res.hora || '00:00').slice(0,5);
+            const m = Number(h.split(':')[0]) * 60 + Number(h.split(':')[1]);
+            return Math.abs(m - minutoReserva) <= VENTANA_CONFLICTO_MIN;
+          });
           return {
             num,
-            estado: m.estado || 'libre',
-            cap: m.capacidad || m.seats || planta?.cap || 4,
-            zona: m.zona || m.zone || planta?.zona || 'Salón',
-            cliente: m.cliente_nombre || '',
-            vip: m.vip === true,
+            estado: tEnVivo?.estado || (conflicto ? 'reservada' : 'libre'),
+            cap: p.capacidad || p.cap || tEnVivo?.capacidad || 4,
+            zona: p.zona || tEnVivo?.zona || 'Salón',
+            cliente: tEnVivo?.cliente_nombre || (conflicto?.cliente_nombre || ''),
+            vip: tEnVivo?.vip === true || p.vip === true,
+            conflicto,
+            // Datos para mini-mapa visual
+            x: p.x, y: p.y, w: p.w || 10, h: p.h || 10, shape: p.shape || 'round',
           };
-        }).filter((t:any)=>!isNaN(t.num)).sort((a:any,b:any)=>a.num-b.num);
-        const zonas = Array.from(new Set(tablesList.map((t:any)=>t.zona)));
-        const libres = tablesList.filter((t:any)=>!t.estado||t.estado==='libre');
+        }).filter((t:any) => !isNaN(t.num)).sort((a:any,b:any) => a.num - b.num);
+        const zonas = Array.from(new Set(tablesList.map((t:any) => t.zona)));
+        const libres = tablesList.filter((t:any) => t.estado === 'libre' || !t.estado);
+        const tieneCoordsXY = tablesList.some((t:any) => typeof t.x === 'number' && typeof t.y === 'number');
         return (
           <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>setAsignandoMesa(null)}>
             <div onClick={e=>e.stopPropagation()} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:20,width:'100%',maxWidth:560,maxHeight:'88vh',display:'flex',flexDirection:'column',overflow:'hidden'}}>
@@ -551,12 +573,63 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                     {meseroAsignar ? `La mesa aparecerá en el home de ${meseroAsignar}.` : 'Cualquier mesero podrá tomarla desde su home.'}
                   </div>
                 </div>
-                <div style={{fontSize:11,color:S.t3,marginBottom:14}}>
-                  {libres.length} mesa{libres.length===1?'':'s'} libre{libres.length===1?'':'s'} ·
-                  <span style={{color:S.green,marginLeft:5}}>● apta para {pax}p</span>
-                  <span style={{color:S.gold,marginLeft:10}}>⭐ mesa VIP</span>
-                  {clienteVip && <span style={{color:S.gold,marginLeft:10,fontWeight:700}}>· Cliente VIP — prioriza las ⭐</span>}
+                <div style={{fontSize:11,color:S.t3,marginBottom:14,display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
+                  <span><strong style={{color:S.t1}}>{libres.length}</strong> libre{libres.length===1?'':'s'}</span>
+                  <span style={{color:S.green}}>● apta para {pax}p</span>
+                  <span style={{color:S.gold}}>⭐ VIP</span>
+                  <span style={{color:'#FFB547'}}>● reservada otra hora</span>
+                  <span style={{color:S.red}}>● ocupada/sentada</span>
+                  {clienteVip && <span style={{color:S.gold,fontWeight:700,marginLeft:'auto'}}>Cliente VIP — prioriza las ⭐</span>}
                 </div>
+
+                {/* Mini-mapa visual del salón — sólo si hay coordenadas X/Y reales */}
+                {tieneCoordsXY && (
+                  <div style={{marginBottom:18, padding:12, background:S.bg3, borderRadius:12, border:`1px solid ${S.border}`}}>
+                    <div style={{fontSize:10,color:S.t2,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>🗺️ Plano del salón</div>
+                    <div style={{position:'relative',width:'100%',paddingBottom:'52%',background:S.bg,borderRadius:10,border:`1px solid ${S.border}`,overflow:'hidden'}}>
+                      {tablesList.map((t:any) => {
+                        const rg = rangoMesa(t.cap);
+                        const apta = pax >= rg.min && pax <= rg.max;
+                        const libre = t.estado === 'libre' || !t.estado;
+                        const ocupada = t.estado === 'ocupada' || t.estado === 'asignada' || t.estado === 'sentada';
+                        const reservadaOtra = t.estado === 'reservada' && t.conflicto;
+                        const col = ocupada ? S.red
+                          : reservadaOtra ? '#FFB547'
+                          : libre && t.vip ? S.gold
+                          : libre && apta ? S.green
+                          : libre ? S.t2 : S.t3;
+                        const seleccionable = libre && apta;
+                        const xPos = typeof t.x === 'number' ? t.x : 50;
+                        const yPos = typeof t.y === 'number' ? t.y : 50;
+                        const wSize = typeof t.w === 'number' && t.w > 0 ? t.w : 9;
+                        const hSize = typeof t.h === 'number' && t.h > 0 ? t.h : 9;
+                        return (
+                          <button key={t.num} disabled={!seleccionable}
+                            onClick={() => { asignarMesa(r.id, t.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
+                            title={`M${t.num} · ${t.cap}p · ${t.zona}${reservadaOtra && t.conflicto ? ` · Reservada ${t.conflicto.hora} (${t.conflicto.cliente_nombre})` : ''}`}
+                            style={{
+                              position:'absolute',
+                              left: `${xPos}%`, top: `${yPos}%`,
+                              width: `${wSize}%`, height: `${hSize}%`,
+                              borderRadius: t.shape === 'round' ? '50%' : 8,
+                              border: `2px solid ${col}`,
+                              background: `${col}${seleccionable ? '22' : '0d'}`,
+                              cursor: seleccionable ? 'pointer' : 'not-allowed',
+                              opacity: seleccionable ? 1 : 0.55,
+                              display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:1,
+                              transition:'all .15s',
+                              padding: 0,
+                              boxShadow: seleccionable && t.vip ? `0 0 10px ${S.gold}40` : 'none',
+                            }}>
+                            {t.vip && <span style={{position:'absolute',top:0,right:1,fontSize:8}}>⭐</span>}
+                            <span style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(8px,1.1vw,12px)',fontWeight:900,color:col,lineHeight:1}}>{t.num}</span>
+                            <span style={{fontSize:'clamp(5px,0.7vw,8px)',color:S.t2,fontWeight:600,lineHeight:1}}>{t.cap}p</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
                 {zonas.map((zona:any)=>{
                   const delZona = tablesList.filter((t:any)=>t.zona===zona);
                   return (
@@ -566,22 +639,27 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                       </div>
                       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(78px,1fr))',gap:8}}>
                         {delZona.map((t:any)=>{
-                          const libre = !t.estado || t.estado==='libre';
+                          const libre = (t.estado === 'libre' || !t.estado);
+                          const reservadaOtra = t.estado === 'reservada' && t.conflicto;
+                          const ocupada = ['ocupada','asignada','sentada'].includes(t.estado);
                           const rg = rangoMesa(t.cap);
                           const apta = libre && pax>=rg.min && pax<=rg.max;
                           const motivo = pax<rg.min ? `mín ${rg.min}` : pax>rg.max ? `máx ${rg.max}` : '';
                           const seleccionable = libre && apta;
-                          // VIP no aptas para cliente normal: igual seleccionable (soft), pero avisa
-                          const vipReservada = t.vip && !clienteVip;
-                          const col = !libre ? S.t3 : t.vip ? S.gold : apta ? S.green : '#FFB547';
+                          const col = ocupada ? S.red
+                            : reservadaOtra ? '#FFB547'
+                            : libre && t.vip ? S.gold
+                            : libre && apta ? S.green
+                            : libre ? S.t2 : S.t3;
                           return (
                             <button key={t.num} disabled={!seleccionable}
                               onClick={()=>{ asignarMesa(r.id, t.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
+                              title={reservadaOtra && t.conflicto ? `Reservada por ${t.conflicto.cliente_nombre} a las ${t.conflicto.hora}` : ''}
                               style={{
                                 padding:'12px 6px',borderRadius:12,position:'relative',
-                                border:`2px solid ${seleccionable?col:'rgba(255,255,255,0.06)'}`,
-                                background:seleccionable?`${col}${t.vip?'1f':'12'}`:'rgba(255,255,255,0.02)',
-                                cursor:seleccionable?'pointer':'not-allowed',opacity:seleccionable?1:0.4,
+                                border:`2px solid ${seleccionable?col:`${col}40`}`,
+                                background:seleccionable?`${col}${t.vip?'1f':'12'}`:`${col}08`,
+                                cursor:seleccionable?'pointer':'not-allowed',opacity:seleccionable?1:0.55,
                                 display:'flex',flexDirection:'column',alignItems:'center',gap:2,transition:'all .15s',
                                 boxShadow: t.vip&&seleccionable ? `0 0 10px ${S.gold}40` : 'none',
                               }}>
@@ -589,7 +667,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                               <span style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:col}}>M{t.num}</span>
                               <span style={{fontSize:9,color:S.t2,fontWeight:600}}>{rg.min}-{rg.max} pers.</span>
                               <span style={{fontSize:8,color:col,fontWeight:700,textTransform:'uppercase'}}>
-                                {!libre ? (t.estado==='ocupada'?'Ocupada':t.estado==='asignada'?'Sentada':'No disp.')
+                                {ocupada ? (t.estado==='ocupada'?'Ocupada':t.estado==='asignada'?'Sentada':'En uso')
+                                  : reservadaOtra ? `${t.conflicto.hora}`
                                   : !apta ? `No apta · ${motivo}`
                                   : t.vip ? (clienteVip ? 'VIP ⭐ ideal' : 'VIP · guárdala')
                                   : 'Apta'}
