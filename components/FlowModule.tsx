@@ -225,7 +225,7 @@ export default function FlowModule() {
       const nombre = (fichaItem.nombre_plato || fichaItem.notes || '').split('(')[0].trim();
       // Buscar el plato por nombre (insensitive) — el plato puede tener sufijos de modificadores
       const { data: platos } = await supabase.from('menu_platos')
-        .select('id,nombre,descripcion,categoria,estacion,emoji,precio_venta,tag,foto_url')
+        .select('id,nombre,descripcion,categoria,estacion,emoji,precio_venta,tag,foto_url,tiempo_preparacion_min')
         .eq('restaurante_id', restauranteId).ilike('nombre', `%${nombre}%`).limit(1);
       const plato = platos?.[0];
       if (!alive) return;
@@ -298,6 +298,25 @@ export default function FlowModule() {
       return getStation(i)==='cocina_caliente'&&((i.status==='pending'&&tp>est.objetivo*1.5)||(i.status==='preparing'&&pp>est.objetivo));
     }).map(i=>i.table_id)
   );
+
+  // ── CARGA POR ESTACIÓN ────────────────────────────────────────────
+  // Cuenta items activos (pending/preparing/almost) por estación.
+  // Si una estación tiene >10 pedidos → "cargada" (visualmente naranja).
+  // Postres es especialmente sensible: cuando está cargada va en ROJO
+  // porque siempre es el cuello de botella al final del servicio.
+  // No se bloquea — sólo se avisa para que cocina priorice y mesa
+  // sepa que puede haber demora.
+  const UMBRAL_ESTACION_CARGADA = 10;
+  const cargaPorEstacion = items.reduce((acc:Record<string,number>, i) => {
+    if (i.status === 'served' || i.status === 'cancelled') return acc;
+    const e = getStation(i);
+    acc[e] = (acc[e] || 0) + 1;
+    return acc;
+  }, {});
+  const estacionesCargadas = new Set(
+    Object.entries(cargaPorEstacion).filter(([,n]) => n > UMBRAL_ESTACION_CARGADA).map(([e]) => e)
+  );
+  const estacionEnRojo = (e:string) => e === 'postres' && estacionesCargadas.has(e);
 
   const estaciones = ['all',...Array.from(new Set(items.map(i=>getStation(i))))];
   const itemsFiltrados = filtroEst==='all'?items:items.filter(i=>getStation(i)===filtroEst);
@@ -376,10 +395,21 @@ export default function FlowModule() {
               {estaciones.map(est=>{
                 const meta = ESTACIONES[est];
                 const cnt  = est==='all'?items.length:items.filter(i=>getStation(i)===est).length;
+                const cargada = est !== 'all' && estacionesCargadas.has(est);
+                const rojaPorPostres = est === 'postres' && cargada;
+                const cargaCol = rojaPorPostres ? S.red : cargada ? '#FFB547' : null;
                 return (
                   <button key={est} onClick={()=>setFiltroEst(est)}
-                    style={{padding:'3px 10px',borderRadius:20,border:`1px solid ${filtroEst===est?(meta?.color||S.gold):'rgba(255,255,255,0.1)'}`,background:filtroEst===est?`${meta?.color||S.gold}15`:'transparent',color:filtroEst===est?(meta?.color||S.gold):S.t3,fontSize:10,fontWeight:700,cursor:'pointer'}}>
-                    {meta?`${meta.emoji} ${est.replace('_',' ')}`:'🔴 Todas'} ({cnt})
+                    title={cargada ? `Estación cargada (${cnt} pedidos · puede demorar)` : ''}
+                    style={{
+                      padding:'3px 10px',borderRadius:20,
+                      border:`1px solid ${cargaCol || (filtroEst===est?(meta?.color||S.gold):'rgba(255,255,255,0.1)')}`,
+                      background: cargaCol ? `${cargaCol}20` : filtroEst===est?`${meta?.color||S.gold}15`:'transparent',
+                      color: cargaCol || (filtroEst===est?(meta?.color||S.gold):S.t3),
+                      fontSize:10,fontWeight:700,cursor:'pointer',
+                      boxShadow: cargaCol ? `0 0 10px ${cargaCol}55` : 'none',
+                    }}>
+                    {meta?`${meta.emoji} ${est.replace('_',' ')}`:'🔴 Todas'} ({cnt}{cargada?` ⚠`:''})
                   </button>
                 );
               })}
@@ -510,18 +540,34 @@ export default function FlowModule() {
                     <div style={{padding:'10px 12px',display:'flex',flexDirection:'column',gap:8,flex:1,overflowY:'auto'}}>
                       {pedido.items.map((item:FlowItem) => {
                         const est   = ESTACIONES[getStation(item)]||ESTACIONES.cocina_caliente;
+                        // tp = tiempo total desde marcha (created_at) — NO retrocede al
+                        // pasar a "preparando". La barra y el reloj siempre miden lo mismo.
                         const tp    = tsec(item.created_at);
                         const pp    = item.tiempo_inicio?tsec(item.tiempo_inicio):0;
                         const isPending   = item.status==='pending';
                         const isPreparing = item.status==='preparing' || item.status==='almost';
                         const isReady     = item.status==='ready';
-                        const pct = isPreparing?Math.min(100,Math.round(pp/est.objetivo*100)):isPending?Math.min(100,Math.round(tp/(est.objetivo*1.5)*100)):100;
+                        // Barra de progreso continua: usa tp (tiempo total) contra objetivo*1.5
+                        const pct = (isPending||isPreparing) ? Math.min(100, Math.round(tp/(est.objetivo*1.5)*100)) : 100;
                         const esRetrasado = (isPending&&tp>est.objetivo*1.5)||(isPreparing&&pp>est.objetivo);
                         const esAmarillo  = !esRetrasado&&((isPending&&tp>est.objetivo*0.8)||(isPreparing&&pp>est.objetivo*0.7)||mesasConRetraso.has(item.table_id));
-                        const sColor = esRetrasado?S.red:esAmarillo?'#FFB547':S.green;
+                        // Estación cargada: marca como naranja general; si es postres en
+                        // estación cargada → rojo (cuello de botella crítico).
+                        const itemEstacion = getStation(item);
+                        const estCargada   = estacionesCargadas.has(itemEstacion);
+                        const enRojoCarga  = estacionEnRojo(itemEstacion);
+                        const sColor = enRojoCarga ? S.red
+                                     : esRetrasado ? S.red
+                                     : estCargada  ? '#FFB547'
+                                     : esAmarillo  ? '#FFB547'
+                                     : S.green;
+                        // Contorno COMPLETO del pedido en el color del tiempo
+                        const bgFill = sColor === S.red    ? 'rgba(255,82,82,0.08)'
+                                     : sColor === '#FFB547' ? 'rgba(255,181,71,0.06)'
+                                     :                        'rgba(0,230,118,0.04)';
                         return (
                           <div key={item.id} onClick={(e)=>{ if((e.target as HTMLElement).closest('button')) return; setFichaItem(item); }}
-                            style={{background:esRetrasado?'rgba(255,82,82,0.07)':esAmarillo?'rgba(255,181,71,0.05)':'rgba(255,255,255,0.03)',border:`1px solid ${esRetrasado?'rgba(255,82,82,0.35)':esAmarillo?'rgba(255,181,71,0.25)':'rgba(255,255,255,0.07)'}`,borderLeft:`4px solid ${sColor}`,borderRadius:10,padding:'10px 12px',cursor:'pointer'}}
+                            style={{background:bgFill,border:`2px solid ${sColor}`,borderLeft:`5px solid ${sColor}`,borderRadius:10,padding:'10px 12px',cursor:'pointer',boxShadow:`0 0 12px ${sColor}25`,transition:'all .2s'}}
                             title="Click para ver ficha técnica (foto + receta + ingredientes)">
                             <div style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:isPending||isPreparing?8:0}}>
                               <span style={{fontSize:22,lineHeight:1}}>{est.emoji}</span>
@@ -546,14 +592,14 @@ export default function FlowModule() {
                                 {item.observaciones && <div style={{fontSize:11,color:'#3dba6f',marginTop:5,fontStyle:'italic',padding:'4px 8px',background:'rgba(61,186,111,0.08)',borderRadius:6,borderLeft:'3px solid #3dba6f'}}>💬 {item.observaciones}</div>}
                                 {item.notes && item.notes!==getNombre(item) && !item.observaciones && <div style={{fontSize:11,color:'#FFB547',marginTop:4,fontStyle:'italic'}}>📝 {item.notes}</div>}
                               </div>
-                              {/* Tiempo · total desde marcha (created_at) cuando ya está en producción/listo */}
+                              {/* Tiempo TOTAL · siempre desde created_at — no retrocede al marcar "preparando" */}
                               <div style={{textAlign:'right',flexShrink:0}}>
                                 <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:sColor,lineHeight:1}}>
-                                  {isPending ? fmtT(tp) : fmtT(tsec(item.created_at))}
+                                  {fmtT(tp)}
                                 </div>
-                                <div style={{fontSize:10,color:S.t3,marginTop:2,fontWeight:600}}>{isPending?'en espera':isPreparing?'desde marcha':'total'}</div>
+                                <div style={{fontSize:10,color:S.t3,marginTop:2,fontWeight:600}}>{isPending?'en espera':isPreparing?'total · marcha':'total'}</div>
                                 {isPreparing && pp > 0 && (
-                                  <div style={{fontSize:9,color:S.t3,marginTop:1}}>prod: {fmtT(pp)}</div>
+                                  <div style={{fontSize:9,color:S.t3,marginTop:1}}>· prod: {fmtT(pp)}</div>
                                 )}
                               </div>
                             </div>
@@ -917,12 +963,46 @@ export default function FlowModule() {
                     </div>
                   </div>
                 </div>
-                {fichaPlato?.tag && (
-                  <div style={{display:'inline-block',marginTop:8,padding:'3px 10px',borderRadius:50,background:'rgba(155,114,255,0.15)',color:'#b388ff',fontSize:10,fontWeight:800,border:'1px solid rgba(155,114,255,0.4)'}}>
-                    {fichaPlato.tag}
-                  </div>
-                )}
+                <div style={{display:'flex',gap:6,marginTop:8,flexWrap:'wrap'}}>
+                  {fichaPlato?.tag && (
+                    <div style={{padding:'3px 10px',borderRadius:50,background:'rgba(155,114,255,0.15)',color:'#b388ff',fontSize:10,fontWeight:800,border:'1px solid rgba(155,114,255,0.4)'}}>
+                      {fichaPlato.tag}
+                    </div>
+                  )}
+                  {fichaPlato?.tiempo_preparacion_min && (
+                    <div style={{padding:'3px 10px',borderRadius:50,background:'rgba(34,211,238,0.12)',color:'#22d3ee',fontSize:10,fontWeight:800,border:'1px solid rgba(34,211,238,0.4)'}}>
+                      ⏱ {fichaPlato.tiempo_preparacion_min} min · tiempo objetivo
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* ⚠ OBSERVACIONES PRIMORDIAL — primera cosa que ve cocina después de la foto */}
+              {(fichaItem.observaciones || (fichaItem.tags && fichaItem.tags.length > 0)) ? (
+                <div style={{padding:'14px 16px',background:'linear-gradient(135deg, rgba(255,82,82,0.18), rgba(155,114,255,0.10))',borderRadius:12,border:'2px solid #FF5252',boxShadow:'0 0 20px rgba(255,82,82,0.35)'}}>
+                  <div style={{fontSize:11,color:'#FF5252',fontWeight:900,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+                    <span style={{fontSize:16}}>⚠️</span> Observaciones del pedido — LEER ANTES DE COCINAR
+                  </div>
+                  {Array.isArray(fichaItem.tags) && fichaItem.tags.length > 0 && (
+                    <div style={{display:'flex',gap:5,flexWrap:'wrap',marginBottom:fichaItem.observaciones?10:0}}>
+                      {fichaItem.tags.map((t:string,i:number)=>(
+                        <span key={i} style={{fontSize:12,padding:'4px 11px',borderRadius:50,background:'rgba(255,82,82,0.25)',color:'#ffb4b4',fontWeight:900,border:'1.5px solid rgba(255,82,82,0.6)',letterSpacing:'.04em'}}>
+                          ⚠ {t.toUpperCase()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {fichaItem.observaciones && (
+                    <div style={{fontSize:14,color:'#fff',fontWeight:700,lineHeight:1.4,padding:'10px 12px',background:'rgba(0,0,0,0.4)',borderRadius:8,borderLeft:'4px solid #FF5252'}}>
+                      💬 "{fichaItem.observaciones}"
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div style={{padding:'10px 12px',background:S.bg3,borderRadius:10,border:`1px dashed ${S.border}`,fontSize:11,color:S.t3,textAlign:'center'}}>
+                  ✓ Sin observaciones del mesero — preparar receta estándar.
+                </div>
+              )}
 
               {/* Pedido en vivo — contexto del item */}
               <div style={{padding:'10px 12px',background:S.bg3,borderRadius:10,border:`1px solid ${S.border}`,display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
@@ -932,25 +1012,6 @@ export default function FlowModule() {
                 </div>
                 <div style={{fontSize:11,color:S.t2}}>{fichaItem.status}</div>
               </div>
-
-              {/* Observaciones + tags del mesero */}
-              {(fichaItem.observaciones || (fichaItem.tags && fichaItem.tags.length > 0)) && (
-                <div style={{padding:'10px 12px',background:'rgba(155,114,255,0.06)',borderRadius:10,border:'1px solid rgba(155,114,255,0.3)'}}>
-                  <div style={{fontSize:10,color:'#b388ff',fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:6}}>⚠ Indicaciones del mesero</div>
-                  {Array.isArray(fichaItem.tags) && fichaItem.tags.length > 0 && (
-                    <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:fichaItem.observaciones?6:0}}>
-                      {fichaItem.tags.map((t:string,i:number)=>(
-                        <span key={i} style={{fontSize:10,padding:'2px 8px',borderRadius:50,background:'rgba(155,114,255,0.25)',color:'#c1aeff',fontWeight:800,border:'1px solid rgba(155,114,255,0.5)'}}>
-                          {t.toUpperCase()}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  {fichaItem.observaciones && (
-                    <div style={{fontSize:12,color:'#e0d4ff',fontStyle:'italic'}}>"{fichaItem.observaciones}"</div>
-                  )}
-                </div>
-              )}
 
               {/* Descripción del plato */}
               {fichaPlato?.descripcion && (

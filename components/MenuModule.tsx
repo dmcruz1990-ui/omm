@@ -14,6 +14,8 @@ interface FoodCostRow {
   tag?: string | null;
   foto_url?: string | null;
   descripcion?: string | null;
+  tiempo_preparacion_min?: number | null;
+  ingredientes_count?: number | null;
 }
 interface RecetaItem {
   id: string; plato_id: string; supply_id: string; cantidad: number;
@@ -155,6 +157,9 @@ export default function MenuModule() {
       tag: (editP.tag || '').toString().trim() || null,
       foto_url: (editP.foto_url || '').toString().trim() || null,
       descripcion: (editP.descripcion || '').toString().trim() || null,
+      tiempo_preparacion_min: editP.tiempo_preparacion_min != null && Number(editP.tiempo_preparacion_min) > 0
+        ? Math.round(Number(editP.tiempo_preparacion_min))
+        : null,
     }).eq('id', editP.id);
     showToast('✓ Plato actualizado');
     setSel(null); fetchPlatos();
@@ -316,6 +321,8 @@ export default function MenuModule() {
             <div style={{ ...card, padding: 0, overflow: 'hidden' }}>
               <div style={{ display: 'flex', gap: 12, padding: '8px 16px', fontSize: 9, color: C.t3, textTransform: 'uppercase', letterSpacing: 1, borderBottom: `1px solid ${C.border}` }}>
                 <span style={{ width: 22 }} /><span style={{ flex: 1 }}>Plato</span>
+                <span style={{ width: 70, textAlign: 'center' }}>Ingred.</span>
+                <span style={{ width: 70, textAlign: 'center' }}>⏱ Tiempo</span>
                 <span style={{ width: 90, textAlign: 'right' }}>Precio</span>
                 <span style={{ width: 90, textAlign: 'right' }}>Costo</span>
                 <span style={{ width: 70, textAlign: 'right' }}>Food cost</span>
@@ -323,6 +330,8 @@ export default function MenuModule() {
               </div>
               {platosFiltrados.map((p, i) => {
                 const quejas = careFor(p.nombre);
+                const tMin = p.tiempo_preparacion_min || 0;
+                const tCol = tMin === 0 ? C.t3 : tMin <= 8 ? C.green : tMin <= 15 ? C.gold : C.red;
                 return (
                   <div key={p.id} onClick={() => abrirPlato(p)}
                     style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: i ? `1px solid ${C.border}` : 'none', cursor: 'pointer' }}>
@@ -334,6 +343,12 @@ export default function MenuModule() {
                         {quejas > 0 && <span style={{ fontSize: 9, background: `${C.red}22`, color: C.red, padding: '1px 6px', borderRadius: 6 }}>⚠️ Care {quejas}</span>}
                       </div>
                       <div style={{ fontSize: 10, color: C.t3 }}>{titulo(p.categoria || '')} · {titulo(p.estacion)}</div>
+                    </div>
+                    <div style={{ width: 70, textAlign: 'center', fontSize: 12, color: (p.ingredientes_count||0)>0?C.t1:C.t3, fontWeight: 700 }}>
+                      {p.ingredientes_count != null && p.ingredientes_count > 0 ? `${p.ingredientes_count} 🥬` : '—'}
+                    </div>
+                    <div style={{ width: 70, textAlign: 'center', fontSize: 13, fontWeight: 800, color: tCol }}>
+                      {tMin > 0 ? `${tMin}'` : '—'}
                     </div>
                     <div style={{ width: 90, textAlign: 'right', fontSize: 12, color: C.t2 }}>{fmt(p.precio_venta)}</div>
                     <div style={{ width: 90, textAlign: 'right', fontSize: 12, color: C.t3 }}>{fmt(p.costo_total)}</div>
@@ -645,9 +660,14 @@ export default function MenuModule() {
                               {p.descripcion}
                             </div>
                           )}
-                          <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 6, borderTop: `1px solid ${C.border}` }}>
+                          <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 6, borderTop: `1px solid ${C.border}`, alignItems: 'center' }}>
                             <span style={{ fontSize: 11, color: C.gold, fontWeight: 700 }}>{fmt(p.precio_venta)}</span>
-                            <span style={{ fontSize: 11, color: C.t3, marginLeft: 'auto' as const }}>Costo {fmt(p.costo_total)}</span>
+                            {p.tiempo_preparacion_min ? (
+                              <span style={{ fontSize: 10, color: '#b388ff', fontWeight: 700, padding: '2px 7px', borderRadius: 50, background: 'rgba(155,114,255,0.12)' }}>⏱ {p.tiempo_preparacion_min}'</span>
+                            ) : null}
+                            <span style={{ fontSize: 10, color: C.t3, marginLeft: 'auto' as const }}>
+                              {p.ingredientes_count != null && p.ingredientes_count > 0 ? `${p.ingredientes_count} 🥬 · ` : ''}{fmt(p.costo_total)}
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -685,8 +705,18 @@ export default function MenuModule() {
                 </select>
               </div>
             </div>
-            <label style={{ fontSize: 10, color: C.t3 }}>Precio de venta</label>
-            <input type="number" value={editP.precio_venta || ''} onChange={e => setEditP({ ...editP, precio_venta: parseFloat(e.target.value) || 0 })} style={{ ...inp, marginBottom: 10 }} />
+            <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>Precio de venta</label>
+                <input type="number" value={editP.precio_venta || ''} onChange={e => setEditP({ ...editP, precio_venta: parseFloat(e.target.value) || 0 })} style={inp} />
+              </div>
+              <div style={{ width: 130 }}>
+                <label style={{ fontSize: 10, color: C.t3 }}>⏱ Tiempo prep. (min)</label>
+                <input type="number" min={1} max={120} value={editP.tiempo_preparacion_min || ''}
+                  onChange={e => setEditP({ ...editP, tiempo_preparacion_min: parseInt(e.target.value) || null as any })}
+                  placeholder="12" style={inp} />
+              </div>
+            </div>
 
             <label style={{ fontSize: 10, color: C.t3 }}>🏷️ Tag (sale debajo del nombre en POS)</label>
             <input value={editP.tag || ''} maxLength={28} onChange={e => setEditP({ ...editP, tag: e.target.value })}
