@@ -41,6 +41,7 @@ export default function TerminalPagoModule() {
   const { activeId: restauranteId, activeRestaurant } = useRestaurant();
   const [cobros, setCobros] = useState<CobroPendiente[]>([]);
   const [selected, setSelected] = useState<CobroPendiente | null>(null);
+  const [metodoElegido, setMetodoElegido] = useState<string | null>(null);
   const [filtroMesa, setFiltroMesa] = useState('');
   const [loading, setLoading] = useState(true);
   const [procesando, setProcesando] = useState(false);
@@ -105,6 +106,7 @@ export default function TerminalPagoModule() {
     }).then(()=>{}, ()=>{});
     setProcesando(false);
     setSelected(null);
+    setMetodoElegido(null);
     setPantallaFinal({ activa:true, mesa: cobro.mesa_num, total: cobro.total + (cobro.propina||0), metodo });
     showToast(`✓ Mesa ${cobro.mesa_num} cobrada · ${fmt(cobro.total + (cobro.propina||0))}`);
   };
@@ -113,6 +115,7 @@ export default function TerminalPagoModule() {
     if (!confirm(`¿Cancelar el cobro de la mesa ${cobro.mesa_num}? Volverá al mesero para revisión.`)) return;
     await supabase.from('cobros_pendientes').update({ estado: 'cancelado' }).eq('id', cobro.id);
     setSelected(null);
+    setMetodoElegido(null);
     showToast(`Mesa ${cobro.mesa_num} devuelta al mesero`);
   };
 
@@ -120,17 +123,33 @@ export default function TerminalPagoModule() {
     <div style={{height:'100%', display:'flex', flexDirection:'column', background:S.bg, color:S.t1, fontFamily:"'DM Sans',sans-serif", overflow:'hidden'}}>
       {toast && <div style={{position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:S.bg4, border:`1px solid ${S.pink}`, color:S.t1, padding:'10px 28px', borderRadius:50, fontSize:13, fontWeight:700, zIndex:9999}}>{toast}</div>}
 
-      {/* Pantalla de confirmación final */}
+      {/* PANTALLA 4 · Confirmación final (con logo del restaurante + by NEXUM v4) */}
       {pantallaFinal?.activa && (
-        <div style={{position:'fixed', inset:0, background:'#000', zIndex:8000, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:24}}>
-          <div style={{width:90, height:90, borderRadius:'50%', background:S.green, display:'flex', alignItems:'center', justifyContent:'center', fontSize:48, marginBottom:24}}>✓</div>
-          <div style={{fontFamily:"'Syne',sans-serif", fontSize:32, fontWeight:900, marginBottom:8}}>Cobro completado</div>
-          <div style={{fontSize:40, fontWeight:900, color:S.gold, marginBottom:6}}>{fmt(pantallaFinal.total)}</div>
-          <div style={{fontSize:14, color:S.t2, marginBottom:6}}>Mesa {pantallaFinal.mesa} · {pantallaFinal.metodo}</div>
+        <div style={{position:'fixed', inset:0, background:'linear-gradient(180deg, #0a0a10 0%, #000 100%)', zIndex:8000, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:24}}>
+          {/* Logo del restaurante arriba */}
+          <div style={{position:'absolute',top:32,left:'50%',transform:'translateX(-50%)',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+            <div style={{width:54,height:54,borderRadius:'50%',background:`linear-gradient(135deg, ${S.gold}, #B07820)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,boxShadow:`0 6px 24px ${S.gold}55`}}>
+              {(activeRestaurant as any)?.emoji || '🏨'}
+            </div>
+            <div style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:900,letterSpacing:'.06em'}}>{(activeRestaurant as any)?.nombre || 'NEXUM'}</div>
+          </div>
+          {/* Check animado */}
+          <div style={{width:120, height:120, borderRadius:'50%', background:`linear-gradient(135deg, ${S.green}, #00B050)`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:60, marginBottom:24, boxShadow:`0 0 60px ${S.green}aa, inset 0 0 30px rgba(255,255,255,0.2)`, color:'#000'}}>✓</div>
+          <div style={{fontFamily:"'Syne',serif", fontSize:34, fontWeight:900, marginBottom:6, letterSpacing:'-0.02em'}}>Cobro completado</div>
+          <div style={{fontFamily:"'Syne',serif",fontSize:52, fontWeight:900, color:S.gold, marginBottom:8, letterSpacing:'-0.03em'}}>{fmt(pantallaFinal.total)}</div>
+          <div style={{display:'flex',alignItems:'center',gap:12,padding:'8px 20px',background:`${S.gold}10`,border:`1px solid ${S.gold}33`,borderRadius:50,marginBottom:32}}>
+            <span style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:900,color:S.gold}}>M{pantallaFinal.mesa}</span>
+            <span style={{fontSize:11,color:S.t3}}>·</span>
+            <span style={{fontSize:12, color:S.t1, fontWeight:600, textTransform:'capitalize'}}>{pantallaFinal.metodo}</span>
+          </div>
           <button onClick={() => setPantallaFinal(null)}
-            style={{marginTop:24, padding:'12px 36px', borderRadius:12, border:'none', background:S.gold, color:'#000', fontSize:13, fontWeight:900, cursor:'pointer'}}>
-            Siguiente cobro
+            style={{padding:'14px 42px', borderRadius:50, border:'none', background:`linear-gradient(135deg, ${S.gold}, #B07820)`, color:'#000', fontSize:13, fontWeight:900, cursor:'pointer', letterSpacing:'.04em', boxShadow:`0 8px 30px ${S.gold}55`}}>
+            Siguiente cobro →
           </button>
+          {/* Footer */}
+          <div style={{position:'absolute',bottom:24,left:0,right:0,display:'flex',alignItems:'center',justifyContent:'center',gap:8}}>
+            <span style={{fontSize:10,color:S.t3,letterSpacing:'.22em',fontWeight:700,fontFamily:"'IBM Plex Mono', monospace",textTransform:'uppercase'}}>by NEXUM v4</span>
+          </div>
         </div>
       )}
 
@@ -230,66 +249,90 @@ export default function TerminalPagoModule() {
           </div>
         </div>
 
-        {/* Panel derecho de proceso */}
+        {/* Panel derecho de proceso (PANTALLA 2) — rediseñado con logo + footer */}
         {selected && (
-          <div style={{width:380, borderLeft:`1px solid ${S.border}`, background:S.bg2, display:'flex', flexDirection:'column', flexShrink:0}}>
-            <div style={{padding:'16px 20px', borderBottom:`1px solid ${S.border}`, display:'flex', alignItems:'center', gap:10}}>
-              <div style={{width:42, height:42, borderRadius:11, background:`linear-gradient(135deg,${S.gold},#d4943a)`, display:'flex', alignItems:'center', justifyContent:'center', color:'#000', fontWeight:900, fontFamily:"'Syne',sans-serif"}}>M{selected.mesa_num}</div>
-              <div style={{flex:1}}>
-                <div style={{fontFamily:"'Syne',sans-serif", fontSize:15, fontWeight:900}}>{selected.cliente_nombre || 'Cliente'}</div>
-                <div style={{fontSize:10, color:S.t3}}>Atendido por {selected.mesero || '—'}</div>
+          <div style={{width:420, borderLeft:`1px solid ${S.border}`, background:'linear-gradient(180deg, #0f0f15 0%, #0a0a10 100%)', display:'flex', flexDirection:'column', flexShrink:0}}>
+            {/* HEADER con logo del restaurante */}
+            <div style={{padding:'20px 24px 16px', borderBottom:`1px solid ${S.border}`, display:'flex', flexDirection:'column', alignItems:'center', gap:6, position:'relative'}}>
+              <button onClick={()=>setSelected(null)} style={{position:'absolute',top:14,right:14,width:30, height:30, borderRadius:8, border:`1px solid ${S.border2}`, background:'transparent', color:S.t3, cursor:'pointer'}}><X size={14}/></button>
+              <div style={{width:58,height:58,borderRadius:'50%',background:`linear-gradient(135deg, ${S.gold}, #B07820)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:30,marginBottom:4,boxShadow:`0 8px 24px ${S.gold}33`}}>
+                {(activeRestaurant as any)?.emoji || '🏨'}
               </div>
-              <button onClick={()=>setSelected(null)} style={{width:30, height:30, borderRadius:8, border:`1px solid ${S.border2}`, background:'transparent', color:S.t3, cursor:'pointer'}}><X size={14}/></button>
+              <div style={{fontFamily:"'Syne',serif", fontSize:18, fontWeight:900, letterSpacing:'-0.01em'}}>{(activeRestaurant as any)?.nombre || 'NEXUM'}</div>
+              <div style={{fontSize:10, color:S.t3, letterSpacing:'.16em', textTransform:'uppercase'}}>Cobro en proceso</div>
+              <div style={{display:'flex',alignItems:'center',gap:10,marginTop:4,padding:'6px 14px',background:`${S.gold}10`,border:`1px solid ${S.gold}30`,borderRadius:50}}>
+                <span style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:900,color:S.gold}}>M{selected.mesa_num}</span>
+                <span style={{fontSize:11,color:S.t2}}>·</span>
+                <span style={{fontSize:11,color:S.t1,fontWeight:600}}>{selected.cliente_nombre || 'Cliente'}</span>
+              </div>
             </div>
 
-            <div style={{flex:1, overflowY:'auto', padding:16}}>
-              <div style={{fontSize:10, color:S.t3, fontWeight:700, textTransform:'uppercase', marginBottom:8}}>Platos consumidos · {(selected.items||[]).length}</div>
-              <div style={{display:'flex', flexDirection:'column', gap:6, marginBottom:18}}>
+            {/* CUERPO */}
+            <div style={{flex:1, overflowY:'auto', padding:'18px 22px'}}>
+              <div style={{fontSize:10, color:S.t3, fontWeight:800, textTransform:'uppercase', marginBottom:8, letterSpacing:'.14em'}}>🍽️ Platos · {(selected.items||[]).length}</div>
+              <div style={{display:'flex', flexDirection:'column', gap:5, marginBottom:18}}>
                 {(selected.items||[]).map((it:any, i:number) => (
-                  <div key={i} style={{display:'flex', justifyContent:'space-between', padding:'7px 10px', background:S.bg3, borderRadius:9, fontSize:12}}>
+                  <div key={i} style={{display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 12px', background:S.bg3, borderRadius:9, fontSize:12}}>
                     <span style={{flex:1}}>{it.emoji || '🍽️'} {it.nombre}</span>
-                    <span style={{color:S.gold, fontWeight:700}}>{it.precio}</span>
+                    <span style={{color:S.gold, fontWeight:800}}>{it.precio}</span>
                   </div>
                 ))}
               </div>
 
-              <div style={{padding:14, background:S.bg3, borderRadius:12, marginBottom:18}}>
-                <div style={{display:'flex', justifyContent:'space-between', marginBottom:6}}>
-                  <span style={{fontSize:12, color:S.t2}}>Subtotal</span>
-                  <span style={{fontSize:13, color:S.t1, fontWeight:700}}>{fmt(selected.total)}</span>
+              <div style={{padding:'14px 16px', background:`linear-gradient(135deg, ${S.gold}10, transparent)`, border:`1px solid ${S.gold}33`, borderRadius:14, marginBottom:18}}>
+                <div style={{display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:12, color:S.t2}}>
+                  <span>Subtotal</span><span style={{color:S.t1, fontWeight:700}}>{fmt(selected.total)}</span>
                 </div>
                 {selected.propina > 0 && (
-                  <div style={{display:'flex', justifyContent:'space-between', marginBottom:6}}>
-                    <span style={{fontSize:12, color:S.t2}}>Propina sugerida</span>
-                    <span style={{fontSize:13, color:S.purple, fontWeight:700}}>{fmt(selected.propina)}</span>
+                  <div style={{display:'flex', justifyContent:'space-between', marginBottom:6, fontSize:12, color:S.t2}}>
+                    <span>Propina sugerida</span><span style={{color:S.purple, fontWeight:700}}>{fmt(selected.propina)}</span>
                   </div>
                 )}
-                <div style={{display:'flex', justifyContent:'space-between', borderTop:`1px solid ${S.border}`, paddingTop:8, marginTop:8}}>
-                  <span style={{fontSize:14, color:S.t1, fontWeight:700}}>TOTAL A COBRAR</span>
-                  <span style={{fontFamily:"'Syne',sans-serif", fontSize:22, fontWeight:900, color:S.gold}}>{fmt(selected.total + (selected.propina||0))}</span>
+                <div style={{display:'flex', justifyContent:'space-between', borderTop:`1px solid ${S.gold}33`, paddingTop:10, marginTop:8, alignItems:'baseline'}}>
+                  <span style={{fontSize:11, color:S.t3, textTransform:'uppercase', letterSpacing:'.12em', fontWeight:700}}>Total a cobrar</span>
+                  <span style={{fontFamily:"'Syne',serif", fontSize:28, fontWeight:900, color:S.gold, letterSpacing:'-0.02em'}}>{fmt(selected.total + (selected.propina||0))}</span>
                 </div>
               </div>
 
-              <div style={{fontSize:10, color:S.t3, fontWeight:700, textTransform:'uppercase', marginBottom:8}}>Método de pago</div>
-              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+              <div style={{fontSize:10, color:S.t3, fontWeight:800, textTransform:'uppercase', marginBottom:10, letterSpacing:'.14em'}}>Método de pago</div>
+              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:10}}>
                 {[
-                  { id:'efectivo' as const, label:'💵 Efectivo', icon: <Banknote size={18}/>, color:S.green },
-                  { id:'datafono' as const, label:'💳 Datáfono', icon: <CreditCard size={18}/>, color:S.blue },
-                  { id:'tarjeta' as const, label:'💎 Tarjeta', icon: <CreditCard size={18}/>, color:S.purple },
-                  { id:'transferencia' as const, label:'📱 Transferencia', icon: <Smartphone size={18}/>, color:S.cyan },
+                  { id:'efectivo' as const,      emoji:'💵', label:'Efectivo',       color:S.green },
+                  { id:'datafono' as const,      emoji:'💳', label:'Datáfono',       color:S.blue },
+                  { id:'tarjeta' as const,       emoji:'💎', label:'Tarjeta',        color:S.purple },
+                  { id:'transferencia' as const, emoji:'📱', label:'Transferencia',  color:S.cyan },
                 ].map(m => (
-                  <button key={m.id} onClick={()=>procesarCobro(selected, m.id)} disabled={procesando}
-                    style={{padding:'14px 10px', borderRadius:11, border:`1.5px solid ${m.color}40`, background:`${m.color}10`, color:m.color, fontSize:12, fontWeight:700, cursor:procesando?'not-allowed':'pointer', display:'flex', flexDirection:'column', alignItems:'center', gap:6}}>
-                    <span style={{fontSize:24}}>{m.label.split(' ')[0]}</span>
-                    <span>{m.label.split(' ').slice(1).join(' ')}</span>
+                  <button key={m.id} onClick={()=>{ setMetodoElegido(m.id); setTimeout(()=>procesarCobro(selected, m.id), 350); }} disabled={procesando}
+                    style={{
+                      padding:'18px 12px', borderRadius:14,
+                      border:`2px solid ${metodoElegido===m.id?m.color:`${m.color}40`}`,
+                      background: metodoElegido===m.id ? `${m.color}30` : `${m.color}10`,
+                      color:m.color, fontSize:12, fontWeight:800, cursor:procesando?'not-allowed':'pointer',
+                      display:'flex', flexDirection:'column', alignItems:'center', gap:6,
+                      transform: metodoElegido===m.id ? 'scale(0.96)' : 'scale(1)',
+                      boxShadow: metodoElegido===m.id ? `0 0 24px ${m.color}80, inset 0 0 16px ${m.color}40` : 'none',
+                      transition: 'all .18s cubic-bezier(.34,1.5,.64,1)',
+                    }}>
+                    <span style={{fontSize:28, lineHeight:1}}>{m.emoji}</span>
+                    <span>{m.label}</span>
+                    {metodoElegido===m.id && <span style={{fontSize:9,opacity:0.8}}>✓ Procesando…</span>}
                   </button>
                 ))}
               </div>
 
               <button onClick={()=>rechazar(selected)} disabled={procesando}
-                style={{width:'100%', marginTop:16, padding:'10px 14px', borderRadius:10, border:`1px solid ${S.red}40`, background:`${S.red}08`, color:S.red, fontSize:11, fontWeight:700, cursor:procesando?'not-allowed':'pointer'}}>
-                ⚠ Devolver al mesero (rechazar)
+                style={{width:'100%', marginTop:18, padding:'11px 14px', borderRadius:10, border:`1px solid ${S.red}40`, background:`${S.red}08`, color:S.red, fontSize:11, fontWeight:700, cursor:procesando?'not-allowed':'pointer'}}>
+                ↩ Devolver al mesero
               </button>
+            </div>
+
+            {/* FOOTER · Salir by NEXUM v4 */}
+            <div style={{padding:'12px 22px', borderTop:`1px solid ${S.border}`, display:'flex', alignItems:'center', justifyContent:'space-between', background:'#08080c'}}>
+              <button onClick={()=>setSelected(null)}
+                style={{padding:'6px 14px',borderRadius:50,border:'1px solid rgba(255,255,255,0.08)',background:'transparent',color:S.t2,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                ← Salir
+              </button>
+              <span style={{fontSize:9,color:S.t3,letterSpacing:'.18em',fontWeight:600,fontFamily:"'IBM Plex Mono', monospace"}}>by NEXUM v4</span>
             </div>
           </div>
         )}
