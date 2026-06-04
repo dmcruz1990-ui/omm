@@ -2393,7 +2393,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               pendingOrder
                 .filter(o => o.mesa === selectedTable.num)
                 .forEach(item => {
-                  insertarPedidoFlow(item.nombre, item.categoria ?? currentCat, selectedTable.num);
+                  insertarPedidoFlow(
+                    item.nombre,
+                    item.categoria ?? currentCat,
+                    selectedTable.num,
+                    item.precio ? parsePrecio(item.precio) : 0,
+                    (item as any)._observ || '',
+                    (item as any)._tags || []
+                  );
                   agregarPlatoFlow({
                     mesa: selectedTable.num,
                     plato: item.nombre,
@@ -5814,7 +5821,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                         const items = pendingOrder.filter(o => o.mesa === selectedTable.num);
                         items.forEach(item => {
                           setStockFlow(prev => ({ ...prev, [item.nombre]: Math.max(0, (prev[item.nombre] ?? 10) - 1) }));
-                          insertarPedidoFlow(item.nombre, item.categoria ?? currentCat, selectedTable.num, item.precio ? parsePrecio(item.precio) : 0);
+                          insertarPedidoFlow(
+                            item.nombre,
+                            item.categoria ?? currentCat,
+                            selectedTable.num,
+                            item.precio ? parsePrecio(item.precio) : 0,
+                            (item as any)._observ || '',
+                            (item as any)._tags || []
+                          );
                           agregarPlatoFlow({
                             mesa: selectedTable.num,
                             plato: item.nombre,
