@@ -1026,7 +1026,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   }, [restauranteId]);
   const colorDeMesero = (nombre: string | null | undefined): string => {
     if (!nombre) return '#5a6472';
-    return coloresMeseros[nombre] || (nombre === miNombre ? (profile?.color || '#d4943a') : '#5a6472');
+    return coloresMeseros[nombre] || (nombre === miNombre ? (profile?.color || '#FF2D78') : '#5a6472');
   };
   const retoDePlato = useCallback((nombrePlato: string): any => {
     if (!nombrePlato) return null;
@@ -3096,6 +3096,17 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [showMapaMesas, setShowMapaMesas] = useState(false);
   const [chatIAOpen, setChatIAOpen]       = useState(false);
   const [mesasEstado, setMesasEstado] = useState<any[]>([]);
+  // Auto-abrir el mapa al loguearse un mesero (queda guardado en sessionStorage
+  // para que no se vuelva a abrir si el mesero lo cierra manualmente)
+  useEffect(() => {
+    if (profile?.role !== 'mesero') return;
+    try {
+      const key = `nx_mesero_abierto_${profile?.id || 'u'}`;
+      if (sessionStorage.getItem(key)) return;
+      sessionStorage.setItem(key, '1');
+      setShowMapaMesas(true);
+    } catch { setShowMapaMesas(true); }
+  }, [profile?.id, profile?.role]);
 
   // ── Filtrado de notificaciones por mesero ────────────────────────────
   // Cada mesero solo ve lo de SUS mesas/pedidos; gerencia ve todo; los
@@ -5243,11 +5254,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <button onClick={() => setShowMapaMesas(true)}
               className="mt-4 p-6 rounded-2xl border-2 border-dashed text-center transition-all hover:scale-[1.02]"
               style={{
-                borderColor: (profile?.color || '#d4943a') + '60',
-                background: (profile?.color || '#d4943a') + '08',
+                borderColor: (profile?.color || '#FF2D78') + '60',
+                background: (profile?.color || '#FF2D78') + '08',
               }}>
               <div className="text-[40px] mb-2">🗺️</div>
-              <div className="font-['Syne'] text-[14px] font-black mb-1" style={{ color: profile?.color || '#d4943a' }}>Aún no tienes mesas</div>
+              <div className="font-['Syne'] text-[14px] font-black mb-1" style={{ color: profile?.color || '#FF2D78' }}>Aún no tienes mesas</div>
               <div className="text-[11px] text-[#a0a0a0]">Toca para abrir el Mapa y tomar un cliente</div>
             </button>
           )}
@@ -5275,14 +5286,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
                 {/* Card de la mesa activa — diseño limpio que respeta el ancho de 200px */}
                 <div className="rounded-2xl overflow-hidden"
-                  style={{ border: `1.5px solid ${profile?.color || '#d4943a'}55`, background:'#1c1c1c' }}>
+                  style={{ border: `1.5px solid ${profile?.color || '#FF2D78'}55`, background:'#1c1c1c' }}>
 
                   {/* HEADER — número, pax, VIP, zona en UNA fila compacta */}
                   <div className="px-3 pt-3 pb-2">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-baseline gap-1.5">
                         <span className="font-['Syne'] font-black text-[26px] leading-none"
-                          style={{ color: profile?.color || '#d4943a' }}>{nombreMesa(m)}</span>
+                          style={{ color: profile?.color || '#FF2D78' }}>{nombreMesa(m)}</span>
                         <span className="text-[10px] text-[#a0a0a0] font-bold">{m.pax}p</span>
                       </div>
                       <div className="flex items-center gap-1">
@@ -5348,7 +5359,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                             <div key={t.id} onClick={() => setSelectedTableId(t.id)}
                               className="flex items-center gap-2 p-1.5 px-2 rounded-lg bg-[#1a1a1a] border cursor-pointer hover:border-[#d4943a]/40 transition-all"
                               style={{ borderColor: `${profile?.color || '#2a2a2a'}30` }}>
-                              <span className="text-[11px] font-bold shrink-0" style={{ color: profile?.color || '#d4943a' }}>{nombreMesa(t)}</span>
+                              <span className="text-[11px] font-bold shrink-0" style={{ color: profile?.color || '#FF2D78' }}>{nombreMesa(t)}</span>
                               <span className="text-[10px] text-[#606060] flex-1 truncate min-w-0">{t.cliente}</span>
                               <span className="text-[9px] font-bold tabular-nums shrink-0" style={{ color: minColor }} title="Minutos sin marchar">{minTexto}</span>
                               <div className="w-8 h-[3px] bg-[#2a2a2a] rounded-sm overflow-hidden shrink-0">
@@ -6494,20 +6505,16 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 <div style={{fontSize:10,color:'#606060',marginTop:2}}>{mesasEstado.filter((m:any)=>m.estado==='ocupada').length} ocupadas · {mesasEstado.filter((m:any)=>m.estado==='asignada').length} sentadas · {mesasEstado.filter((m:any)=>!m.estado||m.estado==='libre').length} libres</div>
               </div>
               <div style={{display:'flex',gap:14,alignItems:'center'}}>
-                {[
-                  /* PDF NEXUM § 5 — Estados oficiales (paleta + visibilidad). Los marcados con * se derivan automáticamente de señales del POS; los demás están en implementación. */
-                  {c:'#5a6472',l:'Libre*'},
-                  {c:'#3dba6f',l:'Verde · por sentar (tomar)'},
-                  {c:profile?.color || '#d4943a', l:`Mi color · ${miNombre.split(' ')[0]}`},
-                  {c:'#5a6472',l:'Gris · libre'},
-                  {c:'#404040',l:'Bloqueada'},
-                  {c:'#e05050',l:'Otro mesero (bloqueada para mí)'},
-                ].map(l=>(
-                  <div key={l.l} style={{display:'flex',alignItems:'center',gap:4,fontSize:10,color:'#a0a0a0'}}>
-                    <span style={{width:7,height:7,borderRadius:'50%',background:l.c,display:'inline-block'}}/>
-                    {l.l}
-                  </div>
-                ))}
+                {/* Leyenda compacta — solo 3 estados clave */}
+                <div style={{display:'flex',alignItems:'center',gap:5,fontSize:10,color:'#a0a0a0'}}>
+                  <span style={{width:7,height:7,borderRadius:'50%',background:'#3dba6f',display:'inline-block'}}/>Disponible
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:5,fontSize:10,color:'#a0a0a0'}}>
+                  <span style={{width:7,height:7,borderRadius:'50%',background:profile?.color||'#FF2D78',display:'inline-block'}}/>Mía
+                </div>
+                <div style={{display:'flex',alignItems:'center',gap:5,fontSize:10,color:'#a0a0a0'}}>
+                  <span style={{width:7,height:7,borderRadius:'50%',background:'#5a6472',display:'inline-block'}}/>No disponible
+                </div>
                 <button onClick={()=>setShowMapaMesas(false)} style={{width:28,height:28,borderRadius:8,border:'1px solid #2a2a2a',background:'#1c1c1c',color:'#a0a0a0',cursor:'pointer',fontSize:14}}>✕</button>
               </div>
             </div>
@@ -6915,11 +6922,17 @@ function PlanoPOSSala({ mesasEstado, restauranteId, miNombre, accesoSalon, profi
           const esMia = (ocupada || asignada) && (!meseroDeMesa || meseroDeMesa===miNombre || compartida);
           const puedeEntrar = esMia || accesoSalon;
           const colorMesero = colorDeMesero(meseroDeMesa || (asignadaMia ? miNombre : ''));
+          // COLORES POS MESERO (regla nueva):
+          //   - Mi color (perfil): mi propia mesa o asignada compartida → fucsia/del usuario
+          //   - Verde: mesa libre o asignada pool — la PUEDO tomar
+          //   - Gris (#5a6472): mesa que NO puedo tomar (de otro mesero sin acceso salón)
+          //   - Bloqueada: oscuro
+          const GRIS_NO_PUEDO = '#5a6472';
           const stroke = bloqueada ? NEON.bloqueadaStroke
-            : asignadaPool ? '#3DBE8B'
-            : asignadaMia ? (profile?.color || '#3DBE8B')
-            : asignadaDeOtro ? (accesoSalon ? colorMesero : '#C04464')
-            : ocupada ? (puedeEntrar ? colorMesero : '#C04464')
+            : asignadaMia ? (profile?.color || '#FF2D78')
+            : asignadaPool ? '#3DBE8B'                                      // verde · libre para tomar
+            : asignadaDeOtro ? (accesoSalon ? colorMesero : GRIS_NO_PUEDO)  // gris si no puedo
+            : ocupada ? (puedeEntrar ? colorMesero : GRIS_NO_PUEDO)         // gris si no puedo
             : NEON.libreStroke;
           const fill = bloqueada ? NEON.bloqueadaFill
             : ocupada ? NEON.ocupadaFill

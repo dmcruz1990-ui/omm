@@ -70,12 +70,16 @@ const mismaMesa = (mesaNum:any, mesaName:any): boolean => {
   return digits === numStr;
 };
 const ESTADOS:any = {
-  pendiente: {c:'#FFB547',l:'⏳ Pendiente'},
-  confirmada:{c:'#00E676',l:'✓ Confirmada'},
-  sentada:   {c:'#448AFF',l:'🪑 Sentada'},
-  completada:{c:'#B388FF',l:'✅ Completada'},
-  cancelada: {c:'#FF5252',l:'✗ Cancelada'},
-  no_show:   {c:'#50506A',l:'👻 No show'},
+  pendiente:       {c:'#FFB547',l:'⏳ Por confirmar'},
+  por_confirmar:   {c:'#FFB547',l:'⏳ Por confirmar'},
+  confirmada_wp:   {c:'#25D366',l:'💬 WhatsApp ✓'},
+  confirmada_tel:  {c:'#00BFFF',l:'📞 Teléfono ✓'},
+  no_contesta:     {c:'#FF6B35',l:'📵 No contesta'},
+  confirmada:      {c:'#00E676',l:'✓ Confirmada'},
+  sentada:         {c:'#448AFF',l:'🪑 Sentada'},
+  completada:      {c:'#B388FF',l:'✅ Completada'},
+  cancelada:       {c:'#FF5252',l:'✗ Cancelada'},
+  no_show:         {c:'#50506A',l:'👻 No-show'},
 };
 const OCASIONES = ['Cumpleaños','Aniversario','Negocio','Primera cita','Graduación','Despedida','Celebración','Sin ocasión especial'];
 
@@ -141,6 +145,32 @@ export default function ReserveModule() {
   // sentado, el sistema la marca automáticamente como 'no_show'.
   // Esto libera la mesa para walk-ins y mejora la métrica del Dashboard.
   const GRACIA_NO_SHOW_MIN = 30;
+  const CONSUMO_RESERVA_MIN = 120; // 2 horas por reserva → libera la mesa
+  // Auto-completar reservas SENTADAS hace > 2 horas (libera la mesa para próxima)
+  useEffect(() => {
+    const hoyIso = new Date().toISOString().split('T')[0];
+    if (fechaFiltro !== hoyIso) return;
+    const candidatos = reservas.filter((r:any) => {
+      if (r.estado !== 'sentada' || !r.sentado_at) return false;
+      const minSentada = (Date.now() - new Date(r.sentado_at).getTime()) / 60000;
+      return minSentada > CONSUMO_RESERVA_MIN;
+    });
+    if (candidatos.length === 0) return;
+    (async () => {
+      for (const r of candidatos) {
+        try {
+          await supabase.from('reservations').update({ estado:'completada' }).eq('id', r.id);
+          // Liberar la mesa en tables si estaba marcada
+          if (r.mesa_num) {
+            await supabase.from('tables').update({ estado:'libre', mesero_nombre:null, abierta_en:null, pax_actual:0, cliente_nombre:null })
+              .eq('name', String(r.mesa_num)).eq('restaurante_id', restauranteIdActivo);
+          }
+        } catch (e) { console.warn('auto completar 2h:', e); }
+      }
+      show(`✓ ${candidatos.length} mesa${candidatos.length===1?'':'s'} liberada${candidatos.length===1?'':'s'} (consumo >${CONSUMO_RESERVA_MIN/60}h)`);
+      fetchData();
+    })();
+  }, [now, fechaFiltro, reservas, restauranteIdActivo]);
   useEffect(() => {
     const hoyIso = new Date().toISOString().split('T')[0];
     if (fechaFiltro !== hoyIso) return; // solo para reservas de hoy
@@ -693,10 +723,12 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             cliente: tEnVivo?.cliente_nombre || (conflicto?.cliente_nombre || ''),
             vip: tEnVivo?.vip === true || p.vip === true,
             conflicto,
-            // Datos para mini-mapa visual
             x: p.x, y: p.y, w: p.w || 10, h: p.h || 10, shape: p.shape || 'round',
           };
-        }).filter((t:any) => !isNaN(t.num)).sort((a:any,b:any) => a.num - b.num);
+        }).filter((t:any) => !isNaN(t.num))
+          // Las barras NO entran en reservas — van en el POS
+          .filter((t:any) => !String(t.zona||'').toLowerCase().startsWith('barra'))
+          .sort((a:any,b:any) => a.num - b.num);
         const zonas = Array.from(new Set(tablesList.map((t:any) => t.zona)));
         const libres = tablesList.filter((t:any) => t.estado === 'libre' || !t.estado);
         const tieneCoordsXY = tablesList.some((t:any) => typeof t.x === 'number' && typeof t.y === 'number');
@@ -1099,7 +1131,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
       <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg2,padding:'0 24px',flexShrink:0}}>
         {([
           {id:'home',l:'✦ En vivo'},
-          {id:'lista',l:'📋 Lista completa'},
+          {id:'lista',l:`✓ Confirmaciones${reservasHoy.length>0?` · ${reservasHoy.length}`:''}`},
           {id:'historial',l:'🕐 Historial'},
           {id:'editor',l:'⚙️ Editor de planta'},
           {id:'dashboard',l:'📊 Dashboard'},
@@ -1200,6 +1232,11 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                 // Una reserva SENTADA no se arrastra — para reubicar primero hay
                 // que levantar a los comensales explícitamente desde el menú de la mesa.
                 const yaSentada = r.estado === 'sentada';
+                const cambiarEstadoRapido = async (nuevoEstado:string) => {
+                  await supabase.from('reservations').update({ estado: nuevoEstado }).eq('id', r.id);
+                  show(`✓ ${ESTADOS[nuevoEstado]?.l || nuevoEstado} · ${r.cliente_nombre}`);
+                  fetchData();
+                };
                 return (
                   <div key={r.id}
                     draggable={!yaSentada}
@@ -1208,7 +1245,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                       e.dataTransfer.setData('text/reserva', String(r.id));
                       e.dataTransfer.effectAllowed = 'move';
                     }}
-                    onClick={() => setAsignandoMesa(r)}
+                    onClick={(e)=>{ if ((e.target as HTMLElement).closest('[data-stop]')) return; setAsignandoMesa(r); }}
                     title={yaSentada
                       ? `🪑 ${r.cliente_nombre} ya está sentado en M${r.mesa_num}. Levantar primero para reubicar.`
                       : (r.mesa_num
@@ -1240,10 +1277,28 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                         <span style={{fontSize:12,fontWeight:700,color:S.t1}}>{r.cliente_nombre}</span>
                         {esOhYeah && <span style={{fontSize:8,background:`${S.gold}25`,color:S.gold,padding:'1px 6px',borderRadius:50,fontWeight:700}}>🦉</span>}
                         {r.gourmand_level && esOhYeah && <span style={{fontSize:8,color:nc,fontWeight:700}}>{r.gourmand_level}</span>}
+                        {/* Quick-buttons de estado · WP / Tel / No contesta · NO se propaga al onClick padre */}
+                        {!yaSentada && (
+                          <div data-stop style={{display:'flex',gap:3,marginLeft:'auto'}}>
+                            <button data-stop onClick={(e)=>{e.stopPropagation(); cambiarEstadoRapido('confirmada_wp');}} title="Confirmada por WhatsApp"
+                              style={{padding:'2px 5px',borderRadius:5,border:'1px solid #25D36655',background:r.estado==='confirmada_wp'?'#25D36633':'transparent',color:'#25D366',fontSize:9,fontWeight:800,cursor:'pointer'}}>💬</button>
+                            <button data-stop onClick={(e)=>{e.stopPropagation(); cambiarEstadoRapido('confirmada_tel');}} title="Confirmada por teléfono"
+                              style={{padding:'2px 5px',borderRadius:5,border:'1px solid #00BFFF55',background:r.estado==='confirmada_tel'?'#00BFFF33':'transparent',color:'#00BFFF',fontSize:9,fontWeight:800,cursor:'pointer'}}>📞</button>
+                            <button data-stop onClick={(e)=>{e.stopPropagation(); cambiarEstadoRapido('no_contesta');}} title="No contesta"
+                              style={{padding:'2px 5px',borderRadius:5,border:'1px solid #FF6B3555',background:r.estado==='no_contesta'?'#FF6B3533':'transparent',color:'#FF6B35',fontSize:9,fontWeight:800,cursor:'pointer'}}>📵</button>
+                          </div>
+                        )}
                       </div>
-                      <div style={{fontSize:10,color:S.t3,display:'flex',gap:8,flexWrap:'wrap'}}>
+                      <div style={{fontSize:10,color:S.t3,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
                         {r.ocasion && r.ocasion !== 'Sin ocasión especial' && <span style={{color:S.purple}}>🎉 {r.ocasion}</span>}
                         {r.cliente_telefono && <span>📱 {r.cliente_telefono.slice(-10)}</span>}
+                        {/* Botón ver perfil — abre el panel de cliente en CRM */}
+                        {r.cliente_telefono && (
+                          <button data-stop onClick={(e)=>{e.stopPropagation(); window.open(`/?modulo=clientes&tel=${encodeURIComponent(r.cliente_telefono)}`, '_blank');}}
+                            style={{marginLeft:'auto',padding:'2px 7px',borderRadius:5,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,fontSize:9,fontWeight:700,cursor:'pointer'}}>
+                            👁 Ver perfil
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -1632,20 +1687,70 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
               </div>
               <div>
                 <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>PERSONAS</div>
-                <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                  {[1,2,3,4,5,6,7,8,10,12].map(n=>(
-                    <button key={n} onClick={()=>setF('pax',n)} style={{padding:'8px 10px',borderRadius:8,border:`1px solid ${form.pax===n?S.blue:S.border2}`,background:form.pax===n?`${S.blue}15`:'transparent',color:form.pax===n?S.blue:S.t3,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                <div style={{display:'flex',gap:6,flexWrap:'wrap',alignItems:'center'}}>
+                  {[1,2,3,4,5,6,7,8,9,10].map(n=>(
+                    <button key={n} onClick={()=>setF('pax',n)} style={{padding:'8px 11px',borderRadius:8,border:`1px solid ${form.pax===n?S.blue:S.border2}`,background:form.pax===n?`${S.blue}15`:'transparent',color:form.pax===n?S.blue:S.t3,fontSize:12,fontWeight:700,cursor:'pointer',minWidth:34}}>
                       {n}
                     </button>
                   ))}
+                  {/* Input manual >10 (Colombia grupos grandes piden por evento) */}
+                  <input type="number" min={11} max={MAX_PAX_RESERVA} placeholder="+11"
+                    value={form.pax > 10 ? form.pax : ''}
+                    onChange={e=>{ const v=Number(e.target.value)||0; if (v>=11) setF('pax', v); }}
+                    style={{width:62,padding:'8px 10px',borderRadius:8,border:`1px solid ${form.pax>10?S.purple:S.border2}`,background:form.pax>10?`${S.purple}15`:'transparent',color:form.pax>10?S.purple:S.t3,fontSize:12,fontWeight:700,outline:'none',textAlign:'center'}}/>
+                  {form.pax > 10 && <span style={{fontSize:10,color:S.purple,fontWeight:700}}>grupo grande</span>}
                 </div>
               </div>
               <div>
-                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>MESA</div>
-                <select style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.mesa_num} onChange={e=>setF('mesa_num',Number(e.target.value))}>
-                  <option value={0}>Sin asignar</option>
-                  {[...Array(16)].map((_,n)=><option key={n+1} value={n+1}>Mesa {n+1}</option>)}
-                </select>
+                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>MESA · ocupadas en vivo y por el día</div>
+                {(() => {
+                  // Calcular ocupación de cada mesa para la fecha/hora del form
+                  const fechaForm = form.fecha;
+                  const horaForm  = (form.hora||'00:00').slice(0,5);
+                  const minForm   = parseInt(horaForm.split(':')[0],10)*60 + parseInt(horaForm.split(':')[1],10);
+                  const VENTANA = 120;
+                  // Mesa libre (excluye barras)
+                  const mesasDisp = mesas.filter((m:any) => !String(m.zona||'').toLowerCase().startsWith('barra')).filter((m:any)=>m.activa!==false);
+                  return (
+                    <select style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%',colorScheme:'dark'}} value={form.mesa_num} onChange={e=>setF('mesa_num',Number(e.target.value))}>
+                      <option value={0}>Sin asignar (la IA sugerirá)</option>
+                      {mesasDisp.sort((a:any,b:any)=>parseInt(String(a.name).replace(/\D/g,''),10) - parseInt(String(b.name).replace(/\D/g,''),10)).map((m:any)=>{
+                        const num = parseInt(String(m.name).replace(/\D/g,''),10);
+                        if (isNaN(num)) return null;
+                        const ocupadaEnVivo = ['ocupada','asignada','sentada'].includes(m.estado);
+                        const reservasMesa = (reservas||[]).filter((res:any) => res.fecha === fechaForm && mismaMesa(res.mesa_num, m.name) && res.id !== selected?.id);
+                        const conflicto = reservasMesa.find((res:any) => {
+                          const [hh,mm] = (res.hora||'00:00').split(':').map(Number);
+                          return Math.abs((hh*60+mm) - minForm) < VENTANA;
+                        });
+                        const otrasDelDia = reservasMesa.length;
+                        const etiqueta = ocupadaEnVivo
+                          ? '🔴 EN VIVO'
+                          : conflicto
+                            ? `⚠ Reservada ${conflicto.hora} (${conflicto.cliente_nombre?.split(' ')[0]||'cliente'})`
+                            : otrasDelDia > 0
+                              ? `🟡 ${otrasDelDia} reserva${otrasDelDia===1?'':'s'} hoy`
+                              : '🟢 LIBRE';
+                        return (
+                          <option key={num} value={num} disabled={ocupadaEnVivo || !!conflicto}>
+                            M{num} · {m.capacidad||4}p · {(m.zona||'').slice(0,12)} · {etiqueta}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  );
+                })()}
+                {form.mesa_num > 0 && (() => {
+                  const m = mesas.find((mm:any)=>mismaMesa(form.mesa_num, mm.name));
+                  if (!m) return null;
+                  const reservasMesa = (reservas||[]).filter((res:any) => res.fecha === form.fecha && mismaMesa(res.mesa_num, m.name) && res.id !== selected?.id);
+                  if (reservasMesa.length === 0) return null;
+                  return (
+                    <div style={{marginTop:6,padding:'6px 10px',background:`${S.gold}10`,border:`1px solid ${S.gold}30`,borderRadius:8,fontSize:10,color:S.gold}}>
+                      ⏰ Esta mesa tiene {reservasMesa.length} reserva{reservasMesa.length===1?'':'s'} el {form.fecha}: {reservasMesa.map((rr:any)=>`${rr.hora?.slice(0,5)} ${rr.cliente_nombre?.split(' ')[0]}`).join(' · ')}
+                    </div>
+                  );
+                })()}
               </div>
               <div>
                 <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>OCASIÓN</div>
