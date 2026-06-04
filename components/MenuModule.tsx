@@ -11,6 +11,7 @@ interface FoodCostRow {
   id: string; nombre: string; categoria: string | null; estacion: string;
   emoji: string; precio_venta: number; activo: boolean; disponible: boolean;
   costo_total: number; food_cost_pct: number;
+  tag?: string | null;
 }
 interface RecetaItem {
   id: string; plato_id: string; supply_id: string; cantidad: number;
@@ -120,6 +121,7 @@ export default function MenuModule() {
     await supabase.from('menu_platos').update({
       nombre: editP.nombre, categoria: editP.categoria, estacion: editP.estacion,
       precio_venta: Number(editP.precio_venta) || 0,
+      tag: (editP.tag || '').toString().trim() || null,
     }).eq('id', editP.id);
     showToast('✓ Plato actualizado');
     setSel(null); fetchPlatos();
@@ -568,7 +570,20 @@ export default function MenuModule() {
               </div>
             </div>
             <label style={{ fontSize: 10, color: C.t3 }}>Precio de venta</label>
-            <input type="number" value={editP.precio_venta || ''} onChange={e => setEditP({ ...editP, precio_venta: parseFloat(e.target.value) || 0 })} style={{ ...inp, marginBottom: 14 }} />
+            <input type="number" value={editP.precio_venta || ''} onChange={e => setEditP({ ...editP, precio_venta: parseFloat(e.target.value) || 0 })} style={{ ...inp, marginBottom: 10 }} />
+
+            <label style={{ fontSize: 10, color: C.t3 }}>🏷️ Tag (sale debajo del nombre en POS)</label>
+            <input value={editP.tag || ''} maxLength={28} onChange={e => setEditP({ ...editP, tag: e.target.value })}
+              placeholder="Ej: Recomendado · Nuevo · Promo 2x1 · Sin gluten"
+              style={{ ...inp, marginBottom: 14 }} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: -8, marginBottom: 14 }}>
+              {['🔥 Nuevo','⭐ Recomendado','💎 Premium','🌱 Veggie','🌶 Picante','🆕 De temporada','🎁 Promo'].map(t => (
+                <button key={t} type="button" onClick={() => setEditP({ ...editP, tag: t })}
+                  style={{ padding: '3px 9px', borderRadius: 50, border: `1px solid ${editP?.tag === t ? C.purple : C.border}`, background: editP?.tag === t ? `${C.purple}15` : 'transparent', color: editP?.tag === t ? C.purple : C.t3, fontSize: 10, fontWeight: 700, cursor: 'pointer' }}>
+                  {t}
+                </button>
+              ))}
+            </div>
 
             <div style={{ padding: 12, borderRadius: 10, background: C.bg, border: `1px solid ${fcColor(sel.food_cost_pct)}`, marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: C.t2 }}><span>Costo receta</span><span>{fmt(sel.costo_total)}</span></div>
