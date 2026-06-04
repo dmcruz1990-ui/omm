@@ -64,6 +64,11 @@ export default function FlowModule() {
   const [careMetrics,setCareMetrics] = useState<any>(null);
   const [careByMesa, setCareByMesa] = useState<Record<number,any>>({});
   const [comentariosPlato, setComentariosPlato] = useState<any[]>([]);
+  // Ficha técnica · panel lateral con receta + foto del plato seleccionado
+  const [fichaItem, setFichaItem] = useState<FlowItem|null>(null);
+  const [fichaPlato, setFichaPlato] = useState<any>(null);
+  const [fichaIngredientes, setFichaIngredientes] = useState<any[]>([]);
+  const [fichaLoading, setFichaLoading] = useState(false);
   const [tick,       setTick]       = useState(0);
 
   useEffect(() => {
@@ -210,6 +215,34 @@ export default function FlowModule() {
 
   useEffect(() => { fetchLive(); fetchDia(); fetchCareMetrics(); fetchCareByMesa(); fetchComentariosPlato(); }, [fetchLive, fetchDia, fetchCareMetrics, fetchCareByMesa, fetchComentariosPlato]);
   useEffect(() => { const t = setInterval(fetchLive, 15000); return () => clearInterval(t); }, [fetchLive]);
+
+  // ── Cargar ficha técnica (plato + receta + supplies) al hacer click en un item
+  useEffect(() => {
+    if (!fichaItem) { setFichaPlato(null); setFichaIngredientes([]); return; }
+    let alive = true;
+    (async () => {
+      setFichaLoading(true);
+      const nombre = (fichaItem.nombre_plato || fichaItem.notes || '').split('(')[0].trim();
+      // Buscar el plato por nombre (insensitive) — el plato puede tener sufijos de modificadores
+      const { data: platos } = await supabase.from('menu_platos')
+        .select('id,nombre,descripcion,categoria,estacion,emoji,precio_venta,tag,foto_url')
+        .eq('restaurante_id', restauranteId).ilike('nombre', `%${nombre}%`).limit(1);
+      const plato = platos?.[0];
+      if (!alive) return;
+      setFichaPlato(plato || null);
+      if (plato) {
+        const { data: rs } = await supabase.from('menu_recetas')
+          .select('id,cantidad,unidad,notas,supply(nombre,unidad,precio_unidad,categoria)')
+          .eq('plato_id', plato.id);
+        if (!alive) return;
+        setFichaIngredientes(rs || []);
+      } else {
+        setFichaIngredientes([]);
+      }
+      setFichaLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [fichaItem, restauranteId]);
 
   useEffect(() => {
     const ch = supabase.channel('flow-kds')
@@ -487,7 +520,9 @@ export default function FlowModule() {
                         const esAmarillo  = !esRetrasado&&((isPending&&tp>est.objetivo*0.8)||(isPreparing&&pp>est.objetivo*0.7)||mesasConRetraso.has(item.table_id));
                         const sColor = esRetrasado?S.red:esAmarillo?'#FFB547':S.green;
                         return (
-                          <div key={item.id} style={{background:esRetrasado?'rgba(255,82,82,0.07)':esAmarillo?'rgba(255,181,71,0.05)':'rgba(255,255,255,0.03)',border:`1px solid ${esRetrasado?'rgba(255,82,82,0.35)':esAmarillo?'rgba(255,181,71,0.25)':'rgba(255,255,255,0.07)'}`,borderLeft:`4px solid ${sColor}`,borderRadius:10,padding:'10px 12px'}}>
+                          <div key={item.id} onClick={(e)=>{ if((e.target as HTMLElement).closest('button')) return; setFichaItem(item); }}
+                            style={{background:esRetrasado?'rgba(255,82,82,0.07)':esAmarillo?'rgba(255,181,71,0.05)':'rgba(255,255,255,0.03)',border:`1px solid ${esRetrasado?'rgba(255,82,82,0.35)':esAmarillo?'rgba(255,181,71,0.25)':'rgba(255,255,255,0.07)'}`,borderLeft:`4px solid ${sColor}`,borderRadius:10,padding:'10px 12px',cursor:'pointer'}}
+                            title="Click para ver ficha técnica (foto + receta + ingredientes)">
                             <div style={{display:'flex',alignItems:'flex-start',gap:10,marginBottom:isPending||isPreparing?8:0}}>
                               <span style={{fontSize:22,lineHeight:1}}>{est.emoji}</span>
                               <div style={{flex:1,minWidth:0}}>
@@ -839,6 +874,127 @@ export default function FlowModule() {
           </div>
         )}
       </div>
+
+      {/* ══ FICHA TÉCNICA · panel lateral con foto + receta + ingredientes ══ */}
+      {fichaItem && (
+        <div style={{position:'fixed',inset:0,zIndex:9000,display:'flex',justifyContent:'flex-end'}}>
+          <div onClick={()=>setFichaItem(null)} style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.65)'}}/>
+          <div style={{position:'relative',width:420,maxWidth:'95vw',height:'100%',background:S.bg2,borderLeft:`1px solid ${S.border}`,overflowY:'auto',color:S.t1}}>
+            {/* Header */}
+            <div style={{padding:'14px 18px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',justifyContent:'space-between',position:'sticky',top:0,background:S.bg2,zIndex:2}}>
+              <div>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,letterSpacing:'-0.01em'}}>📖 Ficha técnica</div>
+                <div style={{fontSize:10,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase'}}>Receta NEXUM · cocina</div>
+              </div>
+              <button onClick={()=>setFichaItem(null)}
+                style={{width:30,height:30,borderRadius:9,border:`1px solid ${S.border}`,background:'transparent',color:S.t3,cursor:'pointer',fontSize:14}}>✕</button>
+            </div>
+
+            {/* Foto del plato */}
+            {fichaPlato?.foto_url ? (
+              <div style={{width:'100%',aspectRatio:'4/3',background:'#000',overflow:'hidden'}}>
+                <img src={fichaPlato.foto_url} alt={fichaPlato.nombre}
+                  style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}}/>
+              </div>
+            ) : (
+              <div style={{width:'100%',aspectRatio:'4/3',background:S.bg3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:90}}>
+                {fichaPlato?.emoji || '🍽️'}
+              </div>
+            )}
+
+            {/* Cuerpo */}
+            <div style={{padding:'16px 18px',display:'flex',flexDirection:'column',gap:14}}>
+              <div>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{fontSize:24}}>{fichaPlato?.emoji || '🍽️'}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,lineHeight:1.1}}>
+                      {fichaPlato?.nombre || getNombre(fichaItem)}
+                    </div>
+                    <div style={{fontSize:10,color:S.t3,letterSpacing:'.08em',textTransform:'uppercase',marginTop:3}}>
+                      {fichaPlato?.estacion?.replace('_',' ') || getStation(fichaItem).replace('_',' ')}
+                      {fichaPlato?.categoria && ` · ${fichaPlato.categoria}`}
+                    </div>
+                  </div>
+                </div>
+                {fichaPlato?.tag && (
+                  <div style={{display:'inline-block',marginTop:8,padding:'3px 10px',borderRadius:50,background:'rgba(155,114,255,0.15)',color:'#b388ff',fontSize:10,fontWeight:800,border:'1px solid rgba(155,114,255,0.4)'}}>
+                    {fichaPlato.tag}
+                  </div>
+                )}
+              </div>
+
+              {/* Pedido en vivo — contexto del item */}
+              <div style={{padding:'10px 12px',background:S.bg3,borderRadius:10,border:`1px solid ${S.border}`,display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                <div>
+                  <div style={{fontSize:10,color:S.t3,textTransform:'uppercase',letterSpacing:'.1em'}}>Pedido en vivo</div>
+                  <div style={{fontSize:13,fontWeight:800,marginTop:2}}>Mesa {fichaItem.table_id||'—'} · {fichaItem.mesero||'—'}</div>
+                </div>
+                <div style={{fontSize:11,color:S.t2}}>{fichaItem.status}</div>
+              </div>
+
+              {/* Observaciones + tags del mesero */}
+              {(fichaItem.observaciones || (fichaItem.tags && fichaItem.tags.length > 0)) && (
+                <div style={{padding:'10px 12px',background:'rgba(155,114,255,0.06)',borderRadius:10,border:'1px solid rgba(155,114,255,0.3)'}}>
+                  <div style={{fontSize:10,color:'#b388ff',fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:6}}>⚠ Indicaciones del mesero</div>
+                  {Array.isArray(fichaItem.tags) && fichaItem.tags.length > 0 && (
+                    <div style={{display:'flex',gap:4,flexWrap:'wrap',marginBottom:fichaItem.observaciones?6:0}}>
+                      {fichaItem.tags.map((t:string,i:number)=>(
+                        <span key={i} style={{fontSize:10,padding:'2px 8px',borderRadius:50,background:'rgba(155,114,255,0.25)',color:'#c1aeff',fontWeight:800,border:'1px solid rgba(155,114,255,0.5)'}}>
+                          {t.toUpperCase()}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {fichaItem.observaciones && (
+                    <div style={{fontSize:12,color:'#e0d4ff',fontStyle:'italic'}}>"{fichaItem.observaciones}"</div>
+                  )}
+                </div>
+              )}
+
+              {/* Descripción del plato */}
+              {fichaPlato?.descripcion && (
+                <div>
+                  <div style={{fontSize:10,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:5}}>📝 Descripción</div>
+                  <div style={{fontSize:12,color:S.t2,lineHeight:1.5,padding:'10px 12px',background:S.bg3,borderRadius:10,border:`1px solid ${S.border}`}}>
+                    {fichaPlato.descripcion}
+                  </div>
+                </div>
+              )}
+
+              {/* Ingredientes (receta) */}
+              <div>
+                <div style={{fontSize:10,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+                  <span>🧑‍🍳 Receta · Ingredientes</span>
+                  {fichaIngredientes.length > 0 && <span style={{color:S.green}}>· {fichaIngredientes.length}</span>}
+                </div>
+                {fichaLoading ? (
+                  <div style={{fontSize:11,color:S.t3,padding:14,textAlign:'center'}}>Cargando receta…</div>
+                ) : !fichaPlato ? (
+                  <div style={{fontSize:11,color:S.t3,padding:14,textAlign:'center',background:S.bg3,borderRadius:10,border:`1px dashed ${S.border}`}}>
+                    Sin plato registrado en Mi Menú con este nombre.
+                  </div>
+                ) : fichaIngredientes.length === 0 ? (
+                  <div style={{fontSize:11,color:S.t3,padding:14,textAlign:'center',background:S.bg3,borderRadius:10,border:`1px dashed ${S.border}`}}>
+                    Aún no se cargó la receta. Ir a <b style={{color:'#FFB547'}}>Mi Menú → 📖 Recetas</b> para agregar ingredientes.
+                  </div>
+                ) : (
+                  <div style={{display:'flex',flexDirection:'column',gap:5}}>
+                    {fichaIngredientes.map((r:any,i:number)=>(
+                      <div key={r.id||i} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',background:S.bg3,borderRadius:8,fontSize:12}}>
+                        <span style={{flex:1,color:S.t1}}>{r.supply?.nombre || 'Insumo'}</span>
+                        <span style={{color:S.t2,fontFamily:"'IBM Plex Mono', monospace",fontSize:11}}>
+                          {r.cantidad} {r.unidad || r.supply?.unidad}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
