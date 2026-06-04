@@ -80,6 +80,7 @@ const TIPOS_NOVEDAD = [
   { id:'cambio_turno',    label:'Cambio de turno',  impacto:'ninguno' },
   { id:'hora_extra',      label:'Horas extra',      impacto:'pago' },
   { id:'bonificacion',    label:'Bonificación',     impacto:'pago' },
+  { id:'memorando',       label:'📋 Memorando',     impacto:'ninguno' },
 ];
 const novedadMeta = (id?:string) => TIPOS_NOVEDAD.find(t=>t.id===id) || { id:'', label:id||'', impacto:'ninguno' };
 
