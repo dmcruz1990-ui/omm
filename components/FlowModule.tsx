@@ -301,12 +301,23 @@ export default function FlowModule() {
 
   // ── CARGA POR ESTACIÓN ────────────────────────────────────────────
   // Cuenta items activos (pending/preparing/almost) por estación.
-  // Si una estación tiene >10 pedidos → "cargada" (visualmente naranja).
-  // Postres es especialmente sensible: cuando está cargada va en ROJO
-  // porque siempre es el cuello de botella al final del servicio.
-  // No se bloquea — sólo se avisa para que cocina priorice y mesa
-  // sepa que puede haber demora.
-  const UMBRAL_ESTACION_CARGADA = 10;
+  // Cada estación tiene su propio umbral porque su capacidad es distinta:
+  //   · postres y cava son cuellos de botella → bastan 3 colgados
+  //   · bar mediano → 5
+  //   · cocinas grandes → 10
+  // Cuando una estación supera su umbral va NARANJA (cargada · puede demorar).
+  // POSTRES es el cuello más crítico: cuando entra en carga TODOS sus
+  // pedidos saltan a ROJO porque las mesas que están comiendo no esperan.
+  // No se bloquea — sólo avisa para que cocina priorice.
+  const UMBRAL_POR_ESTACION: Record<string, number> = {
+    postres: 3,
+    cava: 3,
+    bar: 5,
+    cocina_caliente: 10,
+    cocina_fria: 10,
+    robata: 8,
+  };
+  const UMBRAL_DEFAULT = 10;
   const cargaPorEstacion = items.reduce((acc:Record<string,number>, i) => {
     if (i.status === 'served' || i.status === 'cancelled') return acc;
     const e = getStation(i);
@@ -314,8 +325,12 @@ export default function FlowModule() {
     return acc;
   }, {});
   const estacionesCargadas = new Set(
-    Object.entries(cargaPorEstacion).filter(([,n]) => n > UMBRAL_ESTACION_CARGADA).map(([e]) => e)
+    Object.entries(cargaPorEstacion)
+      .filter(([e, n]) => n >= (UMBRAL_POR_ESTACION[e] ?? UMBRAL_DEFAULT))
+      .map(([e]) => e)
   );
+  // Postres en ROJO siempre que esté cargada (umbral 3+) — cuello de botella
+  // crítico al final del servicio
   const estacionEnRojo = (e:string) => e === 'postres' && estacionesCargadas.has(e);
 
   const estaciones = ['all',...Array.from(new Set(items.map(i=>getStation(i))))];
