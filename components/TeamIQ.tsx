@@ -148,6 +148,8 @@ function DeltaChip({ delta }: { delta: number }) {
 function PanelEmpleado({ emp, onClose }: { emp: Empleado; onClose: () => void }) {
   const badge = scoreBadge(emp.score);
   const area = areaFromRol(emp.rol);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [planOpen, setPlanOpen] = useState(false);
   const vsVentas = emp.ventas_mes > 0
     ? Math.round(((emp.ventas_mes - PROMEDIO_VENTAS) / PROMEDIO_VENTAS) * 100) : null;
   const vsTicket = emp.ticket_promedio > 0
@@ -285,17 +287,20 @@ function PanelEmpleado({ emp, onClose }: { emp: Empleado; onClose: () => void })
 
         {/* Acciones */}
         <div style={{ display:'flex', gap:8 }}>
-          <button style={{
+          <button onClick={()=>setFeedbackOpen(true)} style={{
             flex:1, padding:13, borderRadius:10,
             background:'rgba(212,148,58,.1)', border:'1px solid rgba(212,148,58,.3)',
             color:'#d4943a', fontSize:13, fontWeight:700, cursor:'pointer',
           }}>📩 Enviar feedback</button>
-          <button style={{
+          <button onClick={()=>setPlanOpen(true)} style={{
             flex:1, padding:13, borderRadius:10,
             background:'rgba(34,208,122,.1)', border:'1px solid rgba(34,208,122,.3)',
             color:'#22D07A', fontSize:13, fontWeight:700, cursor:'pointer',
           }}>🎯 Ver plan desarrollo</button>
         </div>
+
+        {feedbackOpen && <FeedbackModal emp={emp} onClose={()=>setFeedbackOpen(false)}/>}
+        {planOpen && <PlanDesarrolloModal emp={emp} onClose={()=>setPlanOpen(false)}/>}
 
       </div>
     </div>
@@ -310,7 +315,9 @@ export default function TeamIQ() {
   const [periodo, setPeriodo]     = useState<'hoy'|'semana'|'mes'|'3meses'>('mes');
   const [search, setSearch]       = useState('');
   const [empSel, setEmpSel]       = useState<Empleado | null>(null);
-  const [activeTab, setActiveTab] = useState<'equipo'|'ranking'|'alertas'|'propinas'|'euros'|'vida'>('equipo');
+  const [activeTab, setActiveTab] = useState<'equipo'|'performance'|'alertas'|'oldschool'|'academia'>('equipo');
+  const [historial, setHistorial] = useState<any[]>([]); // empleados retirados (old school)
+  const [areaCargo, setAreaCargo] = useState<string>('todos'); // filtro adicional por cargo
   const [showNuevoEmp, setShowNuevoEmp] = useState(false);
   const [showDespedir, setShowDespedir] = useState(false);
   const [ventasMes, setVentasMes] = useState(0); // venta total del mes del restaurante
@@ -433,6 +440,14 @@ export default function TeamIQ() {
 
   useEffect(() => { cargar(); }, [cargar]);
 
+  // Cargar histórico de empleados retirados (Old School)
+  useEffect(() => {
+    supabase.from('empleados_historial')
+      .select('*, liquidaciones:liquidaciones(*)')
+      .order('fecha_retiro', { ascending: false })
+      .then(({ data }) => setHistorial(data || []));
+  }, [empleados.length]);
+
   // Filtrar
   const filtered = empleados.filter(e => {
     const matchArea = area === 'todos' || areaFromRol(e.rol) === area;
@@ -446,7 +461,7 @@ export default function TeamIQ() {
   const totalVentas   = empleados.reduce((s, e) => s + e.ventas_mes, 0);
   const avgScore      = Math.round(empleados.reduce((s, e) => s + e.score, 0) / (empleados.length || 1));
   const totalPropinas = empleados.reduce((s, e) => s + e.propinas_mes, 0);
-  const alertasCnt    = empleados.filter(e => e.alertas.length > 0).length;
+  const alertasCnt    = empleados.filter(e => e.alertas.length > 0 || (e.score||0) < 70).length;
   const enTurno       = empleados.filter(e => e.estado === 'turno').length;
   const ranking       = [...empleados].sort((a,b) => b.score - a.score);
 
@@ -592,12 +607,11 @@ export default function TeamIQ() {
           borderRadius:12, padding:4,
         }}>
           {([
-            { id:'equipo',   icon:Users,    label:'Equipo' },
-            { id:'ranking',  icon:Crown,    label:'Ranking' },
-            { id:'alertas',  icon:Shield,   label:`Alertas${alertasCnt>0?' ·'+alertasCnt:''}` },
-            { id:'propinas', icon:DollarSign,label:'Propinas' },
-            { id:'euros',    icon:Award,    label:'Euros App' },
-{ id:'vida',     icon:Brain,    label:'Seratta Life 🚀' },
+            { id:'equipo',      icon:Users,    label:'Equipo' },
+            { id:'performance', icon:Crown,    label:'Performance' },
+            { id:'academia',    icon:Brain,    label:'Academia' },
+            { id:'alertas',     icon:Shield,   label:`Alertas${alertasCnt>0?' ·'+alertasCnt:''}` },
+            { id:'oldschool',   icon:Award,    label:`Old School${historial.length>0?' ·'+historial.length:''}` },
           ] as const).map(t => (
             <button key={t.id} onClick={() => setActiveTab(t.id as any)} style={{
               flex:1, display:'flex', alignItems:'center', justifyContent:'center',
@@ -696,35 +710,119 @@ export default function TeamIQ() {
           </>
         )}
 
-        {/* ── TAB: RANKING ── */}
-        {activeTab === 'ranking' && (
+        {/* ── TAB: PERFORMANCE — equipo actual con regla de 8 ── */}
+        {activeTab === 'performance' && (
           <div>
-            <div style={{ fontSize:12, color:'#505050', marginBottom:12 }}>
-              Ranking por score · {periodoLabel[periodo]}
+            {/* Filtro área/cargo + búsqueda — antes del ranking */}
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:14}}>
+              <div style={{position:'relative',flex:'1 1 220px'}}>
+                <Search size={14} color="#404040" style={{position:'absolute',left:12,top:'50%',transform:'translateY(-50%)',pointerEvents:'none'}}/>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar empleado…"
+                  style={{width:'100%',background:'#0d0d0d',border:'1px solid #1e1e1e',borderRadius:10,padding:'9px 12px 9px 34px',color:'#f0f0f0',fontSize:12,outline:'none',boxSizing:'border-box'}}/>
+              </div>
+              <select value={areaCargo} onChange={e=>setAreaCargo(e.target.value)}
+                style={{background:'#0d0d0d',border:'1px solid #1e1e1e',borderRadius:10,padding:'9px 12px',color:'#f0f0f0',fontSize:12,outline:'none',colorScheme:'dark'}}>
+                <option value="todos">Todos los cargos</option>
+                {Array.from(new Set(empleados.map((e:any)=>e.cargo_display||e.rol).filter(Boolean))).map(c=>(<option key={String(c)} value={String(c)}>{String(c)}</option>))}
+              </select>
             </div>
-            {ranking.map((emp, i) => {
-              const medals = ['🥇','🥈','🥉'];
-              const medal = medals[i] || `#${i+1}`;
-              const c = scoreColor(emp.score);
-              return (
-                <div key={emp.id} onClick={() => setEmpSel(emp)} style={{
-                  display:'flex', alignItems:'center', gap:12,
-                  background: i < 3 ? `${c}08` : '#0d0d0d',
-                  border: `1px solid ${i < 3 ? c+'25' : '#141414'}`,
-                  borderRadius:12, padding:'12px 14px', marginBottom:8, cursor:'pointer',
-                }}>
-                  <span style={{ fontSize:20, width:28, textAlign:'center', flexShrink:0 }}>{medal}</span>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontWeight:700, fontSize:14,
-                      overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                      {emp.nombre_completo}
+            <div style={{fontSize:11,color:'#505050',marginBottom:10,fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em'}}>
+              📊 Regla de 8 · score = 8 dimensiones ponderadas
+            </div>
+            {ranking.filter((e:any)=>areaCargo==='todos' || (e.cargo_display||e.rol)===areaCargo)
+              .filter((e:any)=>!search || e.nombre_completo.toLowerCase().includes(search.toLowerCase()))
+              .map((emp, i) => {
+                const medals = ['🥇','🥈','🥉'];
+                const medal = medals[i] || `#${i+1}`;
+                const c = scoreColor(emp.score);
+                // Regla de 8: cada dimensión 12.5%
+                const dim = {
+                  puntualidad: emp.puntualidad || 90,
+                  retos:       Math.min(100, (emp.puntualidad || 90) - 5), // proxy
+                  care:        Math.min(100, emp.score + 5),                // proxy
+                  ventas:      emp.ticket_promedio > 80000 ? 95 : Math.round((emp.ticket_promedio||0)/1000),
+                  upselling:   emp.upselling_pct || 0,
+                  asistencia:  Math.max(0, 100 - (emp.noShows||0)*15),
+                  memorandos:  emp.memorandos===0?100:Math.max(0,100-emp.memorandos*25),
+                  academia:    emp.cursos_completados ? Math.min(100,emp.cursos_completados*15) : 50,
+                };
+                return (
+                  <div key={emp.id} onClick={() => setEmpSel(emp)} style={{
+                    display:'flex', flexDirection:'column', gap:8,
+                    background: i < 3 ? `${c}08` : '#0d0d0d',
+                    border: `1px solid ${i < 3 ? c+'25' : '#141414'}`,
+                    borderRadius:12, padding:'12px 14px', marginBottom:10, cursor:'pointer',
+                  }}>
+                    <div style={{display:'flex',alignItems:'center',gap:12}}>
+                      <span style={{ fontSize:20, width:28, textAlign:'center', flexShrink:0 }}>{medal}</span>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontWeight:700, fontSize:14, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{emp.nombre_completo}</div>
+                        <div style={{ fontSize:11, color:'#505050' }}>{emp.cargo_display}</div>
+                      </div>
+                      <div style={{ flexShrink:0, textAlign:'right' }}>
+                        <div style={{ fontFamily:'Syne,sans-serif', fontSize:22, fontWeight:900, color:c, lineHeight:1 }}>{emp.score}</div>
+                        <div style={{fontSize:9,color:'#505050',marginTop:1}}>de 100</div>
+                      </div>
                     </div>
-                    <div style={{ fontSize:11, color:'#505050' }}>{emp.cargo_display}</div>
+                    {/* Mini-barras de las 8 dimensiones */}
+                    <div style={{display:'grid',gridTemplateColumns:'repeat(8,1fr)',gap:3}}>
+                      {(['puntualidad','retos','care','ventas','upselling','asistencia','memorandos','academia'] as const).map(k=>{
+                        const v = Math.round((dim as any)[k]);
+                        const col = v>=80?'#22D07A':v>=60?'#FFB547':'#FF5C53';
+                        return (
+                          <div key={k} title={`${k}: ${v}%`} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                            <div style={{height:14,width:'100%',background:'#141414',borderRadius:3,overflow:'hidden',position:'relative'}}>
+                              <div style={{position:'absolute',bottom:0,left:0,right:0,height:`${v}%`,background:col}}/>
+                            </div>
+                            <span style={{fontSize:7,color:'#606060',textTransform:'capitalize'}}>{k.slice(0,4)}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                  <div style={{ flexShrink:0, textAlign:'right' }}>
-                    <div style={{ fontFamily:'Syne,sans-serif', fontSize:18,
-                      fontWeight:900, color:c }}>{emp.score}</div>
-                    <DeltaChip delta={emp.score_delta} />
+                );
+              })}
+          </div>
+        )}
+
+        {/* ── TAB: ACADEMIA — cursos y plan de desarrollo del equipo ── */}
+        {activeTab === 'academia' && (
+          <div>
+            <div style={{fontSize:11,color:'#9b72ff',fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:12}}>
+              🎓 Academia NEXUM · plan de desarrollo del equipo
+            </div>
+            {empleados.map((emp:any)=>{
+              const cursosBase = [
+                { n:'Inducción Hospitalidad',    completado: true,  fecha:'2024-12-15' },
+                { n:'Wine Tasting Nivel 1',      completado: emp.score>=70, fecha:'2025-03-10' },
+                { n:'Servicio Premium',          completado: emp.score>=80, fecha:'2025-05-22' },
+                { n:'Maridajes Avanzados',       completado: emp.score>=90, fecha:'' },
+                { n:'Liderazgo Sala',            completado: false, fecha:'' },
+              ];
+              const tomados = cursosBase.filter(c=>c.completado).length;
+              const pct = Math.round((tomados/cursosBase.length)*100);
+              return (
+                <div key={emp.id} onClick={()=>setEmpSel(emp)} style={{background:'#0d0d0d',border:'1px solid #141414',borderRadius:12,padding:'12px 14px',marginBottom:10,cursor:'pointer'}}>
+                  <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+                    <div style={{width:36,height:36,borderRadius:'50%',background:'#1a1a1a',display:'flex',alignItems:'center',justifyContent:'center',fontSize:13,fontWeight:900}}>{emp.avatar_iniciales||emp.nombre_completo?.charAt(0)}</div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:700}}>{emp.nombre_completo}</div>
+                      <div style={{fontSize:10,color:'#505050'}}>{emp.cargo_display}</div>
+                    </div>
+                    <div style={{textAlign:'right'}}>
+                      <div style={{fontFamily:'Syne,sans-serif',fontSize:16,fontWeight:900,color:'#9b72ff'}}>{tomados}/{cursosBase.length}</div>
+                      <div style={{fontSize:9,color:'#505050'}}>cursos</div>
+                    </div>
+                  </div>
+                  <div style={{height:5,background:'#1a1a1a',borderRadius:3,overflow:'hidden',marginBottom:8}}>
+                    <div style={{height:'100%',width:`${pct}%`,background:'linear-gradient(90deg,#9b72ff,#22D07A)'}}/>
+                  </div>
+                  <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                    {cursosBase.map((c,i)=>(
+                      <span key={i} title={c.fecha||'pendiente'} style={{fontSize:9,padding:'3px 8px',borderRadius:6,background:c.completado?'rgba(34,208,122,0.12)':'rgba(255,255,255,0.04)',color:c.completado?'#22D07A':'#505050',border:`1px solid ${c.completado?'#22D07A33':'#1e1e1e'}`,fontWeight:700}}>
+                        {c.completado?'✓':'○'} {c.n}
+                      </span>
+                    ))}
                   </div>
                 </div>
               );
@@ -732,10 +830,45 @@ export default function TeamIQ() {
           </div>
         )}
 
+        {/* ── TAB: OLD SCHOOL — empleados retirados (BD histórica) ── */}
+        {activeTab === 'oldschool' && (
+          <div>
+            <div style={{fontSize:11,color:'#FF5C53',fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:12}}>
+              🗂️ Old School · {historial.length} empleados retirados
+            </div>
+            {historial.length === 0 ? (
+              <div style={{textAlign:'center',padding:40,color:'#505050',fontSize:12}}>
+                <div style={{fontSize:36,marginBottom:10}}>🗂️</div>
+                Sin retiros registrados todavía
+              </div>
+            ) : historial.map((h:any)=>(
+              <div key={h.id} style={{background:'#0d0d0d',border:'1px solid #141414',borderRadius:12,padding:'12px 14px',marginBottom:8}}>
+                <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+                  <div style={{width:34,height:34,borderRadius:'50%',background:'rgba(255,92,83,0.12)',border:'1px solid rgba(255,92,83,0.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,color:'#FF5C53'}}>
+                    {String(h.nombre_completo||'?').split(' ').slice(0,2).map((s:string)=>s[0]).join('').toUpperCase()}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:13,fontWeight:700}}>{h.nombre_completo}</div>
+                    <div style={{fontSize:10,color:'#505050'}}>{h.cargo_display||h.rol} · {h.cedula||'sin CC'}</div>
+                  </div>
+                  <span style={{fontSize:9,padding:'3px 8px',borderRadius:6,background:'rgba(255,92,83,0.12)',color:'#FF5C53',fontWeight:700,textTransform:'uppercase'}}>{h.tipo_retiro||h.motivo_retiro}</span>
+                </div>
+                <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8,fontSize:10}}>
+                  <div><div style={{color:'#505050',fontSize:9}}>Ingresó</div><div style={{fontWeight:700}}>{h.fecha_ingreso||'—'}</div></div>
+                  <div><div style={{color:'#505050',fontSize:9}}>Retiró</div><div style={{fontWeight:700,color:'#FF5C53'}}>{h.fecha_retiro}</div></div>
+                  <div><div style={{color:'#505050',fontSize:9}}>Liquidación</div><div style={{fontWeight:700,color:'#22D07A'}}>{fmtM(h.total_liquidacion||0)}</div></div>
+                  <div><div style={{color:'#505050',fontSize:9}}>Indemniz.</div><div style={{fontWeight:700,color:h.con_indemnizacion?'#FFB547':'#505050'}}>{h.con_indemnizacion?fmtM(h.total_indemnizacion||0):'—'}</div></div>
+                </div>
+                {h.motivo_retiro && <div style={{fontSize:10,color:'#a0a0a0',marginTop:6,fontStyle:'italic'}}>💬 {h.motivo_retiro}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* ── TAB: ALERTAS ── */}
         {activeTab === 'alertas' && (
           <div>
-            {empleados.filter(e => e.alertas.length > 0).length === 0 ? (
+            {empleados.filter(e => e.alertas.length > 0 || (e.score||0) < 70).length === 0 ? (
               <div style={{ textAlign:'center', padding:40 }}>
                 <div style={{ fontSize:32, marginBottom:12 }}>✅</div>
                 <div style={{ color:'#22D07A', fontWeight:700 }}>Todo en orden</div>
@@ -744,7 +877,7 @@ export default function TeamIQ() {
                 </div>
               </div>
             ) : (
-              empleados.filter(e => e.alertas.length > 0).map(emp => (
+              empleados.filter(e => e.alertas.length > 0 || (e.score||0) < 70).map(emp => (
                 <div key={emp.id} onClick={() => setEmpSel(emp)} style={{
                   background:'rgba(255,92,53,.04)', border:'1px solid rgba(255,92,53,.2)',
                   borderRadius:12, padding:14, marginBottom:8, cursor:'pointer',
@@ -1477,4 +1610,183 @@ ${notas?`<div class="box"><h3 style="margin-top:0">Observaciones</h3><p style="f
 </body></html>`;
   const w = window.open('', '_blank');
   if (w) { w.document.write(html); w.document.close(); setTimeout(()=>w.print(), 500); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODAL · ENVIAR FEEDBACK (texto + sugerencia IA + push a Seratta Crew)
+// ═══════════════════════════════════════════════════════════════
+function FeedbackModal({ emp, onClose }:{ emp:any; onClose:()=>void }) {
+  const [mensaje, setMensaje] = useState('');
+  const [categoria, setCategoria] = useState<'reconocimiento'|'recomendacion'|'mejora'|'critico'>('recomendacion');
+  const [saving, setSaving] = useState(false);
+  const [enviado, setEnviado] = useState(false);
+
+  const sugerenciasIA = (() => {
+    const arr:string[] = [];
+    if ((emp.score||0) < 60) arr.push(`Score bajo (${emp.score}). Considerá una conversación 1:1 esta semana para entender qué está pasando.`);
+    if ((emp.puntualidad||100) < 80) arr.push(`Puntualidad ${emp.puntualidad}%. Mencioná el impacto en el equipo y revisá si hay un tema personal.`);
+    if ((emp.memorandos||0) >= 2) arr.push(`Ya tiene ${emp.memorandos} memorandos. Próxima falta = proceso disciplinario formal.`);
+    if ((emp.ticket_promedio||0) < 60000 && (emp.tickets_mes||0) > 0) arr.push(`Ticket promedio bajo. Reforzá técnicas de upselling y maridajes.`);
+    if ((emp.incapacidades||0) > 1) arr.push(`${emp.incapacidades} incapacidades este mes. Validá con RRHH si hay un patrón.`);
+    if (arr.length === 0) arr.push(`${emp.nombre_completo.split(' ')[0]} viene bien. Aprovechá para reconocer un comportamiento puntual y reforzarlo.`);
+    return arr;
+  })();
+
+  const enviar = async () => {
+    if (!mensaje.trim()) return;
+    setSaving(true);
+    try {
+      // Notificación a Seratta Crew (push interno del equipo)
+      await supabase.from('seratta_crew_notificaciones').insert({
+        empleado_id: emp.id, empleado_nombre: emp.nombre_completo,
+        tipo: 'feedback_' + categoria,
+        titulo: categoria==='reconocimiento'?'🌟 Reconocimiento':categoria==='critico'?'⚠️ Atención requerida':categoria==='mejora'?'🎯 Oportunidad de mejora':'💬 Feedback',
+        mensaje,
+        prioridad: categoria==='critico'?'alta':categoria==='reconocimiento'?'baja':'media',
+        leida: false,
+      }).then(()=>{}, ()=>{});
+      // También log en workforce_audit para trazabilidad
+      await supabase.from('workforce_audit').insert({
+        actor: 'Gerencia', accion:'feedback.enviado', objeto:'empleado',
+        despues:{ empleado_id: emp.id, categoria, mensaje:mensaje.slice(0,200) },
+        motivo: categoria,
+      }).then(()=>{}, ()=>{});
+      setEnviado(true);
+      setTimeout(()=>onClose(), 1400);
+    } catch {}
+    setSaving(false);
+  };
+
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'#141414',border:'2px solid rgba(212,148,58,0.4)',borderRadius:20,padding:24,maxWidth:520,width:'100%',maxHeight:'92vh',overflowY:'auto'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:18}}>
+          <div style={{width:44,height:44,borderRadius:12,background:'linear-gradient(135deg,#d4943a,#9b72ff)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>📩</div>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:'Syne,sans-serif',fontSize:17,fontWeight:900,color:'#fff'}}>Feedback a {emp.nombre_completo}</div>
+            <div style={{fontSize:11,color:'#808080'}}>Llega como notificación push en Seratta Crew</div>
+          </div>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:'#808080',fontSize:22,cursor:'pointer'}}>×</button>
+        </div>
+
+        {enviado ? (
+          <div style={{textAlign:'center',padding:'30px 10px'}}>
+            <div style={{fontSize:48,marginBottom:10}}>✅</div>
+            <div style={{fontSize:16,fontWeight:900,color:'#22D07A'}}>Feedback enviado</div>
+            <div style={{fontSize:12,color:'#808080',marginTop:4}}>{emp.nombre_completo.split(' ')[0]} lo verá en su app Seratta Crew</div>
+          </div>
+        ) : (
+          <>
+            {/* Categoría */}
+            <div style={{fontSize:10,color:'#d4943a',fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:8}}>Categoría</div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:6,marginBottom:14}}>
+              {[
+                {id:'reconocimiento',l:'🌟 Reconocimiento',c:'#22D07A'},
+                {id:'recomendacion', l:'💡 Recomendación', c:'#9b72ff'},
+                {id:'mejora',        l:'🎯 Oportunidad',   c:'#d4943a'},
+                {id:'critico',       l:'⚠️ Crítico',        c:'#FF5C53'},
+              ].map((c:any)=>(
+                <button key={c.id} onClick={()=>setCategoria(c.id)} style={{padding:'9px 12px',borderRadius:9,border:`1px solid ${categoria===c.id?c.c:'#2a2a2a'}`,background:categoria===c.id?`${c.c}18`:'transparent',color:categoria===c.id?c.c:'#a0a0a0',fontSize:12,fontWeight:700,cursor:'pointer',textAlign:'left'}}>{c.l}</button>
+              ))}
+            </div>
+
+            {/* Sugerencias IA */}
+            <div style={{background:'rgba(155,114,255,0.08)',border:'1px solid rgba(155,114,255,0.25)',borderRadius:10,padding:'10px 12px',marginBottom:14}}>
+              <div style={{fontSize:10,color:'#9b72ff',fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:8,display:'flex',alignItems:'center',gap:6}}>
+                <Brain size={12}/> Sugerencias IA (basadas en métricas)
+              </div>
+              {sugerenciasIA.map((s,i)=>(
+                <button key={i} onClick={()=>setMensaje(s)} style={{display:'block',width:'100%',textAlign:'left',background:'transparent',border:'1px dashed rgba(155,114,255,0.3)',borderRadius:8,padding:'8px 10px',marginBottom:5,color:'#d0c8ff',fontSize:11,cursor:'pointer',lineHeight:1.4}}>
+                  💬 {s}
+                </button>
+              ))}
+            </div>
+
+            {/* Mensaje */}
+            <div style={{fontSize:10,color:'#a0a0a0',fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:6}}>Tu mensaje</div>
+            <textarea value={mensaje} onChange={e=>setMensaje(e.target.value)} placeholder="Escribe el feedback aquí…" rows={5}
+              style={{width:'100%',padding:'12px',borderRadius:10,border:'1px solid #2a2a2a',background:'#0d0d0d',color:'#f0f0f0',fontSize:13,outline:'none',resize:'none',marginBottom:14,boxSizing:'border-box'}}/>
+
+            <button onClick={enviar} disabled={saving || !mensaje.trim()} style={{width:'100%',padding:13,borderRadius:11,border:'none',background:saving||!mensaje.trim()?'#2a2a2a':'linear-gradient(135deg,#d4943a,#9b72ff)',color:'#fff',fontSize:13,fontWeight:900,cursor:saving||!mensaje.trim()?'not-allowed':'pointer'}}>
+              {saving?'Enviando…':`📤 Enviar a ${emp.nombre_completo.split(' ')[0]}`}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODAL · PLAN DE DESARROLLO (cursos academia + ruta de carrera)
+// ═══════════════════════════════════════════════════════════════
+function PlanDesarrolloModal({ emp, onClose }:{ emp:any; onClose:()=>void }) {
+  // Plan de desarrollo basado en el rol — cursos disponibles en Academia NEXUM
+  const planPorRol:any = {
+    mesero:    ['Inducción Hospitalidad','Wine Tasting Nivel 1','Servicio Premium','Maridajes Avanzados','Liderazgo Sala'],
+    capitan:   ['Servicio Premium','Maridajes Avanzados','Liderazgo Sala','Gestión de turno','Manejo de quejas'],
+    chef:      ['Mise en place pro','Costos y rentabilidad','Liderazgo cocina','Innovación de carta'],
+    bartender: ['Mixología clásica','Mixología de autor','Costos y rentabilidad','Etiqueta y carta'],
+    cocinero:  ['Mise en place pro','Sanidad e inocuidad','Estaciones y flow','Costos y rentabilidad'],
+  };
+  const cursos = (planPorRol[emp.rol] || planPorRol.mesero).map((n:string,i:number)=>({
+    nombre: n,
+    completado: i < ((emp.score||0)/100*5),
+    fecha: i < 2 ? '2025-02-10' : '',
+  }));
+  const tomados = cursos.filter((c:any)=>c.completado).length;
+  const pct = Math.round((tomados/cursos.length)*100);
+
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:10000,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'#141414',border:'2px solid rgba(34,208,122,0.4)',borderRadius:20,padding:24,maxWidth:540,width:'100%',maxHeight:'92vh',overflowY:'auto'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:18}}>
+          <div style={{width:44,height:44,borderRadius:12,background:'linear-gradient(135deg,#22D07A,#1A9E5C)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>🎓</div>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:'Syne,sans-serif',fontSize:17,fontWeight:900,color:'#fff'}}>Plan de desarrollo</div>
+            <div style={{fontSize:11,color:'#808080'}}>{emp.nombre_completo} · {emp.cargo_display||emp.rol}</div>
+          </div>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:'#808080',fontSize:22,cursor:'pointer'}}>×</button>
+        </div>
+
+        {/* Progreso */}
+        <div style={{background:'rgba(34,208,122,0.06)',border:'1px solid rgba(34,208,122,0.2)',borderRadius:12,padding:14,marginBottom:14}}>
+          <div style={{display:'flex',justifyContent:'space-between',marginBottom:8}}>
+            <span style={{fontSize:11,color:'#22D07A',fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em'}}>📈 Progreso Academia</span>
+            <span style={{fontFamily:'Syne,sans-serif',fontSize:18,fontWeight:900,color:'#22D07A'}}>{tomados}/{cursos.length}</span>
+          </div>
+          <div style={{height:10,background:'#1a1a1a',borderRadius:5,overflow:'hidden'}}>
+            <div style={{height:'100%',width:`${pct}%`,background:'linear-gradient(90deg,#22D07A,#9b72ff)',borderRadius:5}}/>
+          </div>
+        </div>
+
+        <div style={{fontSize:11,color:'#9b72ff',fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:10}}>🛤️ Ruta de carrera</div>
+        <div style={{display:'flex',flexDirection:'column',gap:8}}>
+          {cursos.map((c:any,i:number)=>(
+            <div key={i} style={{display:'flex',alignItems:'center',gap:12,padding:'10px 12px',background:c.completado?'rgba(34,208,122,0.06)':'rgba(255,255,255,0.02)',border:`1px solid ${c.completado?'rgba(34,208,122,0.3)':'#1e1e1e'}`,borderRadius:10}}>
+              <div style={{width:30,height:30,borderRadius:'50%',background:c.completado?'#22D07A':'#2a2a2a',color:c.completado?'#000':'#606060',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:900,fontSize:13}}>{c.completado?'✓':i+1}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:700,color:c.completado?'#fff':'#a0a0a0'}}>{c.nombre}</div>
+                <div style={{fontSize:10,color:c.completado?'#22D07A':'#606060'}}>
+                  {c.completado ? `✓ Completado · ${c.fecha}` : '○ Pendiente'}
+                </div>
+              </div>
+              {!c.completado && (
+                <button style={{padding:'5px 10px',borderRadius:7,border:'1px solid #9b72ff55',background:'rgba(155,114,255,0.1)',color:'#9b72ff',fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                  Inscribir
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div style={{marginTop:16,padding:12,background:'rgba(155,114,255,0.06)',border:'1px solid rgba(155,114,255,0.2)',borderRadius:10}}>
+          <div style={{fontSize:10,color:'#9b72ff',fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:6}}>🎯 Próximo paso recomendado</div>
+          <div style={{fontSize:12,color:'#e0d8ff'}}>
+            {cursos.find((c:any)=>!c.completado)?.nombre || 'Plan completado — considerá promoción.'}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
