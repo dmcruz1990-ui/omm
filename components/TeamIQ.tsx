@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import {
   Users, TrendingUp, TrendingDown, AlertTriangle, Award,
@@ -311,41 +311,120 @@ export default function TeamIQ() {
   const [search, setSearch]       = useState('');
   const [empSel, setEmpSel]       = useState<Empleado | null>(null);
   const [activeTab, setActiveTab] = useState<'equipo'|'ranking'|'alertas'|'propinas'|'euros'|'vida'>('equipo');
+  const [showNuevoEmp, setShowNuevoEmp] = useState(false);
+  const [showDespedir, setShowDespedir] = useState(false);
+  const [ventasMes, setVentasMes] = useState(0); // venta total del mes del restaurante
 
-  // Cargar empleados desde Supabase con fallback demo
+  // Cargar empleados desde Supabase con métricas REALES
   const cargar = useCallback(async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // 1. Empleados activos
+      const { data: empData } = await supabase
         .from('empleados')
         .select('*, restaurantes(nombre,emoji), complejos(nombre)')
         .eq('activo', true)
         .order('nombre_completo');
 
-      if (!error && data && data.length > 0) {
-        // Enriquecer con datos demo de rendimiento (en producción vendrían de tablas analytics)
-        const enriquecidos = data.map((e: any) => {
-          const demo = DEMO_EMPLEADOS.find(d => d.id === e.id) || DEMO_EMPLEADOS[0];
-          return {
-            ...e,
-            ventas_mes:      demo.ventas_mes,
-            ticket_promedio: demo.ticket_promedio,
-            upselling_pct:   demo.upselling_pct,
-            score:           demo.score,
-            score_delta:     demo.score_delta,
-            propinas_mes:    demo.propinas_mes,
-            turno_hoy:       demo.turno_hoy,
-            estado:          demo.estado,
-            alertas:         [
-              ...(e.memorandos > 0 ? [`${e.memorandos} memorando${e.memorandos>1?'s':''}`] : []),
-              ...(demo.score < 60 ? ['Rendimiento por debajo del estándar'] : []),
-            ],
-          };
-        });
-        setEmpleados(enriquecidos);
-      } else {
-        setEmpleados(DEMO_EMPLEADOS);
-      }
+      // 2. Asistencia últimos 30 días → retardos, incapacidades, puntualidad
+      const hace30 = new Date(Date.now() - 30*86400000).toISOString().split('T')[0];
+      const { data: asistData } = await supabase.from('attendance')
+        .select('staff_id,empleado_nombre,minutos_tarde,estado,fecha')
+        .gte('fecha', hace30);
+
+      // 3. Novedades (incapacidades, memorandos)
+      const { data: novData } = await supabase.from('workforce_novedades')
+        .select('empleado_id,tipo,estado,fecha_inicio')
+        .gte('fecha_inicio', hace30);
+
+      // 4. Ventas por mesero del mes (cobros_trazabilidad)
+      const inicioMes = new Date(); inicioMes.setDate(1); inicioMes.setHours(0,0,0,0);
+      const { data: cobrosData } = await supabase.from('cobros_trazabilidad')
+        .select('total,mesero')
+        .gte('created_at', inicioMes.toISOString());
+
+      // Calcular ventas totales del restaurante (para KPI top)
+      const ventaTotalMes = (cobrosData||[]).reduce((s:number,c:any)=>s+(Number(c.total)||0), 0);
+      setVentasMes(ventaTotalMes);
+
+      // Indexar asistencia por nombre/id
+      const retardosPorEmp: Record<string, number> = {};
+      const noShowsPorEmp: Record<string, number> = {};
+      const totalAsistPorEmp: Record<string, number> = {};
+      (asistData||[]).forEach((a:any) => {
+        const key = a.staff_id || a.empleado_nombre;
+        if (!key) return;
+        totalAsistPorEmp[key] = (totalAsistPorEmp[key]||0) + 1;
+        if (a.estado === 'tarde') retardosPorEmp[key] = (retardosPorEmp[key]||0) + 1;
+        if (a.estado === 'no_show') noShowsPorEmp[key] = (noShowsPorEmp[key]||0) + 1;
+      });
+
+      const incapacidadesPorEmp: Record<number, number> = {};
+      const memorandosPorEmp: Record<number, number> = {};
+      (novData||[]).forEach((n:any) => {
+        if (n.tipo === 'incapacidad') incapacidadesPorEmp[n.empleado_id] = (incapacidadesPorEmp[n.empleado_id]||0) + 1;
+        if (n.tipo === 'memorando') memorandosPorEmp[n.empleado_id] = (memorandosPorEmp[n.empleado_id]||0) + 1;
+      });
+
+      const ventasPorMesero: Record<string, { ventas:number; tickets:number }> = {};
+      (cobrosData||[]).forEach((c:any) => {
+        if (!c.mesero) return;
+        if (!ventasPorMesero[c.mesero]) ventasPorMesero[c.mesero] = { ventas:0, tickets:0 };
+        ventasPorMesero[c.mesero].ventas += Number(c.total)||0;
+        ventasPorMesero[c.mesero].tickets++;
+      });
+
+      // Combinar
+      const enriquecidos = (empData||[]).map((e:any) => {
+        const keyAsist = e.staff_nexum_id || e.nombre_completo;
+        const retardos = retardosPorEmp[keyAsist] || 0;
+        const noShows = noShowsPorEmp[keyAsist] || 0;
+        const totalDiasAsist = totalAsistPorEmp[keyAsist] || 0;
+        const puntualidad = totalDiasAsist > 0 ? Math.round(((totalDiasAsist - retardos - noShows) / totalDiasAsist) * 100) : 100;
+        const incap = incapacidadesPorEmp[e.id] || 0;
+        const memos = memorandosPorEmp[e.id] || e.memorandos || 0;
+        const ventasMesero = ventasPorMesero[e.nombre_completo] || { ventas:0, tickets:0 };
+        const ticketProm = ventasMesero.tickets > 0 ? ventasMesero.ventas / ventasMesero.tickets : 0;
+        // Score: combina puntualidad (40%) + sin memorandos (30%) + ticket prom (30%)
+        const scoreCalc = Math.round(
+          puntualidad * 0.4 +
+          (memos === 0 ? 100 : Math.max(0, 100 - memos*20)) * 0.3 +
+          (ticketProm > 100000 ? 100 : ticketProm/1000) * 0.3
+        );
+        // Vacaciones acumuladas: 15 días por año (Colombia: 15 hábiles)
+        const diasDesdeIngreso = e.fecha_ingreso ? Math.floor((Date.now() - new Date(e.fecha_ingreso).getTime())/86400000) : 0;
+        const anios = diasDesdeIngreso / 365;
+        const vacacionesAcumuladas = Math.floor(anios * 15);
+        const vacacionesUsadas = e.vacaciones_dias || 0;
+        const vacacionesDisponibles = Math.max(0, vacacionesAcumuladas - vacacionesUsadas);
+        // Días totales en empresa
+        return {
+          ...e,
+          retardos, noShows, puntualidad,
+          incapacidades: incap,
+          memorandos: memos,
+          ventas_mes: ventasMesero.ventas,
+          ticket_promedio: ticketProm,
+          tickets_mes: ventasMesero.tickets,
+          score: Math.max(0, Math.min(100, scoreCalc)),
+          score_delta: 0,
+          dias_empresa: diasDesdeIngreso,
+          vacaciones_acumuladas: vacacionesAcumuladas,
+          vacaciones_disponibles: vacacionesDisponibles,
+          vacaciones_usadas: vacacionesUsadas,
+          alertas: [
+            ...(memos > 0 ? [`${memos} memorando${memos>1?'s':''}`] : []),
+            ...(incap > 0 ? [`${incap} incapacidad${incap>1?'es':''}`] : []),
+            ...(puntualidad < 80 ? [`Puntualidad ${puntualidad}% < 80%`] : []),
+          ],
+          // legacy fields for compat
+          upselling_pct: 0,
+          propinas_mes: 0,
+          turno_hoy: undefined,
+          estado: 'turno' as const,
+        };
+      });
+      setEmpleados(enriquecidos.length > 0 ? enriquecidos : DEMO_EMPLEADOS);
     } catch {
       setEmpleados(DEMO_EMPLEADOS);
     }
@@ -406,13 +485,28 @@ export default function TeamIQ() {
               </div>
             </div>
           </div>
-          <button onClick={cargar} style={{
-            width:34, height:34, borderRadius:8, border:'1px solid #1e1e1e',
-            background:'transparent', color:'#606060', cursor:'pointer',
-            display:'flex', alignItems:'center', justifyContent:'center',
-          }}>
-            <RefreshCw size={14} />
-          </button>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <button onClick={()=>setShowNuevoEmp(true)} style={{
+              padding:'8px 14px', borderRadius:10, border:'none', cursor:'pointer',
+              fontSize:12, fontWeight:800, color:'#fff',
+              background:'linear-gradient(135deg,#22D07A,#1A9E5C)',
+              boxShadow:'0 6px 14px rgba(34,208,122,0.25)',
+              display:'flex',alignItems:'center',gap:6,
+            }}>+ Nuevo empleado</button>
+            <button onClick={()=>setShowDespedir(true)} style={{
+              padding:'8px 14px', borderRadius:10, cursor:'pointer',
+              fontSize:12, fontWeight:800, color:'#FF5C53',
+              background:'rgba(255,92,83,0.10)', border:'1px solid rgba(255,92,83,0.4)',
+              display:'flex',alignItems:'center',gap:6,
+            }}>👋 Despedir</button>
+            <button onClick={cargar} style={{
+              width:34, height:34, borderRadius:8, border:'1px solid #1e1e1e',
+              background:'transparent', color:'#606060', cursor:'pointer',
+              display:'flex', alignItems:'center', justifyContent:'center',
+            }}>
+              <RefreshCw size={14} />
+            </button>
+          </div>
         </div>
 
         {/* Filtro período */}
@@ -447,13 +541,30 @@ export default function TeamIQ() {
 
       <div style={{ padding:'16px 16px 80px' }}>
 
-        {/* KPI cards */}
-        <div style={{ display:'flex', gap:8, marginBottom:16, overflowX:'auto', scrollbarWidth:'none' }}>
-          <KpiCard label="Ventas totales" value={fmtM(totalVentas)} sub={periodoLabel[periodo]} color="#d4943a" icon={DollarSign} delta={12} />
-          <KpiCard label="Score equipo" value={avgScore} sub="promedio general" color="#9b72ff" icon={Brain} delta={4} />
-          <KpiCard label="En turno" value={`${enTurno}/${empleados.length}`} sub="colaboradores activos" color="#22D07A" icon={Users} />
-          <KpiCard label="Propinas mes" value={fmtM(totalPropinas)} color="#4A8FD4" icon={Zap} delta={8} />
-        </div>
+        {/* KPI cards · suma base − ventas, score, turnos, retardos, incap, ticket prom */}
+        {(() => {
+          const sumaBase = empleados.reduce((s:number,e:any)=>s+(Number(e.salario_base)||0), 0);
+          const margenBase = ventasMes - sumaBase;
+          const totalIncap = empleados.reduce((s:number,e:any)=>s+(e.incapacidades||0), 0);
+          const totalRetardos = empleados.reduce((s:number,e:any)=>s+(e.retardos||0), 0);
+          const promPuntualidad = empleados.length > 0 ? Math.round(empleados.reduce((s:number,e:any)=>s+(e.puntualidad||0), 0)/empleados.length) : 0;
+          const meserosConVenta = empleados.filter((e:any)=>e.tickets_mes > 0);
+          const promTicket = meserosConVenta.length > 0 ? meserosConVenta.reduce((s:number,e:any)=>s+e.ticket_promedio, 0)/meserosConVenta.length : 0;
+          // Rotación: empleados con menos de 90 días / total (proxy básico)
+          const nuevos90 = empleados.filter((e:any)=>e.dias_empresa < 90).length;
+          const rotacion = empleados.length > 0 ? Math.round((nuevos90/empleados.length)*100) : 0;
+          return (
+            <div style={{ display:'flex', gap:8, marginBottom:16, overflowX:'auto', scrollbarWidth:'none' }}>
+              <KpiCard label="Margen vs nómina" value={fmtM(margenBase)} sub={`Venta ${fmtM(ventasMes)} − base ${fmtM(sumaBase)}`} color={margenBase>0?'#22D07A':'#FF5C53'} icon={DollarSign} delta={margenBase>0?0:-1} />
+              <KpiCard label="Score equipo" value={empleados.length>0?Math.round(empleados.reduce((s:number,e:any)=>s+(e.score||0),0)/empleados.length):0} sub="promedio general" color="#9b72ff" icon={Brain} />
+              <KpiCard label="En turno hoy" value={`${empleados.filter((e:any)=>e.estado==='turno').length}/${empleados.length}`} sub="colaboradores" color="#4A8FD4" icon={Users} />
+              <KpiCard label="Retardos 30d" value={totalRetardos} sub={`Puntualidad ${promPuntualidad}%`} color={totalRetardos>5?'#FF5C53':'#22D07A'} icon={Clock} />
+              <KpiCard label="Incapacidades" value={totalIncap} sub="último mes" color="#FFB547" icon={AlertTriangle} />
+              <KpiCard label="Rotación 90d" value={`${rotacion}%`} sub={`${nuevos90} nuevos`} color={rotacion>30?'#FF5C53':'#9b72ff'} icon={TrendingUp} />
+              <KpiCard label="Ticket prom mesero" value={fmtM(promTicket)} sub="ponderado" color="#d4943a" icon={Star} />
+            </div>
+          );
+        })()}
 
         {/* Alerta estructura si hay ausentes */}
         {alertasCnt > 0 && (
@@ -1023,6 +1134,347 @@ export default function TeamIQ() {
       {/* Panel detalle */}
       {empSel && <PanelEmpleado emp={empSel} onClose={() => setEmpSel(null)} />}
 
+      {/* Modal nuevo empleado */}
+      {showNuevoEmp && <NuevoEmpleadoModal onClose={()=>setShowNuevoEmp(false)} onSaved={()=>{ setShowNuevoEmp(false); cargar(); }}/>}
+
+      {/* Modal despedir empleado */}
+      {showDespedir && <DespedirModal empleados={empleados} onClose={()=>setShowDespedir(false)} onSaved={()=>{ setShowDespedir(false); cargar(); }}/>}
+
     </div>
   );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODAL · NUEVO EMPLEADO (formulario completo + ARL + cuenta + tipo contrato)
+// ═══════════════════════════════════════════════════════════════
+function NuevoEmpleadoModal({ onClose, onSaved }:{ onClose:()=>void; onSaved:()=>void }) {
+  const [f, setF] = useState<any>({
+    nombre_completo:'', cedula:'', tipo_documento:'CC', email:'', telefono:'',
+    direccion:'', contacto_emergencia:'',
+    rol:'mesero', cargo_display:'Mesero',
+    fecha_ingreso: new Date().toISOString().split('T')[0],
+    salario_base: 1500000,
+    tipo_contrato:'indefinido',
+    eps:'', afp:'', arl:'', banco:'', cuenta_bancaria:'',
+    restaurante_id: 6, complejo_id: 2,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string|null>(null);
+  const upd = (k:string, v:any) => setF((p:any)=>({...p, [k]:v}));
+
+  const guardar = async () => {
+    if (!f.nombre_completo.trim()) { setError('Nombre obligatorio'); return; }
+    if (!f.cedula.trim()) { setError('Cédula obligatoria'); return; }
+    setSaving(true); setError(null);
+    try {
+      const iniciales = f.nombre_completo.split(' ').slice(0,2).map((s:string)=>s[0]).join('').toUpperCase();
+      const { error: insErr } = await supabase.from('empleados').insert({
+        ...f, activo: true, avatar_iniciales: iniciales,
+      });
+      if (insErr) throw insErr;
+      onSaved();
+    } catch (e:any) { setError(e?.message || 'Error al guardar'); }
+    finally { setSaving(false); }
+  };
+
+  const STY = {
+    inp:{ width:'100%', padding:'10px 12px', borderRadius:9, border:'1px solid #2a2a2a', background:'#0d0d0d', color:'#f0f0f0', fontSize:13, outline:'none', boxSizing:'border-box' as const },
+    lbl:{ fontSize:10, color:'#808080', fontWeight:700, textTransform:'uppercase' as const, letterSpacing:'.1em', marginBottom:4, display:'block' },
+  };
+
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'#141414',border:'2px solid rgba(34,208,122,0.4)',borderRadius:20,padding:24,maxWidth:600,width:'100%',maxHeight:'92vh',overflowY:'auto'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:18}}>
+          <div style={{width:44,height:44,borderRadius:12,background:'linear-gradient(135deg,#22D07A,#1A9E5C)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>👤</div>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:'Syne,sans-serif',fontSize:17,fontWeight:900,color:'#fff'}}>Nuevo empleado</div>
+            <div style={{fontSize:11,color:'#808080'}}>Datos personales · contrato · seguridad social · cuenta bancaria</div>
+          </div>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:'#808080',fontSize:22,cursor:'pointer'}}>×</button>
+        </div>
+
+        <div style={{fontSize:10,color:'#22D07A',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:10}}>📋 Datos personales</div>
+        <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:10,marginBottom:14}}>
+          <div><label style={STY.lbl}>Nombre completo *</label><input style={STY.inp} value={f.nombre_completo} onChange={e=>upd('nombre_completo',e.target.value)} placeholder="Diego Mauricio Cruz Rodríguez"/></div>
+          <div><label style={STY.lbl}>Cédula *</label><input style={STY.inp} value={f.cedula} onChange={e=>upd('cedula',e.target.value)} placeholder="1.234.567.890"/></div>
+          <div><label style={STY.lbl}>Email</label><input type="email" style={STY.inp} value={f.email} onChange={e=>upd('email',e.target.value)}/></div>
+          <div><label style={STY.lbl}>Celular</label><input style={STY.inp} value={f.telefono} onChange={e=>upd('telefono',e.target.value)} placeholder="+57"/></div>
+          <div style={{gridColumn:'1/-1'}}><label style={STY.lbl}>Dirección</label><input style={STY.inp} value={f.direccion} onChange={e=>upd('direccion',e.target.value)}/></div>
+          <div style={{gridColumn:'1/-1'}}><label style={STY.lbl}>Contacto de emergencia</label><input style={STY.inp} value={f.contacto_emergencia} onChange={e=>upd('contacto_emergencia',e.target.value)} placeholder="Nombre y teléfono"/></div>
+        </div>
+
+        <div style={{fontSize:10,color:'#d4943a',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:10}}>💼 Contrato</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10,marginBottom:14}}>
+          <div><label style={STY.lbl}>Cargo</label><input style={STY.inp} value={f.cargo_display} onChange={e=>upd('cargo_display',e.target.value)}/></div>
+          <div><label style={STY.lbl}>Rol sistema</label>
+            <select style={{...STY.inp,colorScheme:'dark'}} value={f.rol} onChange={e=>upd('rol',e.target.value)}>
+              {['mesero','capitan','maitre','host','chef','sous_chef','auxiliar_cocina','bartender','barback','cajero','call_center','administrativo','admin','gerencia'].map(r=><option key={r}>{r}</option>)}
+            </select>
+          </div>
+          <div><label style={STY.lbl}>Fecha ingreso</label><input type="date" style={{...STY.inp,colorScheme:'dark'}} value={f.fecha_ingreso} onChange={e=>upd('fecha_ingreso',e.target.value)}/></div>
+          <div><label style={STY.lbl}>Salario base (COP)</label><input type="number" style={STY.inp} value={f.salario_base} onChange={e=>upd('salario_base',Number(e.target.value)||0)}/></div>
+          <div style={{gridColumn:'1/-1'}}>
+            <label style={STY.lbl}>Tipo de contrato</label>
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              {[{v:'indefinido',l:'Indefinido'},{v:'fijo',l:'Término fijo'},{v:'obra',l:'Obra/labor'},{v:'aprendizaje',l:'Aprendizaje'},{v:'prestacion',l:'Prest. servicios'}].map(c=>(
+                <button key={c.v} type="button" onClick={()=>upd('tipo_contrato',c.v)} style={{padding:'7px 12px',borderRadius:8,border:`1px solid ${f.tipo_contrato===c.v?'#d4943a':'#2a2a2a'}`,background:f.tipo_contrato===c.v?'#d4943a20':'transparent',color:f.tipo_contrato===c.v?'#d4943a':'#a0a0a0',fontSize:11,fontWeight:700,cursor:'pointer'}}>{c.l}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div style={{fontSize:10,color:'#9b72ff',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:10}}>🛡️ Seguridad social</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10,marginBottom:14}}>
+          <div><label style={STY.lbl}>EPS</label><input style={STY.inp} value={f.eps} onChange={e=>upd('eps',e.target.value)} placeholder="Sura, Sanitas, etc."/></div>
+          <div><label style={STY.lbl}>AFP / Pensión</label><input style={STY.inp} value={f.afp} onChange={e=>upd('afp',e.target.value)} placeholder="Porvenir, Protección…"/></div>
+          <div><label style={STY.lbl}>ARL</label><input style={STY.inp} value={f.arl} onChange={e=>upd('arl',e.target.value)} placeholder="Sura, Positiva…"/></div>
+        </div>
+
+        <div style={{fontSize:10,color:'#4A8FD4',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:10}}>🏦 Cuenta bancaria</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 2fr',gap:10,marginBottom:18}}>
+          <div><label style={STY.lbl}>Banco</label><input style={STY.inp} value={f.banco} onChange={e=>upd('banco',e.target.value)} placeholder="Bancolombia, Davivienda…"/></div>
+          <div><label style={STY.lbl}>Cuenta (ahorros/corriente)</label><input style={STY.inp} value={f.cuenta_bancaria} onChange={e=>upd('cuenta_bancaria',e.target.value)} placeholder="N° de cuenta"/></div>
+        </div>
+
+        {error && <div style={{background:'rgba(255,92,83,0.12)',border:'1px solid rgba(255,92,83,0.3)',borderRadius:8,padding:'8px 12px',color:'#FF5C53',fontSize:12,marginBottom:12}}>⚠ {error}</div>}
+
+        <button onClick={guardar} disabled={saving} style={{width:'100%',padding:14,borderRadius:12,border:'none',background:'linear-gradient(135deg,#22D07A,#1A9E5C)',color:'#fff',fontSize:14,fontWeight:900,cursor:'pointer',boxShadow:'0 8px 24px rgba(34,208,122,0.3)'}}>
+          {saving?'Guardando…':'✓ Crear empleado'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+// MODAL · DESPEDIR EMPLEADO (motivos + indemnización + liquidación + PDF)
+// ═══════════════════════════════════════════════════════════════
+const MOTIVOS_DESPIDO = [
+  { id:'justa_causa',      l:'Justa causa',                con_indemn:false },
+  { id:'sin_justa_causa',  l:'Sin justa causa',            con_indemn:true  },
+  { id:'mutuo_acuerdo',    l:'Mutuo acuerdo',              con_indemn:false },
+  { id:'renuncia',         l:'Renuncia voluntaria',        con_indemn:false },
+  { id:'fin_contrato',     l:'Vencimiento contrato',       con_indemn:false },
+  { id:'obra_terminada',   l:'Obra/labor terminada',       con_indemn:false },
+];
+
+function DespedirModal({ empleados, onClose, onSaved }:{ empleados:any[]; onClose:()=>void; onSaved:()=>void }) {
+  const [empId, setEmpId] = useState<number|''>('');
+  const [motivo, setMotivo] = useState('justa_causa');
+  const [notas, setNotas] = useState('');
+  const [conIndemn, setConIndemn] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string|null>(null);
+
+  const emp = empleados.find(e=>e.id===empId);
+  const motivoMeta = MOTIVOS_DESPIDO.find(m=>m.id===motivo);
+
+  // ── CÁLCULO DE LIQUIDACIÓN (fórmula Colombia) ──
+  // Cesantías = salario × (días trabajados / 360)
+  // Intereses cesantías = 12% anual sobre cesantías
+  // Prima = salario × (días trabajados en semestre / 180) — simplificado a × días / 360
+  // Vacaciones pendientes = días pendientes × (salario / 30)
+  // Indemnización (sin justa causa, indefinido):
+  //   - <1 año: 30 días
+  //   - >=1 año: 30 días + 20 días por cada año adicional
+  const calculo = (() => {
+    if (!emp) return null;
+    const salario = Number(emp.salario_base) || 0;
+    const diasEmpresa = emp.dias_empresa || (emp.fecha_ingreso ? Math.floor((Date.now()-new Date(emp.fecha_ingreso).getTime())/86400000) : 0);
+    const anios = diasEmpresa / 365;
+    const cesantias = salario * (diasEmpresa / 360);
+    const interesesCes = cesantias * 0.12 * (diasEmpresa / 360);
+    const prima = salario * (diasEmpresa / 360);
+    const vacacionesDiasPendientes = emp.vacaciones_disponibles || 0;
+    const vacaciones = vacacionesDiasPendientes * (salario / 30);
+    // Indemnización SMMLV-based:
+    let indemnizacion = 0;
+    if (conIndemn) {
+      const diasIndemn = anios < 1 ? 30 : 30 + Math.floor(anios-1) * 20;
+      indemnizacion = (salario / 30) * diasIndemn;
+    }
+    const totalLiq = cesantias + interesesCes + prima + vacaciones;
+    const totalPagar = totalLiq + indemnizacion;
+    return { salario, diasEmpresa, anios, cesantias, interesesCes, prima, vacaciones, vacacionesDiasPendientes, indemnizacion, totalLiq, totalPagar };
+  })();
+
+  React.useEffect(() => {
+    // Auto-flag indemnización si el motivo lo amerita y es indefinido
+    if (motivoMeta?.con_indemn && emp?.tipo_contrato === 'indefinido') setConIndemn(true);
+    else if (!motivoMeta?.con_indemn) setConIndemn(false);
+  }, [motivo, emp]);
+
+  const ejecutar = async () => {
+    if (!emp) { setError('Selecciona un empleado'); return; }
+    if (!calculo) { setError('No se pudo calcular'); return; }
+    if (!confirm(`Confirmar retiro de ${emp.nombre_completo}\nMotivo: ${motivoMeta?.l}\nLiquidación: ${fmtM(calculo.totalLiq)}${conIndemn?` + Indemnización ${fmtM(calculo.indemnizacion)}`:''}\nTotal: ${fmtM(calculo.totalPagar)}\n\nEsta acción es irreversible.`)) return;
+    setSaving(true); setError(null);
+    try {
+      // 1. Crear registro de liquidación
+      const { data:liqData } = await supabase.from('liquidaciones').insert({
+        empleado_id: emp.id, empleado_nombre: emp.nombre_completo,
+        dias_trabajados: calculo.diasEmpresa, salario_base: emp.salario_base,
+        cesantias: calculo.cesantias, intereses_cesantias: calculo.interesesCes,
+        prima_servicios: calculo.prima, vacaciones_pendientes: calculo.vacaciones,
+        salario_pendiente: 0, bonificaciones: 0,
+        total_liquidacion: calculo.totalLiq,
+        con_indemnizacion: conIndemn, valor_indemnizacion: calculo.indemnizacion,
+        total_a_pagar: calculo.totalPagar,
+        motivo_retiro: motivoMeta?.l, tipo_retiro: motivo,
+        notas, generado_por: 'Gerencia',
+      }).select().single();
+
+      // 2. Mover a empleados_historial
+      await supabase.from('empleados_historial').insert({
+        empleado_id: emp.id, restaurante_id: emp.restaurante_id, complejo_id: emp.complejo_id,
+        nombre_completo: emp.nombre_completo, cedula: emp.cedula, cargo_display: emp.cargo_display,
+        rol: emp.rol, fecha_ingreso: emp.fecha_ingreso,
+        motivo_retiro: motivoMeta?.l, tipo_retiro: motivo,
+        salario_base: emp.salario_base,
+        con_indemnizacion: conIndemn,
+        total_liquidacion: calculo.totalLiq,
+        total_indemnizacion: calculo.indemnizacion,
+        archivado_por: 'Gerencia', notas,
+      });
+
+      // 3. Desactivar empleado (no se borra para mantener integridad referencial)
+      await supabase.from('empleados').update({ activo: false }).eq('id', emp.id);
+
+      // 4. Generar PDF (descarga directa via blob)
+      generarPDFRetiro(emp, calculo, motivoMeta!, notas);
+
+      onSaved();
+    } catch (e:any) { setError(e?.message || 'Error al procesar el retiro'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.88)',zIndex:9999,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'#141414',border:'2px solid rgba(255,92,83,0.4)',borderRadius:20,padding:24,maxWidth:540,width:'100%',maxHeight:'92vh',overflowY:'auto'}}>
+        <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:18}}>
+          <div style={{width:44,height:44,borderRadius:12,background:'linear-gradient(135deg,#FF5C53,#C03A33)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22}}>👋</div>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:'Syne,sans-serif',fontSize:17,fontWeight:900,color:'#fff'}}>Retiro de empleado</div>
+            <div style={{fontSize:11,color:'#808080'}}>Liquidación automática · indemnización opcional · documento PDF</div>
+          </div>
+          <button onClick={onClose} style={{background:'transparent',border:'none',color:'#808080',fontSize:22,cursor:'pointer'}}>×</button>
+        </div>
+
+        <div style={{fontSize:10,color:'#FF5C53',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:6}}>👤 Empleado</div>
+        <select value={empId} onChange={e=>setEmpId(e.target.value?Number(e.target.value):'')} style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid #2a2a2a',background:'#0d0d0d',color:'#f0f0f0',fontSize:13,outline:'none',marginBottom:14,colorScheme:'dark'}}>
+          <option value="">Selecciona…</option>
+          {empleados.map(e=><option key={e.id} value={e.id}>{e.nombre_completo} · {e.cargo_display}</option>)}
+        </select>
+
+        <div style={{fontSize:10,color:'#FF5C53',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:6}}>📋 Motivo</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:14}}>
+          {MOTIVOS_DESPIDO.map(m=>(
+            <button key={m.id} onClick={()=>setMotivo(m.id)} style={{padding:'8px 10px',borderRadius:8,border:`1px solid ${motivo===m.id?'#FF5C53':'#2a2a2a'}`,background:motivo===m.id?'#FF5C5318':'transparent',color:motivo===m.id?'#FF5C53':'#a0a0a0',fontSize:11,fontWeight:700,cursor:'pointer',textAlign:'left'}}>
+              {m.l}{m.con_indemn && <span style={{display:'block',fontSize:9,opacity:0.7}}>⚠️ Aplica indemnización</span>}
+            </button>
+          ))}
+        </div>
+
+        <textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Notas / soporte del retiro" rows={2} style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid #2a2a2a',background:'#0d0d0d',color:'#f0f0f0',fontSize:12,outline:'none',marginBottom:14,resize:'none',boxSizing:'border-box'}}/>
+
+        {motivoMeta?.con_indemn && (
+          <label style={{display:'flex',alignItems:'center',gap:8,padding:'10px 12px',background:'rgba(255,181,71,0.08)',border:'1px solid rgba(255,181,71,0.3)',borderRadius:9,marginBottom:14,cursor:'pointer'}}>
+            <input type="checkbox" checked={conIndemn} onChange={e=>setConIndemn(e.target.checked)} style={{accentColor:'#FFB547'}}/>
+            <span style={{fontSize:12,color:'#FFB547',fontWeight:700}}>Calcular indemnización (sin justa causa)</span>
+          </label>
+        )}
+
+        {calculo && emp && (
+          <div style={{background:'rgba(255,92,83,0.05)',border:'1px solid rgba(255,92,83,0.25)',borderRadius:12,padding:14,marginBottom:14}}>
+            <div style={{fontSize:10,color:'#FF5C53',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:8}}>💰 Cálculo de liquidación</div>
+            <div style={{display:'flex',flexDirection:'column',gap:5,fontSize:12}}>
+              <Row label={`Cesantías (${Math.floor(calculo.diasEmpresa/30)} meses)`} v={fmtM(calculo.cesantias)}/>
+              <Row label="Intereses cesantías (12% anual)" v={fmtM(calculo.interesesCes)}/>
+              <Row label="Prima de servicios" v={fmtM(calculo.prima)}/>
+              <Row label={`Vacaciones (${calculo.vacacionesDiasPendientes} días)`} v={fmtM(calculo.vacaciones)}/>
+              <div style={{borderTop:'1px solid rgba(255,92,83,0.2)',marginTop:4,paddingTop:6,display:'flex',justifyContent:'space-between',fontWeight:800,color:'#FF5C53'}}>
+                <span>Subtotal liquidación</span><span>{fmtM(calculo.totalLiq)}</span>
+              </div>
+              {conIndemn && (
+                <>
+                  <Row label={`Indemnización (${Math.round(calculo.anios)} años)`} v={fmtM(calculo.indemnizacion)} accent="#FFB547"/>
+                </>
+              )}
+              <div style={{borderTop:'2px solid rgba(255,92,83,0.4)',marginTop:6,paddingTop:8,display:'flex',justifyContent:'space-between',fontSize:16,fontWeight:900,color:'#fff'}}>
+                <span>TOTAL A PAGAR</span><span>{fmtM(calculo.totalPagar)}</span>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {error && <div style={{background:'rgba(255,92,83,0.12)',border:'1px solid rgba(255,92,83,0.3)',borderRadius:8,padding:'8px 12px',color:'#FF5C53',fontSize:12,marginBottom:12}}>⚠ {error}</div>}
+
+        <button onClick={ejecutar} disabled={saving || !emp} style={{width:'100%',padding:14,borderRadius:12,border:'none',background:saving||!emp?'#2a2a2a':'linear-gradient(135deg,#FF5C53,#C03A33)',color:'#fff',fontSize:14,fontWeight:900,cursor:saving||!emp?'not-allowed':'pointer',boxShadow:saving||!emp?'none':'0 8px 24px rgba(255,92,83,0.3)'}}>
+          {saving?'Procesando…':'👋 Confirmar retiro + generar PDF'}
+        </button>
+        <p style={{fontSize:10,color:'#606060',textAlign:'center',marginTop:10}}>
+          El empleado se desactivará y pasará a <strong>empleados_historial</strong>. Liquidación queda registrada y se genera PDF descargable.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Row({ label, v, accent }:{ label:string; v:string; accent?:string }) {
+  return (
+    <div style={{display:'flex',justifyContent:'space-between',color:accent||'#a0a0a0'}}>
+      <span>{label}</span><span style={{fontWeight:700,color:accent||'#f0f0f0'}}>{v}</span>
+    </div>
+  );
+}
+
+// Generar PDF simple (sin librería) — usa window.print de una hoja HTML
+function generarPDFRetiro(emp:any, calculo:any, motivo:{l:string;con_indemn:boolean}, notas:string) {
+  const html = `<!DOCTYPE html><html><head><title>Retiro · ${emp.nombre_completo}</title>
+<style>
+body{font-family:'Helvetica',sans-serif;max-width:680px;margin:40px auto;padding:30px;color:#1a1a1a}
+h1{font-size:22px;margin-bottom:4px;color:#000}
+h2{font-size:13px;color:#666;margin-top:0;text-transform:uppercase;letter-spacing:2px;font-weight:600}
+.box{border:1px solid #ddd;border-radius:10px;padding:20px;margin:20px 0}
+.row{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #eee;font-size:13px}
+.total{font-size:18px;font-weight:900;border-top:2px solid #000;padding-top:12px;margin-top:8px}
+table{width:100%;border-collapse:collapse;font-size:12px}
+td{padding:4px 0}
+.label{color:#666}
+.footer{margin-top:60px;display:flex;justify-content:space-around;font-size:11px;color:#666}
+.firma{border-top:1px solid #1a1a1a;padding-top:6px;min-width:200px;text-align:center}
+</style></head><body>
+<h1>ACTA DE RETIRO LABORAL</h1>
+<h2>NEXUM · OMM — ${new Date().toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'})}</h2>
+<div class="box">
+  <table>
+    <tr><td class="label">Empleado:</td><td><strong>${emp.nombre_completo}</strong></td></tr>
+    <tr><td class="label">Cédula:</td><td>${emp.cedula||'—'}</td></tr>
+    <tr><td class="label">Cargo:</td><td>${emp.cargo_display||emp.rol||'—'}</td></tr>
+    <tr><td class="label">Fecha ingreso:</td><td>${emp.fecha_ingreso||'—'}</td></tr>
+    <tr><td class="label">Fecha retiro:</td><td>${new Date().toLocaleDateString('es-CO')}</td></tr>
+    <tr><td class="label">Tiempo laborado:</td><td>${Math.floor(calculo.diasEmpresa/365)} años, ${Math.floor((calculo.diasEmpresa%365)/30)} meses</td></tr>
+    <tr><td class="label">Motivo:</td><td><strong>${motivo.l}</strong></td></tr>
+  </table>
+</div>
+<div class="box">
+  <h3 style="margin-top:0;color:#9b72ff">Liquidación</h3>
+  <div class="row"><span>Cesantías</span><span>$${Math.round(calculo.cesantias).toLocaleString('es-CO')}</span></div>
+  <div class="row"><span>Intereses cesantías (12%)</span><span>$${Math.round(calculo.interesesCes).toLocaleString('es-CO')}</span></div>
+  <div class="row"><span>Prima de servicios</span><span>$${Math.round(calculo.prima).toLocaleString('es-CO')}</span></div>
+  <div class="row"><span>Vacaciones pendientes (${calculo.vacacionesDiasPendientes} días)</span><span>$${Math.round(calculo.vacaciones).toLocaleString('es-CO')}</span></div>
+  <div class="row" style="font-weight:700"><span>Subtotal liquidación</span><span>$${Math.round(calculo.totalLiq).toLocaleString('es-CO')}</span></div>
+  ${calculo.indemnizacion>0?`<div class="row" style="color:#c4671e"><span>Indemnización</span><span>$${Math.round(calculo.indemnizacion).toLocaleString('es-CO')}</span></div>`:''}
+  <div class="row total"><span>TOTAL A PAGAR</span><span>$${Math.round(calculo.totalPagar).toLocaleString('es-CO')} COP</span></div>
+</div>
+${notas?`<div class="box"><h3 style="margin-top:0">Observaciones</h3><p style="font-size:13px;color:#444">${notas}</p></div>`:''}
+<div class="footer">
+  <div class="firma">Firma empleado</div>
+  <div class="firma">Firma gerencia</div>
+</div>
+<p style="font-size:10px;color:#999;text-align:center;margin-top:40px">Documento generado por NEXUM Workforce Intelligence · ${new Date().toISOString()}</p>
+</body></html>`;
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(html); w.document.close(); setTimeout(()=>w.print(), 500); }
 }
