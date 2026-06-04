@@ -12,6 +12,8 @@ interface FoodCostRow {
   emoji: string; precio_venta: number; activo: boolean; disponible: boolean;
   costo_total: number; food_cost_pct: number;
   tag?: string | null;
+  foto_url?: string | null;
+  descripcion?: string | null;
 }
 interface RecetaItem {
   id: string; plato_id: string; supply_id: string; cantidad: number;
@@ -40,7 +42,7 @@ const fcColor = (pct: number) => pct <= 0 ? C.t3 : pct < 30 ? C.green : pct <= 4
 
 // ════════════════════════════════════════════════════════════════════════
 export default function MenuModule() {
-  const [tab, setTab] = useState<'carta' | 'nuevo' | 'supply' | 'analisis'>('carta');
+  const [tab, setTab] = useState<'carta' | 'nuevo' | 'recetas' | 'supply' | 'analisis'>('carta');
   const [platos, setPlatos] = useState<FoodCostRow[]>([]);
   const [supplies, setSupplies] = useState<Supply[]>([]);
   const [careCount, setCareCount] = useState<Record<string, number>>({});
@@ -98,6 +100,10 @@ export default function MenuModule() {
   const [busca, setBusca] = useState('');
   const [sel, setSel] = useState<FoodCostRow | null>(null);
   const [selRecetas, setSelRecetas] = useState<RecetaItem[]>([]);
+  // Edición de ingredientes en el panel de receta (panel lateral)
+  const [editIngSup, setEditIngSup]  = useState('');
+  const [editIngCant, setEditIngCant] = useState<number>(0);
+  const [editIngUnidad, setEditIngUnidad] = useState('gr');
   const [editP, setEditP] = useState<Partial<FoodCostRow> | null>(null);
 
   const platosFiltrados = useMemo(() => platos.filter(p =>
@@ -111,6 +117,31 @@ export default function MenuModule() {
     const { data } = await supabase.from('menu_recetas').select('*, supply(*)').eq('plato_id', p.id);
     if (data) setSelRecetas(data as RecetaItem[]);
   };
+  // ── Receta · agregar/quitar ingrediente desde el panel de edición ──
+  const agregarIngEdit = async () => {
+    if (!sel) return;
+    const sup = supplies.find(s => s.id === editIngSup);
+    if (!sup || editIngCant <= 0) { showToast('⚠️ Elige insumo y cantidad'); return; }
+    const { error } = await supabase.from('menu_recetas').insert({
+      plato_id: sel.id, supply_id: sup.id,
+      cantidad: editIngCant, unidad: editIngUnidad,
+    });
+    if (error) { showToast('✗ No se pudo agregar: ' + error.message); return; }
+    setEditIngSup(''); setEditIngCant(0);
+    const { data } = await supabase.from('menu_recetas').select('*, supply(*)').eq('plato_id', sel.id);
+    if (data) setSelRecetas(data as RecetaItem[]);
+    showToast(`✓ ${sup.nombre} agregado a la receta`);
+    fetchPlatos();
+  };
+  const quitarIngEdit = async (id: string) => {
+    if (!sel) return;
+    if (!confirm('¿Quitar este ingrediente de la receta?')) return;
+    await supabase.from('menu_recetas').delete().eq('id', id);
+    setSelRecetas(prev => prev.filter(x => x.id !== id));
+    showToast('Ingrediente quitado');
+    fetchPlatos();
+  };
+
   const toggleDisponible = async (p: FoodCostRow) => {
     await supabase.from('menu_platos').update({ disponible: !p.disponible }).eq('id', p.id);
     showToast(!p.disponible ? `✓ ${p.nombre} disponible` : `86 — ${p.nombre} agotado`);
@@ -122,6 +153,8 @@ export default function MenuModule() {
       nombre: editP.nombre, categoria: editP.categoria, estacion: editP.estacion,
       precio_venta: Number(editP.precio_venta) || 0,
       tag: (editP.tag || '').toString().trim() || null,
+      foto_url: (editP.foto_url || '').toString().trim() || null,
+      descripcion: (editP.descripcion || '').toString().trim() || null,
     }).eq('id', editP.id);
     showToast('✓ Plato actualizado');
     setSel(null); fetchPlatos();
@@ -251,6 +284,7 @@ export default function MenuModule() {
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <TabBtn id="carta" label="📋 Carta" />
           <TabBtn id="nuevo" label="➕ Nuevo plato" />
+          <TabBtn id="recetas" label="📖 Recetas" />
           <TabBtn id="supply" label="🥩 Supply" />
           <TabBtn id="analisis" label="📊 Análisis" />
         </div>
@@ -544,6 +578,88 @@ export default function MenuModule() {
         </div>
       )}
 
+      {/* ════ TAB RECETAS — galería de fichas técnicas ════ */}
+      {tab === 'recetas' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16, flexWrap: 'wrap' as const }}>
+            <div>
+              <h3 style={{ fontFamily: "'Syne',sans-serif", fontSize: 16, fontWeight: 800, margin: 0 }}>📖 Recetas · Ficha técnica del equipo</h3>
+              <p style={{ fontSize: 11, color: C.t3, margin: '3px 0 0' }}>
+                Estas fichas alimentan Flow: cuando un mesero toca un plato en cocina, el chef ve foto + descripción + ingredientes.
+              </p>
+            </div>
+            <input placeholder="🔎 Buscar receta..." value={busca} onChange={e => setBusca(e.target.value)}
+              style={{ ...inp, width: 240, marginLeft: 'auto' }} />
+          </div>
+
+          {/* Grid por categorías */}
+          {(() => {
+            const cats = Array.from(new Set(platosFiltrados.map(p => p.categoria || 'otros')));
+            if (platosFiltrados.length === 0) return (
+              <div style={{ textAlign: 'center' as const, color: C.t3, padding: 60, fontSize: 13 }}>
+                Sin platos. Creá uno desde "➕ Nuevo plato".
+              </div>
+            );
+            return cats.map(cat => {
+              const delaCat = platosFiltrados.filter(p => (p.categoria || 'otros') === cat);
+              return (
+                <div key={cat} style={{ marginBottom: 24 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+                    <span style={{ fontSize: 11, color: C.gold, fontWeight: 800, textTransform: 'uppercase' as const, letterSpacing: '.14em' }}>
+                      {titulo(cat)}
+                    </span>
+                    <span style={{ flex: 1, height: 1, background: C.border }}/>
+                    <span style={{ fontSize: 10, color: C.t3 }}>{delaCat.length} plato{delaCat.length === 1 ? '' : 's'}</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+                    {delaCat.map(p => (
+                      <div key={p.id} onClick={() => abrirPlato(p)}
+                        style={{ background: C.s1, border: `1px solid ${C.border}`, borderRadius: 14, overflow: 'hidden', cursor: 'pointer', transition: 'all .15s', display: 'flex', flexDirection: 'column' as const }}
+                        onMouseEnter={e => (e.currentTarget.style.borderColor = C.gold)}
+                        onMouseLeave={e => (e.currentTarget.style.borderColor = C.border)}>
+                        {/* Foto del plato */}
+                        <div style={{ aspectRatio: '4/3', background: C.bg, position: 'relative', overflow: 'hidden' }}>
+                          {p.foto_url ? (
+                            <img src={p.foto_url} alt={p.nombre} loading="lazy"
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' as const, display: 'block' }}/>
+                          ) : (
+                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 60 }}>
+                              {p.emoji || '🍽️'}
+                            </div>
+                          )}
+                          <div style={{ position: 'absolute' as const, top: 8, right: 8, padding: '3px 9px', borderRadius: 50, fontSize: 10, fontWeight: 800, background: fcColor(p.food_cost_pct) + '33', color: fcColor(p.food_cost_pct), border: `1px solid ${fcColor(p.food_cost_pct)}55` }}>
+                            FC {p.food_cost_pct || 0}%
+                          </div>
+                          {!p.disponible && (
+                            <div style={{ position: 'absolute' as const, top: 8, left: 8, padding: '3px 9px', borderRadius: 50, fontSize: 10, fontWeight: 800, background: 'rgba(224,80,80,0.85)', color: '#fff' }}>86</div>
+                          )}
+                        </div>
+                        <div style={{ padding: 12, flex: 1, display: 'flex', flexDirection: 'column' as const, gap: 6 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            <span style={{ fontSize: 18 }}>{p.emoji}</span>
+                            <span style={{ fontFamily: "'Syne',sans-serif", fontSize: 13, fontWeight: 800, color: C.t1, flex: 1 }}>{p.nombre}</span>
+                          </div>
+                          {p.tag && <div style={{ fontSize: 10, color: '#b388ff', fontWeight: 700 }}>{p.tag}</div>}
+                          {p.descripcion && (
+                            <div style={{ fontSize: 11, color: C.t3, lineHeight: 1.4, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' as any, overflow: 'hidden' }}>
+                              {p.descripcion}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 6, borderTop: `1px solid ${C.border}` }}>
+                            <span style={{ fontSize: 11, color: C.gold, fontWeight: 700 }}>{fmt(p.precio_venta)}</span>
+                            <span style={{ fontSize: 11, color: C.t3, marginLeft: 'auto' as const }}>Costo {fmt(p.costo_total)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            });
+          })()}
+        </div>
+      )}
+
       {/* ════ PANEL LATERAL — RECETA ════ */}
       {sel && editP && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 9000, display: 'flex', justifyContent: 'flex-end' }}>
@@ -575,7 +691,23 @@ export default function MenuModule() {
             <label style={{ fontSize: 10, color: C.t3 }}>🏷️ Tag (sale debajo del nombre en POS)</label>
             <input value={editP.tag || ''} maxLength={28} onChange={e => setEditP({ ...editP, tag: e.target.value })}
               placeholder="Ej: Recomendado · Nuevo · Promo 2x1 · Sin gluten"
-              style={{ ...inp, marginBottom: 14 }} />
+              style={{ ...inp, marginBottom: 10 }} />
+
+            <label style={{ fontSize: 10, color: C.t3 }}>📸 Foto del plato (URL)</label>
+            <input value={editP.foto_url || ''} onChange={e => setEditP({ ...editP, foto_url: e.target.value })}
+              placeholder="https://images.unsplash.com/..."
+              style={{ ...inp, marginBottom: 6 }} />
+            {editP.foto_url && (
+              <div style={{ marginBottom: 10, borderRadius: 10, overflow: 'hidden', border: `1px solid ${C.border}` }}>
+                <img src={editP.foto_url} alt="vista previa" style={{ width: '100%', maxHeight: 140, objectFit: 'cover', display: 'block' }}/>
+              </div>
+            )}
+
+            <label style={{ fontSize: 10, color: C.t3 }}>📝 Descripción (visible en ficha técnica de Flow)</label>
+            <textarea value={editP.descripcion || ''} maxLength={280} onChange={e => setEditP({ ...editP, descripcion: e.target.value })}
+              placeholder="Descripción breve del plato: técnicas, origen, presentación..."
+              rows={3}
+              style={{ ...inp, marginBottom: 14, resize: 'vertical' as const, fontFamily: 'inherit' }} />
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginTop: -8, marginBottom: 14 }}>
               {['🔥 Nuevo','⭐ Recomendado','💎 Premium','🌱 Veggie','🌶 Picante','🆕 De temporada','🎁 Promo'].map(t => (
                 <button key={t} type="button" onClick={() => setEditP({ ...editP, tag: t })}
@@ -590,14 +722,42 @@ export default function MenuModule() {
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, fontWeight: 800, marginTop: 3 }}><span>Food Cost</span><span style={{ color: fcColor(sel.food_cost_pct) }}>{sel.food_cost_pct}%</span></div>
             </div>
 
-            <h4 style={{ fontFamily: "'Syne',sans-serif", fontSize: 13, margin: '0 0 8px' }}>Ingredientes</h4>
-            {selRecetas.length === 0 && <div style={{ fontSize: 12, color: C.t3, marginBottom: 10 }}>Este plato no tiene receta cargada.</div>}
+            <h4 style={{ fontFamily: "'Syne',sans-serif", fontSize: 13, margin: '0 0 8px' }}>📖 Receta · Ingredientes</h4>
+            {selRecetas.length === 0 && <div style={{ fontSize: 12, color: C.t3, marginBottom: 10 }}>Este plato no tiene receta cargada. Agregá los ingredientes desde abajo.</div>}
             {selRecetas.map(r => (
-              <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, padding: '5px 0', borderBottom: `1px solid ${C.border}` }}>
-                <span>{r.supply?.nombre || 'Insumo'}</span>
-                <span style={{ color: C.t3 }}>{r.cantidad} {r.unidad || r.supply?.unidad} · {fmt(r.cantidad * (r.supply?.precio_unidad || 0))}</span>
+              <div key={r.id} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, padding: '5px 0', borderBottom: `1px solid ${C.border}` }}>
+                <span style={{ flex: 1 }}>{r.supply?.nombre || 'Insumo'}</span>
+                <span style={{ color: C.t3 }}>{r.cantidad} {r.unidad || r.supply?.unidad}</span>
+                <span style={{ color: C.gold, fontWeight: 700, minWidth: 70, textAlign: 'right' as const }}>{fmt(r.cantidad * (r.supply?.precio_unidad || 0))}</span>
+                <button onClick={() => quitarIngEdit(r.id)}
+                  title="Quitar ingrediente"
+                  style={{ background: 'transparent', border: `1px solid ${C.red}55`, color: C.red, borderRadius: 6, padding: '1px 7px', fontSize: 11, cursor: 'pointer' }}>✕</button>
               </div>
             ))}
+
+            {/* Agregar nuevo ingrediente al plato */}
+            <div style={{ marginTop: 10, padding: 10, background: C.bg, borderRadius: 8, border: `1px dashed ${C.border}` }}>
+              <div style={{ fontSize: 10, color: C.t3, fontWeight: 700, textTransform: 'uppercase', marginBottom: 6 }}>+ Agregar ingrediente</div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' as const }}>
+                <select value={editIngSup} onChange={e => setEditIngSup(e.target.value)} style={{ ...inp, flex: 2, minWidth: 140 }}>
+                  <option value="">Seleccionar insumo…</option>
+                  {supplies.filter(s => s.activo !== false).map(s => (
+                    <option key={s.id} value={s.id}>{s.nombre} · {fmt(s.precio_unidad)}/{s.unidad}</option>
+                  ))}
+                </select>
+                <input type="number" min={0} step="any" placeholder="Cant." value={editIngCant || ''}
+                  onChange={e => setEditIngCant(parseFloat(e.target.value) || 0)}
+                  style={{ ...inp, width: 70 }} />
+                <select value={editIngUnidad} onChange={e => setEditIngUnidad(e.target.value)} style={{ ...inp, width: 70 }}>
+                  {['gr','kg','ml','l','und','porc'].map(u => <option key={u}>{u}</option>)}
+                </select>
+                <button onClick={agregarIngEdit}
+                  disabled={!editIngSup || editIngCant <= 0}
+                  style={{ padding: '8px 14px', borderRadius: 8, border: 'none', background: C.green, color: '#000', fontSize: 12, fontWeight: 800, cursor: editIngSup && editIngCant > 0 ? 'pointer' : 'not-allowed', opacity: editIngSup && editIngCant > 0 ? 1 : 0.5 }}>
+                  + Agregar
+                </button>
+              </div>
+            </div>
 
             <div style={{ display: 'flex', gap: 8, marginTop: 18 }}>
               <button onClick={guardarEdicion} style={{ flex: 1, padding: '10px', borderRadius: 10, border: 'none', background: C.gold, color: '#000', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>Guardar cambios</button>
