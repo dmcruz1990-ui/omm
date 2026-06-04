@@ -44,6 +44,8 @@ const APORTE_PENSION_EMP   = 0.04;  // 4% del trabajador
 const APORTE_SALUD_PATRON  = 0.085;
 const APORTE_PENSION_PATRON= 0.12;
 const ARL_NIVEL_II         = 0.00522;
+// Factores legacy (se mantienen para retro-compat en costos patronales).
+// Las fórmulas oficiales viven en calcPrestaciones() abajo.
 const CESANTIAS_FACTOR     = 0.0833;
 const INT_CESANTIAS_FACTOR = 0.01;
 const PRIMA_FACTOR         = 0.0833;
@@ -51,6 +53,46 @@ const VACACIONES_FACTOR    = 0.0417;
 const CAJA_COMPENSACION    = 0.04;
 const SENA                 = 0.02;  // exonerado para algunos
 const ICBF                 = 0.03;  // exonerado para algunos
+
+// ── Auxilio de transporte 2026 (aplica a quienes ganan ≤ 2 SMMLV) ──
+const AUXILIO_TRANSPORTE_2026 = 200000; // valor demo · ajustar a oficial
+const TOPE_AUX_TRANSPORTE     = 2 * 1423500; // ≤ 2 SMMLV (proxy 2026)
+const aplicaAuxTransporte = (salario:number) => salario > 0 && salario <= TOPE_AUX_TRANSPORTE;
+const auxTransporteDe = (salario:number) => aplicaAuxTransporte(salario) ? AUXILIO_TRANSPORTE_2026 : 0;
+
+// ══════════════════════════════════════════════════════════════════
+// FÓRMULAS OFICIALES COLOMBIA (Boss Seratta · 4 jun 2026)
+// Base = Salario mensual + Auxilio de transporte (si aplica)
+// ══════════════════════════════════════════════════════════════════
+// Cesantías      = Base × días trabajados ÷ 360
+// Int. Cesantías = Cesantías × días trabajados × 12% ÷ 360
+// Prima          = Base × días trabajados en el semestre ÷ 360  (pago jun/dic)
+// Vacaciones     = Salario × días trabajados ÷ 720 (15 días por año)
+const calcCesantias = (salario:number, dias:number) => {
+  const base = salario + auxTransporteDe(salario);
+  return (base * dias) / 360;
+};
+const calcInteresesCesantias = (salario:number, dias:number) => {
+  const cesantias = calcCesantias(salario, dias);
+  return (cesantias * dias * 0.12) / 360;
+};
+const calcPrima = (salario:number, diasSemestre:number) => {
+  // Se paga en junio (1er semestre · días 1-180) y diciembre (2º · 181-360)
+  const base = salario + auxTransporteDe(salario);
+  return (base * Math.min(180, diasSemestre)) / 360;
+};
+const calcVacaciones = (salario:number, dias:number) => (salario * dias) / 720; // 15 días/año
+
+// Día de hoy del semestre actual (1-180 enero-junio, 181-360 julio-diciembre)
+const diasEnSemestreActual = (fechaIngreso?:string) => {
+  const hoy = new Date();
+  const ini = hoy.getMonth() < 6
+    ? new Date(hoy.getFullYear(), 0, 1)   // 1 enero
+    : new Date(hoy.getFullYear(), 6, 1);  // 1 julio
+  const ingreso = fechaIngreso ? new Date(fechaIngreso) : ini;
+  const fechaBase = ingreso > ini ? ingreso : ini;
+  return Math.max(0, Math.floor((hoy.getTime() - fechaBase.getTime()) / 86400000));
+};
 const NOCHE_INICIO = 19; // 7:00 p.m. (reforma vigente)
 const NOCHE_FIN = 6;
 const FESTIVOS_2026 = new Set([
@@ -250,18 +292,33 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
   const costoPatronal = preliq.reduce((a,r)=>a+r.costoEmpleador, 0);
   const totalDeducc   = preliq.reduce((a,r)=>a+r.deducSalud+r.deducPension, 0);
 
-  // Mensual estimado (4 semanas)
+  // Mensual estimado · prestaciones con FÓRMULAS OFICIALES Colombia 2026
   const preliqMensual = useMemo(() => {
-    return preliq.map(r => ({
-      ...r,
-      devengado_mes:        r.devengado * 4,
-      neto_mes:             r.netoEmpleado * 4,
-      costo_empleador_mes:  r.costoEmpleador * 4,
-      deduc_mes:            (r.deducSalud + r.deducPension) * 4,
-      cesantias_mes:        r.emp.salario_base ? r.emp.salario_base * CESANTIAS_FACTOR : 0,
-      prima_mes:            r.emp.salario_base ? r.emp.salario_base * PRIMA_FACTOR : 0,
-      vacac_mes:            r.emp.salario_base ? r.emp.salario_base * VACACIONES_FACTOR : 0,
-    }));
+    return preliq.map(r => {
+      const salario = Number(r.emp.salario_base) || 0;
+      const auxTr = auxTransporteDe(salario);
+      // Acumulado anual (30 días) y semestral (días en el semestre actual)
+      const diasMes = 30;
+      const diasSem = diasEnSemestreActual(r.emp.fecha_ingreso);
+      return {
+        ...r,
+        salario_base:         salario,
+        auxilio_transporte:   auxTr,
+        aplica_aux:           auxTr > 0,
+        base_prestacional:    salario + auxTr,
+        devengado_mes:        r.devengado * 4,
+        neto_mes:             r.netoEmpleado * 4,
+        costo_empleador_mes:  r.costoEmpleador * 4,
+        deduc_mes:            (r.deducSalud + r.deducPension) * 4,
+        // FÓRMULAS OFICIALES
+        cesantias_mes:        calcCesantias(salario, diasMes),
+        int_cesantias_mes:    calcInteresesCesantias(salario, diasMes),
+        prima_acumulada:      calcPrima(salario, diasSem),
+        prima_mes_provision:  calcPrima(salario, diasMes), // provisión mensual
+        vacac_mes:            calcVacaciones(salario, diasMes),
+        dias_semestre:        diasSem,
+      };
+    });
   }, [preliq]);
 
   // ─────────────── Acciones ───────────────
@@ -773,20 +830,86 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
             </table>
           </div>
 
-          {/* Parafiscales y prestaciones (resumen) */}
-          {preliq.length > 0 && (
+          {/* PRESTACIONES SOCIALES por empleado con FÓRMULAS OFICIALES */}
+          {preliqMensual.length > 0 && (
             <div className="rounded-2xl p-4 border" style={{background:C.card, borderColor:C.border}}>
-              <div className="text-[10px] font-bold uppercase tracking-wider mb-3" style={{color:'#9b72ff'}}>💼 Aportes patronales + prestaciones (estimado mensual)</div>
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                <div className="text-[10px] font-bold uppercase tracking-wider" style={{color:'#9b72ff'}}>📐 Prestaciones sociales · fórmulas oficiales Colombia</div>
+                <span className="text-[9px] px-2 py-0.5 rounded-full" style={{background:'rgba(155,114,255,0.15)',color:'#9b72ff'}}>Boss Seratta · jun 2026</span>
+              </div>
+
+              {/* Fórmulas visibles · pedidas explícitamente */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[10px] mb-4">
+                <div className="p-2 rounded-lg" style={{background:'rgba(74,143,212,0.06)',border:'1px solid rgba(74,143,212,0.25)'}}>
+                  <div className="font-bold mb-0.5" style={{color:'#4a8fd4'}}>Cesantías</div>
+                  <div className="font-mono" style={{color:'#a0a0a0'}}>(Salario + Aux. transporte) × días ÷ 360</div>
+                </div>
+                <div className="p-2 rounded-lg" style={{background:'rgba(155,114,255,0.06)',border:'1px solid rgba(155,114,255,0.25)'}}>
+                  <div className="font-bold mb-0.5" style={{color:'#9b72ff'}}>Intereses cesantías</div>
+                  <div className="font-mono" style={{color:'#a0a0a0'}}>Cesantías × días × 12% ÷ 360</div>
+                </div>
+                <div className="p-2 rounded-lg" style={{background:'rgba(212,148,58,0.06)',border:'1px solid rgba(212,148,58,0.25)'}}>
+                  <div className="font-bold mb-0.5" style={{color:C.gold}}>Prima de servicios <span className="text-[9px] font-normal" style={{color:C.t3}}>· pago jun / dic</span></div>
+                  <div className="font-mono" style={{color:'#a0a0a0'}}>(Salario + Aux. transporte) × días del semestre ÷ 360</div>
+                </div>
+                <div className="p-2 rounded-lg" style={{background:'rgba(61,186,111,0.06)',border:'1px solid rgba(61,186,111,0.25)'}}>
+                  <div className="font-bold mb-0.5" style={{color:C.green}}>Vacaciones</div>
+                  <div className="font-mono" style={{color:'#a0a0a0'}}>Salario × días ÷ 720 (15 días/año)</div>
+                </div>
+              </div>
+
+              {/* Tabla por empleado · acumulado real con días en semestre */}
+              <div className="overflow-x-auto rounded-lg" style={{border:'1px solid '+C.border}}>
+                <table className="w-full border-collapse text-[11px]" style={{minWidth:760}}>
+                  <thead>
+                    <tr style={{background:C.card2, color:C.t3}}>
+                      {['Empleado','Base (sal + aux)','Días semestre','Cesantías (mes)','Int. Cesant.','Prima acum.','Vacaciones'].map((h,i)=>(
+                        <th key={i} className={`p-2 text-[9px] uppercase font-bold ${i===0?'text-left':'text-right'}`}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preliqMensual.map((r:any) => (
+                      <tr key={r.emp.id} style={{borderTop:`1px solid ${C.border}`}}>
+                        <td className="p-2">
+                          <div className="font-bold text-[11px]">{r.emp.nombre_completo}</div>
+                          {r.aplica_aux && <div className="text-[9px]" style={{color:'#22D07A'}}>+ aux transporte {cop(r.auxilio_transporte)}</div>}
+                        </td>
+                        <td className="p-2 text-right tabular-nums">
+                          <div className="font-bold">{cop(r.base_prestacional)}</div>
+                          <div className="text-[9px]" style={{color:C.t3}}>{cop(r.salario_base)} base</div>
+                        </td>
+                        <td className="p-2 text-right tabular-nums" style={{color:C.t2}}>{r.dias_semestre} d</td>
+                        <td className="p-2 text-right tabular-nums" style={{color:'#4a8fd4',fontWeight:700}}>{cop(r.cesantias_mes)}</td>
+                        <td className="p-2 text-right tabular-nums" style={{color:'#9b72ff',fontWeight:700}}>{cop(r.int_cesantias_mes)}</td>
+                        <td className="p-2 text-right tabular-nums" style={{color:C.gold,fontWeight:700}}>{cop(r.prima_acumulada)}</td>
+                        <td className="p-2 text-right tabular-nums" style={{color:C.green,fontWeight:700}}>{cop(r.vacac_mes)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{borderTop:`2px solid ${C.border}`,background:C.card2,fontWeight:800}}>
+                      <td className="p-2 text-[10px] uppercase" style={{color:C.t2}}>TOTAL EQUIPO (provisión)</td>
+                      <td className="p-2 text-right tabular-nums">{cop(preliqMensual.reduce((s:number,r:any)=>s+r.base_prestacional,0))}</td>
+                      <td/>
+                      <td className="p-2 text-right tabular-nums" style={{color:'#4a8fd4'}}>{cop(preliqMensual.reduce((s:number,r:any)=>s+r.cesantias_mes,0))}</td>
+                      <td className="p-2 text-right tabular-nums" style={{color:'#9b72ff'}}>{cop(preliqMensual.reduce((s:number,r:any)=>s+r.int_cesantias_mes,0))}</td>
+                      <td className="p-2 text-right tabular-nums" style={{color:C.gold}}>{cop(preliqMensual.reduce((s:number,r:any)=>s+r.prima_acumulada,0))}</td>
+                      <td className="p-2 text-right tabular-nums" style={{color:C.green}}>{cop(preliqMensual.reduce((s:number,r:any)=>s+r.vacac_mes,0))}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
+              {/* Parafiscales · resumen mensual */}
+              <div className="text-[10px] font-bold uppercase tracking-wider mb-2 mt-5" style={{color:C.t2}}>💼 Aportes patronales adicionales (mensual)</div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[12px]">
                 <div><div className="text-[9px]" style={{color:C.t3}}>Salud 8.5% patrono</div><div className="font-bold">{cop(costoPeriodo*4*APORTE_SALUD_PATRON)}</div></div>
                 <div><div className="text-[9px]" style={{color:C.t3}}>Pensión 12% patrono</div><div className="font-bold">{cop(costoPeriodo*4*APORTE_PENSION_PATRON)}</div></div>
                 <div><div className="text-[9px]" style={{color:C.t3}}>ARL Riesgo II 0.52%</div><div className="font-bold">{cop(costoPeriodo*4*ARL_NIVEL_II)}</div></div>
                 <div><div className="text-[9px]" style={{color:C.t3}}>Caja Compensación 4%</div><div className="font-bold">{cop(costoPeriodo*4*CAJA_COMPENSACION)}</div></div>
-                <div><div className="text-[9px]" style={{color:C.t3}}>Cesantías 8.33%</div><div className="font-bold">{cop(costoPeriodo*4*CESANTIAS_FACTOR)}</div></div>
-                <div><div className="text-[9px]" style={{color:C.t3}}>Int. Cesantías 1%</div><div className="font-bold">{cop(costoPeriodo*4*INT_CESANTIAS_FACTOR)}</div></div>
-                <div><div className="text-[9px]" style={{color:C.t3}}>Prima servicios 8.33%</div><div className="font-bold">{cop(costoPeriodo*4*PRIMA_FACTOR)}</div></div>
-                <div><div className="text-[9px]" style={{color:C.t3}}>Vacaciones 4.17%</div><div className="font-bold">{cop(costoPeriodo*4*VACACIONES_FACTOR)}</div></div>
               </div>
+
               <div className="mt-3 pt-3 border-t flex items-center justify-between text-[14px] font-bold" style={{borderColor:C.border}}>
                 <span style={{color:C.t2}}>TOTAL COSTO EMPLEADOR (mes estimado)</span>
                 <span className="font-['Syne'] text-[20px] font-black" style={{color:'#9b72ff'}}>{cop(costoPatronal*4)}</span>
@@ -795,7 +918,8 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
           )}
 
           <p className="text-[10px]" style={{color:C.t3}}>
-            ⚠️ Cálculo trazable basado en turnos efectivos (descontada 1h de alimentación) + novedades aprobadas. Multiplicadores conforme Guía Salarial Colombia 2026. No reemplaza revisión laboral formal. Mensual = semana × 4.
+            ⚠️ Cálculo con fórmulas oficiales Colombia: cesantías (base × días ÷ 360), intereses (cesantías × días × 12% ÷ 360),
+            prima (base × días semestre ÷ 360 · pago jun/dic), vacaciones (salario × días ÷ 720). Auxilio de transporte ({cop(AUXILIO_TRANSPORTE_2026)}) se incluye en base prestacional cuando el salario es ≤ 2 SMMLV.
           </p>
         </div>
       )}

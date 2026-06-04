@@ -1411,17 +1411,28 @@ function DespedirModal({ empleados, onClose, onSaved }:{ empleados:any[]; onClos
   // Indemnización (sin justa causa, indefinido):
   //   - <1 año: 30 días
   //   - >=1 año: 30 días + 20 días por cada año adicional
+  // ── Fórmulas oficiales Colombia (Boss Seratta · 4 jun 2026) ──
+  // Auxilio de transporte 2026 ≈ $200.000 si salario ≤ 2 SMMLV
+  const AUX_TRANSPORTE = 200000;
+  const TOPE_AUX = 2 * 1423500;
   const calculo = (() => {
     if (!emp) return null;
     const salario = Number(emp.salario_base) || 0;
+    const auxTransporte = salario > 0 && salario <= TOPE_AUX ? AUX_TRANSPORTE : 0;
+    const basePrest = salario + auxTransporte; // base prestacional
     const diasEmpresa = emp.dias_empresa || (emp.fecha_ingreso ? Math.floor((Date.now()-new Date(emp.fecha_ingreso).getTime())/86400000) : 0);
     const anios = diasEmpresa / 365;
-    const cesantias = salario * (diasEmpresa / 360);
-    const interesesCes = cesantias * 0.12 * (diasEmpresa / 360);
-    const prima = salario * (diasEmpresa / 360);
+    // FÓRMULAS OFICIALES
+    const cesantias = (basePrest * diasEmpresa) / 360;
+    const interesesCes = (cesantias * diasEmpresa * 0.12) / 360;
+    // Días en el semestre actual (proxy: días desde 1 enero o 1 julio)
+    const hoy = new Date();
+    const iniSem = hoy.getMonth() < 6 ? new Date(hoy.getFullYear(), 0, 1) : new Date(hoy.getFullYear(), 6, 1);
+    const diasSem = Math.max(0, Math.floor((hoy.getTime() - iniSem.getTime()) / 86400000));
+    const prima = (basePrest * Math.min(180, diasSem)) / 360;
     const vacacionesDiasPendientes = emp.vacaciones_disponibles || 0;
     const vacaciones = vacacionesDiasPendientes * (salario / 30);
-    // Indemnización SMMLV-based:
+    // Indemnización (sin justa causa, contrato indefinido):
     let indemnizacion = 0;
     if (conIndemn) {
       const diasIndemn = anios < 1 ? 30 : 30 + Math.floor(anios-1) * 20;
@@ -1429,7 +1440,7 @@ function DespedirModal({ empleados, onClose, onSaved }:{ empleados:any[]; onClos
     }
     const totalLiq = cesantias + interesesCes + prima + vacaciones;
     const totalPagar = totalLiq + indemnizacion;
-    return { salario, diasEmpresa, anios, cesantias, interesesCes, prima, vacaciones, vacacionesDiasPendientes, indemnizacion, totalLiq, totalPagar };
+    return { salario, auxTransporte, basePrest, diasEmpresa, diasSem, anios, cesantias, interesesCes, prima, vacaciones, vacacionesDiasPendientes, indemnizacion, totalLiq, totalPagar };
   })();
 
   React.useEffect(() => {
@@ -1522,10 +1533,15 @@ function DespedirModal({ empleados, onClose, onSaved }:{ empleados:any[]; onClos
           <div style={{background:'rgba(255,92,83,0.05)',border:'1px solid rgba(255,92,83,0.25)',borderRadius:12,padding:14,marginBottom:14}}>
             <div style={{fontSize:10,color:'#FF5C53',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:8}}>💰 Cálculo de liquidación</div>
             <div style={{display:'flex',flexDirection:'column',gap:5,fontSize:12}}>
-              <Row label={`Cesantías (${Math.floor(calculo.diasEmpresa/30)} meses)`} v={fmtM(calculo.cesantias)}/>
-              <Row label="Intereses cesantías (12% anual)" v={fmtM(calculo.interesesCes)}/>
-              <Row label="Prima de servicios" v={fmtM(calculo.prima)}/>
-              <Row label={`Vacaciones (${calculo.vacacionesDiasPendientes} días)`} v={fmtM(calculo.vacaciones)}/>
+              {calculo.auxTransporte > 0 && (
+                <div style={{padding:'6px 8px',marginBottom:6,borderRadius:6,background:'rgba(34,208,122,0.06)',border:'1px solid rgba(34,208,122,0.2)',fontSize:10,color:'#22D07A'}}>
+                  ✓ Base prestacional incluye auxilio de transporte: {fmtM(calculo.auxTransporte)} (salario ≤ 2 SMMLV)
+                </div>
+              )}
+              <Row label={`Cesantías · base × ${calculo.diasEmpresa}d / 360`} v={fmtM(calculo.cesantias)}/>
+              <Row label={`Int. cesantías · ces × ${calculo.diasEmpresa}d × 12% / 360`} v={fmtM(calculo.interesesCes)}/>
+              <Row label={`Prima · base × ${Math.min(180,calculo.diasSem)}d sem / 360 (jun/dic)`} v={fmtM(calculo.prima)}/>
+              <Row label={`Vacaciones (${calculo.vacacionesDiasPendientes} días pend.)`} v={fmtM(calculo.vacaciones)}/>
               <div style={{borderTop:'1px solid rgba(255,92,83,0.2)',marginTop:4,paddingTop:6,display:'flex',justifyContent:'space-between',fontWeight:800,color:'#FF5C53'}}>
                 <span>Subtotal liquidación</span><span>{fmtM(calculo.totalLiq)}</span>
               </div>
