@@ -5273,51 +5273,56 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     className="w-7 h-7 rounded-lg bg-[#1c1c1c] border border-[#2a2a2a] flex items-center justify-center text-[#a0a0a0] disabled:opacity-30 hover:border-[#d4943a] hover:text-[#d4943a] transition-all text-[14px]">›</button>
                 </div>
 
-                {/* Card de la mesa activa — protagonista: mesa #, VIP, zona, ticket objetivo */}
-                <div className="bg-[#1c1c1c] rounded-2xl p-4 pb-3.5"
-                  style={{ border: `2px solid ${profile?.color || '#d4943a'}` }}>
-                  {/* Fila 1 · Número de mesa GRANDE + VIP + pax */}
-                  <div className="flex items-start gap-3 mb-2">
-                    <div className="shrink-0 flex flex-col items-center justify-center rounded-xl"
-                      style={{ background:`${profile?.color || '#d4943a'}18`, border:`1.5px solid ${profile?.color || '#d4943a'}55`, padding:'8px 12px', minWidth:62 }}>
-                      <span className="font-['Syne'] font-black text-[28px] leading-none"
-                        style={{ color: profile?.color || '#d4943a' }}>{nombreMesa(m)}</span>
-                      <span className="text-[9px] text-[#a0a0a0] font-bold mt-0.5">{m.pax} pax</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                        {m.vip && (
-                          <span className="flex items-center gap-1 text-[10px] font-black text-[#ffd700] bg-[#ffd700]/12 border border-[#ffd700]/40 rounded-full px-2 py-0.5">
-                            ⭐ VIP
-                          </span>
-                        )}
-                        {m.bday && <span className="text-[14px]" title="Cumpleaños">🎂</span>}
-                        {m.alert && <span className="text-[13px] text-[#e07830]" title="Alerta">⚠️</span>}
+                {/* Card de la mesa activa — diseño limpio que respeta el ancho de 200px */}
+                <div className="rounded-2xl overflow-hidden"
+                  style={{ border: `1.5px solid ${profile?.color || '#d4943a'}55`, background:'#1c1c1c' }}>
+
+                  {/* HEADER — número, pax, VIP, zona en UNA fila compacta */}
+                  <div className="px-3 pt-3 pb-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="font-['Syne'] font-black text-[26px] leading-none"
+                          style={{ color: profile?.color || '#d4943a' }}>{nombreMesa(m)}</span>
+                        <span className="text-[10px] text-[#a0a0a0] font-bold">{m.pax}p</span>
                       </div>
-                      <div className="text-[12px] text-[#f0f0f0] font-bold truncate">{m.cliente || 'Sin nombre'}</div>
-                      <span className="inline-flex items-center gap-1 text-[10px] text-[#a0a0a0] bg-[#1a1a1a] px-2 py-0.5 rounded-full border border-[#2a2a2a] mt-1">
-                        📍 {(m as any).zona || 'Salón'}
-                      </span>
+                      <div className="flex items-center gap-1">
+                        {m.vip  && <span className="text-[12px]" title="VIP">⭐</span>}
+                        {m.bday && <span className="text-[12px]" title="Cumpleaños">🎂</span>}
+                        {m.alert && <span className="text-[12px]" title="Alerta">⚠️</span>}
+                      </div>
+                    </div>
+
+                    {/* Zona + cliente · una línea, sin overflow */}
+                    <div className="flex items-center gap-1.5 text-[10px]" style={{color:'#808080'}}>
+                      <span className="shrink-0">📍 {((m as any).zona || 'Salón').slice(0,12)}</span>
+                      {m.cliente && (
+                        <>
+                          <span style={{color:'#3a3a3a'}}>·</span>
+                          <span className="truncate" style={{color:'#a0a0a0',fontWeight:600}}>{m.cliente}</span>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  {/* Fila 2 · Objetivo de ticket explícito */}
-                  <div className="bg-[#0e0e14] border border-[#2a2a2a] rounded-lg px-3 py-2 mb-2">
-                    <div className="flex items-baseline gap-1.5 justify-between mb-1.5">
-                      <span className="text-[9px] text-[#606060] font-black uppercase tracking-widest">Objetivo ticket</span>
-                      <span className="text-[12px] text-[#a0a0a0] tabular-nums">{m.time}</span>
+                  {/* OBJETIVO TICKET — card interna con su propio fondo */}
+                  <div className="mx-2 mb-2 rounded-lg" style={{background:'#0e0e14', border:'1px solid #1e1e24'}}>
+                    <div className="px-3 pt-2 pb-1 flex items-center justify-between">
+                      <span className="text-[8.5px] font-black uppercase" style={{color:'#5a5a5a', letterSpacing:'.14em'}}>Objetivo</span>
+                      <span className="text-[10px] tabular-nums" style={{color:'#6a6a6a'}}>{m.time}</span>
                     </div>
-                    <div className="flex items-baseline justify-between mb-1">
-                      <span className="font-['Syne'] text-[18px] font-black" style={{color: pct >= 80 ? '#3dba6f' : pct >= 50 ? '#d4943a' : '#e05050'}}>
-                        ${formatPrecio(mesaSubtotal)}
-                      </span>
-                      <span className="text-[11px] text-[#606060]">/ <span className="text-[#a0a0a0] font-bold">${formatPrecio(m.meta*1000)}</span></span>
-                    </div>
-                    <div className="h-[6px] bg-[#2a2a2a] rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all duration-500 ${colorClass}`} style={{ width: `${pct}%` }}></div>
-                    </div>
-                    <div className="text-[10px] text-center mt-1 font-bold" style={{ color: pct >= 80 ? '#3dba6f' : pct >= 50 ? '#d4943a' : '#e05050' }}>
-                      {pct}% del objetivo
+                    <div className="px-3 pb-1.5">
+                      <div className="flex items-baseline gap-1 mb-1">
+                        <span className="font-['Syne'] text-[17px] font-black tabular-nums" style={{color: pct >= 80 ? '#3dba6f' : pct >= 50 ? '#d4943a' : '#e05050', lineHeight:1}}>
+                          ${formatPrecio(mesaSubtotal)}
+                        </span>
+                        <span className="text-[10px] tabular-nums" style={{color:'#5a5a5a'}}>/ ${formatPrecio(m.meta*1000)}</span>
+                      </div>
+                      <div className="h-[4px] bg-[#1e1e24] rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all duration-500 ${colorClass}`} style={{ width: `${Math.min(pct,100)}%` }}></div>
+                      </div>
+                      <div className="text-[9px] mt-1 font-bold tabular-nums" style={{ color: pct >= 80 ? '#3dba6f' : pct >= 50 ? '#d4943a' : '#e05050' }}>
+                        {pct}% {pct>=100?'✓':''}
+                      </div>
                     </div>
                   </div>
                 </div>
