@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase.ts';
+import { useRestaurant } from '../contexts/RestaurantContext';
 
 // ── Tokens ────────────────────────────────────────────────────────────────
 const S = {
@@ -47,6 +48,7 @@ const fmtMoney = (n?:number) => n ? `$${Math.round(n).toLocaleString('es-CO')}` 
 const hoy = () => new Date().toISOString().split('T')[0];
 
 export default function CustomersModule() {
+  const { activeRestaurant } = useRestaurant();
   const [ctab, setCtab]           = useState<CTab>('lista');
   const [clientes, setClientes]   = useState<Customer[]>([]);
   const [selected, setSelected]   = useState<Customer|null>(null);
@@ -67,6 +69,8 @@ export default function CustomersModule() {
   const [csvStep, setCsvStep]           = useState<'upload'|'map'|'preview'|'done'>('upload');
   const [csvResultado, setCsvResultado] = useState({ok:0,err:0});
   const fileRef = useRef<HTMLInputElement>(null);
+  // Historial consolidado del cliente en el restaurante activo (pedidos + care + ratings)
+  const [perfilHistorial, setPerfilHistorial] = useState<{pedidos:any[]; care:any[]; ratings:any[]}>({pedidos:[], care:[], ratings:[]});
 
   const showToast = useCallback((m:string)=>{ setToast(m); setTimeout(()=>setToast(''),3000); },[]);
   const setF = (k:string,v:any) => setForm(p=>({...p,[k]:v}));
@@ -226,6 +230,8 @@ export default function CustomersModule() {
 
   const abrirPerfil = (c:Customer) => {
     setSelected(c); setForm(c); setEditMode(false); setCtab('perfil');
+    setPerfilHistorial({pedidos:[], care:[], ratings:[]});
+    cargarHistorialPerfil(c);
   };
 
   // ── CSV import ────────────────────────────────────────────────────────
@@ -259,35 +265,73 @@ export default function CustomersModule() {
     showToast(`✓ ${ok} importados`); fetchClientes();
   };
 
+  // Export — solo Nombres / correo / celular / ciudad / documento
+  const exportarClientes = () => {
+    const cols = ['nombre','apellido','email','celular','ciudad','documento'];
+    const rows = filtrados.map(c => [
+      (c.name||'').replace(/,/g,' '),
+      (c.apellido||'').replace(/,/g,' '),
+      (c.email||''),
+      (c.phone||''),
+      (c.ciudad||'').replace(/,/g,' '),
+      (c.documento||''),
+    ]);
+    const csv = [cols.join(','), ...rows.map(r=>r.map(v=>`"${(v||'').toString().replace(/"/g,'""')}"`).join(','))].join('\n');
+    const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `clientes_${(activeRestaurant as any)?.nombre||'NEXUM'}_${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast(`✓ Exportados ${rows.length} clientes`);
+  };
+
+  // Cargar historial consolidado al abrir perfil (pedidos + care + calificaciones del restaurante activo)
+  const cargarHistorialPerfil = useCallback(async (c:Customer) => {
+    const rid = (activeRestaurant as any)?.id;
+    if (!rid) return;
+    const orFilter:string[] = [];
+    if (c.email) orFilter.push(`cliente_email.eq.${c.email}`);
+    if (c.phone) orFilter.push(`cliente_telefono.eq.${c.phone}`);
+    // Pedidos (orders) por reservation_id de las reservas del cliente — simplificado: por customer_id si existe
+    const [pedidosRes, careRes, ratingsRes] = await Promise.all([
+      supabase.from('orders').select('id,created_at,total,estado,mesa_num,items_count').eq('customer_id', c.id).eq('restaurant_id', rid).order('created_at',{ascending:false}).limit(20),
+      supabase.from('xcare_alertas').select('id,created_at,tipo,severidad,mensaje,resuelta').eq('customer_id', c.id).eq('restaurant_id', rid).order('created_at',{ascending:false}).limit(15),
+      supabase.from('xcare_encuestas').select('id,created_at,estrellas,estrellas_comida,estrellas_servicio,estrellas_ambiente,comentario').eq('customer_id', c.id).eq('restaurant_id', rid).order('created_at',{ascending:false}).limit(15),
+    ]);
+    setPerfilHistorial({
+      pedidos: (pedidosRes.data||[]),
+      care:    (careRes.data||[]),
+      ratings: (ratingsRes.data||[]),
+    });
+  }, [activeRestaurant]);
+
   // ── RENDER ─────────────────────────────────────────────────────────────
   return (
     <div style={{height:'100%',display:'flex',flexDirection:'column',background:S.bg,color:S.t1,fontFamily:"'DM Sans',sans-serif",overflow:'hidden'}}>
 
       {toast && <div style={{position:'fixed',bottom:24,left:'50%',transform:'translateX(-50%)',background:S.bg4,border:`1px solid ${S.pink}`,color:S.t1,padding:'10px 24px',borderRadius:50,fontSize:13,zIndex:9999,whiteSpace:'nowrap'}}>{toast}</div>}
 
-      {/* Header */}
+      {/* Header — solo título + acciones (Import / Export / Nuevo) */}
       <div style={{padding:'14px 24px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',gap:16,flexShrink:0,background:S.bg2,flexWrap:'wrap'}}>
-        <div style={{display:'flex',alignItems:'center',gap:12}}>
+        <div style={{display:'flex',alignItems:'center',gap:12,flex:1}}>
           <div style={{width:42,height:42,borderRadius:13,background:`linear-gradient(135deg,${S.pink},${S.purple})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,boxShadow:`0 0 20px rgba(255,45,120,0.3)`}}>👥</div>
           <div>
             <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,letterSpacing:'-0.02em'}}>CLIENTES</div>
-            <div style={{fontSize:10,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase' as const}}>CIM™ — Customer Intelligence</div>
+            <div style={{fontSize:10,color:S.t3,letterSpacing:'.1em',textTransform:'uppercase' as const}}>CIM™ — {(activeRestaurant as any)?.nombre || 'NEXUM'}</div>
           </div>
         </div>
-        <div style={{position:'relative',flex:1,maxWidth:320}}>
-          <input placeholder="🔍 Buscar nombre, teléfono, email..." value={busqueda} onChange={e=>setBusqueda(e.target.value)}
-            style={{...inp,padding:'8px 14px',fontSize:12}} />
-          {busqueda && <button onClick={()=>setBusqueda('')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:S.t3,cursor:'pointer'}}>✕</button>}
-        </div>
-        <select value={ordenar} onChange={e=>setOrdenar(e.target.value)} style={{...inp,width:'auto',padding:'8px 12px',fontSize:12,cursor:'pointer'}}>
-          <option value="total_visits">Por visitas</option>
-          <option value="total_spent">Por gasto</option>
-          <option value="score">Por score</option>
-          <option value="ultima_visita">Última visita</option>
-          <option value="created_at">Más nuevos</option>
-        </select>
+        <button onClick={()=>setCtab('importar')}
+          style={{padding:'9px 16px',borderRadius:10,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+          📥 Importar
+        </button>
+        <button onClick={exportarClientes}
+          style={{padding:'9px 16px',borderRadius:10,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+          📤 Exportar
+        </button>
         <button onClick={()=>{ setForm({tipo_documento:'CC',origen_captacion:'walk-in',activo:true}); setCtab('nuevo'); }}
-          style={{padding:'9px 20px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.pink},#cc2260)`,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+          style={{padding:'9px 20px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.pink},#cc2260)`,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',boxShadow:`0 4px 14px ${S.pink}30`}}>
           + Nuevo cliente
         </button>
       </div>
@@ -315,31 +359,41 @@ export default function CustomersModule() {
           {id:'lista',    l:'📋 Lista'},
           {id:'perfil',   l:'👤 Perfil', hide:!selected},
           {id:'analytics',l:'📊 Analytics'},
-          {id:'importar', l:'📥 Importar CSV'},
-          {id:'nuevo',    l:'✦ Nuevo'},
         ] as const).filter(t=>!('hide' in t && t.hide)).map(t=>(
           <button key={t.id} onClick={()=>setCtab(t.id)}
             style={{padding:'10px 16px',background:'none',border:'none',borderBottom:`2px solid ${ctab===t.id?S.pink:'transparent'}`,color:ctab===t.id?S.pink:S.t3,fontSize:11,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap',transition:'all .15s'}}>
             {t.l}
           </button>
         ))}
-        {/* Segmento filtro */}
-        <div style={{marginLeft:'auto',display:'flex',gap:6,alignItems:'center',paddingBottom:4}}>
-          {([
-            {s:'todos',      l:'Todos',          c:S.t3},
-            {s:'ohyeah',     l:'🦉 Oh Yeah',     c:'#FFE600'},
-            {s:'vip',        l:'⭐ VIP',          c:S.gold},
-            {s:'recurrentes',l:'🔄 Recurrentes',  c:S.green},
-            {s:'nuevos',     l:'🆕 Nuevos',       c:S.blue},
-            {s:'dormidos',   l:'💤 Dormidos',     c:S.red},
-          ] as {s:Segmento,l:string,c:string}[]).map(({s,l,c})=>(
-            <button key={s} onClick={()=>setSegmento(s)}
-              style={{padding:'4px 12px',borderRadius:50,border:`1px solid ${segmento===s?c:S.border}`,background:segmento===s?`${c}15`:'transparent',color:segmento===s?c:S.t3,fontSize:10,fontWeight:700,cursor:'pointer',transition:'all .15s'}}>
-              {l}
-            </button>
-          ))}
-        </div>
       </div>
+
+      {/* Barra de búsqueda + Oh Yeah chip — solo en lista */}
+      {ctab==='lista' && (
+        <div style={{display:'flex',alignItems:'center',gap:12,padding:'10px 24px',borderBottom:`1px solid ${S.border}`,background:S.bg,flexShrink:0,flexWrap:'wrap'}}>
+          <div style={{position:'relative',flex:1,minWidth:240,maxWidth:420}}>
+            <input placeholder="🔍 Buscar nombre, teléfono, email..." value={busqueda} onChange={e=>setBusqueda(e.target.value)}
+              style={{...inp,padding:'9px 14px',fontSize:13}} />
+            {busqueda && <button onClick={()=>setBusqueda('')} style={{position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:S.t3,cursor:'pointer'}}>✕</button>}
+          </div>
+          <select value={ordenar} onChange={e=>setOrdenar(e.target.value)} style={{...inp,width:'auto',padding:'9px 12px',fontSize:12,cursor:'pointer'}}>
+            <option value="total_visits">Por visitas</option>
+            <option value="total_spent">Por gasto</option>
+            <option value="score">Por score</option>
+            <option value="ultima_visita">Última visita</option>
+            <option value="created_at">Más nuevos</option>
+          </select>
+          <div style={{display:'flex',gap:6,alignItems:'center',marginLeft:'auto'}}>
+            <button onClick={()=>setSegmento('todos')}
+              style={{padding:'6px 14px',borderRadius:50,border:`1px solid ${segmento==='todos'?S.t2:S.border}`,background:segmento==='todos'?`${S.t2}15`:'transparent',color:segmento==='todos'?S.t1:S.t3,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+              Todos
+            </button>
+            <button onClick={()=>setSegmento('ohyeah')}
+              style={{padding:'6px 14px',borderRadius:50,border:`1px solid ${segmento==='ohyeah'?'#FFE600':S.border}`,background:segmento==='ohyeah'?'rgba(255,230,0,0.12)':'transparent',color:segmento==='ohyeah'?'#FFE600':S.t3,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+              🦉 Oh Yeah
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ══ CONTENIDO ══ */}
       <div style={{flex:1,overflow:'hidden'}}>
@@ -358,7 +412,7 @@ export default function CustomersModule() {
               <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:13}}>
                 <thead>
                   <tr style={{background:S.bg2,position:'sticky',top:0,zIndex:5}}>
-                    {['Cliente','Contacto','Sentado ahora','Score','Calificación','Segmento','Visitas','Gasto total','Ticket prom.','Última visita','Alergias','Preferencias','Origen · Últimas 3','Acciones'].map(h=>(
+                    {['Cliente','Contacto','Score','Calificación','Segmento','Visitas','Gasto total','Ticket prom.','Última visita','Alergias','Preferencias','Origen · Últimas 3','Acciones'].map(h=>(
                       <th key={h} style={{padding:'10px 14px',textAlign:'left' as const,fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase' as const,letterSpacing:'.06em',borderBottom:`1px solid ${S.border}`,whiteSpace:'nowrap'}}>
                         {h}
                       </th>
@@ -410,21 +464,6 @@ export default function CustomersModule() {
                             )}
                             {cliente.email && <div style={{fontSize:11,color:S.t3,overflow:'hidden',textOverflow:'ellipsis',maxWidth:160}}>✉ {cliente.email}</div>}
                           </div>
-                        </td>
-
-                        {/* Sentado ahora · tiempo en restaurante (live) */}
-                        <td style={{padding:'11px 14px'}}>
-                          {(cliente as any).sentado_min != null ? (
-                            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                              <div style={{fontSize:18}}>🪑</div>
-                              <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,color:(cliente as any).sentado_min>120?S.red:(cliente as any).sentado_min>90?S.gold:S.green,lineHeight:1}}>
-                                {(cliente as any).sentado_min} min
-                              </div>
-                              {(cliente as any).mesa_actual && <div style={{fontSize:9,color:S.t3,fontWeight:700}}>M{(cliente as any).mesa_actual}</div>}
-                            </div>
-                          ) : (
-                            <div style={{fontSize:10,color:S.t3,textAlign:'center'}}>—</div>
-                          )}
                         </td>
 
                         {/* Score */}
@@ -670,29 +709,101 @@ export default function CustomersModule() {
                 </div>
               </div>
 
-              {/* Columna derecha */}
+              {/* Columna derecha — Historial consolidado en restaurante activo */}
               <div style={{display:'flex',flexDirection:'column',gap:14}}>
+
+                {/* Banner restaurante activo */}
+                <div style={{background:`linear-gradient(135deg,${S.pink}15,${S.purple}10)`,border:`1px solid ${S.pink}30`,borderRadius:12,padding:'10px 14px',display:'flex',alignItems:'center',gap:10}}>
+                  <span style={{fontSize:18}}>{(activeRestaurant as any)?.emoji||'🏨'}</span>
+                  <div>
+                    <div style={{fontSize:10,color:S.t3,textTransform:'uppercase' as const,letterSpacing:'.08em'}}>Historial en</div>
+                    <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,color:S.t1}}>{(activeRestaurant as any)?.nombre||'NEXUM'}</div>
+                  </div>
+                </div>
+
+                {/* Pedidos */}
                 <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
-                  <div style={{fontSize:11,color:S.t2,fontWeight:700,marginBottom:12,textTransform:'uppercase' as const}}>📝 Notas del equipo</div>
+                  <div style={{fontSize:11,color:S.gold,fontWeight:700,marginBottom:12,textTransform:'uppercase' as const,display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                    <span>🍽️ Pedidos · últimos {perfilHistorial.pedidos.length}</span>
+                    <span style={{color:S.t3,fontWeight:400}}>{selected.total_visits||0} visitas totales</span>
+                  </div>
+                  {perfilHistorial.pedidos.length===0 ? (
+                    <div style={{fontSize:12,color:S.t3,textAlign:'center',padding:'12px 0'}}>Sin pedidos en este restaurante</div>
+                  ) : (
+                    <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:240,overflowY:'auto'}}>
+                      {perfilHistorial.pedidos.map((p:any,i:number)=>(
+                        <div key={p.id||i} style={{background:S.bg3,borderRadius:10,padding:'8px 12px',display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
+                          <div>
+                            <div style={{fontSize:12,color:S.t1,fontWeight:700}}>M{p.mesa_num||'—'} · {p.items_count||0} items</div>
+                            <div style={{fontSize:10,color:S.t3}}>{formatFecha((p.created_at||'').split('T')[0])} · {p.estado||'—'}</div>
+                          </div>
+                          <div style={{fontSize:13,fontWeight:800,color:S.gold}}>{fmtMoney(p.total)}</div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Calificaciones X-CARE */}
+                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+                  <div style={{fontSize:11,color:S.purple,fontWeight:700,marginBottom:12,textTransform:'uppercase' as const}}>⭐ Calificaciones X-Care · {perfilHistorial.ratings.length}</div>
+                  {perfilHistorial.ratings.length===0 ? (
+                    <div style={{fontSize:12,color:S.t3,textAlign:'center',padding:'12px 0'}}>Sin calificaciones aún</div>
+                  ) : (
+                    <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:200,overflowY:'auto'}}>
+                      {perfilHistorial.ratings.map((r:any,i:number)=>{
+                        const nota = r.estrellas ?? ((r.estrellas_comida+r.estrellas_servicio+r.estrellas_ambiente)/3);
+                        const color = nota>=4.5?S.green:nota>=3.5?S.gold:nota>=2?'#FF9800':S.red;
+                        return (
+                          <div key={r.id||i} style={{background:S.bg3,borderRadius:10,padding:'8px 12px'}}>
+                            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:10}}>
+                              <div style={{fontSize:12,color}}>
+                                {'★'.repeat(Math.round(nota))}{'☆'.repeat(Math.max(0,5-Math.round(nota)))} <span style={{color:S.t3,fontSize:10,marginLeft:4}}>{formatFecha((r.created_at||'').split('T')[0])}</span>
+                              </div>
+                              <div style={{fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900,color}}>{Number(nota).toFixed(1)}</div>
+                            </div>
+                            {r.comentario && <div style={{fontSize:11,color:S.t2,marginTop:4,fontStyle:'italic'}}>"{r.comentario}"</div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+
+                {/* Historial CARE (alertas + notas del equipo unificadas) */}
+                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+                  <div style={{fontSize:11,color:S.cyan,fontWeight:700,marginBottom:12,textTransform:'uppercase' as const}}>💬 Historial Care · Comentarios</div>
                   <div style={{display:'flex',gap:8,marginBottom:12}}>
                     <input value={nuevaNota} onChange={e=>setNuevaNota(e.target.value)}
-                      placeholder="Agregar nota..." onKeyDown={e=>e.key==='Enter'&&agregarNota()}
+                      placeholder="Nuevo comentario / nota Care..." onKeyDown={e=>e.key==='Enter'&&agregarNota()}
                       style={{...inp,fontSize:12,padding:'8px 12px'}}/>
                     <button onClick={agregarNota}
-                      style={{padding:'8px 16px',borderRadius:8,border:'none',background:S.pink,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
+                      style={{padding:'8px 16px',borderRadius:8,border:'none',background:S.cyan,color:'#000',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>
                       + Nota
                     </button>
                   </div>
                   <div style={{display:'flex',flexDirection:'column',gap:8,maxHeight:280,overflowY:'auto'}}>
-                    {(selected.historial_notas||[]).length===0 && (
-                      <div style={{fontSize:12,color:S.t3,textAlign:'center',padding:'16px 0'}}>Sin notas aún</div>
-                    )}
+                    {/* Alertas X-Care del restaurante activo */}
+                    {perfilHistorial.care.map((a:any,i:number)=>(
+                      <div key={`a-${a.id||i}`} style={{background:`${S.cyan}08`,border:`1px solid ${S.cyan}20`,borderRadius:10,padding:'8px 12px'}}>
+                        <div style={{display:'flex',justifyContent:'space-between',gap:6}}>
+                          <div style={{fontSize:11,color:S.cyan,fontWeight:700}}>{a.tipo||'Alerta'} {a.severidad?`· ${a.severidad}`:''}</div>
+                          <div style={{fontSize:9,color:a.resuelta?S.green:S.gold}}>{a.resuelta?'✓ resuelta':'pendiente'}</div>
+                        </div>
+                        <div style={{fontSize:12,color:S.t2,marginTop:3}}>{a.mensaje}</div>
+                        <div style={{fontSize:10,color:S.t3,marginTop:3}}>{formatFecha((a.created_at||'').split('T')[0])}</div>
+                      </div>
+                    ))}
+                    {/* Notas del equipo (anteriormente "Notas del equipo") */}
                     {[...(selected.historial_notas||[])].reverse().map((n:any,i)=>(
-                      <div key={i} style={{background:S.bg3,borderRadius:10,padding:'10px 14px'}}>
+                      <div key={`n-${i}`} style={{background:S.bg3,borderRadius:10,padding:'10px 14px'}}>
                         <div style={{fontSize:12,color:S.t1,lineHeight:1.5}}>{n.nota}</div>
                         <div style={{fontSize:10,color:S.t3,marginTop:4}}>{n.autor||'Staff'} · {formatFecha(n.fecha)}</div>
                       </div>
                     ))}
+                    {perfilHistorial.care.length===0 && (selected.historial_notas||[]).length===0 && (
+                      <div style={{fontSize:12,color:S.t3,textAlign:'center',padding:'16px 0'}}>Sin historial Care</div>
+                    )}
                   </div>
                 </div>
 
