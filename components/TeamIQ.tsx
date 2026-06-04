@@ -1,6 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import {
+  calcularRetiroCompleto, calcularIndemnizacion,
+  type TipoContrato, type CausaRetiro,
+} from '../lib/nexumLiquidacion';
+import {
   Users, TrendingUp, TrendingDown, AlertTriangle, Award,
   Zap, BarChart2, DollarSign, Clock, Star, ChevronDown,
   Search, Filter, ArrowUpRight, ArrowDownRight, Minus,
@@ -1383,111 +1387,111 @@ function NuevoEmpleadoModal({ onClose, onSaved }:{ onClose:()=>void; onSaved:()=
 // ═══════════════════════════════════════════════════════════════
 // MODAL · DESPEDIR EMPLEADO (motivos + indemnización + liquidación + PDF)
 // ═══════════════════════════════════════════════════════════════
-const MOTIVOS_DESPIDO = [
-  { id:'justa_causa',      l:'Justa causa',                con_indemn:false },
-  { id:'sin_justa_causa',  l:'Sin justa causa',            con_indemn:true  },
-  { id:'mutuo_acuerdo',    l:'Mutuo acuerdo',              con_indemn:false },
-  { id:'renuncia',         l:'Renuncia voluntaria',        con_indemn:false },
-  { id:'fin_contrato',     l:'Vencimiento contrato',       con_indemn:false },
-  { id:'obra_terminada',   l:'Obra/labor terminada',       con_indemn:false },
+// Causa de retiro mapeada al motor oficial NEXUM (§4 del manual)
+const MOTIVOS_DESPIDO:{ id:CausaRetiro; l:string; con_indemn:boolean }[] = [
+  { id:'sin_justa_causa',                  l:'Despido sin justa causa',            con_indemn:true  },
+  { id:'terminacion_imputable_al_empleador', l:'Terminación imputable al empleador', con_indemn:true  },
+  { id:'justa_causa',                      l:'Despido con justa causa',            con_indemn:false },
+  { id:'mutuo_acuerdo',                    l:'Mutuo acuerdo',                      con_indemn:false },
+  { id:'renuncia',                         l:'Renuncia voluntaria',                con_indemn:false },
+  { id:'fin_contrato',                     l:'Vencimiento de contrato',            con_indemn:false },
+];
+
+const TIPOS_CONTRATO:{ id:TipoContrato; l:string; desc:string }[] = [
+  { id:'indefinido', l:'Indefinido', desc:'Indemnización según umbral 10 SMMLV' },
+  { id:'fijo',       l:'Término fijo', desc:'Indemnización = días faltantes hasta fin' },
+  { id:'obra_labor', l:'Obra / labor', desc:'Indemnización = MAX(días faltantes, 15)' },
 ];
 
 function DespedirModal({ empleados, onClose, onSaved }:{ empleados:any[]; onClose:()=>void; onSaved:()=>void }) {
   const [empId, setEmpId] = useState<number|''>('');
-  const [motivo, setMotivo] = useState('justa_causa');
+  const [causa, setCausa] = useState<CausaRetiro>('sin_justa_causa');
+  const [tipo, setTipo] = useState<TipoContrato>('indefinido');
+  const [variable, setVariable] = useState(0);
+  const [diasVac, setDiasVac] = useState(0);
+  const [otros, setOtros] = useState(0);
+  const [descuentos, setDescuentos] = useState(0);
+  const [fechaFin, setFechaFin] = useState('');
+  const [diasFaltantesObra, setDiasFaltantesObra] = useState(0);
   const [notas, setNotas] = useState('');
-  const [conIndemn, setConIndemn] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string|null>(null);
 
   const emp = empleados.find(e=>e.id===empId);
-  const motivoMeta = MOTIVOS_DESPIDO.find(m=>m.id===motivo);
+  const motivoMeta = MOTIVOS_DESPIDO.find(m=>m.id===causa);
 
-  // ── CÁLCULO DE LIQUIDACIÓN (fórmula Colombia) ──
-  // Cesantías = salario × (días trabajados / 360)
-  // Intereses cesantías = 12% anual sobre cesantías
-  // Prima = salario × (días trabajados en semestre / 180) — simplificado a × días / 360
-  // Vacaciones pendientes = días pendientes × (salario / 30)
-  // Indemnización (sin justa causa, indefinido):
-  //   - <1 año: 30 días
-  //   - >=1 año: 30 días + 20 días por cada año adicional
-  // ── Fórmulas oficiales Colombia (Boss Seratta · 4 jun 2026) ──
-  // Auxilio de transporte 2026 ≈ $200.000 si salario ≤ 2 SMMLV
-  const AUX_TRANSPORTE = 200000;
-  const TOPE_AUX = 2 * 1423500;
-  const calculo = (() => {
-    if (!emp) return null;
-    const salario = Number(emp.salario_base) || 0;
-    const auxTransporte = salario > 0 && salario <= TOPE_AUX ? AUX_TRANSPORTE : 0;
-    const basePrest = salario + auxTransporte; // base prestacional
-    const diasEmpresa = emp.dias_empresa || (emp.fecha_ingreso ? Math.floor((Date.now()-new Date(emp.fecha_ingreso).getTime())/86400000) : 0);
-    const anios = diasEmpresa / 365;
-    // FÓRMULAS OFICIALES
-    const cesantias = (basePrest * diasEmpresa) / 360;
-    const interesesCes = (cesantias * diasEmpresa * 0.12) / 360;
-    // Días en el semestre actual (proxy: días desde 1 enero o 1 julio)
-    const hoy = new Date();
-    const iniSem = hoy.getMonth() < 6 ? new Date(hoy.getFullYear(), 0, 1) : new Date(hoy.getFullYear(), 6, 1);
-    const diasSem = Math.max(0, Math.floor((hoy.getTime() - iniSem.getTime()) / 86400000));
-    const prima = (basePrest * Math.min(180, diasSem)) / 360;
-    const vacacionesDiasPendientes = emp.vacaciones_disponibles || 0;
-    const vacaciones = vacacionesDiasPendientes * (salario / 30);
-    // Indemnización (sin justa causa, contrato indefinido):
-    let indemnizacion = 0;
-    if (conIndemn) {
-      const diasIndemn = anios < 1 ? 30 : 30 + Math.floor(anios-1) * 20;
-      indemnizacion = (salario / 30) * diasIndemn;
-    }
-    const totalLiq = cesantias + interesesCes + prima + vacaciones;
-    const totalPagar = totalLiq + indemnizacion;
-    return { salario, auxTransporte, basePrest, diasEmpresa, diasSem, anios, cesantias, interesesCes, prima, vacaciones, vacacionesDiasPendientes, indemnizacion, totalLiq, totalPagar };
-  })();
-
+  // Hidratar tipo de contrato del empleado al seleccionarlo
   React.useEffect(() => {
-    // Auto-flag indemnización si el motivo lo amerita y es indefinido
-    if (motivoMeta?.con_indemn && emp?.tipo_contrato === 'indefinido') setConIndemn(true);
-    else if (!motivoMeta?.con_indemn) setConIndemn(false);
-  }, [motivo, emp]);
+    if (!emp) return;
+    const t = String(emp.tipo_contrato||'indefinido').toLowerCase();
+    if (t === 'fijo')   setTipo('fijo');
+    else if (t === 'obra' || t === 'obra_labor') setTipo('obra_labor');
+    else setTipo('indefinido');
+    setDiasVac(emp.vacaciones_disponibles || 0);
+  }, [emp]);
+
+  // CÁLCULO usando el motor oficial NEXUM
+  const calculo = React.useMemo(() => {
+    if (!emp) return null;
+    try {
+      const input = {
+        salario_mensual: Number(emp.salario_base) || 0,
+        salario_variable_promedio: variable,
+        fecha_ingreso: emp.fecha_ingreso,
+        fecha_retiro: new Date().toISOString().split('T')[0],
+        fecha_fin_contrato: fechaFin || undefined,
+        dias_faltantes_obra: diasFaltantesObra,
+        dias_vacaciones_pendientes: diasVac,
+        otros_pagos_pendientes: otros,
+        descuentos_autorizados: descuentos,
+        tipo_contrato: tipo,
+        causa_retiro: causa,
+      };
+      return calcularRetiroCompleto(input);
+    } catch (e:any) {
+      console.warn('cálculo retiro:', e);
+      return null;
+    }
+  }, [emp, causa, tipo, variable, diasVac, otros, descuentos, fechaFin, diasFaltantesObra]);
 
   const ejecutar = async () => {
     if (!emp) { setError('Selecciona un empleado'); return; }
     if (!calculo) { setError('No se pudo calcular'); return; }
-    if (!confirm(`Confirmar retiro de ${emp.nombre_completo}\nMotivo: ${motivoMeta?.l}\nLiquidación: ${fmtM(calculo.totalLiq)}${conIndemn?` + Indemnización ${fmtM(calculo.indemnizacion)}`:''}\nTotal: ${fmtM(calculo.totalPagar)}\n\nEsta acción es irreversible.`)) return;
+    const liq = calculo.liquidacion;
+    const ind = calculo.indemnizacion;
+    const totalPagar = calculo.total_a_pagar;
+    if (!confirm(`Confirmar retiro de ${emp.nombre_completo}\nCausa: ${motivoMeta?.l}\nTipo contrato: ${tipo}\nLiquidación: ${fmtM(liq.total_liquidacion)}${ind.aplica?` + Indemnización ${fmtM(ind.total_indemnizacion)}`:''}\nTotal: ${fmtM(totalPagar)}\n\nEsta acción es irreversible.`)) return;
     setSaving(true); setError(null);
     try {
-      // 1. Crear registro de liquidación
-      const { data:liqData } = await supabase.from('liquidaciones').insert({
+      await supabase.from('liquidaciones').insert({
         empleado_id: emp.id, empleado_nombre: emp.nombre_completo,
-        dias_trabajados: calculo.diasEmpresa, salario_base: emp.salario_base,
-        cesantias: calculo.cesantias, intereses_cesantias: calculo.interesesCes,
-        prima_servicios: calculo.prima, vacaciones_pendientes: calculo.vacaciones,
-        salario_pendiente: 0, bonificaciones: 0,
-        total_liquidacion: calculo.totalLiq,
-        con_indemnizacion: conIndemn, valor_indemnizacion: calculo.indemnizacion,
-        total_a_pagar: calculo.totalPagar,
-        motivo_retiro: motivoMeta?.l, tipo_retiro: motivo,
+        dias_trabajados: liq.dias_trabajados_ano, salario_base: emp.salario_base,
+        cesantias: liq.cesantias_a_pagar, intereses_cesantias: liq.intereses_cesantias,
+        prima_servicios: liq.prima_a_pagar, vacaciones_pendientes: liq.vacaciones_a_pagar,
+        salario_pendiente: liq.salario_pendiente + liq.auxilio_pendiente,
+        bonificaciones: liq.otros_pagos_pendientes,
+        total_liquidacion: liq.total_liquidacion,
+        con_indemnizacion: ind.aplica, valor_indemnizacion: ind.total_indemnizacion,
+        total_a_pagar: totalPagar,
+        motivo_retiro: motivoMeta?.l, tipo_retiro: causa,
         notas, generado_por: 'Gerencia',
-      }).select().single();
+      });
 
-      // 2. Mover a empleados_historial
       await supabase.from('empleados_historial').insert({
         empleado_id: emp.id, restaurante_id: emp.restaurante_id, complejo_id: emp.complejo_id,
         nombre_completo: emp.nombre_completo, cedula: emp.cedula, cargo_display: emp.cargo_display,
         rol: emp.rol, fecha_ingreso: emp.fecha_ingreso,
-        motivo_retiro: motivoMeta?.l, tipo_retiro: motivo,
+        motivo_retiro: motivoMeta?.l, tipo_retiro: causa,
         salario_base: emp.salario_base,
-        con_indemnizacion: conIndemn,
-        total_liquidacion: calculo.totalLiq,
-        total_indemnizacion: calculo.indemnizacion,
+        con_indemnizacion: ind.aplica,
+        total_liquidacion: liq.total_liquidacion,
+        total_indemnizacion: ind.total_indemnizacion,
         archivado_por: 'Gerencia', notas,
       });
 
-      // 3. Desactivar empleado (no se borra para mantener integridad referencial)
       await supabase.from('empleados').update({ activo: false }).eq('id', emp.id);
 
-      // 4. Generar PDF (descarga directa via blob)
-      generarPDFRetiro(emp, calculo, motivoMeta!, notas);
-
+      generarPDFRetiroV2(emp, calculo, motivoMeta!, tipo, notas);
       onSaved();
     } catch (e:any) { setError(e?.message || 'Error al procesar el retiro'); }
     finally { setSaving(false); }
@@ -1511,48 +1515,101 @@ function DespedirModal({ empleados, onClose, onSaved }:{ empleados:any[]; onClos
           {empleados.map(e=><option key={e.id} value={e.id}>{e.nombre_completo} · {e.cargo_display}</option>)}
         </select>
 
-        <div style={{fontSize:10,color:'#FF5C53',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:6}}>📋 Motivo</div>
+        <div style={{fontSize:10,color:'#FF5C53',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:6}}>📋 Causa de retiro (§4 Manual NEXUM)</div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginBottom:14}}>
           {MOTIVOS_DESPIDO.map(m=>(
-            <button key={m.id} onClick={()=>setMotivo(m.id)} style={{padding:'8px 10px',borderRadius:8,border:`1px solid ${motivo===m.id?'#FF5C53':'#2a2a2a'}`,background:motivo===m.id?'#FF5C5318':'transparent',color:motivo===m.id?'#FF5C53':'#a0a0a0',fontSize:11,fontWeight:700,cursor:'pointer',textAlign:'left'}}>
-              {m.l}{m.con_indemn && <span style={{display:'block',fontSize:9,opacity:0.7}}>⚠️ Aplica indemnización</span>}
+            <button key={m.id} onClick={()=>setCausa(m.id)} style={{padding:'8px 10px',borderRadius:8,border:`1px solid ${causa===m.id?'#FF5C53':'#2a2a2a'}`,background:causa===m.id?'#FF5C5318':'transparent',color:causa===m.id?'#FF5C53':'#a0a0a0',fontSize:11,fontWeight:700,cursor:'pointer',textAlign:'left'}}>
+              {m.l}{m.con_indemn && <span style={{display:'block',fontSize:9,opacity:0.7,color:'#FFB547'}}>⚠️ Genera indemnización</span>}
             </button>
           ))}
         </div>
 
-        <textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Notas / soporte del retiro" rows={2} style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid #2a2a2a',background:'#0d0d0d',color:'#f0f0f0',fontSize:12,outline:'none',marginBottom:14,resize:'none',boxSizing:'border-box'}}/>
+        <div style={{fontSize:10,color:'#FF5C53',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:6}}>📑 Tipo de contrato</div>
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:6,marginBottom:14}}>
+          {TIPOS_CONTRATO.map(t=>(
+            <button key={t.id} onClick={()=>setTipo(t.id)} style={{padding:'8px 10px',borderRadius:8,border:`1px solid ${tipo===t.id?'#9b72ff':'#2a2a2a'}`,background:tipo===t.id?'#9b72ff18':'transparent',color:tipo===t.id?'#9b72ff':'#a0a0a0',fontSize:11,fontWeight:700,cursor:'pointer',textAlign:'left'}}>
+              {t.l}<span style={{display:'block',fontSize:8,opacity:0.7,marginTop:2}}>{t.desc}</span>
+            </button>
+          ))}
+        </div>
 
-        {motivoMeta?.con_indemn && (
-          <label style={{display:'flex',alignItems:'center',gap:8,padding:'10px 12px',background:'rgba(255,181,71,0.08)',border:'1px solid rgba(255,181,71,0.3)',borderRadius:9,marginBottom:14,cursor:'pointer'}}>
-            <input type="checkbox" checked={conIndemn} onChange={e=>setConIndemn(e.target.checked)} style={{accentColor:'#FFB547'}}/>
-            <span style={{fontSize:12,color:'#FFB547',fontWeight:700}}>Calcular indemnización (sin justa causa)</span>
-          </label>
+        {/* Inputs específicos según tipo de contrato */}
+        {tipo === 'fijo' && (
+          <div style={{display:'grid',gridTemplateColumns:'1fr',gap:6,marginBottom:14}}>
+            <div>
+              <div style={{fontSize:9,color:'#a0a0a0',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:4}}>Fecha fin de contrato</div>
+              <input type="date" value={fechaFin} onChange={e=>setFechaFin(e.target.value)} style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid #2a2a2a',background:'#0d0d0d',color:'#f0f0f0',fontSize:12,outline:'none',colorScheme:'dark'}}/>
+            </div>
+          </div>
         )}
+        {tipo === 'obra_labor' && (
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:9,color:'#a0a0a0',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:4}}>Días faltantes de la obra</div>
+            <input type="number" value={diasFaltantesObra} onChange={e=>setDiasFaltantesObra(Number(e.target.value)||0)} placeholder="Mínimo aplicable: 15 días" style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid #2a2a2a',background:'#0d0d0d',color:'#f0f0f0',fontSize:12,outline:'none'}}/>
+          </div>
+        )}
+
+        {/* Ajustes adicionales */}
+        <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:14}}>
+          <div>
+            <div style={{fontSize:9,color:'#a0a0a0',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:4}}>Variable salarial prom.</div>
+            <input type="number" value={variable} onChange={e=>setVariable(Number(e.target.value)||0)} placeholder="Comisiones, recargos" style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid #2a2a2a',background:'#0d0d0d',color:'#f0f0f0',fontSize:12,outline:'none'}}/>
+          </div>
+          <div>
+            <div style={{fontSize:9,color:'#a0a0a0',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:4}}>Días vac. pendientes</div>
+            <input type="number" value={diasVac} onChange={e=>setDiasVac(Number(e.target.value)||0)} style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid #2a2a2a',background:'#0d0d0d',color:'#f0f0f0',fontSize:12,outline:'none'}}/>
+          </div>
+          <div>
+            <div style={{fontSize:9,color:'#a0a0a0',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:4}}>Otros pagos pendientes</div>
+            <input type="number" value={otros} onChange={e=>setOtros(Number(e.target.value)||0)} placeholder="Extras, recargos" style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid #2a2a2a',background:'#0d0d0d',color:'#f0f0f0',fontSize:12,outline:'none'}}/>
+          </div>
+          <div>
+            <div style={{fontSize:9,color:'#a0a0a0',fontWeight:700,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:4}}>Descuentos autorizados</div>
+            <input type="number" value={descuentos} onChange={e=>setDescuentos(Number(e.target.value)||0)} placeholder="Préstamos, anticipos" style={{width:'100%',padding:'8px 10px',borderRadius:8,border:'1px solid #2a2a2a',background:'#0d0d0d',color:'#f0f0f0',fontSize:12,outline:'none'}}/>
+          </div>
+        </div>
+
+        <textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Notas / soporte del retiro (obligatorio para auditoría)" rows={2} style={{width:'100%',padding:'10px 12px',borderRadius:9,border:'1px solid #2a2a2a',background:'#0d0d0d',color:'#f0f0f0',fontSize:12,outline:'none',marginBottom:14,resize:'none',boxSizing:'border-box'}}/>
 
         {calculo && emp && (
           <div style={{background:'rgba(255,92,83,0.05)',border:'1px solid rgba(255,92,83,0.25)',borderRadius:12,padding:14,marginBottom:14}}>
-            <div style={{fontSize:10,color:'#FF5C53',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:8}}>💰 Cálculo de liquidación</div>
+            <div style={{fontSize:10,color:'#FF5C53',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:8}}>💰 Liquidación normal · Motor NEXUM</div>
             <div style={{display:'flex',flexDirection:'column',gap:5,fontSize:12}}>
-              {calculo.auxTransporte > 0 && (
-                <div style={{padding:'6px 8px',marginBottom:6,borderRadius:6,background:'rgba(34,208,122,0.06)',border:'1px solid rgba(34,208,122,0.2)',fontSize:10,color:'#22D07A'}}>
-                  ✓ Base prestacional incluye auxilio de transporte: {fmtM(calculo.auxTransporte)} (salario ≤ 2 SMMLV)
+              {calculo.liquidacion.bases.aplica_auxilio && (
+                <div style={{padding:'6px 8px',marginBottom:4,borderRadius:6,background:'rgba(34,208,122,0.06)',border:'1px solid rgba(34,208,122,0.2)',fontSize:10,color:'#22D07A'}}>
+                  ✓ Aux. transporte incluido en prestaciones: {fmtM(calculo.liquidacion.bases.auxilio_transporte)} (salario ≤ 2 SMMLV)
                 </div>
               )}
-              <Row label={`Cesantías · base × ${calculo.diasEmpresa}d / 360`} v={fmtM(calculo.cesantias)}/>
-              <Row label={`Int. cesantías · ces × ${calculo.diasEmpresa}d × 12% / 360`} v={fmtM(calculo.interesesCes)}/>
-              <Row label={`Prima · base × ${Math.min(180,calculo.diasSem)}d sem / 360 (jun/dic)`} v={fmtM(calculo.prima)}/>
-              <Row label={`Vacaciones (${calculo.vacacionesDiasPendientes} días pend.)`} v={fmtM(calculo.vacaciones)}/>
+              <Row label={`Salario pendiente · ${calculo.liquidacion.dias_laborados_mes}d del mes`} v={fmtM(calculo.liquidacion.salario_pendiente)}/>
+              {calculo.liquidacion.auxilio_pendiente > 0 && <Row label="Auxilio pendiente" v={fmtM(calculo.liquidacion.auxilio_pendiente)}/>}
+              <Row label={`Cesantías a pagar · ${calculo.liquidacion.dias_trabajados_ano}d año`} v={fmtM(calculo.liquidacion.cesantias_a_pagar)}/>
+              <Row label="Int. cesantías · 12% anual" v={fmtM(calculo.liquidacion.intereses_cesantias)}/>
+              <Row label={`Prima a pagar · ${calculo.liquidacion.dias_trabajados_semestre}d sem`} v={fmtM(calculo.liquidacion.prima_a_pagar)}/>
+              <Row label={`Vacaciones · ${calculo.liquidacion.dias_vacaciones_pendientes}d pend.`} v={fmtM(calculo.liquidacion.vacaciones_a_pagar)}/>
+              {calculo.liquidacion.otros_pagos_pendientes > 0 && <Row label="Otros pagos pendientes" v={fmtM(calculo.liquidacion.otros_pagos_pendientes)}/>}
+              {calculo.liquidacion.descuentos_totales > 0 && <Row label="− Descuentos" v={`-${fmtM(calculo.liquidacion.descuentos_totales)}`} accent="#FF5C53"/>}
               <div style={{borderTop:'1px solid rgba(255,92,83,0.2)',marginTop:4,paddingTop:6,display:'flex',justifyContent:'space-between',fontWeight:800,color:'#FF5C53'}}>
-                <span>Subtotal liquidación</span><span>{fmtM(calculo.totalLiq)}</span>
+                <span>Subtotal liquidación normal</span><span>{fmtM(calculo.liquidacion.total_liquidacion)}</span>
               </div>
-              {conIndemn && (
+            </div>
+
+            {/* Indemnización · separada según motor */}
+            <div style={{marginTop:12,paddingTop:10,borderTop:'1px solid rgba(255,181,71,0.3)'}}>
+              <div style={{fontSize:10,color:'#FFB547',fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:6}}>⚖️ Indemnización · §4 Manual</div>
+              {calculo.indemnizacion.aplica ? (
                 <>
-                  <Row label={`Indemnización (${Math.round(calculo.anios)} años)`} v={fmtM(calculo.indemnizacion)} accent="#FFB547"/>
+                  <div style={{fontSize:10,color:'#a0a0a0',marginBottom:6}}>{calculo.indemnizacion.detalle}</div>
+                  <Row label={`Indemnización · ${calculo.indemnizacion.dias_indemnizacion.toFixed(1)}d × ${fmtM(calculo.indemnizacion.salario_diario)}/día`} v={fmtM(calculo.indemnizacion.total_indemnizacion)} accent="#FFB547"/>
                 </>
+              ) : (
+                <div style={{fontSize:11,color:'#22D07A',padding:'6px 10px',background:'rgba(34,208,122,0.06)',border:'1px solid rgba(34,208,122,0.2)',borderRadius:6}}>
+                  ℹ️ {calculo.indemnizacion.motivo_no_aplica || 'No genera indemnización'}
+                </div>
               )}
-              <div style={{borderTop:'2px solid rgba(255,92,83,0.4)',marginTop:6,paddingTop:8,display:'flex',justifyContent:'space-between',fontSize:16,fontWeight:900,color:'#fff'}}>
-                <span>TOTAL A PAGAR</span><span>{fmtM(calculo.totalPagar)}</span>
-              </div>
+            </div>
+
+            <div style={{borderTop:'2px solid rgba(255,92,83,0.4)',marginTop:10,paddingTop:10,display:'flex',justifyContent:'space-between',fontSize:17,fontWeight:900,color:'#fff'}}>
+              <span>TOTAL A PAGAR</span><span>{fmtM(calculo.total_a_pagar)}</span>
             </div>
           </div>
         )}
@@ -1578,7 +1635,106 @@ function Row({ label, v, accent }:{ label:string; v:string; accent?:string }) {
   );
 }
 
-// Generar PDF simple (sin librería) — usa window.print de una hoja HTML
+// Generar PDF v2 con desglose completo según motor NEXUM
+function generarPDFRetiroV2(emp:any, calculo:any, motivo:{l:string;con_indemn:boolean}, tipo:TipoContrato, notas:string) {
+  const liq = calculo.liquidacion;
+  const ind = calculo.indemnizacion;
+  const total = calculo.total_a_pagar;
+  const fmt = (n:number) => '$' + Math.round(n||0).toLocaleString('es-CO');
+  const tipoLabel = tipo === 'indefinido' ? 'Indefinido' : tipo === 'fijo' ? 'Término fijo' : 'Obra/labor';
+  const html = `<!DOCTYPE html><html><head><title>Retiro · ${emp.nombre_completo}</title>
+<style>
+body{font-family:'Helvetica',sans-serif;max-width:780px;margin:30px auto;padding:30px;color:#1a1a1a;line-height:1.45}
+h1{font-size:24px;margin:0 0 4px;color:#000;letter-spacing:-0.3px}
+h2{font-size:11px;color:#666;margin:0 0 18px;text-transform:uppercase;letter-spacing:3px;font-weight:600}
+h3{margin:0 0 8px;font-size:13px;color:#9b72ff;text-transform:uppercase;letter-spacing:1.5px}
+.box{border:1px solid #ddd;border-radius:10px;padding:18px;margin:14px 0}
+.box.warn{border-color:#FFB547;background:#FFF8EE}
+.row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px dashed #eee;font-size:12.5px}
+.row.sum{font-weight:700;border-top:1px solid #1a1a1a;border-bottom:none;margin-top:6px;padding-top:8px}
+.row.total{font-size:18px;font-weight:900;border-top:2px solid #000;padding-top:12px;margin-top:10px}
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+td{padding:3px 0;vertical-align:top}
+.label{color:#666;width:42%}
+.detail{font-size:10.5px;color:#777;margin-top:4px;font-style:italic}
+.footer{margin-top:60px;display:flex;justify-content:space-around;font-size:11px;color:#666}
+.firma{border-top:1px solid #1a1a1a;padding-top:6px;min-width:220px;text-align:center}
+.warn-msg{font-size:11px;color:#9b6500;padding:6px 10px;background:#FFF8EE;border:1px solid #FFE0A0;border-radius:5px;margin:6px 0}
+.ok-msg{font-size:11px;color:#1A7548;padding:6px 10px;background:#E8F8EF;border:1px solid #B8E5CC;border-radius:5px;margin:6px 0}
+</style></head><body>
+<h1>ACTA DE LIQUIDACIÓN LABORAL</h1>
+<h2>NEXUM Talent · ${new Date().toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'})}</h2>
+
+<div class="box">
+  <h3>👤 Datos del colaborador</h3>
+  <table>
+    <tr><td class="label">Nombre completo:</td><td><strong>${emp.nombre_completo}</strong></td></tr>
+    <tr><td class="label">Documento:</td><td>${emp.tipo_documento||'CC'} ${emp.cedula||'—'}</td></tr>
+    <tr><td class="label">Cargo:</td><td>${emp.cargo_display||emp.rol||'—'}</td></tr>
+    <tr><td class="label">Tipo de contrato:</td><td><strong>${tipoLabel}</strong></td></tr>
+    <tr><td class="label">Fecha ingreso:</td><td>${emp.fecha_ingreso||'—'}</td></tr>
+    <tr><td class="label">Fecha retiro:</td><td>${new Date().toLocaleDateString('es-CO')}</td></tr>
+    <tr><td class="label">Antigüedad total:</td><td>${ind.dias_antiguedad} días (≈ ${(ind.dias_antiguedad/365).toFixed(2)} años)</td></tr>
+    <tr><td class="label">Causa de retiro:</td><td><strong style="color:#9b72ff">${motivo.l}</strong></td></tr>
+  </table>
+</div>
+
+<div class="box">
+  <h3>💰 Bases salariales</h3>
+  <table>
+    <tr><td class="label">Salario mensual:</td><td>${fmt(emp.salario_base||0)}</td></tr>
+    ${liq.bases.aplica_auxilio?`<tr><td class="label">Aux. de transporte:</td><td>${fmt(liq.bases.auxilio_transporte)}</td></tr>`:''}
+    <tr><td class="label">Base prestaciones:</td><td><strong>${fmt(liq.bases.salario_base_prestaciones)}</strong></td></tr>
+    <tr><td class="label">Base indemnización:</td><td><strong>${fmt(liq.bases.salario_base_indemnizacion)}</strong> (sin aux. transporte)</td></tr>
+    <tr><td class="label">Salario diario:</td><td>${fmt(liq.bases.salario_diario)}</td></tr>
+  </table>
+</div>
+
+<div class="box">
+  <h3>📊 Liquidación normal</h3>
+  <div class="row"><span>Salario pendiente · ${liq.dias_laborados_mes} días</span><span>${fmt(liq.salario_pendiente)}</span></div>
+  ${liq.auxilio_pendiente>0?`<div class="row"><span>Auxilio pendiente</span><span>${fmt(liq.auxilio_pendiente)}</span></div>`:''}
+  <div class="row"><span>Cesantías a pagar · ${liq.dias_trabajados_ano} días año</span><span>${fmt(liq.cesantias_a_pagar)}</span></div>
+  <div class="row"><span>Intereses cesantías · 12% anual</span><span>${fmt(liq.intereses_cesantias)}</span></div>
+  <div class="row"><span>Prima a pagar · ${liq.dias_trabajados_semestre} días semestre</span><span>${fmt(liq.prima_a_pagar)}</span></div>
+  <div class="row"><span>Vacaciones · ${liq.dias_vacaciones_pendientes} días pendientes</span><span>${fmt(liq.vacaciones_a_pagar)}</span></div>
+  ${liq.otros_pagos_pendientes>0?`<div class="row"><span>Otros pagos pendientes</span><span>${fmt(liq.otros_pagos_pendientes)}</span></div>`:''}
+  ${liq.descuentos_totales>0?`<div class="row" style="color:#c03333"><span>− Descuentos autorizados</span><span>-${fmt(liq.descuentos_totales)}</span></div>`:''}
+  <div class="row sum"><span>Subtotal liquidación normal</span><span>${fmt(liq.total_liquidacion)}</span></div>
+</div>
+
+<div class="box ${ind.aplica?'warn':''}">
+  <h3 style="color:${ind.aplica?'#9b6500':'#22A75A'}">⚖️ Indemnización (CST Art. 64)</h3>
+  ${ind.aplica
+    ? `<div class="warn-msg">${ind.detalle}</div>
+       <div class="row"><span>Días de indemnización</span><span><strong>${ind.dias_indemnizacion.toFixed(1)} días</strong></span></div>
+       <div class="row"><span>Salario diario × días</span><span>${fmt(ind.salario_diario)} × ${ind.dias_indemnizacion.toFixed(1)}</span></div>
+       <div class="row sum" style="color:#9b6500"><span>Valor indemnización</span><span>${fmt(ind.total_indemnizacion)}</span></div>`
+    : `<div class="ok-msg">ℹ️ ${ind.motivo_no_aplica||'No genera indemnización'}</div>`}
+</div>
+
+<div class="box" style="background:#1a1a1a;color:#fff;border:none">
+  <div class="row total" style="border-color:#fff;color:#fff"><span>TOTAL A PAGAR AL COLABORADOR</span><span>${fmt(total)} COP</span></div>
+</div>
+
+${notas?`<div class="box"><h3 style="color:#333">📝 Observaciones</h3><p style="font-size:12.5px;color:#444;margin:0">${notas}</p></div>`:''}
+
+<div class="footer">
+  <div class="firma">Firma colaborador</div>
+  <div class="firma">Firma representante legal</div>
+</div>
+
+<p style="font-size:9.5px;color:#999;text-align:center;margin-top:50px;font-style:italic">
+  Liquidación calculada con el motor oficial NEXUM Talent · Manual técnico Colombia 2026.
+  Este documento es una guía de cálculo y no reemplaza revisión jurídica de casos especiales (fueros, estabilidad laboral reforzada, incapacidades prolongadas).
+  Generado: ${new Date().toISOString()}
+</p>
+</body></html>`;
+  const w = window.open('', '_blank');
+  if (w) { w.document.write(html); w.document.close(); setTimeout(()=>w.print(), 500); }
+}
+
+// Legacy (sin uso, conservado por compat)
 function generarPDFRetiro(emp:any, calculo:any, motivo:{l:string;con_indemn:boolean}, notas:string) {
   const html = `<!DOCTYPE html><html><head><title>Retiro · ${emp.nombre_completo}</title>
 <style>
