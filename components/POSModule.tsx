@@ -110,13 +110,22 @@ const inferirEstacionFromNombre = (nombre: string, cat: string): string => {
 //   verde  → menos del 70% del objetivo
 //   amarillo → 70%-100% (o entre 5min y objetivo si objetivo<5min)
 //   rojo  → supera el objetivo, o más de 5min sin avance estando en cola
+// Mismo semáforo que Flow: rojo cuando supera 1.5× objetivo (retraso real),
+// amarillo cuando pasa el 80% del objetivo, verde antes. Así el POS y la
+// ficha del Flow muestran el MISMO color para el mismo plato a la misma hora.
 const getSemaforo = (createdAtISO: string | undefined, estacion: string | undefined): 'verde'|'amarillo'|'rojo' => {
   if (!createdAtISO) return 'verde';
   const seg = Math.floor((Date.now() - new Date(createdAtISO).getTime()) / 1000);
   const objetivo = ESTACIONES_OBJETIVO[estacion || 'cocina_caliente'] || 480;
-  if (seg >= objetivo) return 'rojo';
-  if (seg >= Math.max(300, objetivo * 0.7)) return 'amarillo'; // 5min o 70% del objetivo
+  if (seg >= objetivo * 1.5) return 'rojo';
+  if (seg >= objetivo * 0.8)  return 'amarillo';
   return 'verde';
+};
+// Paleta sincronizada con FlowModule (S.red / amarillo / S.green)
+const SEMAFORO_COLORS = {
+  rojo:     { fg: '#FF5252', bg: 'rgba(255,82,82,0.08)',  glow: 'rgba(255,82,82,0.35)'  },
+  amarillo: { fg: '#FFB547', bg: 'rgba(255,181,71,0.06)', glow: 'rgba(255,181,71,0.25)' },
+  verde:    { fg: '#00E676', bg: 'rgba(0,230,118,0.04)',  glow: 'rgba(0,230,118,0.20)'  },
 };
 
 // Prefijo de mesa por zona — el mesero las identifica al instante:
@@ -5761,13 +5770,19 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                       <div className="flex flex-col gap-1 mt-2 max-h-[160px] overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
                         {order.filter(o => o.mesa === selectedTable.num).map((item, i) => {
                           const semaforo = getSemaforo(item.created_at, item.estacion);
-                          const sColor = semaforo === 'rojo' ? '#e05050' : semaforo === 'amarillo' ? '#FFB547' : '#3dba6f';
-                          const sBg = semaforo === 'rojo' ? 'rgba(224,80,80,0.08)' : semaforo === 'amarillo' ? 'rgba(255,181,71,0.06)' : 'rgba(61,186,111,0.04)';
+                          const sc = SEMAFORO_COLORS[semaforo];
+                          const sColor = sc.fg;
                           const minTranscurridos = item.created_at ? Math.floor((Date.now() - new Date(item.created_at).getTime()) / 60000) : 0;
                           return (
-                            <div key={i} className="flex items-center gap-1.5 py-1 px-1.5 rounded-md"
-                              style={{ background: sBg, borderLeft: `3px solid ${sColor}` }}>
-                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sColor, boxShadow: semaforo === 'rojo' ? `0 0 6px ${sColor}` : 'none' }}/>
+                            <div key={i} className="flex items-center gap-1.5 py-1.5 px-2 rounded-md"
+                              style={{
+                                background: sc.bg,
+                                border: `1.5px solid ${sColor}`,
+                                borderLeft: `4px solid ${sColor}`,
+                                boxShadow: `0 0 8px ${sc.glow}`,
+                                transition: 'all .2s',
+                              }}>
+                              <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: sColor, boxShadow: `0 0 6px ${sColor}` }}/>
                               <span className="text-[13px] shrink-0">{item.emoji}</span>
                               <span className="flex-1 text-[10px] text-[#f0f0f0] truncate">{item.nombre}</span>
                               {item.created_at && (
@@ -7215,6 +7230,7 @@ function PlanoPOSSala({ mesasEstado, restauranteId, miNombre, accesoSalon, profi
           const miColor = sanearHex(profile?.color);
           const stroke = bloqueada ? NEON.bloqueadaStroke
             : esAdmin && (asignada || ocupada) ? miColor                     // ADMIN: todo en fucsia
+            : compartida && (asignada || ocupada) ? VERDE_PUEDO              // COMPARTIDA conmigo (ej: Fabián compartió) → VERDE
             : ocupada && esMia ? VERDE_PUEDO                                 // mía con cliente sentado → VERDE
             : ocupada && !puedeEntrar ? NARANJA_OTRO                         // ocupada por otro mesero → NARANJA
             : ocupada ? colorMesero                                          // accesoSalon ve color del mesero
