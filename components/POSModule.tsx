@@ -159,6 +159,72 @@ const CATEGORIAS_OMM_FALLBACK = ['Compartir','Robata','Wok','Makis','Sashimis','
 // Términos de cocción disponibles
 const TERMINOS_COCCION = ['3/4', 'Término Medio', 'Bien Cocido', 'Poco Cocido', 'Azul'];
 
+// Tags rápidos para observaciones del plato (alergias y preferencias)
+const TAGS_OBSERVACIONES = ['sin sal','sin leche','sin gluten','sin maní','sin cebolla','sin cilantro','sin azúcar','sin picante','extra picante','sin lácteos','vegano','vegetariano','sin mariscos','sin huevo','sin trigo','alergia'];
+
+// Modal de término + observaciones · tags + texto libre
+function TerminoObservModal({ producto, modo, onClose, onConfirm }:{
+  producto:any; modo:'orden'|'marchar'; onClose:()=>void;
+  onConfirm:(termino:string|undefined, observ:string, tags:string[])=>void;
+}) {
+  const [termino, setTermino] = React.useState<string|undefined>(undefined);
+  const [tags, setTags] = React.useState<string[]>([]);
+  const [observ, setObserv] = React.useState('');
+  const requiereTermino = String(producto?.nombre||'').toLowerCase().match(/wagy|res|carne|pulpo|salm|atun|atún|filete|lomo|steak|tarta|chuleta|chuletón/);
+  const toggleTag = (t:string) => setTags(p => p.includes(t) ? p.filter(x=>x!==t) : [...p, t]);
+  const confirmar = () => {
+    if (requiereTermino && !termino) { alert('Seleccioná un término de cocción'); return; }
+    onConfirm(termino, observ.trim(), tags);
+  };
+  return (
+    <div className="fixed inset-0 bg-black/80 z-[600] flex items-center justify-center p-4" onClick={onClose}>
+      <div onClick={e=>e.stopPropagation()} className="bg-[#1c1c1c] border border-[#d4943a]/30 rounded-2xl p-5 w-full max-w-[440px] max-h-[92vh] overflow-y-auto">
+        <div className="text-center mb-4">
+          <div className="text-[28px] mb-1">{producto.emoji}</div>
+          <div className="font-['Syne'] text-[16px] font-bold">{producto.nombre}</div>
+          <div className="text-[10px] text-[#606060] mt-1 uppercase tracking-widest">{modo==='marchar'?'Marchar a cocina':'Agregar a orden'}</div>
+        </div>
+        {requiereTermino && (
+          <>
+            <div className="text-[10px] uppercase tracking-wider font-bold mb-2" style={{color:'#FF5C53'}}>Término de cocción *</div>
+            <div className="grid grid-cols-3 gap-1.5 mb-4">
+              {TERMINOS_COCCION.map(t => (
+                <button key={t} onClick={()=>setTermino(t)}
+                  className="py-2 px-2 rounded-lg text-[10px] font-bold transition-all"
+                  style={{background: termino===t?'#FF5C5318':'#0d0d0d', border:`1px solid ${termino===t?'#FF5C53':'#2a2a2a'}`, color: termino===t?'#FF5C53':'#a0a0a0', cursor:'pointer'}}>
+                  {t}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        <div className="text-[10px] uppercase tracking-wider font-bold mb-2" style={{color:'#9b72ff'}}>⚠️ Alergias / preferencias (tags)</div>
+        <div className="flex flex-wrap gap-1 mb-3">
+          {TAGS_OBSERVACIONES.map(t => (
+            <button key={t} onClick={()=>toggleTag(t)}
+              className="px-2 py-1 rounded-md text-[9px] font-bold transition-all"
+              style={{background: tags.includes(t)?'#9b72ff20':'#0d0d0d', border:`1px solid ${tags.includes(t)?'#9b72ff':'#2a2a2a'}`, color: tags.includes(t)?'#9b72ff':'#808080', cursor:'pointer'}}>
+              {tags.includes(t)?'✓ ':''}{t}
+            </button>
+          ))}
+        </div>
+        <div className="text-[10px] uppercase tracking-wider font-bold mb-2" style={{color:'#3dba6f'}}>💬 Comentario (opcional)</div>
+        <textarea value={observ} onChange={e=>setObserv(e.target.value)} rows={2}
+          placeholder="Ej: bien dorado, sin guarnición de papas, mesa con niños..."
+          className="w-full px-2 py-2 rounded-lg text-[12px] mb-4 resize-none"
+          style={{background:'#0d0d0d',border:'1px solid #2a2a2a',color:'#f0f0f0',outline:'none'}}/>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl border border-[#2a2a2a] text-[#606060] text-[11px] font-semibold">Cancelar</button>
+          <button onClick={confirmar} className="flex-[2] py-2.5 rounded-xl text-[12px] font-bold text-white"
+            style={{background:'linear-gradient(135deg,#d4943a,#9b72ff)'}}>
+            {modo==='marchar'?'🔥 Marchar a cocina':'+ Agregar a orden'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Niveles de picante (Gallo Colorado). El nombre del plato se sufija para
 // que cocina y bar lo vean en el KDS, ej: "Taco al Pastor 🌶️🌶️ Temible".
 const NIVELES_PICANTE: { key: string; emoji: string; label: string; desc: string }[] = [
@@ -902,6 +968,15 @@ const PremioPicker: React.FC<{ onPick: (juego:'ruleta'|'cartas')=>void; onSkip: 
 );
 
 
+// Sanea hex color · módulo-nivel para usar también desde sub-componentes
+function sanearHex(c?: string | null): string {
+  if (!c) return '#FF2D78';
+  const s = String(c).trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(s)) return s.toLowerCase();
+  if (/^#[0-9a-fA-F]{3}$/.test(s)) return ('#' + s.slice(1).split('').map(ch=>ch+ch).join('')).toLowerCase();
+  return '#FF2D78';
+}
+
 const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisionAI }) => {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const { profile } = useAuth();
@@ -1026,8 +1101,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   }, [restauranteId]);
   const colorDeMesero = (nombre: string | null | undefined): string => {
     if (!nombre) return '#5a6472';
-    return coloresMeseros[nombre] || (nombre === miNombre ? (profile?.color || '#FF2D78') : '#5a6472');
-  };
+    const raw = coloresMeseros[nombre] || (nombre === miNombre ? profile?.color : null);
+    return sanearHex(raw) || '#5a6472';
+};
   const retoDePlato = useCallback((nombrePlato: string): any => {
     if (!nombrePlato) return null;
     const n = nombrePlato.toLowerCase();
@@ -2113,7 +2189,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setTimeout(() => setAddedCards(prev => { const n = new Set(prev); n.delete(p.nombre); return n; }), 1200);
     showToast(`✓ ${p.nombre} agregado al pedido`);
     // Sync to Supabase → Flow (KDS) lo ve en tiempo real
-    insertarPedidoFlow(p.nombre, p.categoria ?? currentCat, selectedTable.num, p.precio ? parsePrecio(p.precio) : 0);
+    insertarPedidoFlow(p.nombre, p.categoria ?? currentCat, selectedTable.num, p.precio ? parsePrecio(p.precio) : 0, p._observ || '', p._tags || []);
     agregarPlatoFlow({
       mesa: selectedTable.num,
       plato: p.nombre,
@@ -2126,7 +2202,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   };
 
   // ── Insertar pedido en Supabase → Flow lo ve en tiempo real ──
-  const insertarPedidoFlow = async (nombrePlato: string, categoria: string, mesaNum: number, precio?: number) => {
+  const insertarPedidoFlow = async (nombrePlato: string, categoria: string, mesaNum: number, precio?: number, observaciones?: string, tags?: string[]) => {
     try {
       const meseroActivo = miNombre;
 
@@ -2194,14 +2270,16 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         menu_item_id:    menuItem?.[0]?.id ?? null,
         quantity:        1,
         status:          'pending',
-        notes:           nombrePlato,
+        notes:           observaciones ? `${nombrePlato} · ${observaciones}` : nombrePlato,
         nombre_plato:    nombrePlato,
         categoria:       categoria,
         estacion:        estacion,
         mesero:          meseroActivo,
         cocinero:        cocinero,
         price_at_time:   precioFinal,
-        restaurante_id: restauranteId,
+        restaurante_id:  restauranteId,
+        observaciones:   observaciones || null,
+        tags:            tags && tags.length > 0 ? tags : null,
         created_at:      new Date().toISOString(),
         updated_at:      new Date().toISOString(),
       });
@@ -2223,7 +2301,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       showToast(`🍽️ ${productoFinal.nombre} marchando → Cocina`);
     }
     // ── Sincronizar con Supabase → Flow lo ve en tiempo real ─
-    insertarPedidoFlow(productoFinal.nombre, p.categoria ?? currentCat, selectedTable?.num ?? 0, p.precio ? parsePrecio(p.precio) : 0);
+    insertarPedidoFlow(productoFinal.nombre, p.categoria ?? currentCat, selectedTable?.num ?? 0, p.precio ? parsePrecio(p.precio) : 0, p._observ || '', p._tags || []);
     // ── Sincronizar con flowStore (Book Flow) ─────────────────
     agregarPlatoFlow({
       mesa: selectedTable?.num ?? 0,
@@ -2360,9 +2438,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const removeOrder = async (i: number) => {
     const item = order[i];
     if (!item) return;
-    // Buscar el plato en flow_order_items por nombre + mesa creados después
-    // del created_at del item local. Si no existe (modo offline) o está
-    // pending, se permite. Si está en otro estado, se bloquea.
+    // Pedir motivo de cancelación (queda en trazabilidad y notifica a Flow)
+    const motivo = prompt(`¿Por qué cancelas "${item.nombre}"?\n(error, cliente cambió de opinión, 86, etc.)`);
+    if (motivo === null) return; // canceló el prompt
     const desdeIso = item.created_at || new Date(Date.now() - 60_000).toISOString();
     const { data: matches } = await supabase
       .from('flow_order_items')
@@ -2375,15 +2453,25 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       .limit(1);
     const flowItem = matches?.[0];
     if (flowItem && flowItem.status !== 'pending') {
-      showToast(`⚠️ Cocina ya empezó "${item.nombre}" (${flowItem.status}). No puedes eliminarlo.`);
-      return;
-    }
-    // OK: borrar del flow Y del order local
-    if (flowItem) {
-      await supabase.from('flow_order_items').delete().eq('id', flowItem.id);
+      // Cocina ya empezó — marca cancelado pero NO borra (mantiene historial)
+      await supabase.from('flow_order_items').update({
+        status: 'cancelled', cancelled_at: new Date().toISOString(), cancel_reason: motivo,
+      }).eq('id', flowItem.id);
+      // Notificar al puesto de cocina en vivo
+      await supabase.from('flow_alertas').insert({
+        restaurante_id: restauranteId, mesa_num: item.mesa,
+        plato: item.nombre, mesero: miNombre, tipo: 'cancelacion',
+        motivo, severidad: 'alta', leida: false,
+      }).then(()=>{},()=>{});
+      showToast(`🚫 ${item.nombre} cancelado · cocina notificada (${motivo})`);
+    } else if (flowItem) {
+      // Pending — se puede cancelar limpio pero registramos motivo en historial
+      await supabase.from('flow_order_items').update({
+        status: 'cancelled', cancelled_at: new Date().toISOString(), cancel_reason: motivo,
+      }).eq('id', flowItem.id);
+      showToast(`🗑️ ${item.nombre} eliminado · motivo: ${motivo}`);
     }
     setOrder(prev => prev.filter((_, idx) => idx !== i));
-    showToast(`🗑️ ${item.nombre} eliminado de la cuenta y de cocina`);
   };
 
   const clearOrder = () => { setOrder([]); showToast('Pedido limpiado'); };
@@ -4905,34 +4993,18 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
 
       {/* MODAL TÉRMINO DE COCCIÓN */}
       {terminoModal.open && terminoModal.producto && (
-        <div className="fixed inset-0 bg-black/80 z-[600] flex items-center justify-center p-4">
-          <div className="bg-[#1c1c1c] border border-[#d4943a]/30 rounded-2xl p-6 w-full max-w-[320px]">
-            <div className="text-center mb-5">
-              <div className="text-[28px] mb-2">{terminoModal.producto.emoji}</div>
-              <div className="font-['Syne'] text-[16px] font-bold">{terminoModal.producto.nombre}</div>
-              <div className="text-[11px] text-[#606060] mt-1">¿Qué término de cocción?</div>
-            </div>
-            <div className="flex flex-col gap-2 mb-4">
-              {TERMINOS_COCCION.map(t => (
-                <button key={t}
-                  onClick={() => {
-                    const p = terminoModal.producto;
-                    const modo = terminoModal.modo;
-                    setTerminoModal({ open: false, producto: null, modo: 'orden' });
-                    if (modo === 'orden') agregarAOrdenDirecto(p, t);
-                    else marcharAhoraDirecto(p, t);
-                  }}
-                  className="w-full py-3 rounded-xl border border-[#2a2a2a] text-[13px] font-bold text-[#f0f0f0] hover:border-[#d4943a] hover:bg-[#d4943a]/10 hover:text-[#d4943a] transition-all">
-                  {t}
-                </button>
-              ))}
-            </div>
-            <button onClick={() => setTerminoModal({ open: false, producto: null, modo: 'orden' })}
-              className="w-full py-2.5 rounded-xl border border-[#2a2a2a] text-[#606060] text-[11px] font-semibold hover:border-[#a0a0a0] transition-all">
-              Cancelar
-            </button>
-          </div>
-        </div>
+        <TerminoObservModal
+          producto={terminoModal.producto}
+          modo={terminoModal.modo}
+          onClose={() => setTerminoModal({ open: false, producto: null, modo: 'orden' })}
+          onConfirm={(termino, observ, tags) => {
+            const p = { ...terminoModal.producto, _observ: observ, _tags: tags };
+            const modo = terminoModal.modo;
+            setTerminoModal({ open: false, producto: null, modo: 'orden' });
+            if (modo === 'orden') agregarAOrdenDirecto(p, termino);
+            else marcharAhoraDirecto(p, termino);
+          }}
+        />
       )}
 
       {/* MODAL SELECTOR DE COLOR DEL MESERO — al primer login */}
@@ -5254,11 +5326,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
             <button onClick={() => setShowMapaMesas(true)}
               className="mt-4 p-6 rounded-2xl border-2 border-dashed text-center transition-all hover:scale-[1.02]"
               style={{
-                borderColor: (profile?.color || '#FF2D78') + '60',
-                background: (profile?.color || '#FF2D78') + '08',
+                borderColor: sanearHex(profile?.color) + '60',
+                background: sanearHex(profile?.color) + '08',
               }}>
               <div className="text-[40px] mb-2">🗺️</div>
-              <div className="font-['Syne'] text-[14px] font-black mb-1" style={{ color: profile?.color || '#FF2D78' }}>Aún no tienes mesas</div>
+              <div className="font-['Syne'] text-[14px] font-black mb-1" style={{ color: sanearHex(profile?.color) }}>Aún no tienes mesas</div>
               <div className="text-[11px] text-[#a0a0a0]">Toca para abrir el Mapa y tomar un cliente</div>
             </button>
           )}
@@ -5284,28 +5356,28 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     className="w-7 h-7 rounded-lg bg-[#1c1c1c] border border-[#2a2a2a] flex items-center justify-center text-[#a0a0a0] disabled:opacity-30 hover:border-[#d4943a] hover:text-[#d4943a] transition-all text-[14px]">›</button>
                 </div>
 
-                {/* Card de la mesa activa — diseño limpio que respeta el ancho de 200px */}
-                <div className="rounded-2xl overflow-hidden"
-                  style={{ border: `1.5px solid ${profile?.color || '#FF2D78'}55`, background:'#1c1c1c' }}>
+                {/* Card de la mesa activa — diseño compacto (200px) */}
+                <div className="rounded-xl overflow-hidden"
+                  style={{ border: `1.5px solid ${sanearHex(profile?.color)}55`, background:'#1c1c1c' }}>
 
-                  {/* HEADER — número, pax, VIP, zona en UNA fila compacta */}
-                  <div className="px-3 pt-3 pb-2">
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-baseline gap-1.5">
-                        <span className="font-['Syne'] font-black text-[26px] leading-none"
-                          style={{ color: profile?.color || '#FF2D78' }}>{nombreMesa(m)}</span>
-                        <span className="text-[10px] text-[#a0a0a0] font-bold">{m.pax}p</span>
+                  {/* HEADER — número compacto + zona en UNA fila */}
+                  <div className="px-2.5 pt-2 pb-1.5">
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-['Syne'] font-black text-[20px] leading-none"
+                          style={{ color: sanearHex(profile?.color) }}>{nombreMesa(m)}</span>
+                        <span className="text-[9px] text-[#a0a0a0] font-bold">{m.pax}p</span>
                       </div>
                       <div className="flex items-center gap-1">
-                        {m.vip  && <span className="text-[12px]" title="VIP">⭐</span>}
-                        {m.bday && <span className="text-[12px]" title="Cumpleaños">🎂</span>}
-                        {m.alert && <span className="text-[12px]" title="Alerta">⚠️</span>}
+                        {m.vip  && <span className="text-[11px]" title="VIP">⭐</span>}
+                        {m.bday && <span className="text-[11px]" title="Cumpleaños">🎂</span>}
+                        {m.alert && <span className="text-[11px]" title="Alerta">⚠️</span>}
                       </div>
                     </div>
 
-                    {/* Zona + cliente · una línea, sin overflow */}
-                    <div className="flex items-center gap-1.5 text-[10px]" style={{color:'#808080'}}>
-                      <span className="shrink-0">📍 {((m as any).zona || 'Salón').slice(0,12)}</span>
+                    {/* Zona + cliente · línea fina */}
+                    <div className="flex items-center gap-1.5 text-[9px]" style={{color:'#808080'}}>
+                      <span className="shrink-0">📍 {((m as any).zona || 'Salón').slice(0,14)}</span>
                       {m.cliente && (
                         <>
                           <span style={{color:'#3a3a3a'}}>·</span>
@@ -5359,7 +5431,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                             <div key={t.id} onClick={() => setSelectedTableId(t.id)}
                               className="flex items-center gap-2 p-1.5 px-2 rounded-lg bg-[#1a1a1a] border cursor-pointer hover:border-[#d4943a]/40 transition-all"
                               style={{ borderColor: `${profile?.color || '#2a2a2a'}30` }}>
-                              <span className="text-[11px] font-bold shrink-0" style={{ color: profile?.color || '#FF2D78' }}>{nombreMesa(t)}</span>
+                              <span className="text-[11px] font-bold shrink-0" style={{ color: sanearHex(profile?.color) }}>{nombreMesa(t)}</span>
                               <span className="text-[10px] text-[#606060] flex-1 truncate min-w-0">{t.cliente}</span>
                               <span className="text-[9px] font-bold tabular-nums shrink-0" style={{ color: minColor }} title="Minutos sin marchar">{minTexto}</span>
                               <div className="w-8 h-[3px] bg-[#2a2a2a] rounded-sm overflow-hidden shrink-0">
@@ -5372,83 +5444,6 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   </div>
                 )}
 
-                {/* TRASPASO DE MESA */}
-                <div className="mt-3 pt-3 border-t border-[#2a2a2a]">
-                  <button onClick={() => setMostrarTraspaso(p => !p)}
-                    className="w-full flex items-center justify-between text-[10px] font-bold text-[#606060] uppercase tracking-wider hover:text-[#d4943a] transition-all">
-                    <span className="flex items-center gap-1.5">↔ Traspaso de mesa</span>
-                    <span>{mostrarTraspaso ? '▲' : '▼'}</span>
-                  </button>
-                  {mostrarTraspaso && (
-                    <div className="mt-2 flex flex-col gap-2">
-                      <div className="flex gap-1">
-                        {([
-                          { id:'mesa',        label:'Mesa → Mesa',  color:'#4a8fd4' },
-                          { id:'barra',        label:'Mesa → Barra', color:'#9b72ff' },
-                          { id:'barra-a-mesa', label:'Barra → Mesa', color:'#d4943a' },
-                        ] as const).map(t => (
-                          <button key={t.id} onClick={() => setTipoTraspaso(t.id)}
-                            style={{ borderColor: tipoTraspaso===t.id ? t.color : '#2a2a2a', background: tipoTraspaso===t.id ? t.color+'18' : 'transparent', color: tipoTraspaso===t.id ? t.color : '#606060' }}
-                            className="flex-1 py-1.5 rounded-lg border text-[9px] font-bold transition-all">
-                            {t.label}
-                          </button>
-                        ))}
-                      </div>
-                      <div className="text-[9px] text-[#606060]">
-                        Origen: <span className="text-[#f0f0f0] font-bold">Mesa {m.num} — {m.cliente}</span>
-                      </div>
-                      {tipoTraspaso !== 'barra' && (() => {
-                        // Solo mesas DISPONIBLES (libres y sin pedido local).
-                        // Cruza con mesasEstado (de planta_mesas) y reservations
-                        // para saber cuáles están realmente ocupadas.
-                        const ocupadasNums = new Set<number>([
-                          ...mesasEstado.filter((mm:any) => ['ocupada','asignada','sentada'].includes(mm.estado)).map((mm:any) => Number(mm.name)),
-                          ...displayTablesAll.filter((tt:any) => tt.cliente && tt.cliente !== 'Mesa' && tt.cliente !== '').map((tt:any) => Number(tt.num)),
-                        ]);
-                        const disponibles = displayTablesAll.filter((t:any) => t.id !== selectedTableId && !ocupadasNums.has(Number(t.num)));
-                        return (
-                          <div>
-                            <div className="text-[9px] text-[#606060] mb-1">Destino · solo disponibles ({disponibles.length})</div>
-                            {disponibles.length === 0 ? (
-                              <div className="text-[10px] text-[#e05050] bg-[#e05050]/10 border border-[#e05050]/20 rounded-lg px-2 py-2 text-center">
-                                ⚠ No hay mesas libres en este momento
-                              </div>
-                            ) : (
-                              <div className="flex flex-wrap gap-1">
-                                {disponibles.map((t:any) => (
-                                  <button key={t.id} onClick={() => setMesaDestino(mesaDestino === t.id ? null : t.id)}
-                                    style={{ borderColor: mesaDestino===t.id ? '#d4943a' : '#2a2a2a', background: mesaDestino===t.id ? '#d4943a18' : '#1a1a1a', color: mesaDestino===t.id ? '#d4943a' : '#a0a0a0' }}
-                                    className="px-2 py-1 rounded-lg border text-[10px] font-bold transition-all">
-                                    {nombreMesa(t)}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })()}
-                      {tipoTraspaso === 'barra' && (
-                        <div className="text-[9px] text-[#9b72ff] bg-[#9b72ff]/10 border border-[#9b72ff]/20 rounded-lg px-2 py-1.5">
-                          La cuenta pasa a nombre de barra — el mesero de barra continúa el servicio
-                        </div>
-                      )}
-                      <button onClick={() => {
-                        if (tipoTraspaso === 'barra') {
-                          showToast(`↔ Mesa ${m.num} → Barra · ${m.cliente} traspasado`);
-                        } else if (mesaDestino) {
-                          const dest = displayTables.find(t => t.id === mesaDestino);
-                          showToast(`↔ Mesa ${m.num} → Mesa ${dest?.num} · Traspaso confirmado`);
-                          setSelectedTableId(mesaDestino);
-                        } else {
-                          showToast('⚠️ Selecciona mesa destino'); return;
-                        }
-                        setMostrarTraspaso(false); setMesaDestino(null);
-                      }} className="w-full py-2 rounded-xl bg-[#d4943a] text-black text-[11px] font-bold hover:bg-[#f0b45a] transition-all">
-                        ✓ Confirmar traspaso
-                      </button>
-                    </div>
-                  )}
-                </div>
 
                 {/* COMPARTIR MESA — habilita a otro mesero a entrar */}
                 {(() => {
@@ -6922,17 +6917,18 @@ function PlanoPOSSala({ mesasEstado, restauranteId, miNombre, accesoSalon, profi
           const esMia = (ocupada || asignada) && (!meseroDeMesa || meseroDeMesa===miNombre || compartida);
           const puedeEntrar = esMia || accesoSalon;
           const colorMesero = colorDeMesero(meseroDeMesa || (asignadaMia ? miNombre : ''));
-          // COLORES POS MESERO (regla nueva):
-          //   - Mi color (perfil): mi propia mesa o asignada compartida → fucsia/del usuario
-          //   - Verde: mesa libre o asignada pool — la PUEDO tomar
-          //   - Gris (#5a6472): mesa que NO puedo tomar (de otro mesero sin acceso salón)
-          //   - Bloqueada: oscuro
+          // COLORES POS:
+          // · Admin/Gerencia: TODAS las mesas en su color (fucsia) — ven todo como suyo
+          // · Mesero: mi color en las mías · verde en pool · gris en las ajenas
+          const esAdmin = ['admin','gerencia','desarrollo'].includes(String(profile?.role||'').toLowerCase());
           const GRIS_NO_PUEDO = '#5a6472';
+          const miColor = sanearHex(profile?.color);
           const stroke = bloqueada ? NEON.bloqueadaStroke
-            : asignadaMia ? (profile?.color || '#FF2D78')
-            : asignadaPool ? '#3DBE8B'                                      // verde · libre para tomar
-            : asignadaDeOtro ? (accesoSalon ? colorMesero : GRIS_NO_PUEDO)  // gris si no puedo
-            : ocupada ? (puedeEntrar ? colorMesero : GRIS_NO_PUEDO)         // gris si no puedo
+            : esAdmin && (asignada || ocupada) ? miColor                     // ADMIN: todo en fucsia
+            : asignadaMia ? miColor
+            : asignadaPool ? '#3DBE8B'                                       // verde · libre para tomar
+            : asignadaDeOtro ? (accesoSalon ? colorMesero : GRIS_NO_PUEDO)
+            : ocupada ? (puedeEntrar ? colorMesero : GRIS_NO_PUEDO)
             : NEON.libreStroke;
           const fill = bloqueada ? NEON.bloqueadaFill
             : ocupada ? NEON.ocupadaFill
