@@ -1079,6 +1079,9 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
           totalReservas={reservasHoy.length}
         />
 
+        {/* Reloj en vivo · sólo cuando viendo HOY */}
+        {fechaFiltro === hoy && <RelojEnVivo S={S}/>}
+
         {[
           {l:'Pax',v:`${reservasReales.reduce((s,r)=>s+(r.pax||0),0)}p`,c:S.purple},
           {l:'Walk-ins',v:`${walkinsCount}`,c:S.cyan},
@@ -2400,6 +2403,42 @@ function InfoChip({ label, v, c }:{ label:string; v:string; c:string }) {
     <div style={{padding:'10px 12px',borderRadius:10,border:`1px solid ${c}33`,background:`${c}10`,textAlign:'center'}}>
       <div style={{fontSize:9,color:c,fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em'}}>{label}</div>
       <div style={{fontFamily:"'Syne',serif",fontSize:17,fontWeight:900,color:c,lineHeight:1.1,marginTop:2}}>{v}</div>
+    </div>
+  );
+}
+
+// ══ RELOJ EN VIVO — hora actual del servicio, refresca cada segundo ══
+function RelojEnVivo({ S }:{ S:any }) {
+  const [ahora, setAhora] = React.useState(new Date());
+  React.useEffect(() => {
+    const id = setInterval(() => setAhora(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const hh = ahora.getHours().toString().padStart(2,'0');
+  const mm = ahora.getMinutes().toString().padStart(2,'0');
+  const ss = ahora.getSeconds().toString().padStart(2,'0');
+  // Color cambia según franja del servicio
+  const h = ahora.getHours();
+  const franjaColor = h>=18 && h<23 ? S.purple : h>=12 && h<16 ? S.gold : h>=23 || h<6 ? S.red : S.cyan;
+  const franjaLabel = h>=6 && h<11 ? 'Pre-apertura'
+                     : h>=11 && h<12 ? 'Apertura'
+                     : h>=12 && h<16 ? 'Almuerzo'
+                     : h>=16 && h<18 ? 'Tarde'
+                     : h>=18 && h<23 ? 'Cena'
+                     : 'Cierre';
+  return (
+    <div title={`Hora local · ${franjaLabel}`}
+      style={{display:'flex',alignItems:'center',gap:8,padding:'6px 12px',borderRadius:10,border:`1px solid ${franjaColor}44`,background:`${franjaColor}10`}}>
+      <span style={{width:7,height:7,borderRadius:'50%',background:franjaColor,boxShadow:`0 0 8px ${franjaColor}`,animation:'nx-pulse 1s infinite'}}/>
+      <div style={{display:'flex',flexDirection:'column',lineHeight:1}}>
+        <span style={{fontFamily:"'Syne',serif",fontSize:15,fontWeight:900,color:franjaColor,letterSpacing:'0.04em'}}>
+          {hh}:{mm}<span style={{fontSize:10,opacity:0.7}}>:{ss}</span>
+        </span>
+        <span style={{fontSize:8,color:S.t3,letterSpacing:'.14em',textTransform:'uppercase',fontWeight:700,marginTop:2}}>
+          {franjaLabel}
+        </span>
+      </div>
+      <style>{`@keyframes nx-pulse{0%,100%{opacity:1}50%{opacity:.35}}`}</style>
     </div>
   );
 }

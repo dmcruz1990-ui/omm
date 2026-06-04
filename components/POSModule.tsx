@@ -1263,6 +1263,17 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // Stock 86 tips
   const [tipsVenta, setTipsVenta] = useState<any[]>([]);
   const [tips86, setTips86] = useState<any[]>([]);
+  // Derivar 86 desde la carta (productos con _en86=true desde Mi Menú).
+  // Esto conecta la lista de 86 con el toggle "disponible" del menú.
+  useEffect(() => {
+    const en86: any[] = [];
+    Object.entries(productos).forEach(([cat, items]) => {
+      (items || []).forEach((p:any) => {
+        if (p?._en86) en86.push({ nombre: p.nombre, emoji: p.emoji || '🚫', categoria: cat });
+      });
+    });
+    setTips86(en86);
+  }, [productos]);
   // Puntos
   const [puntosCliente, setPuntosCliente] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -7018,16 +7029,19 @@ function BriefDelDia({ profile, miNombre, restauranteId }:{ profile:any; miNombr
     return () => { supabase.removeChannel(ch); };
   }, [restauranteId]);
 
-  // Frase inspiradora (rotativa según día del año + hora)
+  // Frase inspiradora (rotativa según día del año + hora) — enfocadas en
+  // hacer mejores cada turno. Más largas para que el equipo se detenga a leerlas.
   const FRASES = [
-    'El servicio impecable nace de los detalles invisibles. Hoy somos esos detalles.',
-    'Cada cliente que entra es una historia. Nuestra cocina es donde la contamos.',
-    'La excelencia no es un acto, es un hábito. Hoy lo cultivamos juntos.',
-    'El cliente recordará no solo lo que comió, sino cómo lo hicimos sentir.',
-    'Cuidamos los segundos: el tiempo perfecto convierte una comida en experiencia.',
-    'Equipo unido, servicio fluido. Hoy nadie está solo en su estación.',
-    'Cada plato sale como si fuera el último. Cada mesa atendida como si fuera la primera.',
-    'No vendemos comida, creamos memorias. Hoy creamos memorables.',
+    'Hoy estamos enfocados en hacer mejores cada detalle: la bienvenida, el tiempo perfecto, la sonrisa real. El servicio impecable nace de lo invisible, y hoy nosotros somos esos detalles que el cliente sí va a sentir.',
+    'Cada cliente que entra trae una historia que aún no nos ha contado. Estamos enfocados en hacer mejores la escucha y la lectura de mesa, para que cuando se vaya sienta que aquí lo entendieron antes de pedir.',
+    'La excelencia no es un acto, es un hábito que se construye plato a plato y turno a turno. Hoy estamos enfocados en hacer mejores los procesos pequeños, porque ahí es donde se decide si la mesa vuelve.',
+    'El cliente no va a recordar exactamente qué comió, pero sí cómo lo hicimos sentir. Estamos enfocados en hacer mejores los micro-momentos: el saludo a tiempo, la recomendación honesta, la despedida que vale el regreso.',
+    'Cuidamos los segundos porque ahí vive la diferencia. Estamos enfocados en hacer mejores los tiempos: marchar cuando toca, recoger cuando pide, llenar la copa antes de que la pidan. Eso es servicio NEXUM.',
+    'Equipo unido, servicio fluido. Hoy estamos enfocados en hacer mejores la comunicación entre estaciones: cocina, barra, salón y caja somos una sola voz para el cliente que está confiando en nosotros.',
+    'Cada plato sale como si fuera el último y cada mesa se atiende como si fuera la primera. Estamos enfocados en hacer mejores los estándares, porque el cliente VIP y el walk-in merecen el mismo nivel de cuidado.',
+    'No vendemos comida, creamos memorias que se cuentan después de cerrar. Hoy estamos enfocados en hacer mejores las experiencias completas: del aroma al cobrar, todo cuenta para que vuelvan.',
+    'La diferencia entre un restaurante bueno y uno inolvidable está en los detalles que nadie pidió. Hoy estamos enfocados en hacer mejores esos pequeños gestos: la sugerencia precisa, el tiempo justo, la atención que anticipa.',
+    'Cada turno es una oportunidad de superar el anterior. Estamos enfocados en hacer mejores los aprendizajes de ayer: lo que falló se corrige, lo que funcionó se repite y se eleva. Hoy subimos un escalón juntos.',
   ];
   const nombre = (profile?.full_name || profile?.nombre_completo || miNombre || '').split(' ')[0] || 'Equipo';
   const idx = ((new Date()).getDate() + (new Date()).getHours()) % FRASES.length;
@@ -7158,19 +7172,27 @@ function PlanoPOSSala({ mesasEstado, restauranteId, miNombre, accesoSalon, profi
           const esMia = (ocupada || asignada) && (!meseroDeMesa || meseroDeMesa===miNombre || compartida);
           const puedeEntrar = esMia || accesoSalon;
           const colorMesero = colorDeMesero(meseroDeMesa || (asignadaMia ? miNombre : ''));
-          // COLORES POS:
-          // · Admin/Gerencia: TODAS las mesas en su color (fucsia) — ven todo como suyo
-          // · Mesero: mi color en las mías · verde en pool · gris en las ajenas
+          // COLORES POS — regla clara para el mesero:
+          // · Admin/Gerencia: TODO en su color (fucsia) — ven todo como suyo
+          // · MÍAS con cliente sentado/ocupada → VERDE (es trabajo activo mío)
+          // · MÍAS asignadas sin sentar → mi color (fucsia/oro)
+          // · POOL libre para tomar → VERDE
+          // · DE OTROS MESEROS → NARANJA
+          // · NO PUEDO TOMAR (libres ajenas, bloqueadas no para mí) → GRIS
           const esAdmin = ['admin','gerencia','desarrollo'].includes(String(profile?.role||'').toLowerCase());
           const GRIS_NO_PUEDO = '#5a6472';
+          const VERDE_PUEDO  = '#3DBE8B';
+          const NARANJA_OTRO = '#FF8C42';
           const miColor = sanearHex(profile?.color);
           const stroke = bloqueada ? NEON.bloqueadaStroke
             : esAdmin && (asignada || ocupada) ? miColor                     // ADMIN: todo en fucsia
-            : asignadaMia ? miColor
-            : asignadaPool ? '#3DBE8B'                                       // verde · libre para tomar
-            : asignadaDeOtro ? (accesoSalon ? colorMesero : GRIS_NO_PUEDO)
-            : ocupada ? (puedeEntrar ? colorMesero : GRIS_NO_PUEDO)
-            : NEON.libreStroke;
+            : ocupada && esMia ? VERDE_PUEDO                                 // mía con cliente sentado → VERDE
+            : ocupada && !puedeEntrar ? NARANJA_OTRO                         // ocupada por otro mesero → NARANJA
+            : ocupada ? colorMesero                                          // accesoSalon ve color del mesero
+            : asignadaMia ? miColor                                          // mía sin sentar aún
+            : asignadaPool ? VERDE_PUEDO                                     // pool libre para tomar
+            : asignadaDeOtro ? (accesoSalon ? colorMesero : NARANJA_OTRO)    // de otro mesero
+            : NEON.libreStroke;                                              // libre: cualquiera puede abrirla
           const fill = bloqueada ? NEON.bloqueadaFill
             : ocupada ? NEON.ocupadaFill
             : asignada ? NEON.reservadaFill
