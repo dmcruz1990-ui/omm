@@ -3064,6 +3064,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [platosDia, setPlatosDia]         = useState<any[]>([]);
   const [reservasHoy, setReservasHoy] = useState<any[]>([]);
 
+  // ── Cobro Xpress — modal rápido: total + propina + método → cobra y cierra ──
+  const [xpressOpen, setXpressOpen]       = useState(false);
+  const [xpressMetodo, setXpressMetodo]   = useState<'Datafono'|'Efectivo'|'Transferencia'|'Tarjeta'>('Datafono');
+  const [xpressPropPct, setXpressPropPct] = useState<0|10>(10);
+  const [xpressProcesando, setXpressProcesando] = useState(false);
+
   // ── Cobro Gerencia — ventana propia (PIN → descuentos hasta 100% + bonos) ──
   const [gerOpen, setGerOpen] = useState(false);
   const [gerPinOk, setGerPinOk] = useState(false);
@@ -3163,6 +3169,119 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setSelectedTableId(tableId);
     setGerOpen(true); setGerPinOk(false); setGerPin(''); setGerPinErr('');
     setGerDescPct(0); setGerDescMotivo(''); setGerBonoCode(''); setGerBono(null); setGerBonoMsg(''); setGerMetodo('Datafono');
+  };
+
+  // ── Cobro Xpress — rápido sin survey: 1 método + propina + cerrar ──────
+  const abrirXpress = (tableId: number) => {
+    setSelectedTableId(tableId);
+    setXpressMetodo('Datafono'); setXpressPropPct(10); setXpressProcesando(false);
+    setXpressOpen(true);
+  };
+
+  const procesarXpress = async () => {
+    if (xpressProcesando) return;
+    const mesa = displayTables.find(x => x.id === selectedTableId);
+    const num  = mesa?.num;
+    if (num == null) { showToast('⚠️ Mesa inválida'); return; }
+    setXpressProcesando(true);
+    try {
+      const items   = order.filter(o => o.mesa === num);
+      const subtotal = mesa?.ticket || 0;
+      const iva      = Math.round(subtotal * 0.08);
+      const neto     = subtotal;
+      const propina  = Math.round(subtotal * (xpressPropPct/100));
+      const total    = neto + iva + propina;
+      const ahora    = new Date();
+      const meseroNombre = miNombre;
+      const facturaId    = `fac_xp_${Date.now()}_${num}`;
+
+      // 1) Facturación — registro principal
+      await supabase.from('facturacion').insert({
+        restaurante_id: restauranteId,
+        mesa_num: num,
+        mesero: meseroNombre,
+        items: items.map((it:any)=>({nombre:it.nombre, precio:it.precio, estado:it.estado})),
+        subtotal: neto,
+        iva,
+        propina,
+        descuento: 0,
+        total,
+        metodo_pago: xpressMetodo,
+        factura_tipo: 'xpress',
+        cliente_email: null,
+        puntos_generados: 0,
+        cerrada_en: ahora.toISOString(),
+        fecha: ahora.toISOString().split('T')[0],
+        hora:  ahora.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),
+      }).then(()=>{}, e=>console.error('xpress facturacion', e));
+
+      // 2) Trazabilidad para dashboard de cobros
+      await supabase.from('cobros_trazabilidad').insert({
+        restaurante_id: restauranteId,
+        mesa_numero: num,
+        mesero: meseroNombre,
+        total, propina, propina_pct: xpressPropPct,
+        metodo_pago: xpressMetodo,
+        platos_servidos: items.length,
+        factura_tipo: 'xpress',
+        factura_email: null,
+      }).then(()=>{}, ()=>{});
+
+      // 3) Propina → motor NEXUM TIP NETWORK V5
+      if (propina > 0 && meseroNombre) {
+        await supabase.from('ticket_participants').insert({
+          factura_id: facturaId,
+          restaurante_id: restauranteId,
+          empleado_nombre: meseroNombre,
+          tag_code: 'MESA_OWNER',
+          rol_en_factura: 'MESA_OWNER',
+          contribution_pct: 100,
+          venta_generada: total,
+          upselling_items: 0,
+        }).then(()=>{}, ()=>{});
+        await supabase.rpc('process_tip_event', {
+          p_factura_id:  facturaId,
+          p_restaurante: restauranteId,
+          p_tip_amount:  propina,
+          p_total:       total,
+          p_pct_propina: xpressPropPct,
+          p_mesa_num:    num,
+          p_turno:       ahora.getHours() < 16 ? 'mediodia' : 'noche',
+          p_fecha:       ahora.toISOString().split('T')[0],
+          p_hora:        ahora.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),
+        }).then(()=>{}, ()=>{});
+        await supabase.from('propinas').insert({
+          restaurante_id: restauranteId,
+          mesa_num: num,
+          mesero_nombre: meseroNombre,
+          monto_cuenta: total,
+          pct_propina: xpressPropPct,
+          monto_propina: propina,
+          metodo_pago: xpressMetodo,
+          turno: ahora.getHours() < 16 ? 'mediodia' : 'noche',
+          fecha: ahora.toISOString().split('T')[0],
+          hora:  ahora.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),
+        }).then(()=>{}, ()=>{});
+      }
+
+      // 4) Cerrar orden + mesa
+      const { data: ordenes } = await supabase.from('orders').select('id')
+        .eq('table_id', num).eq('status','open').limit(1);
+      if (ordenes?.[0]) {
+        await supabase.from('orders').update({ status:'closed' }).eq('id', ordenes[0].id);
+        await supabase.from('order_items').update({ status:'served' }).eq('order_id', ordenes[0].id).neq('status','cancelled');
+      }
+      const mesaName = String((mesa as any)?.name ?? num);
+      try { await supabase.rpc('cerrar_mesa', { p_mesa_name: mesaName }); } catch {}
+      limpiarMesaCerrada(num);
+      setXpressOpen(false);
+      showToast(`⚡ Mesa ${num} cobrada Xpress · $${formatPrecio(total)} · ${xpressMetodo}`);
+    } catch (e) {
+      console.error('xpress', e);
+      showToast('Error al cobrar');
+    } finally {
+      setXpressProcesando(false);
+    }
   };
 
   const validarBonoGer = async () => {
@@ -4795,6 +4914,90 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         </div>
       )}
 
+      {/* ═══ COBRO XPRESS — modal rápido: método + propina → cierra mesa ═══ */}
+      {xpressOpen && (() => {
+        const mesa = displayTables.find(x => x.id === selectedTableId);
+        const num  = mesa?.num;
+        const subtotal = mesa?.ticket || 0;
+        const iva      = Math.round(subtotal * 0.08);
+        const propina  = Math.round(subtotal * (xpressPropPct/100));
+        const total    = subtotal + iva + propina;
+        const fmtP = (n:number) => formatPrecio(n);
+        const metodos = [
+          { id:'Datafono' as const,      emoji:'💳', label:'Datáfono',      color:'#448AFF' },
+          { id:'Efectivo' as const,      emoji:'💵', label:'Efectivo',      color:'#3dba6f' },
+          { id:'Tarjeta' as const,       emoji:'💎', label:'Tarjeta',       color:'#b388ff' },
+          { id:'Transferencia' as const, emoji:'📱', label:'Transferencia', color:'#22d3ee' },
+        ];
+        return (
+          <div className="fixed inset-0 bg-black/80 z-[650] flex items-center justify-center p-4">
+            <div className="bg-[#1c1c1c] border border-[#3dba6f]/40 rounded-2xl w-full max-w-[420px]">
+              <div className="p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <div className="text-[15px] font-black text-[#f0f0f0]">⚡ Cobro Xpress</div>
+                    <div className="text-[11px] text-[#909090]">Mesa {num} · Cierre rápido</div>
+                  </div>
+                  <button onClick={()=>setXpressOpen(false)} disabled={xpressProcesando}
+                    className="w-8 h-8 rounded-full bg-[#0a0a0a] border border-[#2a2a2a] text-[#909090] flex items-center justify-center">
+                    <X size={16}/>
+                  </button>
+                </div>
+
+                {/* Totales */}
+                <div className="bg-[#0a0a0a] rounded-xl p-3 mb-3">
+                  <div className="flex justify-between text-[12px] text-[#a0a0a0] mb-1.5"><span>Subtotal</span><span>${fmtP(subtotal)}</span></div>
+                  <div className="flex justify-between text-[12px] text-[#a0a0a0] mb-1.5"><span>Impoconsumo (8%)</span><span>${fmtP(iva)}</span></div>
+                  {propina>0 && <div className="flex justify-between text-[12px] text-[#b388ff] mb-1.5"><span>Propina ({xpressPropPct}%)</span><span>${fmtP(propina)}</span></div>}
+                  <div className="flex justify-between text-[18px] font-black pt-2 border-t border-[#2a2a2a] mt-1">
+                    <span className="text-[#f0f0f0]">Total</span>
+                    <span className="text-[#f0b45a]" style={{fontFamily:"'Syne',sans-serif"}}>${fmtP(total)}</span>
+                  </div>
+                </div>
+
+                {/* Propina */}
+                <div className="text-[10px] text-[#606060] font-bold uppercase tracking-wider mb-2">Propina</div>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {([0,10] as const).map(p => (
+                    <button key={p} onClick={()=>setXpressPropPct(p)} disabled={xpressProcesando}
+                      className={`py-2.5 rounded-lg text-[12px] font-bold border transition-all ${xpressPropPct===p?'border-[#b388ff] bg-[#9b72ff]/15 text-[#b388ff]':'border-[#2a2a2a] text-[#909090]'}`}>
+                      {p===0?'Sin propina':`${p}% sugerida`}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Método */}
+                <div className="text-[10px] text-[#606060] font-bold uppercase tracking-wider mb-2">Método de pago</div>
+                <div className="grid grid-cols-2 gap-2 mb-4">
+                  {metodos.map(m => (
+                    <button key={m.id} onClick={()=>setXpressMetodo(m.id)} disabled={xpressProcesando}
+                      style={{
+                        padding:'14px 10px',borderRadius:12,
+                        border:`2px solid ${xpressMetodo===m.id?m.color:`${m.color}40`}`,
+                        background: xpressMetodo===m.id?`${m.color}22`:`${m.color}08`,
+                        color:m.color,fontWeight:800,fontSize:12,cursor:xpressProcesando?'not-allowed':'pointer',
+                        display:'flex',flexDirection:'column',alignItems:'center',gap:5,
+                        transform: xpressMetodo===m.id?'scale(0.97)':'scale(1)',
+                        boxShadow: xpressMetodo===m.id?`0 0 16px ${m.color}80, inset 0 0 12px ${m.color}30`:'none',
+                        transition:'all .18s cubic-bezier(.34,1.5,.64,1)',
+                      }}>
+                      <span style={{fontSize:22,lineHeight:1}}>{m.emoji}</span>
+                      <span>{m.label}</span>
+                    </button>
+                  ))}
+                </div>
+
+                <button onClick={procesarXpress} disabled={xpressProcesando}
+                  className="w-full py-3.5 rounded-xl bg-[#3dba6f] text-black text-[14px] font-black hover:bg-[#4dca7f] disabled:opacity-60 disabled:cursor-not-allowed transition-all">
+                  {xpressProcesando ? '⏳ Procesando…' : `Cobrar $${fmtP(total)} y cerrar mesa`}
+                </button>
+                <div className="text-[9px] text-[#606060] text-center mt-3 tracking-widest uppercase">⚡ XPRESS · sin encuesta · cierra al instante</div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ═══ COBRO GERENCIA — ventana propia: PIN → descuentos 100% + bonos ═══ */}
       {gerOpen && (() => {
         const items = order.filter(o => o.mesa === selectedTable?.num);
@@ -4807,11 +5010,41 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         const total = neto + iva;
         const fmt = (n: number) => new Intl.NumberFormat('es-CO').format(n);
         const cobrar = async () => {
-          await supabase.from('cobros_trazabilidad').insert({ restaurante_id: restauranteId, mesa_numero:selectedTable?.num, mesero:profile?.nombre_completo||'Gerencia', total, propina:0, propina_pct:0, metodo_pago:gerMetodo, platos_servidos:items.length, factura_tipo:'gerencia', factura_email:null }).then(()=>{}).catch(()=>{});
+          const ahora = new Date();
+          const gerNombre = profile?.nombre_completo || profile?.full_name || 'Gerencia';
+          // 1) Facturación oficial — sin esto no aparece en dashboards de ventas
+          await supabase.from('facturacion').insert({
+            restaurante_id: restauranteId,
+            mesa_num: selectedTable?.num ?? 0,
+            mesero: gerNombre,
+            items: items.map((it:any)=>({nombre:it.nombre, precio:it.precio, estado:it.estado})),
+            subtotal: neto,
+            iva,
+            propina: 0,
+            descuento: descMonto + bonoMonto,
+            total,
+            metodo_pago: gerMetodo,
+            factura_tipo: 'gerencia',
+            cliente_email: null,
+            puntos_generados: 0,
+            cerrada_en: ahora.toISOString(),
+            fecha: ahora.toISOString().split('T')[0],
+            hora:  ahora.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),
+          }).then(()=>{}, e=>console.error('ger facturacion', e));
+          // 2) Trazabilidad para dashboard de cobros
+          await supabase.from('cobros_trazabilidad').insert({ restaurante_id: restauranteId, mesa_numero:selectedTable?.num, mesero:gerNombre, total, propina:0, propina_pct:0, metodo_pago:gerMetodo, platos_servidos:items.length, factura_tipo:'gerencia', factura_email:null }).then(()=>{}).catch(()=>{});
+          // 3) Audit de descuento si aplica
           if (gerDescPct>0 || gerBono) {
-            await supabase.from('cuenta_ediciones').insert({ restaurante_id: restauranteId, mesa_numero:selectedTable?.num, tipo:'descuento_gerencia', plato_nombre:`Descuento ${gerDescPct}%${gerBono?` + bono ${gerBono.codigo}`:''}`, motivo:gerDescMotivo||'Cobro gerencia', autorizado_por:profile?.nombre_completo||'Gerencia', mesero:profile?.nombre_completo||'Gerencia', estado:'aprobado', notificado_caja:true }).then(()=>{}).catch(()=>{});
+            await supabase.from('cuenta_ediciones').insert({ restaurante_id: restauranteId, mesa_numero:selectedTable?.num, tipo:'descuento_gerencia', plato_nombre:`Descuento ${gerDescPct}%${gerBono?` + bono ${gerBono.codigo}`:''}`, motivo:gerDescMotivo||'Cobro gerencia', autorizado_por:gerNombre, mesero:gerNombre, estado:'aprobado', notificado_caja:true }).then(()=>{}).catch(()=>{});
           }
-          if (gerBono?.id) { await supabase.from('bonos_regalo').update({ usado:true, usado_at:new Date().toISOString(), usado_por:'gerencia' }).eq('id', gerBono.id).then(()=>{}).catch(()=>{}); }
+          // 4) Marcar bono como usado
+          if (gerBono?.id) { await supabase.from('bonos_regalo').update({ usado:true, usado_at:ahora.toISOString(), usado_por:'gerencia' }).eq('id', gerBono.id).then(()=>{}).catch(()=>{}); }
+          // 5) Cerrar orden + mesa
+          const { data: ordenes } = await supabase.from('orders').select('id').eq('table_id', selectedTable?.num ?? 0).eq('status','open').limit(1);
+          if (ordenes?.[0]) {
+            await supabase.from('orders').update({ status:'closed' }).eq('id', ordenes[0].id);
+            await supabase.from('order_items').update({ status:'served' }).eq('order_id', ordenes[0].id).neq('status','cancelled');
+          }
           const mesaName = String((selectedTable as any)?.name ?? selectedTable?.num ?? '');
           if (mesaName) { try { await supabase.rpc('cerrar_mesa', { p_mesa_name: mesaName }); } catch {} }
           limpiarMesaCerrada(selectedTable?.num);
@@ -6215,13 +6448,21 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   className="w-full py-2.5 rounded-xl text-[12px] font-black transition-all bg-[#d4943a] text-black hover:bg-[#f0b45a] active:bg-[#3dba6f] flex items-center justify-center gap-2">
                   🔐 Cobrar Gerencia
                 </button>
-                {/* Cobrar Xpress — rápido sin ajustes (requiere clave de gerencia) */}
+                {/* Cobrar Xpress — flujo rápido en 1 paso (requiere PIN si no es gerencia) */}
+                <button onClick={() => {
+                    if (isGerencia || pinUnlocked) { abrirXpress(selectedTableId); }
+                    else { requirePin(() => abrirXpress(selectedTableId)); }
+                  }}
+                  className="w-full py-2.5 rounded-xl text-[12px] font-black transition-all bg-[#3dba6f] text-black hover:bg-[#4dca7f] active:bg-[#d4943a] flex items-center justify-center gap-2">
+                  {isGerencia || pinUnlocked ? '⚡ Cobrar Xpress' : '🔐 Cobrar Xpress'}
+                </button>
+                {/* Modo Cliente (encuesta completa) — usuario decide entre Xpress o flujo completo */}
                 <button onClick={() => {
                     if (isGerencia || pinUnlocked) { abrirModoCliente(selectedTableId); }
                     else { requirePin(() => abrirModoCliente(selectedTableId)); }
                   }}
-                  className="w-full py-2.5 rounded-xl text-[12px] font-black transition-all bg-[#3dba6f] text-black hover:bg-[#4dca7f] active:bg-[#d4943a] flex items-center justify-center gap-2">
-                  {isGerencia || pinUnlocked ? '⚡ Cobrar Xpress' : '🔐 Cobrar Xpress'}
+                  className="w-full py-2 rounded-xl text-[11px] font-bold transition-all bg-transparent border border-[#9b72ff]/40 text-[#b388ff] hover:bg-[#9b72ff]/10 flex items-center justify-center gap-2">
+                  ✨ Modo Cliente (con encuesta)
                 </button>
                 {/* Pasar la cuenta a otra tablet / caja */}
                 <button onClick={enviarACaja}
