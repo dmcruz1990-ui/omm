@@ -5785,57 +5785,109 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           })()}
         </div>
 
-        {/* ══ BARRA INFERIOR · RITUAL DE LA MESA ACTIVA ══
-            Una sola fila con los pasos del ritual + progreso + colapsar.
-            Sin quick-add ni IA recs duplicadas (esas viven en el Brief). */}
+        {/* ══ BARRA INFERIOR COMPLETA · Ritual + Quick-add + IA recs ══
+            3 filas en una sola caja colapsable (el original que pidió Diego) */}
         {selectedTable && (
-          <div className="bg-[#141414] border-t border-[#4a8fd4]/30 shrink-0">
+          <div className="bg-[#141414] border-t-2 border-[#4a8fd4]/30 flex flex-col shrink-0">
             {!barraColapsada ? (
-              <div className="flex items-center gap-2 px-3 py-2 overflow-x-auto" style={{scrollbarWidth:'none'}}>
-                {/* Botón colapsar */}
-                <button onClick={() => setBarraColapsada(true)} title="Ocultar barra interior"
-                  className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-[12px] font-bold"
-                  style={{background:'#1c1c1c', border:'1px solid #2a2a2a', color:'#a0a0a0', cursor:'pointer'}}>
-                  ▼
-                </button>
-                {/* Chip mesa + progreso ritual */}
-                <div className="flex items-center gap-2 shrink-0 px-2.5 py-1.5 rounded-lg" style={{background:'#0d0d0d', border:`1px solid ${profile?.color||'#d4943a'}55`}}>
-                  <span className="text-[12px] font-black" style={{color:profile?.color||'#d4943a'}}>M{selectedTable.num}</span>
-                  <div className="w-16 h-1.5 bg-[#1e1e1e] rounded-full overflow-hidden">
-                    <div className="h-full rounded-full transition-all duration-500" style={{ width:`${getRitualProgress(selectedTable.id)}%`, background:getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4' }}/>
+              <>
+                {/* FILA 1 · RITUAL DE LA MESA ACTIVA */}
+                <div className="border-b border-[#1a1a1a] overflow-x-auto" style={{scrollbarWidth:'none'}}>
+                  <div className="flex items-center gap-2 px-2 py-1.5">
+                    <button onClick={() => setBarraColapsada(true)} title="Ocultar barra interior"
+                      className="shrink-0 w-6 h-6 rounded-md flex items-center justify-center text-[11px] font-bold"
+                      style={{background:'#1c1c1c', border:'1px solid #2a2a2a', color:'#a0a0a0', cursor:'pointer'}}>▼</button>
+                    {/* Chip mesa + progreso */}
+                    <div className="flex items-center gap-1.5 shrink-0 px-2 py-1 rounded-md" style={{background:'#0d0d0d', border:`1px solid ${profile?.color||'#d4943a'}55`}}>
+                      <span className="text-[11px] font-black" style={{color:profile?.color||'#d4943a'}}>M{selectedTable.num}</span>
+                      <div className="w-12 h-1 bg-[#1e1e1e] rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500" style={{width:`${getRitualProgress(selectedTable.id)}%`, background:getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4'}}/>
+                      </div>
+                      <span className="text-[9px] font-black tabular-nums" style={{color:getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4'}}>{getRitualProgress(selectedTable.id)}%</span>
+                    </div>
+                    {/* Pasos del ritual */}
+                    {ritualStepsAll.map((step) => {
+                      const state = ritualState[selectedTable.id ?? selectedTableId] || [];
+                      const done = state.includes(step);
+                      const stepEmojis:any = { 'Agua':'💧','Coctel':'🍹','Compartir':'🥟','Robata/Wok':'🔥','Postre':'🍮','Recomendar':'⭐','Pousse-café':'🥃','Café/Té':'☕','Vino':'🍷','Licor':'🥂' };
+                      const stepColors:any = {
+                        'Agua':['#4a8fd4','#1a2a3a'],'Coctel':['#9b72ff','#1e1a2e'],'Compartir':['#d4943a','#2a1e0a'],
+                        'Robata/Wok':['#e05050','#2a1010'],'Postre':['#f0b45a','#2a200a'],'Recomendar':['#3dba6f','#0a2a16'],
+                        'Pousse-café':['#3dba6f','#0a2a16'],'Café/Té':['#cd853f','#2a1800'],'Vino':['#e91e8c','#2a0a1a'],'Licor':['#ffd700','#2a2000'],
+                      };
+                      const [activeColor, activeBg] = stepColors[step] || ['#3dba6f','#0a2a16'];
+                      const shortLabel = step === 'Robata/Wok' ? 'Rob' : step === 'Pousse-café' ? 'Pouss' : step === 'Recomendar' ? 'Rec' : step.split('/')[0];
+                      return (
+                        <button key={step} onClick={() => toggleRitualStep(selectedTable.id, step)} title={step}
+                          style={done
+                            ? { background: activeBg, borderColor: activeColor+'80', color: activeColor }
+                            : { background:'transparent', borderColor:'#1e1e1e', color:'#555' }}
+                          className="flex items-center gap-1 px-2 py-1 rounded-md border text-[10px] font-bold whitespace-nowrap transition-all shrink-0 hover:opacity-90 active:scale-95">
+                          <span style={{fontSize:13}}>{done ? '✓' : stepEmojis[step]}</span>
+                          <span>{shortLabel}</span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <span className="text-[10px] font-black tabular-nums" style={{color:getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4'}}>{getRitualProgress(selectedTable.id)}%</span>
                 </div>
-                {/* Steps del ritual */}
-                {ritualStepsAll.map((step) => {
-                  const state = ritualState[selectedTable.id ?? selectedTableId] || [];
-                  const done = state.includes(step);
-                  const stepEmojis:any = { 'Agua':'💧','Coctel':'🍹','Compartir':'🥟','Robata/Wok':'🔥','Postre':'🍮','Recomendar':'⭐','Pousse-café':'🥃','Café/Té':'☕','Vino':'🍷','Licor':'🥂' };
-                  const stepColors:any = {
-                    'Agua':['#4a8fd4','#1a2a3a'],'Coctel':['#9b72ff','#1e1a2e'],'Compartir':['#d4943a','#2a1e0a'],
-                    'Robata/Wok':['#e05050','#2a1010'],'Postre':['#f0b45a','#2a200a'],'Recomendar':['#3dba6f','#0a2a16'],
-                    'Pousse-café':['#3dba6f','#0a2a16'],'Café/Té':['#cd853f','#2a1800'],'Vino':['#e91e8c','#2a0a1a'],'Licor':['#ffd700','#2a2000'],
-                  };
-                  const [activeColor, activeBg] = stepColors[step] || ['#3dba6f','#0a2a16'];
-                  const shortLabel = step === 'Robata/Wok' ? 'Rob' : step === 'Pousse-café' ? 'Pouss' : step === 'Recomendar' ? 'Rec' : step.split('/')[0];
-                  return (
-                    <button key={step} onClick={() => toggleRitualStep(selectedTable.id, step)} title={step}
-                      style={done
-                        ? { background: activeBg, borderColor: activeColor+'80', color: activeColor }
-                        : { background:'transparent', borderColor:'#1e1e1e', color:'#444' }}
-                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold whitespace-nowrap transition-all shrink-0 hover:opacity-90 active:scale-95">
-                      <span style={{ fontSize:15 }}>{done ? '✓' : stepEmojis[step]}</span>
-                      <span>{shortLabel}</span>
+
+                {/* FILA 2 · QUICK-ADD por categoría */}
+                <div className="border-b border-[#1a1a1a] overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                  <div className="flex items-stretch min-w-max">
+                    {[
+                      { cat:'Agua',emoji:'💧',color:'#4a8fd4',items:[{n:'Con Gas',p:'$3k',e:'💧'},{n:'Sin Gas',p:'$3k',e:'🫧'}]},
+                      { cat:'Coctel',emoji:'🍹',color:'#9b72ff',items:[{n:'Yin Peng',p:'$50k',e:'🍹'},{n:'Infinito',p:'$55k',e:'🍍'},{n:'Gin Ken',p:'$56k',e:'🍸'}]},
+                      { cat:'Compartir',emoji:'🥟',color:'#d4943a',items:[{n:'Otosan',p:'$34k',e:'🦀'},{n:'Dumplings',p:'$27k',e:'🥟'},{n:'Burosu',p:'$40k',e:'🍜'}]},
+                      { cat:'Robata',emoji:'🔥',color:'#e05050',items:[{n:'Pulpo',p:'$57k',e:'🐙'},{n:'Yakitori',p:'$43k',e:'🍢'},{n:'Arroz',p:'$80k',e:'🥩'}]},
+                      { cat:'Postre',emoji:'🍮',color:'#f0b45a',items:[{n:'Cheese',p:'$33k',e:'🍰'},{n:'Koujun',p:'$35k',e:'🍮'},{n:'Kyoto',p:'$84k',e:'🍱'}]},
+                      { cat:'Café/Té',emoji:'☕',color:'#cd853f',items:[{n:'Espresso',p:'$8k',e:'☕'},{n:'Americano',p:'$9k',e:'☕'},{n:'Té',p:'$16k',e:'🍵'}]},
+                      { cat:'Vino',emoji:'🍷',color:'#e91e8c',items:[{n:'Malbec',p:'$28k',e:'🍷'},{n:'Rosé',p:'$26k',e:'🥂'},{n:'Blanco',p:'$24k',e:'🍾'}]},
+                      { cat:'Licor',emoji:'🥂',color:'#ffd700',items:[{n:'Sake',p:'$45k',e:'🍶'},{n:'Heineken',p:'$15k',e:'🍺'},{n:'Old F.',p:'$48k',e:'🥃'}]},
+                    ].map(({ cat, emoji, color, items }) => (
+                      <div key={cat} className="flex flex-col shrink-0 border-r border-[#1a1a1a] last:border-r-0">
+                        <div className="flex items-center gap-1 px-2 py-0.5 border-b border-[#1a1a1a]" style={{ background: color+'12' }}>
+                          <span style={{ fontSize: 11 }}>{emoji}</span>
+                          <span style={{ fontSize: 9, color, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 1, whiteSpace: 'nowrap' }}>{cat}</span>
+                        </div>
+                        <div className="flex gap-1 px-1 py-0.5">
+                          {items.map(item => (
+                            <button key={item.n} onClick={() => agregarAOrden({ nombre: item.n, precio: item.p, emoji: item.e, categoria: cat })}
+                              className="flex flex-col items-center gap-0 px-1.5 py-1 rounded-md border border-[#1a1a1a] bg-[#111] hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/25 active:border-[#3dba6f] transition-all" style={{ minWidth: 48 }}>
+                              <span style={{ fontSize: 15 }}>{item.e}</span>
+                              <span style={{ fontSize: 8, color: '#888', whiteSpace: 'nowrap' }}>{item.n}</span>
+                              <span style={{ fontSize: 8, color, fontWeight: 700 }}>{item.p}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* FILA 3 · IA RECS (sugerencias contextuales) */}
+                <div className="flex items-center px-3 py-1 overflow-x-auto gap-2" style={{ scrollbarWidth: 'none', minHeight: 42 }}>
+                  <div className="flex flex-col items-center shrink-0 mr-1">
+                    <span style={{ fontSize: 11, color: '#d4943a' }}>✦</span>
+                    <span style={{ fontSize: 8, color: '#606060', fontWeight: 700, textTransform: 'uppercase' }}>IA</span>
+                  </div>
+                  {recs.map((r, i) => (
+                    <button key={i} onClick={() => addToOrder({ nombre: r.name, precio: r.precio, emoji: r.emoji })}
+                      className={`flex items-center gap-1.5 rounded-md border px-2 py-1 shrink-0 hover:border-[#3dba6f]/50 active:bg-[#3dba6f]/20 transition-all ${r.top ? 'border-[#d4943a]/30 bg-[#d4943a]/5' : 'border-[#1a1a1a] bg-[#111]'}`} style={{ minWidth: 130 }}>
+                      <span style={{ fontSize: 16 }}>{r.emoji}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 10, fontWeight: 700, color: '#f0f0f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 100 }}>{r.name}</div>
+                        <div style={{ fontSize: 9, color: '#d4943a', fontWeight: 700 }}>{r.precio}</div>
+                      </div>
                     </button>
-                  );
-                })}
-              </div>
+                  ))}
+                </div>
+              </>
             ) : (
               <div className="flex items-center justify-center px-3" style={{height:32}}>
-                <button onClick={() => setBarraColapsada(false)} title="Mostrar ritual"
+                <button onClick={() => setBarraColapsada(false)} title="Mostrar barra (Ritual · Quick-add · IA)"
                   className="px-4 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5"
                   style={{background:'#4a8fd4', color:'#fff', border:'none', cursor:'pointer'}}>
-                  ▲ Mostrar ritual de la mesa
+                  ▲ Mostrar barra interior
                 </button>
               </div>
             )}
