@@ -5785,9 +5785,62 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           })()}
         </div>
 
-        {/* Barra inferior removida completamente — el ritual y las
-            sugerencias IA viven dentro del panel central de la mesa
-            y en el panel derecho (Brief). Más espacio para la carta. */}
+        {/* ══ BARRA INFERIOR · RITUAL DE LA MESA ACTIVA ══
+            Una sola fila con los pasos del ritual + progreso + colapsar.
+            Sin quick-add ni IA recs duplicadas (esas viven en el Brief). */}
+        {selectedTable && (
+          <div className="bg-[#141414] border-t border-[#4a8fd4]/30 shrink-0">
+            {!barraColapsada ? (
+              <div className="flex items-center gap-2 px-3 py-2 overflow-x-auto" style={{scrollbarWidth:'none'}}>
+                {/* Botón colapsar */}
+                <button onClick={() => setBarraColapsada(true)} title="Ocultar barra interior"
+                  className="shrink-0 w-7 h-7 rounded-md flex items-center justify-center text-[12px] font-bold"
+                  style={{background:'#1c1c1c', border:'1px solid #2a2a2a', color:'#a0a0a0', cursor:'pointer'}}>
+                  ▼
+                </button>
+                {/* Chip mesa + progreso ritual */}
+                <div className="flex items-center gap-2 shrink-0 px-2.5 py-1.5 rounded-lg" style={{background:'#0d0d0d', border:`1px solid ${profile?.color||'#d4943a'}55`}}>
+                  <span className="text-[12px] font-black" style={{color:profile?.color||'#d4943a'}}>M{selectedTable.num}</span>
+                  <div className="w-16 h-1.5 bg-[#1e1e1e] rounded-full overflow-hidden">
+                    <div className="h-full rounded-full transition-all duration-500" style={{ width:`${getRitualProgress(selectedTable.id)}%`, background:getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4' }}/>
+                  </div>
+                  <span className="text-[10px] font-black tabular-nums" style={{color:getRitualProgress(selectedTable.id)>=80?'#3dba6f':getRitualProgress(selectedTable.id)>=50?'#d4943a':'#4a8fd4'}}>{getRitualProgress(selectedTable.id)}%</span>
+                </div>
+                {/* Steps del ritual */}
+                {ritualStepsAll.map((step) => {
+                  const state = ritualState[selectedTable.id ?? selectedTableId] || [];
+                  const done = state.includes(step);
+                  const stepEmojis:any = { 'Agua':'💧','Coctel':'🍹','Compartir':'🥟','Robata/Wok':'🔥','Postre':'🍮','Recomendar':'⭐','Pousse-café':'🥃','Café/Té':'☕','Vino':'🍷','Licor':'🥂' };
+                  const stepColors:any = {
+                    'Agua':['#4a8fd4','#1a2a3a'],'Coctel':['#9b72ff','#1e1a2e'],'Compartir':['#d4943a','#2a1e0a'],
+                    'Robata/Wok':['#e05050','#2a1010'],'Postre':['#f0b45a','#2a200a'],'Recomendar':['#3dba6f','#0a2a16'],
+                    'Pousse-café':['#3dba6f','#0a2a16'],'Café/Té':['#cd853f','#2a1800'],'Vino':['#e91e8c','#2a0a1a'],'Licor':['#ffd700','#2a2000'],
+                  };
+                  const [activeColor, activeBg] = stepColors[step] || ['#3dba6f','#0a2a16'];
+                  const shortLabel = step === 'Robata/Wok' ? 'Rob' : step === 'Pousse-café' ? 'Pouss' : step === 'Recomendar' ? 'Rec' : step.split('/')[0];
+                  return (
+                    <button key={step} onClick={() => toggleRitualStep(selectedTable.id, step)} title={step}
+                      style={done
+                        ? { background: activeBg, borderColor: activeColor+'80', color: activeColor }
+                        : { background:'transparent', borderColor:'#1e1e1e', color:'#444' }}
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-[11px] font-bold whitespace-nowrap transition-all shrink-0 hover:opacity-90 active:scale-95">
+                      <span style={{ fontSize:15 }}>{done ? '✓' : stepEmojis[step]}</span>
+                      <span>{shortLabel}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="flex items-center justify-center px-3" style={{height:32}}>
+                <button onClick={() => setBarraColapsada(false)} title="Mostrar ritual"
+                  className="px-4 py-1 rounded-full text-[11px] font-bold flex items-center gap-1.5"
+                  style={{background:'#4a8fd4', color:'#fff', border:'none', cursor:'pointer'}}>
+                  ▲ Mostrar ritual de la mesa
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* RIGHT PANEL — FIJO SIEMPRE VISIBLE */}
@@ -6042,98 +6095,6 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 })}
               </div>
 
-              {/* ══ CHAT IA — ventana flotante al fondo ══ */}
-              <div className="sticky bottom-0 left-0 right-0 mt-auto" style={{background:'#141414',borderTop:'1px solid rgba(212,148,58,0.25)',marginLeft:'-12px',marginRight:'-12px',marginBottom:'-12px',paddingLeft:'12px',paddingRight:'12px'}}>
-                {/* Header colapsable */}
-                <button onClick={()=>setChatIAOpen(p=>!p)}
-                  className="w-full px-1 py-2 flex items-center gap-2 hover:opacity-80 transition-opacity"
-                  style={{background:'transparent',border:'none',cursor:'pointer'}}>
-                  <span className="text-[11px] font-black text-[#d4943a]">💬 Chat IA</span>
-                  <span className="text-[9px] text-[#606060] flex-1 text-left">{new Date().toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'})}</span>
-                  <span className="text-[10px] text-[#606060]">{chatIAOpen?'▼':'▲'}</span>
-                </button>
-                {/* Contenido expandible */}
-                {chatIAOpen && (
-                  <div className="pb-3 flex flex-col gap-2 overflow-y-auto" style={{maxHeight:320,scrollbarWidth:'thin'}}>
-                  <div className="p-3 flex flex-col gap-2">
-
-                  {/* Platos del día — desde Supabase via Flow */}
-                  <div className="text-[9px] text-[#606060] font-bold uppercase tracking-wider">🍽️ Platos del Chef hoy</div>
-                  <div className="flex flex-col gap-1.5">
-                    {(platosDia.length > 0 ? platosDia : [
-                      {nombre:'Omakase Chef',emoji:'🍱',precio:'$185k',rentable:true,disponible:true},
-                      {nombre:'Wagyū Premium',emoji:'🥩',precio:'$220k',rentable:true,disponible:true},
-                      {nombre:'Ramen Especial',emoji:'🍜',precio:'$68k',rentable:false,disponible:true},
-                    ]).map((p:any)=>(
-                      <div key={p.nombre||p.id} className={`flex items-center gap-2 px-2 py-2 rounded-lg border ${!p.disponible?'bg-[#e05050]/08 border-[#e05050]/30 opacity-60':'bg-[#141414] border-[#2a2a2a]'}`}>
-                        <span className="text-[18px] shrink-0">{p.emoji||'🍽️'}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className={`text-[11px] font-bold truncate ${!p.disponible?'line-through text-[#606060]':'text-[#f0f0f0]'}`}>{p.nombre}</div>
-                          <div className="text-[9px] text-[#606060]">{p.precio||''}</div>
-                        </div>
-                        {!p.disponible && <span className="text-[8px] font-black bg-[#e05050] text-white px-1.5 py-0.5 rounded shrink-0">86</span>}
-                        {p.disponible && p.rentable && <span className="text-[7px] bg-[#3dba6f]/15 text-[#3dba6f] border border-[#3dba6f]/25 px-1.5 py-0.5 rounded-full font-bold shrink-0">● Rentable</span>}
-                      </div>
-                    ))}
-                    {platosDia.length === 0 && <div className="text-[10px] text-[#606060] px-1 py-1">Activa platos desde Flow → 🍽️ Platos del día</div>}
-                  </div>
-
-                  {/* 86s — alertas agresivas */}
-                  {tips86.length > 0 && (
-                    <>
-                      <div className="text-[9px] text-[#e05050] font-bold uppercase tracking-wider mt-1 flex items-center gap-1">
-                        <span className="inline-block w-2 h-2 rounded-full bg-[#e05050] animate-pulse"/>
-                        ¡SIN STOCK! — No ofrecer
-                      </div>
-                      <div className="flex flex-col gap-1">
-                        {tips86.map((t:any,i:number)=>(
-                          <div key={i} className="flex items-center gap-2 px-2 py-2 rounded-lg bg-[#e05050]/10 border border-[#e05050]/40">
-                            <span className="text-[16px] shrink-0">{t.emoji||'🚫'}</span>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-[11px] font-black text-[#e05050] truncate">{t.name||t.nombre}</div>
-                              <div className="text-[9px] text-[#e05050]/70">{t.motivo||'Agotado'}</div>
-                            </div>
-                            <span className="text-[8px] font-black bg-[#e05050] text-white px-1.5 py-0.5 rounded shrink-0">86</span>
-                          </div>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                  {tips86.length === 0 && (
-                    <div className="flex items-center gap-1.5 text-[10px] text-[#3dba6f] px-1">
-                      <span>✓</span> Todo el menú disponible
-                    </div>
-                  )}
-
-                  {/* KPIs compactos */}
-                  <div className="grid grid-cols-3 gap-1 mt-1">
-                    {[
-                      {l:'Mesas',  v:ticketDia?.pendientes||0, c:'#4a8fd4'},
-                      {l:'Cobros', v:ticketDia?.ordenes||0,    c:'#3dba6f'},
-                      {l:'Ventas', v:`$${Math.round((ticketDia?.ventas||0)/1000)}k`, c:'#f0b45a'},
-                    ].map(k=>(
-                      <div key={k.l} className="bg-[#141414] rounded-lg p-1.5 text-center border border-[#2a2a2a]">
-                        <div className="text-[14px] font-black" style={{color:k.c,fontFamily:"'Syne',sans-serif"}}>{k.v}</div>
-                        <div className="text-[8px] text-[#606060]">{k.l}</div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Insight IA */}
-                  <div className="p-2 bg-[#141414] rounded-lg border border-[#9b72ff]/20 mt-1">
-                    <div className="text-[9px] text-[#9b72ff] font-bold mb-1 flex items-center gap-1"><span>✦</span> Nexum IA</div>
-                    <div className="text-[10px] text-[#a0a0a0] leading-relaxed">
-                      {(ticketDia?.pendientes||0) > 8
-                        ? `⚠️ Alta ocupación — ${ticketDia?.pendientes} mesas. Coordinar con Flow.`
-                        : (ticketDia?.ordenes||0) > 5
-                        ? `Ticket prom: $${Math.round((ticketDia?.ventas||0)/(ticketDia?.ordenes||1)/1000)}k. Propina: $${Math.round((ticketDia?.propinaTotal||0)/1000)}k.`
-                        : `${new Date().getHours()<16?'Mediodía':'Noche'} activo. ${ticketDia?.pendientes||0} mesa${(ticketDia?.pendientes||0)!==1?'s':''} abiertas.`}
-                    </div>
-                  </div>
-                  </div>
-                  </div>
-                )}
-              </div>
 
 
             </>
