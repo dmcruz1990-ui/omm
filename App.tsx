@@ -101,6 +101,23 @@ const Dashboard: React.FC = () => {
 
   const isAdmin = profile?.role === 'admin' || profile?.role === 'gerencia' || profile?.role === 'desarrollo';
 
+  // ── Listener global de navegación entre módulos (CustomEvent)
+  // Permite que cualquier módulo dispare nx_open_module con un detail
+  // { module: ModuleType, payload?: any } para saltar a otro módulo.
+  useEffect(() => {
+    const onOpen = (e: any) => {
+      const m = e?.detail?.module;
+      if (m != null && Object.values(ModuleType).includes(m)) {
+        setActiveModule(m);
+        if (e.detail.payload) {
+          (window as any).__nx_module_payload = e.detail.payload;
+        }
+      }
+    };
+    window.addEventListener('nx_open_module', onOpen);
+    return () => window.removeEventListener('nx_open_module', onOpen);
+  }, []);
+
   useEffect(() => {
     const checkView = () => {
       const isOhYeah = window.location.hash.includes('/oh-yeah');

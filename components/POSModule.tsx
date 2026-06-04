@@ -1037,7 +1037,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     let alive = true;
     (async () => {
       const { data } = await supabase.from('menu_platos')
-        .select('nombre,descripcion,categoria,estacion,emoji,precio_venta,disponible,featured,modificadores')
+        .select('nombre,descripcion,categoria,estacion,emoji,precio_venta,disponible,featured,modificadores,tag')
         .eq('restaurante_id', restauranteId).eq('activo', true)
         .order('categoria').order('nombre');
       if (!alive) return;
@@ -1058,6 +1058,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
           estacion: p.estacion,
           categoria: cat,
           modificadores: Array.isArray(p.modificadores) ? p.modificadores : [],
+          tag: p.tag || null,
           _en86: p.disponible === false, // sombreado si está en 86
         });
       });
@@ -5923,6 +5924,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   <div className="w-full aspect-[4/3] bg-[#222] flex items-center justify-center text-[52px]">{p.emoji}</div>
                   <div className="p-3 flex flex-col gap-1.5 flex-1">
                     <div className="text-[14px] font-bold text-[#f0f0f0] leading-tight overflow-hidden text-ellipsis whitespace-nowrap pr-4">{p.nombre}</div>
+                    {/* Tag del Mi Menú — sale debajo del nombre */}
+                    {(p as any).tag && (
+                      <div className="text-[10px] font-bold text-[#b388ff] leading-tight" style={{letterSpacing:'.02em'}}>
+                        {(p as any).tag}
+                      </div>
+                    )}
                     <div className="flex items-center gap-1 flex-wrap">
                       <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${badgeColors[getBadgeClass(p.badge)] || 'bg-[#3dba6f]/15 text-[#3dba6f]'}`}>{getBadgeLabel(p.badge)}</span>
                       {requierePicante(p) && (
@@ -5932,18 +5939,27 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     <div className="text-[15px] font-bold text-[#d4943a]">{p.precio}</div>
                     {/* Botones */}
                     {stock > 0 && (
-                      <div className="flex gap-2 mt-1.5">
+                      <>
+                        <div className="flex gap-2 mt-1.5">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); marcharAhora(p); }}
+                            className={`flex-1 py-2 rounded-xl text-[12px] font-bold transition-all ${isMarchando ? 'bg-[#3dba6f] text-white border border-[#3dba6f]' : 'bg-[#4a8fd4]/10 border border-[#4a8fd4]/30 text-[#4a8fd4] hover:bg-[#3dba6f] hover:text-white hover:border-[#3dba6f] active:bg-[#3dba6f]'}`}>
+                            🔥 Marchar
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); agregarAOrden(p); }}
+                            className={`flex-1 py-2 rounded-xl text-[12px] font-bold transition-all ${isAdded ? 'bg-[#3dba6f] text-white border border-[#3dba6f]' : 'bg-[#222] border border-[#2a2a2a] text-[#a0a0a0] hover:bg-[#3dba6f] hover:text-white hover:border-[#3dba6f] active:bg-[#3dba6f]'}`}>
+                            + Orden
+                          </button>
+                        </div>
+                        {/* Observación del plato — abre modal con tags (sin sal, sin leche, etc.) */}
                         <button
-                          onClick={(e) => { e.stopPropagation(); marcharAhora(p); }}
-                          className={`flex-1 py-2 rounded-xl text-[12px] font-bold transition-all ${isMarchando ? 'bg-[#3dba6f] text-white border border-[#3dba6f]' : 'bg-[#4a8fd4]/10 border border-[#4a8fd4]/30 text-[#4a8fd4] hover:bg-[#3dba6f] hover:text-white hover:border-[#3dba6f] active:bg-[#3dba6f]'}`}>
-                          🔥 Marchar
+                          onClick={(e) => { e.stopPropagation(); setTerminoModal({ open: true, producto: p, modo: 'orden' }); }}
+                          title="Agregar observación: sin sal, sin leche, sin gluten, alergia, etc."
+                          className="w-full py-1.5 rounded-lg text-[10px] font-bold bg-[#9b72ff]/10 border border-[#9b72ff]/30 text-[#b388ff] hover:bg-[#9b72ff]/20 transition-all">
+                          🗒 Obs (sin sal · sin leche · …)
                         </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); agregarAOrden(p); }}
-                          className={`flex-1 py-2 rounded-xl text-[12px] font-bold transition-all ${isAdded ? 'bg-[#3dba6f] text-white border border-[#3dba6f]' : 'bg-[#222] border border-[#2a2a2a] text-[#a0a0a0] hover:bg-[#3dba6f] hover:text-white hover:border-[#3dba6f] active:bg-[#3dba6f]'}`}>
-                          + Orden
-                        </button>
-                      </div>
+                      </>
                     )}
                     {stock <= 0 && <div className="text-[10px] text-[#e05050] font-bold text-center mt-1">NO DISPONIBLE</div>}
                   </div>

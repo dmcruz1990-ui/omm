@@ -3,6 +3,11 @@ import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../contexts/AuthContext';
 import { useRestaurant } from '../contexts/RestaurantContext';
 import { ZONAS_POR_RESTAURANTE, VW_PLANO, VH_PLANO, ST_MESA, sizeForMesa } from './PlanoOMM.tsx';
+import { ModuleType } from '../types';
+
+// Roles que pueden asignar mesas en Reserve (Host / Admin / Gerencia / Desarrollo).
+// Los meseros NO pueden asignar — sólo el equipo de salón gestiona la planta.
+const ROLES_ASIGNAR_MESA = new Set(['admin','gerencia','desarrollo','host','hostess','maitre','maître']);
 
 // ══ PLANO OMM — fiel al plano arquitectónico (mismo layout que el POS) ══
 const PLANTA: Record<string,{num:number;zona:string;shape:'round'|'rect';cap:number;x:number;y:number;w:number;h:number}> = {
@@ -103,6 +108,11 @@ export default function ReserveModule() {
   const [fechaFiltro, setFechaFiltro] = useState(new Date().toISOString().split('T')[0]);
   const [selected, setSelected]         = useState<Reserva|null>(null);
   const [asignandoMesa, setAsignandoMesa] = useState<Reserva|null>(null);
+  // Popup flotante de acciones rápidas en la lista de Confirmaciones
+  // (sólo: ✓ Confirmar · 📵 No contesta · ✗ Cancelar). Reemplaza la
+  // columna inline que estorba en pantallas pequeñas.
+  const [accionesPopup, setAccionesPopup] = useState<Reserva|null>(null);
+  const puedeAsignarMesa = ROLES_ASIGNAR_MESA.has(String(profile?.role||'').toLowerCase());
   const [saving, setSaving]     = useState(false);
   const [plantaDB, setPlantaDB] = useState<any[]>([]);
   const [editMesa, setEditMesa] = useState<any|null>(null);
@@ -1248,7 +1258,11 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                       e.dataTransfer.setData('text/reserva', String(r.id));
                       e.dataTransfer.effectAllowed = 'move';
                     }}
-                    onClick={(e)=>{ if ((e.target as HTMLElement).closest('[data-stop]')) return; setAsignandoMesa(r); }}
+                    onClick={(e)=>{
+                      if ((e.target as HTMLElement).closest('[data-stop]')) return;
+                      if (!puedeAsignarMesa) { show('🔒 Sólo Host, Admin o Gerencia pueden asignar mesa'); return; }
+                      setAsignandoMesa(r);
+                    }}
                     title={yaSentada
                       ? `🪑 ${r.cliente_nombre} ya está sentado en M${r.mesa_num}. Levantar primero para reubicar.`
                       : (r.mesa_num
@@ -1393,7 +1407,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
             <thead>
               <tr style={{background:S.bg2,position:'sticky',top:0,zIndex:5}}>
-                {['Cliente','⏰ Hora','Pax','Ocasión','Mesa','Estado','Origen','Acciones'].map(h=>(
+                {['Cliente','⏰ Hora','Pax','Ocasión','Estado','Origen','Acciones'].map(h=>(
                   <th key={h} style={{padding:'9px 14px',textAlign:'left',fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.06em',borderBottom:`1px solid ${S.border}`,whiteSpace:'nowrap'}}>{h}</th>
                 ))}
               </tr>
@@ -1406,15 +1420,32 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                 return (
                   <React.Fragment key={r.id}>
                   {mostrarDivisor && (
-                    <tr><td colSpan={8} style={{padding:'10px 14px',background:S.bg2,color:S.t3,fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',borderTop:`1px solid ${S.border}`,borderBottom:`1px solid ${S.border}`}}>📁 Reservas anteriores ({anteriores.length})</td></tr>
+                    <tr><td colSpan={7} style={{padding:'10px 14px',background:S.bg2,color:S.t3,fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',borderTop:`1px solid ${S.border}`,borderBottom:`1px solid ${S.border}`}}>📁 Reservas anteriores ({anteriores.length})</td></tr>
                   )}
                   <tr style={{background:i%2===0?S.bg:S.bg2,borderBottom:'1px solid rgba(255,255,255,0.03)',opacity:['completada','cancelada'].includes(r.estado)?0.6:1}}>
+                    {/* Cliente — sólo nombre + 2 acciones: ver perfil / enviar a Clientes */}
                     <td style={{padding:'10px 14px'}}>
-                      <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:6}}>
+                      <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
                         {r.cliente_nombre}
                         {esOhYeah&&<span style={{fontSize:9,background:`${S.gold}20`,color:S.gold,padding:'1px 6px',borderRadius:10}}>🦉</span>}
                       </div>
-                      <div style={{fontSize:10,color:S.t3}}>{r.cliente_email||''}</div>
+                      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                        <button onClick={()=>{ setSelected(r); setReservaCRM(null); buscarClienteReserva(r.cliente_telefono||''); }}
+                          style={{padding:'3px 9px',borderRadius:7,border:`1px solid ${S.purple}40`,background:`${S.purple}10`,color:S.purple,fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                          👁 Ver cliente
+                        </button>
+                        <button onClick={()=>{
+                            window.dispatchEvent(new CustomEvent('nx_open_module', {
+                              detail: {
+                                module: ModuleType.RELATIONSHIP,
+                                payload: { telefono: r.cliente_telefono, email: r.cliente_email, nombre: r.cliente_nombre }
+                              }
+                            }));
+                          }}
+                          style={{padding:'3px 9px',borderRadius:7,border:`1px solid ${S.cyan}40`,background:`${S.cyan}10`,color:S.cyan,fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                          🗂 Enviar a Clientes
+                        </button>
+                      </div>
                     </td>
                     <td style={{padding:'10px 14px'}}>
                       <div style={{fontSize:17,fontWeight:900,color:S.gold,letterSpacing:'.02em'}}>{r.hora}</div>
@@ -1427,34 +1458,18 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                       {r.ocasion&&r.ocasion!=='Sin ocasión especial'?<span style={{fontSize:11,background:`${S.purple}15`,color:S.purple,padding:'2px 8px',borderRadius:20}}>{r.ocasion}</span>:<span style={{color:S.t3,fontSize:11}}>—</span>}
                     </td>
                     <td style={{padding:'10px 14px'}}>
-                      {r.mesa_num ? (
-                        <button onClick={()=>setAsignandoMesa(r)} style={{display:'flex',alignItems:'center',gap:6,background:'none',border:'none',cursor:'pointer'}}>
-                          <span style={{fontSize:12,fontWeight:700,background:`${S.blue}15`,color:S.blue,padding:'3px 10px',borderRadius:20}}>M{r.mesa_num}</span>
-                          {r.estado==='sentada' && r.sentado_at && (
-                            <span style={{fontSize:10,color:S.green,fontWeight:700}}>🪑 {fmtElapsed(r.sentado_at)}</span>
-                          )}
-                        </button>
-                      ) : ['confirmada','pendiente'].includes(r.estado) ? (
-                        <button onClick={()=>setAsignandoMesa(r)}
-                          style={{background:`${S.gold}15`,border:`1px solid ${S.gold}40`,borderRadius:7,padding:'4px 10px',color:S.gold,fontSize:10,fontWeight:700,cursor:'pointer'}}>
-                          🪑 Asignar
-                        </button>
-                      ) : <span style={{color:S.t3,fontSize:11}}>—</span>}
-                    </td>
-                    <td style={{padding:'10px 14px'}}>
                       <span style={{fontSize:10,background:`${est.c}15`,color:est.c,border:`1px solid ${est.c}30`,padding:'3px 10px',borderRadius:50,fontWeight:700,whiteSpace:'nowrap'}}>{est.l}</span>
                     </td>
                     <td style={{padding:'10px 14px'}}>
                       <span style={{fontSize:10,color:S.t3}}>{esOhYeah?'🦉 Oh Yeah':'Nexum'}</span>
                     </td>
+                    {/* Acciones — un botón que abre popup flotante con 3 opciones */}
                     <td style={{padding:'10px 14px'}}>
-                      <div style={{display:'flex',gap:5,flexWrap:'wrap'}}>
-                        {r.estado==='pendiente'&&<button onClick={()=>cambiarEstado(r.id,'confirmada',esOhYeah)} style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${S.green}40`,background:`${S.green}10`,color:S.green,fontSize:10,fontWeight:700,cursor:'pointer'}}>✓ Confirmar</button>}
-                        {r.estado==='confirmada'&&<button onClick={()=>setAsignandoMesa(r)} style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,fontSize:10,fontWeight:700,cursor:'pointer'}}>🪑 Sentar</button>}
-                        {r.estado==='sentada'&&<button onClick={()=>cambiarEstado(r.id,'completada',esOhYeah)} style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${S.purple}40`,background:`${S.purple}10`,color:S.purple,fontSize:10,fontWeight:700,cursor:'pointer'}}>✅ Cerrar</button>}
-                        {!['cancelada','completada'].includes(r.estado)&&<button onClick={()=>cambiarEstado(r.id,'cancelada',esOhYeah)} style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${S.red}40`,background:'transparent',color:S.red,fontSize:10,cursor:'pointer'}}>✗</button>}
-                        {!esOhYeah&&<button onClick={()=>{setSelected(r);setForm({...r,mesa_num:r.mesa_num||0});setTab('nueva');}} style={{padding:'4px 8px',borderRadius:7,border:`1px solid ${S.border}`,background:'transparent',color:S.t2,fontSize:10,cursor:'pointer'}}>✏️</button>}
-                      </div>
+                      <button onClick={()=>setAccionesPopup(r)}
+                        disabled={['cancelada','completada'].includes(r.estado)}
+                        style={{padding:'5px 12px',borderRadius:8,border:`1px solid ${S.border2}`,background:S.bg3,color:S.t1,fontSize:14,fontWeight:900,cursor:['cancelada','completada'].includes(r.estado)?'not-allowed':'pointer',opacity:['cancelada','completada'].includes(r.estado)?0.4:1,letterSpacing:'.1em'}}>
+                        ···
+                      </button>
                     </td>
                   </tr>
                   </React.Fragment>
@@ -1462,6 +1477,42 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
               })}
             </tbody>
           </table>
+
+          {/* ── POPUP FLOTANTE DE ACCIONES — sólo 3 opciones: Confirmar / No contesta / Cancelar ── */}
+          {accionesPopup && (
+            <div onClick={()=>setAccionesPopup(null)}
+              style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.7)',zIndex:9000,display:'flex',alignItems:'center',justifyContent:'center',padding:20}}>
+              <div onClick={e=>e.stopPropagation()}
+                style={{background:S.bg2,border:`1px solid ${S.purple}40`,borderRadius:16,padding:22,width:'100%',maxWidth:340}}>
+                <div style={{textAlign:'center',marginBottom:16}}>
+                  <div style={{fontFamily:"'Syne',serif",fontSize:16,fontWeight:900,color:S.t1,marginBottom:3}}>
+                    {accionesPopup.cliente_nombre}
+                  </div>
+                  <div style={{fontSize:11,color:S.t3}}>
+                    {accionesPopup.hora} · {accionesPopup.pax}p · {accionesPopup.origen==='ohyeah'?'🦉 Oh Yeah':'Nexum'}
+                  </div>
+                </div>
+                <div style={{display:'flex',flexDirection:'column',gap:8}}>
+                  <button onClick={()=>{ cambiarEstado(accionesPopup.id,'confirmada',accionesPopup.origen==='ohyeah'); setAccionesPopup(null); }}
+                    style={{padding:'12px 16px',borderRadius:10,border:`1px solid ${S.green}55`,background:`${S.green}15`,color:S.green,fontSize:13,fontWeight:800,cursor:'pointer',display:'flex',alignItems:'center',gap:10}}>
+                    <span style={{fontSize:18}}>✓</span> Confirmar reserva
+                  </button>
+                  <button onClick={()=>{ cambiarEstado(accionesPopup.id,'no_contesta',accionesPopup.origen==='ohyeah'); setAccionesPopup(null); }}
+                    style={{padding:'12px 16px',borderRadius:10,border:`1px solid ${S.gold}55`,background:`${S.gold}15`,color:S.gold,fontSize:13,fontWeight:800,cursor:'pointer',display:'flex',alignItems:'center',gap:10}}>
+                    <span style={{fontSize:18}}>📵</span> No contesta
+                  </button>
+                  <button onClick={()=>{ cambiarEstado(accionesPopup.id,'cancelada',accionesPopup.origen==='ohyeah'); setAccionesPopup(null); }}
+                    style={{padding:'12px 16px',borderRadius:10,border:`1px solid ${S.red}55`,background:`${S.red}15`,color:S.red,fontSize:13,fontWeight:800,cursor:'pointer',display:'flex',alignItems:'center',gap:10}}>
+                    <span style={{fontSize:18}}>✗</span> Cancelar reserva
+                  </button>
+                </div>
+                <button onClick={()=>setAccionesPopup(null)}
+                  style={{width:'100%',marginTop:12,padding:'8px 16px',borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t3,fontSize:11,cursor:'pointer'}}>
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          )}
         </div>
         );
       })()}
@@ -2964,6 +3015,7 @@ function DashboardReservas(props:{
         <KPI title="Venta Proyectada"     value={`$${(ventaProyectada/1000000).toFixed(2).replace('.',',')}M`}  color={'#10B981'} icon="$"  delta={dVenta}/>
         <KPI title="Ocupación Promedio"   value={`${ocupacionPromedio}%`}                                       color={'#A855F7'} icon="📊" delta={9}/>
         <KPI title="No-Show Rate"         value={`${noShowRate}%`}                                              color={S.red}     icon="✕"  delta={noShowRate>0?-1*Math.round(noShowRate*10)/10:0} deltaCol={S.red}/>
+        <KPI title="Canceladas"           value={canceladas} sub={`(${total?Math.round((canceladas/total)*100):0}%)`} color={'#94A3B8'} icon="🚫" delta={pct(canceladas, reservasAnt.filter((r:any)=>r.estado==='cancelada').length)} deltaCol={S.red}/>
       </div>
 
       {/* Reservas por canal + Rendimiento por canal + Plan para llenar */}
