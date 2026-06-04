@@ -14,12 +14,14 @@ const ESTACIONES: Record<string,{color:string;emoji:string;objetivo:number}> = {
 
 interface FlowItem {
   id:string; order_id:string;
-  status:'pending'|'preparing'|'almost'|'ready'|'served';
+  status:'pending'|'preparing'|'almost'|'ready'|'served'|'cancelled';
   quantity:number; notes:string|null; nombre_plato?:string|null;
   created_at:string; updated_at:string; tiempo_inicio?:string|null;
   table_id:number|null; mesero?:string|null; estacion?:string|null;
   cocinero?:string|null; duracion_seg?:number|null; price_at_time?:number|null;
   categoria?:string|null;
+  observaciones?:string|null; tags?:string[]|null;
+  cancelled_at?:string|null; cancel_reason?:string|null;
 }
 
 // ── COLORES MESA ──────────────────────────────────────────────────────
@@ -230,12 +232,14 @@ export default function FlowModule() {
     if (status==='ready'||status==='served') {
       if (item) {
         const msg = status==='ready'
-          ? `⏰ ${getNombre(item)} casi listo — 2 minutos`
-          : `✅ ${getNombre(item)} LISTO para entrega`;
+          ? `🔔 LLAMAR MESERO — ${getNombre(item)} listo en 2 min`
+          : `✅ ${getNombre(item)} ENTREGADO a Mesa ${item.table_id}`;
         await supabase.from('nexum_notificaciones').insert({
-          restaurante_id: restauranteId, tipo:status==='ready'?'plato_casi_listo':'plato_listo',
+          restaurante_id: restauranteId, tipo:status==='ready'?'llamar_mesero':'entregado',
           titulo:msg,
-          mensaje:`Mesa ${item.table_id} · ${fmtT(item.tiempo_inicio?tsec(item.tiempo_inicio):0)} producción`,
+          mensaje: status==='ready'
+            ? `Mesa ${item.table_id} · ${item.mesero||item.mesero_orden||'mesero'} — vení a recoger ${getNombre(item)}`
+            : `Mesa ${item.table_id} · ${fmtT(item.tiempo_inicio?tsec(item.tiempo_inicio):0)} producción total`,
           mesa_numero:item.table_id, item_nombre:getNombre(item),
           prioridad:status==='served'?'alta':'normal', leida:false, creado_por:item.mesero||null,
         }).then(()=>{}).catch(()=>{});
@@ -348,7 +352,7 @@ export default function FlowModule() {
               })}
               {items.filter(i=>i.status==='ready').length>0 && (
                 <div style={{marginLeft:'auto',background:'rgba(0,230,118,0.12)',border:'1px solid rgba(0,230,118,0.4)',borderRadius:20,padding:'3px 12px',fontSize:10,color:S.green,fontWeight:700,animation:'pulse 1.5s infinite'}}>
-                  🟢 {items.filter(i=>i.status==='ready').length} listo{items.filter(i=>i.status==='ready').length>1?'s':''} para entrega
+                  🔔 {items.filter(i=>i.status==='ready').length} esperando mesero{items.filter(i=>i.status==='ready').length>1?'s':''}
                 </div>
               )}
             </div>
@@ -495,14 +499,27 @@ export default function FlowModule() {
                                   {esRetrasado && <span style={{fontSize:14}}>🔥</span>}
                                   {platosQuejados.has(getNombre(item)) && <span title="Plato con queja Care en esta mesa" style={{fontSize:10,color:S.red,background:`${S.red}15`,border:`1px solid ${S.red}40`,padding:'2px 6px',borderRadius:8,fontWeight:800}}>⚠ Care</span>}
                                 </div>
-                                {item.notes && item.notes!==getNombre(item) && <div style={{fontSize:11,color:'#FFB547',marginTop:4,fontStyle:'italic'}}>📝 {item.notes}</div>}
+                                {/* TAGS de alergias / preferencias del cliente */}
+                                {Array.isArray(item.tags) && item.tags.length > 0 && (
+                                  <div style={{display:'flex',gap:3,flexWrap:'wrap',marginTop:5}}>
+                                    {item.tags.map((t:string,i:number)=>(
+                                      <span key={i} style={{fontSize:9,padding:'2px 7px',borderRadius:6,background:'rgba(155,114,255,0.18)',color:'#c1aeff',border:'1px solid rgba(155,114,255,0.4)',fontWeight:800,letterSpacing:'.04em'}}>⚠ {t.toUpperCase()}</span>
+                                    ))}
+                                  </div>
+                                )}
+                                {/* Observaciones del mesero */}
+                                {item.observaciones && <div style={{fontSize:11,color:'#3dba6f',marginTop:5,fontStyle:'italic',padding:'4px 8px',background:'rgba(61,186,111,0.08)',borderRadius:6,borderLeft:'3px solid #3dba6f'}}>💬 {item.observaciones}</div>}
+                                {item.notes && item.notes!==getNombre(item) && !item.observaciones && <div style={{fontSize:11,color:'#FFB547',marginTop:4,fontStyle:'italic'}}>📝 {item.notes}</div>}
                               </div>
-                              {/* Tiempo grande */}
+                              {/* Tiempo · total desde marcha (created_at) cuando ya está en producción/listo */}
                               <div style={{textAlign:'right',flexShrink:0}}>
                                 <div style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,color:sColor,lineHeight:1}}>
-                                  {isPreparing?fmtT(pp):isPending?fmtT(tp):fmtT(item.duracion_seg||0)}
+                                  {isPending ? fmtT(tp) : fmtT(tsec(item.created_at))}
                                 </div>
-                                <div style={{fontSize:10,color:S.t3,marginTop:2,fontWeight:600}}>{isPreparing?'producción':isPending?'en espera':'total'}</div>
+                                <div style={{fontSize:10,color:S.t3,marginTop:2,fontWeight:600}}>{isPending?'en espera':isPreparing?'desde marcha':'total'}</div>
+                                {isPreparing && pp > 0 && (
+                                  <div style={{fontSize:9,color:S.t3,marginTop:1}}>prod: {fmtT(pp)}</div>
+                                )}
                               </div>
                             </div>
                             {/* Barra progreso */}
@@ -522,13 +539,13 @@ export default function FlowModule() {
                               {isPreparing && (
                                 <button onClick={()=>updateStatus(item.id,'ready')}
                                   style={{flex:1,padding:'10px 8px',borderRadius:10,border:'1px solid rgba(255,181,71,0.6)',background:'rgba(255,181,71,0.15)',color:'#FFB547',fontSize:13,fontWeight:800,cursor:'pointer'}}>
-                                  ⏰ Casi listo (2 min)
+                                  🔔 Llamar mesero (2 min)
                                 </button>
                               )}
                               {isReady && (
                                 <button onClick={()=>updateStatus(item.id,'served')}
                                   style={{flex:1,padding:'10px 8px',borderRadius:10,border:`1px solid ${S.green}70`,background:`${S.green}15`,color:S.green,fontSize:14,fontWeight:900,cursor:'pointer',boxShadow:`0 0 10px ${S.green}25`}}>
-                                  ✅ Listo para entrega
+                                  ✅ Entregado
                                 </button>
                               )}
                             </div>
