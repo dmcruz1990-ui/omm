@@ -5937,29 +5937,28 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                       )}
                     </div>
                     <div className="text-[15px] font-bold text-[#d4943a]">{p.precio}</div>
-                    {/* Botones */}
+                    {/* Botones — Marchar · +Orden · Obs en una sola línea */}
                     {stock > 0 && (
-                      <>
-                        <div className="flex gap-2 mt-1.5">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); marcharAhora(p); }}
-                            className={`flex-1 py-2 rounded-xl text-[12px] font-bold transition-all ${isMarchando ? 'bg-[#3dba6f] text-white border border-[#3dba6f]' : 'bg-[#4a8fd4]/10 border border-[#4a8fd4]/30 text-[#4a8fd4] hover:bg-[#3dba6f] hover:text-white hover:border-[#3dba6f] active:bg-[#3dba6f]'}`}>
-                            🔥 Marchar
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); agregarAOrden(p); }}
-                            className={`flex-1 py-2 rounded-xl text-[12px] font-bold transition-all ${isAdded ? 'bg-[#3dba6f] text-white border border-[#3dba6f]' : 'bg-[#222] border border-[#2a2a2a] text-[#a0a0a0] hover:bg-[#3dba6f] hover:text-white hover:border-[#3dba6f] active:bg-[#3dba6f]'}`}>
-                            + Orden
-                          </button>
-                        </div>
-                        {/* Observación del plato — abre modal con tags (sin sal, sin leche, etc.) */}
+                      <div className="flex gap-1.5 mt-1.5">
+                        <button
+                          onClick={(e) => { e.stopPropagation(); marcharAhora(p); }}
+                          title="Marchar inmediato a cocina (Flow)"
+                          className={`flex-1 py-2 rounded-xl text-[11px] font-bold transition-all flex items-center justify-center gap-1 ${isMarchando ? 'bg-[#3dba6f] text-white border border-[#3dba6f]' : 'bg-[#4a8fd4]/10 border border-[#4a8fd4]/30 text-[#4a8fd4] hover:bg-[#3dba6f] hover:text-white hover:border-[#3dba6f] active:bg-[#3dba6f]'}`}>
+                          🔥 <span>Marchar</span>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); agregarAOrden(p); }}
+                          title="Agregar a la orden — al pedir se envía a cocina"
+                          className={`flex-1 py-2 rounded-xl text-[11px] font-bold transition-all ${isAdded ? 'bg-[#3dba6f] text-white border border-[#3dba6f]' : 'bg-[#222] border border-[#2a2a2a] text-[#a0a0a0] hover:bg-[#3dba6f] hover:text-white hover:border-[#3dba6f] active:bg-[#3dba6f]'}`}>
+                          + Orden
+                        </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); setTerminoModal({ open: true, producto: p, modo: 'orden' }); }}
-                          title="Agregar observación: sin sal, sin leche, sin gluten, alergia, etc."
-                          className="w-full py-1.5 rounded-lg text-[10px] font-bold bg-[#9b72ff]/10 border border-[#9b72ff]/30 text-[#b388ff] hover:bg-[#9b72ff]/20 transition-all">
-                          🗒 Obs (sin sal · sin leche · …)
+                          title="Observación (sin sal · sin leche · alergia · …)"
+                          className="px-2.5 py-2 rounded-xl text-[12px] font-bold bg-[#9b72ff]/10 border border-[#9b72ff]/30 text-[#b388ff] hover:bg-[#9b72ff]/25 hover:text-white transition-all">
+                          🗒
                         </button>
-                      </>
+                      </div>
                     )}
                     {stock <= 0 && <div className="text-[10px] text-[#e05050] font-bold text-center mt-1">NO DISPONIBLE</div>}
                   </div>
