@@ -79,7 +79,7 @@ const ESTADOS:any = {
 };
 const OCASIONES = ['Cumpleaños','Aniversario','Negocio','Primera cita','Graduación','Despedida','Celebración','Sin ocasión especial'];
 
-type Tab = 'home'|'lista'|'dashboard'|'nueva'|'editor';
+type Tab = 'home'|'lista'|'dashboard'|'nueva'|'editor'|'historial';
 
 interface Reserva {
   id:number;cliente_nombre:string;cliente_email?:string;cliente_telefono?:string;
@@ -156,13 +156,32 @@ export default function ReserveModule() {
     if (candidatos.length === 0) return;
     // Actualizar en BD sin bloquear UI
     (async () => {
+      const VIP_TIERS = ['VIP','CONSAGRADO','ÉLITE','ELITE','GRAND GOURMAND','LA CREME'];
+      const vipNoShow:any[] = [];
       for (const r of candidatos) {
         try {
           await supabase.from('reservations').update({ estado:'no_show' }).eq('id', r.id);
+          if (VIP_TIERS.includes(String(r.gourmand_level||'').toUpperCase())) {
+            vipNoShow.push(r);
+          }
         } catch (e) { console.warn('auto no-show:', e); }
       }
-      // Toast solo si fue una cantidad significativa
-      if (candidatos.length >= 1) show(`👻 ${candidatos.length} no-show automático${candidatos.length===1?'':'s'} (>${GRACIA_NO_SHOW_MIN}min sin llegar)`);
+      // Notificar al panel de demand si hay no-show de VIPs (impacta forecast)
+      if (vipNoShow.length > 0) {
+        try {
+          await supabase.from('nexum_notificaciones').insert(vipNoShow.map((r:any)=>({
+            tipo: 'vip_no_show', titulo: `⭐ VIP no-show · ${r.cliente_nombre}`,
+            mensaje: `Cliente VIP no llegó (${r.hora}) — liberá ${r.mesa_num?`M${r.mesa_num}`:'su asignación'}. Considerar follow-up.`,
+            leida: false,
+          })));
+        } catch (e) { console.warn('vip notif:', e); }
+      }
+      if (candidatos.length >= 1) {
+        const txt = vipNoShow.length > 0
+          ? `👻 ${candidatos.length} no-show (>${GRACIA_NO_SHOW_MIN}min) · ⭐ ${vipNoShow.length} VIP — revisar en Dashboard`
+          : `👻 ${candidatos.length} no-show automático${candidatos.length===1?'':'s'} (>${GRACIA_NO_SHOW_MIN}min sin llegar)`;
+        show(txt);
+      }
       fetchData();
     })();
   }, [now, fechaFiltro, reservas]);
@@ -814,22 +833,98 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                     {meseroAsignar ? `La mesa aparecerá en el home de ${meseroAsignar}.` : 'Cualquier mesero podrá tomarla desde su home.'}
                   </div>
                 </div>
+                {/* ── IA · SUGERENCIA INTELIGENTE DE MESA ── */}
                 {(() => {
-                  // Solo mostramos mesas disponibles (libres + aptas para el pax).
-                  // El arrastre desde el timeline al plano sigue funcionando para
-                  // forzar asignaciones (sobreescribir o resolver conflictos).
-                  const disponiblesPax = tablesList.filter((t:any) => {
+                  // Score por mesa: cuanto mayor mejor.
+                  // Penaliza waste (mesa de 6 para 2 pax) y prioriza VIP en mesas VIP.
+                  const scoreMesa = (t:any) => {
                     const libre = t.estado === 'libre' || !t.estado;
+                    if (!libre) return -1;
                     const rg = rangoMesa(t.cap);
-                    return libre && pax >= rg.min && pax <= rg.max;
-                  });
+                    if (pax < rg.min || pax > rg.max) return -1;
+                    let score = 100;
+                    // Eficiencia: capacidad usada / total. Menos waste = mejor
+                    const eficiencia = pax / t.cap;
+                    score += eficiencia * 30;
+                    // VIP cliente → prioriza VIP table
+                    if (clienteVip && t.vip) score += 40;
+                    // Cliente no-VIP en mesa VIP = penaliza (reserva para VIPs futuros)
+                    if (!clienteVip && t.vip) score -= 25;
+                    // Zona elegante para ocasiones especiales (proxy: zonas no-barra)
+                    if (r.ocasion && r.ocasion !== 'Sin ocasión especial' && !String(t.zona||'').toLowerCase().startsWith('barra')) score += 8;
+                    return score;
+                  };
+                  const sugerencias = tablesList
+                    .map((t:any) => ({ ...t, ia_score: scoreMesa(t) }))
+                    .filter((t:any) => t.ia_score >= 0)
+                    .sort((a:any,b:any) => b.ia_score - a.ia_score);
+                  const top = sugerencias[0];
+                  // Combinaciones: si no hay mesa suficiente para 6+, combinar 2 mesas adyacentes
+                  const combinaciones: any[] = [];
+                  if (sugerencias.length === 0 && pax >= 4) {
+                    const libres = tablesList.filter((t:any)=>(t.estado==='libre'||!t.estado));
+                    for (let i=0;i<libres.length;i++) {
+                      for (let j=i+1;j<libres.length;j++) {
+                        const capCombo = libres[i].cap + libres[j].cap;
+                        const mismaZona = libres[i].zona === libres[j].zona;
+                        if (mismaZona && capCombo >= pax && capCombo <= pax + 2) {
+                          combinaciones.push({ m1: libres[i], m2: libres[j], cap: capCombo });
+                        }
+                      }
+                    }
+                  }
                   return (
-                    <div style={{fontSize:11,color:S.t3,marginBottom:14,display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
-                      <span><strong style={{color:S.green,fontSize:13}}>{disponiblesPax.length}</strong> {disponiblesPax.length===1?'mesa disponible':'mesas disponibles'} para {pax}p</span>
-                      <span style={{color:S.gold,marginLeft:8}}>⭐ VIP</span>
-                      {clienteVip && <span style={{color:S.gold,fontWeight:700,marginLeft:'auto'}}>Cliente VIP — prioriza las ⭐</span>}
-                      <span style={{flexBasis:'100%',fontSize:10,color:S.t3,marginTop:4}}>💡 Para forzar otra mesa, arrastrá la reserva desde el timeline al plano de Sala.</span>
-                    </div>
+                    <>
+                      {top ? (
+                        <div style={{marginBottom:14,padding:'14px 16px',borderRadius:14,background:`linear-gradient(135deg, ${top.vip?S.gold:S.green}18, ${S.purple}08)`,border:`2px solid ${top.vip?S.gold:S.green}55`,position:'relative',overflow:'hidden'}}>
+                          <div style={{position:'absolute',top:0,right:0,padding:'3px 10px',background:`${top.vip?S.gold:S.green}30`,borderRadius:'0 0 0 10px',fontSize:9,fontWeight:800,color:top.vip?S.gold:S.green,textTransform:'uppercase',letterSpacing:'.12em'}}>
+                            ✦ IA NEXUM
+                          </div>
+                          <div style={{fontSize:10,color:top.vip?S.gold:S.green,fontWeight:800,textTransform:'uppercase',letterSpacing:'.16em',marginBottom:6}}>Mejor mesa sugerida</div>
+                          <div style={{display:'flex',alignItems:'baseline',gap:10,flexWrap:'wrap'}}>
+                            <span style={{fontFamily:"'Syne',serif",fontSize:30,fontWeight:900,color:top.vip?S.gold:S.green,letterSpacing:'-0.02em'}}>M{top.num}</span>
+                            <span style={{fontSize:12,color:S.t2,fontWeight:700}}>{top.cap}p · {top.zona}{top.vip?' · ⭐ VIP':''}</span>
+                            <span style={{marginLeft:'auto',fontSize:10,color:S.t3}}>score IA: <strong style={{color:S.t1}}>{Math.round(top.ia_score)}</strong></span>
+                          </div>
+                          <div style={{fontSize:11,color:S.t2,marginTop:6,lineHeight:1.5}}>
+                            {clienteVip && top.vip && '⭐ Cliente VIP en mesa VIP — match perfecto. '}
+                            {!clienteVip && !top.vip && `Eficiencia ${Math.round((pax/top.cap)*100)}% — pax/capacidad ideal. `}
+                            {r.ocasion && r.ocasion !== 'Sin ocasión especial' && '🎉 Zona apta para la ocasión. '}
+                            La IA priorizó por VIP, eficiencia y ambiente.
+                          </div>
+                          <button onClick={()=>{ asignarMesa(r.id, top.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
+                            style={{marginTop:10,width:'100%',padding:'10px',borderRadius:10,border:'none',background:top.vip?`linear-gradient(135deg, ${S.gold}, ${S.gold}aa)`:`linear-gradient(135deg, ${S.green}, ${S.green}aa)`,color:'#000',fontSize:12,fontWeight:900,cursor:'pointer'}}>
+                            ✓ Asignar a M{top.num} (sugerencia IA)
+                          </button>
+                        </div>
+                      ) : combinaciones.length > 0 ? (
+                        <div style={{marginBottom:14,padding:'14px 16px',borderRadius:14,background:`${S.purple}10`,border:`2px solid ${S.purple}55`}}>
+                          <div style={{fontSize:10,color:S.purple,fontWeight:800,textTransform:'uppercase',letterSpacing:'.16em',marginBottom:8}}>✦ IA · Combinar mesas</div>
+                          <div style={{fontSize:11,color:S.t2,marginBottom:8}}>No hay mesa de {pax}p libre. Sugerencia: combinar dos mesas en la misma zona.</div>
+                          {combinaciones.slice(0,2).map((c:any,i:number)=>(
+                            <div key={i} style={{padding:'10px 12px',background:S.bg3,border:`1px solid ${S.border}`,borderRadius:10,marginBottom:6,display:'flex',alignItems:'center',gap:10}}>
+                              <span style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900,color:S.purple}}>M{c.m1.num} + M{c.m2.num}</span>
+                              <span style={{fontSize:10,color:S.t3,flex:1}}>{c.cap}p · {c.m1.zona}</span>
+                              <button onClick={()=>{ asignarMesa(r.id, c.m1.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); show(`✓ Asignado a M${c.m1.num} · sugerir unir M${c.m2.num} físicamente`); }}
+                                style={{padding:'5px 10px',borderRadius:7,border:'none',background:S.purple,color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                                Usar
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{marginBottom:14,padding:'14px',borderRadius:12,background:`${S.red}10`,border:`1px dashed ${S.red}55`,textAlign:'center'}}>
+                          <div style={{fontSize:24,marginBottom:4}}>🚫</div>
+                          <div style={{fontSize:12,color:S.red,fontWeight:700}}>Sin mesas disponibles para {pax}p</div>
+                          <div style={{fontSize:10,color:S.t3,marginTop:4}}>Probá cambiar la hora o sugerí otra fecha al cliente.</div>
+                        </div>
+                      )}
+                      <div style={{fontSize:11,color:S.t3,marginBottom:14,display:'flex',flexWrap:'wrap',gap:8,alignItems:'center'}}>
+                        <span><strong style={{color:S.green,fontSize:13}}>{sugerencias.length}</strong> opciones disponibles para {pax}p</span>
+                        <span style={{color:S.gold,marginLeft:8}}>⭐ VIP</span>
+                        {clienteVip && <span style={{color:S.gold,fontWeight:700,marginLeft:'auto'}}>Cliente VIP — la IA prioriza mesas ⭐</span>}
+                      </div>
+                    </>
                   );
                 })()}
 
@@ -1003,9 +1098,9 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
       {/* Tabs */}
       <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg2,padding:'0 24px',flexShrink:0}}>
         {([
-          {id:'home',l:'✦ Sala'},
+          {id:'home',l:'✦ En vivo'},
           {id:'lista',l:'📋 Lista completa'},
-          {id:'nueva',l:'+ Nueva reserva'},
+          {id:'historial',l:'🕐 Historial'},
           {id:'editor',l:'⚙️ Editor de planta'},
           {id:'dashboard',l:'📊 Dashboard'},
         ] as const).map(t=>(
@@ -1073,10 +1168,33 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             )}
 
             <div style={{display:'flex',flexDirection:'column',gap:6}}>
-              {activas.map((r:any) => {
-                const est = ESTADOS[r.estado] || {c:S.t3,l:r.estado};
-                const esOhYeah = r.origen === 'ohyeah';
-                const sin = !r.mesa_num;
+              {(() => {
+                // Agrupar por franja: Almuerzo (11-16), Tarde (16-18), Cena (18-22), Cierre (22+)
+                const franjaDe = (hora:string) => {
+                  const h = parseInt((hora||'00').slice(0,2), 10);
+                  if (h < 11) return { id:'apertura', l:'🌅 Apertura',  c:S.cyan,   o:0 };
+                  if (h < 16) return { id:'almuerzo', l:'🍽️ Almuerzo', c:S.green,  o:1 };
+                  if (h < 18) return { id:'tarde',    l:'☕ Tarde',     c:S.gold,   o:2 };
+                  if (h < 22) return { id:'cena',     l:'🌙 Cena',      c:S.purple, o:3 };
+                  return { id:'cierre',  l:'✨ Cierre',     c:S.blue,    o:4 };
+                };
+                const grupos:Record<string,{ franja:any; reservas:any[] }> = {};
+                activas.forEach((r:any) => {
+                  const fr = franjaDe(r.hora || '00:00');
+                  if (!grupos[fr.id]) grupos[fr.id] = { franja: fr, reservas: [] };
+                  grupos[fr.id].reservas.push(r);
+                });
+                const ordenado = Object.values(grupos).sort((a:any,b:any)=>a.franja.o-b.franja.o);
+                return ordenado.flatMap((g:any) => [
+                  <div key={`h-${g.franja.id}`} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 4px 4px',position:'sticky',top:0,background:S.bg,zIndex:2}}>
+                    <span style={{fontSize:11,fontWeight:800,color:g.franja.c,textTransform:'uppercase',letterSpacing:'.14em'}}>{g.franja.l}</span>
+                    <span style={{flex:1,height:1,background:`${g.franja.c}33`}}/>
+                    <span style={{fontSize:10,color:S.t3,fontWeight:700}}>{g.reservas.length} reserva{g.reservas.length===1?'':'s'} · {g.reservas.reduce((s:number,r:any)=>s+(r.pax||0), 0)}p</span>
+                  </div>,
+                  ...g.reservas.map((r:any) => {
+                    const est = ESTADOS[r.estado] || {c:S.t3,l:r.estado};
+                    const esOhYeah = r.origen === 'ohyeah';
+                    const sin = !r.mesa_num;
                 const NIVEL_C: Record<string,string> = {ÉLITE:'#FFD700',VIP:'#B388FF',REGULAR:'#448AFF',INICIADO:'#a0a0a0'};
                 const nc = NIVEL_C[r.gourmand_level||''] || S.t3;
                 // Una reserva SENTADA no se arrastra — para reubicar primero hay
@@ -1094,8 +1212,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                     title={yaSentada
                       ? `🪑 ${r.cliente_nombre} ya está sentado en M${r.mesa_num}. Levantar primero para reubicar.`
                       : (r.mesa_num
-                          ? `Arrastra para CAMBIAR de mesa (M${r.mesa_num} → otra)`
-                          : `Arrastra a una mesa del plano para asignar`)}
+                          ? `Sugerir cambio de mesa (M${r.mesa_num} → otra) — clic para opciones IA`
+                          : `Click para ver mesas sugeridas por la IA`)}
                     style={{
                       background:S.bg2,
                       border:`1px solid ${sin?`${S.red}45`:esOhYeah?`${S.gold}30`:S.border}`,
@@ -1139,12 +1257,14 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                             : <div style={{fontSize:9,color:S.t3,marginTop:2}}>asignada</div>}
                         </>
                       ) : (
-                        <div style={{fontSize:9,color:S.gold,fontWeight:700,letterSpacing:'.05em'}}>↗ ARRASTRA<br/>A MESA</div>
+                        <div style={{fontSize:9,color:S.gold,fontWeight:700,letterSpacing:'.05em'}}>✦ SUGERIR<br/>MESA</div>
                       )}
                     </div>
                   </div>
                 );
-              })}
+              })
+                ]);
+              })()}
             </div>
           </div>
         </aside>
@@ -1198,7 +1318,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
         <FooterStat label="Sentadas"     v={sentadas}        c={S.green}/>
         <FooterStat label="Sin mesa"     v={sinMesa}         c={sinMesa>0?S.red:S.t2}/>
         <FooterStat label="Pax total"    v={paxTotal}        c={S.blue}/>
-        <span style={{marginLeft:'auto',fontSize:10,color:S.t3,letterSpacing:'.06em'}}>💡 Arrastra una reserva al plano para asignar mesa</span>
+        <span style={{marginLeft:'auto',fontSize:10,color:S.t3,letterSpacing:'.06em'}}>✦ Click en la reserva — IA sugiere la mejor mesa disponible</span>
       </footer>
     </div>
   );
@@ -1285,6 +1405,77 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             </tbody>
           </table>
         </div>
+        );
+      })()}
+
+      {/* ── HISTORIAL · no-show, canceladas y completadas ── */}
+      {tab==='historial' && (() => {
+        const cerradas = reservas.filter((r:any) =>
+          ['no_show','cancelada','completada'].includes(r.estado)
+        ).sort((a:any,b:any) => {
+          const da = (a.fecha||'') + 'T' + (a.hora||'00:00');
+          const db = (b.fecha||'') + 'T' + (b.hora||'00:00');
+          return db.localeCompare(da);
+        });
+        const stats = {
+          no_show:    cerradas.filter((r:any)=>r.estado==='no_show').length,
+          cancelada:  cerradas.filter((r:any)=>r.estado==='cancelada').length,
+          completada: cerradas.filter((r:any)=>r.estado==='completada').length,
+        };
+        return (
+          <div style={{flex:1,overflowY:'auto',padding:'20px 24px',background:S.bg}}>
+            <div style={{display:'flex',alignItems:'baseline',gap:14,marginBottom:18,flexWrap:'wrap'}}>
+              <h2 style={{fontFamily:"'Syne',serif",fontSize:22,fontWeight:900,margin:0}}>🕐 Historial de reservas</h2>
+              <span style={{fontSize:12,color:S.t3}}>{cerradas.length} cerradas · ordenadas por fecha desc</span>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit, minmax(160px, 1fr))',gap:10,marginBottom:18}}>
+              <div style={{background:S.bg2,border:`1px solid ${S.red}33`,borderRadius:12,padding:'14px 16px'}}>
+                <div style={{fontSize:10,color:S.red,fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em'}}>👻 No-show</div>
+                <div style={{fontFamily:"'Syne',serif",fontSize:26,fontWeight:900,color:S.red}}>{stats.no_show}</div>
+                <div style={{fontSize:10,color:S.t3}}>{'Auto > 30 min tarde'}</div>
+              </div>
+              <div style={{background:S.bg2,border:`1px solid ${S.t3}33`,borderRadius:12,padding:'14px 16px'}}>
+                <div style={{fontSize:10,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em'}}>✕ Canceladas</div>
+                <div style={{fontFamily:"'Syne',serif",fontSize:26,fontWeight:900,color:S.t2}}>{stats.cancelada}</div>
+              </div>
+              <div style={{background:S.bg2,border:`1px solid ${S.green}33`,borderRadius:12,padding:'14px 16px'}}>
+                <div style={{fontSize:10,color:S.green,fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em'}}>✓ Completadas</div>
+                <div style={{fontFamily:"'Syne',serif",fontSize:26,fontWeight:900,color:S.green}}>{stats.completada}</div>
+              </div>
+            </div>
+            {cerradas.length === 0 ? (
+              <div style={{textAlign:'center',color:S.t3,padding:50,fontSize:13}}>Sin reservas cerradas todavía.</div>
+            ) : (
+              <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                {cerradas.map((r:any) => {
+                  const colorEstado:any = { no_show:S.red, cancelada:S.t3, completada:S.green };
+                  const labelEstado:any = { no_show:'👻 No-show', cancelada:'✕ Cancelada', completada:'✓ Completada' };
+                  const c = colorEstado[r.estado] || S.t3;
+                  return (
+                    <div key={`${r.origen}-${r.id}`} style={{
+                      display:'flex',alignItems:'center',gap:12,padding:'10px 14px',
+                      background:S.bg2,border:`1px solid ${c}33`,borderLeft:`3px solid ${c}`,borderRadius:10,
+                    }}>
+                      <div style={{minWidth:90,textAlign:'center'}}>
+                        <div style={{fontSize:10,color:S.t3,fontFamily:"'IBM Plex Mono', monospace"}}>{r.fecha}</div>
+                        <div style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:800,color:S.gold}}>{(r.hora||'').slice(0,5)}</div>
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700,color:S.t1}}>{r.cliente_nombre}</div>
+                        <div style={{fontSize:10,color:S.t3,display:'flex',gap:8,flexWrap:'wrap'}}>
+                          <span>👥 {r.pax}p</span>
+                          {r.mesa_num && <span>🪑 M{r.mesa_num}</span>}
+                          {r.canal && <span>📡 {r.canal}</span>}
+                          {r.origen==='ohyeah' && <span style={{color:S.gold}}>🦉 Oh Yeah</span>}
+                        </div>
+                      </div>
+                      <span style={{fontSize:11,color:c,fontWeight:800,padding:'4px 10px',background:`${c}15`,borderRadius:8,whiteSpace:'nowrap'}}>{labelEstado[r.estado]}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         );
       })()}
 
