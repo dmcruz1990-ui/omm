@@ -314,7 +314,36 @@ export default function ReserveModule() {
         bono_aplicado:r.bono_aplicado, origen:'ohyeah',
       })),
     ].sort((a:any,b:any)=>(a.fecha||'').localeCompare(b.fecha||'')||(a.hora||'').localeCompare(b.hora||''));
-    setReservas(todas);
+
+    // ── Enriquecer con datos del CRM para insights: total_visits, alergias,
+    // preferencias, vip, ultima_visita. Busqueda por teléfono o email.
+    const telefonos = todas.map((r:any) => (r.cliente_telefono||'').trim()).filter(Boolean);
+    const emails    = todas.map((r:any) => (r.cliente_email||'').trim().toLowerCase()).filter(Boolean);
+    let customers:any[] = [];
+    if (telefonos.length > 0 || emails.length > 0) {
+      const orParts:string[] = [];
+      if (telefonos.length > 0) orParts.push(`phone.in.(${telefonos.map(t=>`"${t.replace(/"/g,'')}"`).join(',')})`);
+      if (emails.length > 0)    orParts.push(`email.in.(${emails.map(e=>`"${e.replace(/"/g,'')}"`).join(',')})`);
+      const { data: cs } = await supabase.from('customers')
+        .select('id,name,phone,email,vip_status,total_visits,ultima_visita,alergias,preferencias')
+        .or(orParts.join(','));
+      customers = cs || [];
+    }
+    const byPhone = new Map(customers.filter(c=>c.phone).map(c=>[String(c.phone).trim(), c]));
+    const byEmail = new Map(customers.filter(c=>c.email).map(c=>[String(c.email).trim().toLowerCase(), c]));
+    const enriquecidas = todas.map((r:any) => {
+      const c = (r.cliente_telefono && byPhone.get(r.cliente_telefono.trim()))
+             || (r.cliente_email && byEmail.get(r.cliente_email.trim().toLowerCase()));
+      return c ? {
+        ...r,
+        vip: c.vip_status || r.vip,
+        total_visits: c.total_visits ?? r.total_visits,
+        ultima_visita: c.ultima_visita ?? r.ultima_visita,
+        alergias: c.alergias ?? r.alergias,
+        preferencias: c.preferencias ?? r.preferencias,
+      } : r;
+    });
+    setReservas(enriquecidas);
     if (ms.data) setMesas(ms.data);
     // Meseros = usuarios reales que hacen login (profiles role='mesero').
     // La identidad debe coincidir con la del POS: nombre_completo || full_name.
@@ -900,7 +929,16 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                     .map((t:any) => ({ ...t, ia_score: scoreMesa(t) }))
                     .filter((t:any) => t.ia_score >= 0)
                     .sort((a:any,b:any) => b.ia_score - a.ia_score);
-                  const top = sugerencias[0];
+                  // REGLA DE ORO — las sugerencias deben ser mesas DISTINTAS
+                  // (cada mesa aparece sólo una vez). Tomamos las 3 mejores
+                  // por número de mesa único, priorizando ajuste de pax.
+                  const yaVistas = new Set<number>();
+                  const topDistintas = sugerencias.filter((t:any) => {
+                    if (yaVistas.has(t.num)) return false;
+                    yaVistas.add(t.num);
+                    return true;
+                  }).slice(0, 3);
+                  const top = topDistintas[0];
                   // Combinaciones: si no hay mesa suficiente para 6+, combinar 2 mesas adyacentes
                   const combinaciones: any[] = [];
                   if (sugerencias.length === 0 && pax >= 4) {
@@ -938,6 +976,22 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                             style={{marginTop:10,width:'100%',padding:'10px',borderRadius:10,border:'none',background:top.vip?`linear-gradient(135deg, ${S.gold}, ${S.gold}aa)`:`linear-gradient(135deg, ${S.green}, ${S.green}aa)`,color:'#000',fontSize:12,fontWeight:900,cursor:'pointer'}}>
                             ✓ Asignar a M{top.num} (sugerencia IA)
                           </button>
+
+                          {/* Top 3 distintas — alternativas válidas por pax */}
+                          {topDistintas.length > 1 && (
+                            <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${S.border}`}}>
+                              <div style={{fontSize:9,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:6}}>Otras opciones distintas (IA)</div>
+                              <div style={{display:'grid',gridTemplateColumns:`repeat(${topDistintas.length-1},1fr)`,gap:6}}>
+                                {topDistintas.slice(1).map((t:any)=>(
+                                  <button key={t.num} onClick={()=>{ asignarMesa(r.id, t.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
+                                    style={{padding:'8px',borderRadius:8,border:`1px solid ${t.vip?S.gold:S.green}55`,background:`${t.vip?S.gold:S.green}10`,color:t.vip?S.gold:S.green,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+                                    <span style={{fontFamily:"'Syne',serif",fontSize:16,fontWeight:900}}>M{t.num}</span>
+                                    <span style={{fontSize:9,color:S.t3}}>{t.cap}p · score {Math.round(t.ia_score)}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       ) : combinaciones.length > 0 ? (
                         <div style={{marginBottom:14,padding:'14px 16px',borderRadius:14,background:`${S.purple}10`,border:`2px solid ${S.purple}55`}}>
@@ -1288,35 +1342,58 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                       <div style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:9,color:S.t3,letterSpacing:'.08em',marginTop:2}}>{r.pax}p</div>
                     </div>
 
-                    {/* Nombre y badges */}
+                    {/* Nombre + insights del cliente — info para reconocer quién es */}
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap',marginBottom:2}}>
-                        <span style={{fontSize:12,fontWeight:700,color:S.t1}}>{r.cliente_nombre}</span>
-                        {esOhYeah && <span style={{fontSize:8,background:`${S.gold}25`,color:S.gold,padding:'1px 6px',borderRadius:50,fontWeight:700}}>🦉</span>}
-                        {r.gourmand_level && esOhYeah && <span style={{fontSize:8,color:nc,fontWeight:700}}>{r.gourmand_level}</span>}
-                        {/* Quick-buttons de estado · WP / Tel / No contesta · NO se propaga al onClick padre */}
-                        {!yaSentada && (
-                          <div data-stop style={{display:'flex',gap:3,marginLeft:'auto'}}>
-                            <button data-stop onClick={(e)=>{e.stopPropagation(); cambiarEstadoRapido('confirmada_wp');}} title="Confirmada por WhatsApp"
-                              style={{padding:'2px 5px',borderRadius:5,border:'1px solid #25D36655',background:r.estado==='confirmada_wp'?'#25D36633':'transparent',color:'#25D366',fontSize:9,fontWeight:800,cursor:'pointer'}}>💬</button>
-                            <button data-stop onClick={(e)=>{e.stopPropagation(); cambiarEstadoRapido('confirmada_tel');}} title="Confirmada por teléfono"
-                              style={{padding:'2px 5px',borderRadius:5,border:'1px solid #00BFFF55',background:r.estado==='confirmada_tel'?'#00BFFF33':'transparent',color:'#00BFFF',fontSize:9,fontWeight:800,cursor:'pointer'}}>📞</button>
-                            <button data-stop onClick={(e)=>{e.stopPropagation(); cambiarEstadoRapido('no_contesta');}} title="No contesta"
-                              style={{padding:'2px 5px',borderRadius:5,border:'1px solid #FF6B3555',background:r.estado==='no_contesta'?'#FF6B3533':'transparent',color:'#FF6B35',fontSize:9,fontWeight:800,cursor:'pointer'}}>📵</button>
-                          </div>
+                      <div style={{display:'flex',alignItems:'center',gap:5,flexWrap:'wrap',marginBottom:3}}>
+                        <span style={{fontSize:13,fontWeight:800,color:S.t1}}>{r.cliente_nombre}</span>
+                        {esOhYeah && <span style={{fontSize:8,background:`${S.gold}25`,color:S.gold,padding:'1px 6px',borderRadius:50,fontWeight:700}}>🦉 Oh Yeah</span>}
+                        {r.gourmand_level && <span style={{fontSize:9,color:nc,fontWeight:800,background:`${nc}15`,padding:'1px 7px',borderRadius:50,border:`1px solid ${nc}40`}}>{r.gourmand_level}</span>}
+                        {r.vip && <span style={{fontSize:9,color:S.gold,fontWeight:800}}>⭐ VIP</span>}
+                        {/* Estado actual de la reserva (read-only) */}
+                        {(() => {
+                          const est = ESTADOS[r.estado];
+                          if (!est) return null;
+                          return <span style={{fontSize:8,background:`${est.c}18`,color:est.c,padding:'1px 7px',borderRadius:50,fontWeight:800,marginLeft:'auto',border:`1px solid ${est.c}40`}}>{est.l}</span>;
+                        })()}
+                      </div>
+                      {/* INSIGHTS — para que el equipo sepa al instante quién es este cliente */}
+                      <div style={{fontSize:10,color:S.t3,display:'flex',gap:6,flexWrap:'wrap',alignItems:'center',marginBottom:3}}>
+                        {r.ocasion && r.ocasion !== 'Sin ocasión especial' && (
+                          <span style={{background:`${S.purple}15`,color:S.purple,padding:'2px 7px',borderRadius:50,fontWeight:700}}>🎉 {r.ocasion}</span>
+                        )}
+                        {r.total_visits > 0 && (
+                          <span style={{background:`${S.blue}12`,color:S.blue,padding:'2px 7px',borderRadius:50,fontWeight:700}}>👤 {r.total_visits} visita{r.total_visits===1?'':'s'}</span>
+                        )}
+                        {!r.total_visits && r.cliente_telefono && (
+                          <span style={{background:`${S.green}12`,color:S.green,padding:'2px 7px',borderRadius:50,fontWeight:700}}>🆕 Cliente nuevo</span>
+                        )}
+                        {r.alergias && (
+                          <span style={{background:`${S.red}15`,color:S.red,padding:'2px 7px',borderRadius:50,fontWeight:700}}>⚠ Alergias: {Array.isArray(r.alergias)?r.alergias.join(', '):r.alergias}</span>
+                        )}
+                        {r.preferencias && (
+                          <span style={{background:`${S.cyan}12`,color:S.cyan,padding:'2px 7px',borderRadius:50,fontWeight:700}}>💜 {Array.isArray(r.preferencias)?r.preferencias.slice(0,2).join(', '):r.preferencias}</span>
+                        )}
+                        {r.ultima_visita && (
+                          <span style={{color:S.t2}}>· Última visita {new Date(r.ultima_visita).toLocaleDateString('es-CO',{day:'numeric',month:'short'})}</span>
                         )}
                       </div>
-                      <div style={{fontSize:10,color:S.t3,display:'flex',gap:8,flexWrap:'wrap',alignItems:'center'}}>
-                        {r.ocasion && r.ocasion !== 'Sin ocasión especial' && <span style={{color:S.purple}}>🎉 {r.ocasion}</span>}
-                        {r.cliente_telefono && <span>📱 {r.cliente_telefono.slice(-10)}</span>}
-                        {/* Botón ver perfil — abre el panel de cliente en CRM */}
-                        {r.cliente_telefono && (
-                          <button data-stop onClick={(e)=>{e.stopPropagation(); window.open(`/?modulo=clientes&tel=${encodeURIComponent(r.cliente_telefono)}`, '_blank');}}
-                            style={{marginLeft:'auto',padding:'2px 7px',borderRadius:5,border:`1px solid ${S.blue}40`,background:`${S.blue}10`,color:S.blue,fontSize:9,fontWeight:700,cursor:'pointer'}}>
-                            👁 Ver perfil
-                          </button>
-                        )}
-                      </div>
+                      {r.notas && (
+                        <div style={{fontSize:10,color:S.gold,fontStyle:'italic',borderLeft:`2px solid ${S.gold}55`,paddingLeft:6,marginBottom:3}}>
+                          📝 "{r.notas}"
+                        </div>
+                      )}
+                      {/* Botón Ver perfil — única acción permitida en ficha cliente */}
+                      {r.cliente_telefono && (
+                        <button data-stop onClick={(e)=>{
+                            e.stopPropagation();
+                            window.dispatchEvent(new CustomEvent('nx_open_module', {
+                              detail: { module: ModuleType.RELATIONSHIP, payload: { telefono: r.cliente_telefono, email: r.cliente_email, nombre: r.cliente_nombre } }
+                            }));
+                          }}
+                          style={{padding:'3px 9px',borderRadius:6,border:`1px solid ${S.purple}40`,background:`${S.purple}10`,color:S.purple,fontSize:9,fontWeight:700,cursor:'pointer'}}>
+                          👁 Ver perfil del cliente
+                        </button>
+                      )}
                     </div>
 
                     {/* Mesa asignada o "Arrastra" */}
@@ -1721,12 +1798,12 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                 <input style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.cliente_email} onChange={e=>setF('cliente_email',e.target.value)} placeholder="correo@email.com"/>
               </div>
               <div>
-                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>FECHA *</div>
-                <input type="date" style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.fecha} onChange={e=>setF('fecha',e.target.value)}/>
+                <div style={{fontSize:10,color:S.gold,fontWeight:800,marginBottom:5,letterSpacing:'.1em'}}>📅 FECHA *</div>
+                <input type="date" style={{background:`linear-gradient(135deg, ${S.gold}18, ${S.gold}08)`,border:`2px solid ${S.gold}80`,borderRadius:10,padding:'12px 14px',color:S.gold,fontSize:14,fontWeight:800,outline:'none',width:'100%',colorScheme:'dark',boxShadow:`0 0 14px ${S.gold}22`}} value={form.fecha} onChange={e=>setF('fecha',e.target.value)}/>
               </div>
               <div>
-                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>HORA *</div>
-                <input type="time" style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.hora} onChange={e=>{ setF('hora',e.target.value); setSugerenciasHora([]); }}/>
+                <div style={{fontSize:10,color:S.cyan,fontWeight:800,marginBottom:5,letterSpacing:'.1em'}}>⏰ HORA *</div>
+                <input type="time" style={{background:`linear-gradient(135deg, ${S.cyan}18, ${S.cyan}08)`,border:`2px solid ${S.cyan}80`,borderRadius:10,padding:'12px 14px',color:S.cyan,fontSize:14,fontWeight:800,outline:'none',width:'100%',colorScheme:'dark',boxShadow:`0 0 14px ${S.cyan}22`}} value={form.hora} onChange={e=>{ setF('hora',e.target.value); setSugerenciasHora([]); }}/>
                 {sugerenciasHora.length > 0 && (
                   <div style={{marginTop:8,display:'flex',gap:5,flexWrap:'wrap',alignItems:'center'}}>
                     <span style={{fontSize:9,color:S.gold,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em'}}>🌟 Mejor disponibilidad:</span>
