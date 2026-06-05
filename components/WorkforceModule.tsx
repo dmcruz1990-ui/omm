@@ -174,6 +174,17 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
   const weekDays = useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)), [weekStart]);
   const weekStartStr = ymd(weekStart);
   const weekEndStr = ymd(addDays(weekStart,6));
+  // ISO week (igual que to_char(fecha,'IYYY-"W"IW') en BD)
+  const semanaIso = useMemo(()=>{
+    const d = new Date(weekStart); d.setHours(0,0,0,0);
+    d.setDate(d.getDate() + 3 - (d.getDay() + 6) % 7);
+    const week1 = new Date(d.getFullYear(), 0, 4);
+    const week = 1 + Math.round(((d.getTime() - week1.getTime()) / 86400000 - 3 + (week1.getDay()+6)%7) / 7);
+    return `${d.getFullYear()}-W${String(week).padStart(2,'0')}`;
+  }, [weekStart]);
+  // Publicación de la semana — verde cuando la semana actual ya está
+  // publicada y el hash coincide (sin cambios pendientes)
+  const [pubInfo, setPubInfo] = useState<{publicada:boolean; desactualizada:boolean; publicado_at?:string; publicado_por?:string}>({ publicada:false, desactualizada:false });
   const hoy = ymd(new Date());
 
   const logAudit = useCallback((accion:string, objeto:string, despues:any, motivo='')=>{
@@ -191,8 +202,22 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
     setTurnos(tur.data||[]);
     setAsistencia(asi.data||[]);
     setNovedades(nov.data||[]);
+
+    // ¿Esta semana ya está publicada? Comparamos hash con lo que está en BD
+    const calcHash = (ts:any[]) => ts.map(t=>`${t.id}:${t.fecha}:${t.hora_inicio}:${t.hora_fin}:${t.empleado_id}:${t.tipo_turno}`).sort().join('|');
+    const hashActual = calcHash(tur.data || []);
+    const { data: pub } = await supabase.from('turnos_publicaciones')
+      .select('publicado_at,publicado_por,hash_turnos,estado')
+      .eq('restaurante_id', REST_ID).eq('semana_iso', semanaIso).maybeSingle();
+    setPubInfo({
+      publicada: !!pub,
+      desactualizada: !!pub && pub.hash_turnos !== hashActual,
+      publicado_at: pub?.publicado_at,
+      publicado_por: pub?.publicado_por,
+    });
+
     setLoading(false);
-  }, [weekStartStr, weekEndStr, hoy, REST_ID, COMPLEJO_ID]);
+  }, [weekStartStr, weekEndStr, hoy, REST_ID, COMPLEJO_ID, semanaIso]);
 
   useEffect(()=>{ cargar(); }, [cargar]);
   useEffect(()=>{
@@ -369,9 +394,38 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
       ? `Se publicarán ${ids.length} turnos con ${warnings.length} avisos:\n\n${warnings.slice(0,8).join('\n')}${warnings.length>8?`\n…y ${warnings.length-8} más`:''}\n\n¿Publicar y enviar a los empleados?`
       : `¿Publicar ${ids.length} turnos de la semana ${weekStartStr} y notificar a los empleados?`;
     if (!confirm(aviso)) return;
-    await supabase.from('turnos').update({ publicado:true, estado:'publicado' }).in('id',ids);
+    await supabase.from('turnos').update({
+      publicado: true,
+      estado: 'publicado',
+      publicado_at: new Date().toISOString(),
+      publicado_por: userName,
+      semana_iso: semanaIso,
+    }).in('id', ids);
+    // Métricas para registrar en la publicación de la semana
+    const totalHoras = Object.values(horasPorEmp as any).reduce((s:number,h:any)=>s + (h?.efectivas||0), 0);
+    const totalEmpleados = Object.keys(horasPorEmp as any).filter(k=>(horasPorEmp as any)[k]?.efectivas>0).length;
+    const costoEstimado = empleados.reduce((s:number,e:any) => {
+      const h = (horasPorEmp as any)[e.id];
+      if (!h) return s;
+      const valorHora = (e.salario_base||0) / 168;
+      return s + (h.efectivas||0) * valorHora;
+    }, 0);
+    const hashTurnos = turnos.map(t=>`${t.id}:${t.fecha}:${t.hora_inicio}:${t.hora_fin}:${t.empleado_id}:${t.tipo_turno}`).sort().join('|');
+    await supabase.from('turnos_publicaciones').upsert({
+      restaurante_id: REST_ID,
+      semana_iso: semanaIso,
+      fecha_lunes: weekStartStr,
+      publicado_at: new Date().toISOString(),
+      publicado_por: userName,
+      total_horas: Math.round(totalHoras * 100) / 100,
+      total_empleados: totalEmpleados,
+      costo_estimado: Math.round(costoEstimado),
+      estado: 'publicada',
+      hash_turnos: hashTurnos,
+    }, { onConflict: 'restaurante_id,semana_iso' });
+    setPubInfo({ publicada:true, desactualizada:false, publicado_at: new Date().toISOString(), publicado_por: userName });
     logAudit('horario.publicado','turnos',{semana:weekStartStr, turnos:ids.length, warnings:warnings.length});
-    showToast(`✓ Horario publicado · ${ids.length} turnos · ${warnings.length} avisos`);
+    showToast(`✓ Semana ${semanaIso} publicada · ${ids.length} turnos · ${totalHoras.toFixed(1)}h · ${warnings.length} avisos`);
   };
 
   // Check-in / Check-out (kiosk)
@@ -598,8 +652,20 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
               <button onClick={()=>setWeekBase(addDays(weekStart,7))} className="w-8 h-8 rounded-lg border flex items-center justify-center" style={{borderColor:C.border,color:C.t2}}><ChevronRight size={16}/></button>
               <button onClick={()=>setWeekBase(startOfWeek(new Date()))} className="text-[11px] px-2 py-1 rounded-lg border" style={{borderColor:C.border,color:C.t2}}>Hoy</button>
             </div>
-            <button onClick={publicarSemana} className="px-3 py-2 rounded-lg text-[12px] font-black flex items-center gap-2" style={{background:C.gold,color:'#000'}}>
-              <CheckCircle2 size={15}/> Publicar semana
+            <button onClick={publicarSemana}
+              title={pubInfo.publicada && !pubInfo.desactualizada
+                ? `Semana ${semanaIso} publicada ${pubInfo.publicado_at ? new Date(pubInfo.publicado_at).toLocaleString('es-CO') : ''} por ${pubInfo.publicado_por||'—'}`
+                : pubInfo.desactualizada
+                ? 'Hay cambios sin publicar desde la última publicación — volvé a publicar'
+                : 'Publicar semana y notificar a los empleados'}
+              className="px-3 py-2 rounded-lg text-[12px] font-black flex items-center gap-2"
+              style={{
+                background: pubInfo.publicada && !pubInfo.desactualizada ? '#00E676' : pubInfo.desactualizada ? '#FFB547' : C.gold,
+                color:'#000',
+                boxShadow: pubInfo.publicada && !pubInfo.desactualizada ? '0 0 12px rgba(0,230,118,0.5)' : 'none',
+              }}>
+              <CheckCircle2 size={15}/>
+              {pubInfo.publicada && !pubInfo.desactualizada ? `✓ Publicada · ${semanaIso}` : pubInfo.desactualizada ? `⚠ Republicar ${semanaIso}` : 'Publicar semana'}
             </button>
           </div>
           <div className="overflow-x-auto rounded-xl border" style={{borderColor:C.border}}>

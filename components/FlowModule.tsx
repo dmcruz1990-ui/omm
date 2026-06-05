@@ -695,10 +695,16 @@ export default function FlowModule() {
                         "{String(c.comentario).trim()}"
                       </div>
                     )}
-                    <button onClick={()=>marcarEncuestaLeida(c.id)}
-                      style={{marginTop:4,padding:'5px 10px',borderRadius:7,border:`1px solid ${col}40`,background:'transparent',color:col,fontSize:10,fontWeight:700,cursor:'pointer',alignSelf:'flex-start'}}>
-                      ✓ Leído · guardar en métricas
-                    </button>
+                    <div style={{display:'flex',gap:6,marginTop:4}}>
+                      <button onClick={()=>marcarEncuestaLeida(c.id)}
+                        style={{padding:'5px 10px',borderRadius:7,border:`1px solid ${col}40`,background:'transparent',color:col,fontSize:10,fontWeight:700,cursor:'pointer'}}>
+                        ✓ Leído · guardar en métricas
+                      </button>
+                      <button onClick={()=>marcarEncuestaLeida(c.id)} title="Descartar encuesta del feed"
+                        style={{padding:'5px 9px',borderRadius:7,border:`1px solid ${S.t3}40`,background:'transparent',color:S.t3,fontSize:11,fontWeight:900,cursor:'pointer',marginLeft:'auto'}}>
+                        ✕
+                      </button>
+                    </div>
                   </div>
                 );
               })}
