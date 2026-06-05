@@ -1096,9 +1096,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // ── Colores de los meseros (mapa visual: cada mesa toma el color de su mesero) ──
   const [coloresMeseros, setColoresMeseros] = useState<Record<string, string>>({});
   useEffect(() => {
+    let alive = true;
     supabase.from('profiles').select('nombre_completo,full_name,color')
       .not('color', 'is', null)
       .then(({ data }) => {
+        if (!alive) return;
         const map: Record<string, string> = {};
         (data || []).forEach((p:any) => {
           const k1 = p.nombre_completo || '';
@@ -1108,6 +1110,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         });
         setColoresMeseros(map);
       });
+    return () => { alive = false; };
   }, [restauranteId]);
   const colorDeMesero = (nombre: string | null | undefined): string => {
     if (!nombre) return '#5a6472';
@@ -1886,7 +1889,11 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         fetchReservasOhYeah();
       })
       .subscribe();
-    return () => { supabase.removeChannel(ch); };
+    return () => {
+      supabase.removeChannel(ch);
+      supabase.removeChannel(chMesas);
+      supabase.removeChannel(chPlatos);
+    };
   }, [restauranteId]);
 
   // ── Historial de facturas del mesero ──────────────────────────────────
@@ -7045,7 +7052,7 @@ function BriefDelDia({ profile, miNombre, restauranteId }:{ profile:any; miNombr
       const map = (r:any, esOh:boolean) => ({
         id: r.id,
         nombre: esOh ? r.guest_name : r.cliente_nombre,
-        hora: (esOh ? r.time : r.hora || '').slice(0,5),
+        hora: ((esOh ? r.time : r.hora) || '').slice(0,5),
         pax: r.pax,
         ocasion: esOh ? r.occasion : r.ocasion,
         nivel: r.gourmand_level,

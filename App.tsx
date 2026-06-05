@@ -201,13 +201,18 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const visibleModulesList = getVisibleModules(profile?.role);
+  // useMemo evita que la lista se recree en cada render y dispare el effect
+  // en loop (estaba causando oscilación de activeModule en algunos roles).
+  const visibleModulesList = React.useMemo(
+    () => getVisibleModules(profile?.role),
+    [profile?.role]
+  );
 
   useEffect(() => {
     if (visibleModulesList.length > 0 && !visibleModulesList.includes(activeModule)) {
       setActiveModule(visibleModulesList[0]);
     }
-  }, [profile?.role, activeModule, visibleModulesList]);
+  }, [activeModule, visibleModulesList]);
 
   const fetchData = async () => {
     try {
