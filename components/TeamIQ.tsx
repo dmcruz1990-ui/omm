@@ -149,6 +149,42 @@ function DeltaChip({ delta }: { delta: number }) {
 }
 
 // ─── PANEL DETALLE EMPLEADO ───────────────────────────────────────────────────
+// Helper para celdas de la Ficha del empleado — uniformes y limpias
+function FichaRow({ label, val, mono, full, href, target, icon, colorVal }: {
+  label: string; val?: string | number | null;
+  mono?: boolean; full?: boolean;
+  href?: string; target?: string;
+  icon?: string; colorVal?: string;
+}) {
+  const display = val == null || val === '' ? '—' : String(val);
+  const empty = display === '—';
+  return (
+    <div style={{
+      gridColumn: full ? '1 / -1' : undefined,
+      background:'#141414', border:'1px solid #1e1e1e', borderRadius:8,
+      padding:'8px 10px',
+    }}>
+      <div style={{ fontSize:9, color:'#505050', fontWeight:700, textTransform:'uppercase', letterSpacing:'.08em', marginBottom:3 }}>
+        {label}
+      </div>
+      {href && !empty ? (
+        <a href={href} target={target} rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+          style={{ fontSize:12, fontWeight:700, color: colorVal || '#f0f0f0', textDecoration:'none',
+            fontFamily: mono ? 'monospace' : undefined,
+            wordBreak: 'break-word' as const, display:'block' }}>
+          {icon ? `${icon} ` : ''}{display}
+        </a>
+      ) : (
+        <div style={{ fontSize:12, fontWeight:700, color: empty ? '#404040' : (colorVal || '#f0f0f0'),
+          fontFamily: mono ? 'monospace' : undefined,
+          wordBreak: 'break-word' as const }}>
+          {icon && !empty ? `${icon} ` : ''}{display}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PanelEmpleado({ emp, onClose }: { emp: Empleado; onClose: () => void }) {
   const badge = scoreBadge(emp.score);
   const area = areaFromRol(emp.rol);
@@ -272,11 +308,11 @@ function PanelEmpleado({ emp, onClose }: { emp: Empleado; onClose: () => void })
         )}
 
         {/* Info personal */}
-        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:20 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:16 }}>
           {[
             { label:'Memorandos', val: emp.memorandos, warn: emp.memorandos > 0 },
-            { label:'Días vacaciones', val: emp.vacaciones_dias },
-            { label:'Antigüedad', val: Math.floor((Date.now() - new Date(emp.fecha_ingreso).getTime()) / (365.25*86400000)) + ' años' },
+            { label:'Días vacaciones', val: (emp as any).vacaciones_disponibles ?? emp.vacaciones_dias ?? 0 },
+            { label:'Antigüedad', val: emp.fecha_ingreso ? Math.floor((Date.now() - new Date(emp.fecha_ingreso).getTime()) / (365.25*86400000)) + ' años' : '—' },
             { label:'Upselling', val: emp.upselling_pct > 0 ? emp.upselling_pct + '%' : 'N/A' },
           ].map((f, i) => (
             <div key={i} style={{ background:'#0a0a0a', border:`1px solid ${f.warn ? 'rgba(255,92,53,.3)' : '#1a1a1a'}`,
@@ -287,6 +323,84 @@ function PanelEmpleado({ emp, onClose }: { emp: Empleado; onClose: () => void })
                 color: f.warn ? '#FF5C5C' : '#f0f0f0' }}>{f.val}</span>
             </div>
           ))}
+        </div>
+
+        {/* ═══ FICHA DEL EMPLEADO · todos los datos legales y de contacto ═══ */}
+        <div style={{ background:'#0a0a0a', border:'1px solid #1e1e1e', borderRadius:14, padding:16, marginBottom:20 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, paddingBottom:10, borderBottom:'1px solid #1e1e1e' }}>
+            <span style={{ fontSize:16 }}>📇</span>
+            <span style={{ fontFamily:'Syne,sans-serif', fontSize:13, fontWeight:900, color:'#f0f0f0', letterSpacing:'.04em' }}>
+              FICHA DEL EMPLEADO
+            </span>
+            <span style={{ fontSize:9, color:'#505050', marginLeft:'auto', letterSpacing:'.1em', textTransform:'uppercase' }}>
+              datos para RH y liquidación
+            </span>
+          </div>
+
+          {/* Identificación */}
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:9, color:'#d4943a', fontWeight:800, textTransform:'uppercase', letterSpacing:'.12em', marginBottom:6 }}>
+              🆔 Identificación
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+              <FichaRow label="Cédula" val={(emp as any).cedula} mono />
+              <FichaRow label="Avatar / iniciales" val={emp.avatar_iniciales} />
+            </div>
+          </div>
+
+          {/* Contacto */}
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:9, color:'#4a8fd4', fontWeight:800, textTransform:'uppercase', letterSpacing:'.12em', marginBottom:6 }}>
+              📞 Contacto
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+              <FichaRow label="Email" val={emp.email}
+                href={emp.email ? `mailto:${emp.email}` : undefined} icon="✉" colorVal="#4a8fd4"/>
+              <FichaRow label="Teléfono" val={(emp as any).telefono}
+                href={(emp as any).telefono ? `https://wa.me/${String((emp as any).telefono).replace(/\D/g,'')}` : undefined}
+                target="_blank" icon="💬" colorVal="#22D07A"/>
+              <FichaRow label="Dirección" val={(emp as any).direccion} icon="📍" full/>
+              <FichaRow label="Contacto emergencia" val={(emp as any).contacto_emergencia} icon="🆘" colorVal="#FF5C53" full/>
+            </div>
+          </div>
+
+          {/* Laboral */}
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:9, color:'#b388ff', fontWeight:800, textTransform:'uppercase', letterSpacing:'.12em', marginBottom:6 }}>
+              💼 Laboral
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+              <FichaRow label="Cargo" val={emp.cargo_display} />
+              <FichaRow label="Rol sistema" val={emp.rol} />
+              <FichaRow label="Tipo contrato" val={(emp as any).tipo_contrato} colorVal="#b388ff"/>
+              <FichaRow label="Fecha ingreso" val={emp.fecha_ingreso ? new Date(emp.fecha_ingreso+'T12:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'}) : null} />
+              <FichaRow label="Salario base" val={emp.salario_base ? `$${Number(emp.salario_base).toLocaleString('es-CO')}` : null} colorVal="#d4943a"/>
+              <FichaRow label="Valor hora" val={emp.salario_base ? `$${Math.round(emp.salario_base/168).toLocaleString('es-CO')}` : null} />
+            </div>
+          </div>
+
+          {/* Seguridad social */}
+          <div style={{ marginBottom:14 }}>
+            <div style={{ fontSize:9, color:'#22D07A', fontWeight:800, textTransform:'uppercase', letterSpacing:'.12em', marginBottom:6 }}>
+              🛡 Seguridad social
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6 }}>
+              <FichaRow label="ARL" val={(emp as any).arl} />
+              <FichaRow label="EPS" val={(emp as any).eps} />
+              <FichaRow label="AFP" val={(emp as any).afp} />
+            </div>
+          </div>
+
+          {/* Cuenta bancaria */}
+          <div>
+            <div style={{ fontSize:9, color:'#FFB547', fontWeight:800, textTransform:'uppercase', letterSpacing:'.12em', marginBottom:6 }}>
+              🏦 Cuenta bancaria · para nómina
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+              <FichaRow label="Banco" val={(emp as any).banco} colorVal="#FFB547"/>
+              <FichaRow label="N° cuenta" val={(emp as any).cuenta_bancaria} mono />
+            </div>
+          </div>
         </div>
 
         {/* Acciones */}
