@@ -2789,18 +2789,22 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas: franjasInicial, onC
   };
   const duracion = calcDuracion(horaDesde, horaHasta);
   const horasTotalesHoy = franjas.reduce((acc:number, f:any) => {
-    const [h1,m1] = f.hora_desde.split(':').map(Number);
-    const [h2,m2] = f.hora_hasta.split(':').map(Number);
+    const [h1,m1] = String(f.hora_desde||'00:00').split(':').map(Number);
+    const [h2,m2] = String(f.hora_hasta||'00:00').split(':').map(Number);
     return acc + Math.max(0, (h2*60+m2)-(h1*60+m1));
   }, 0);
+
+  const solapaFranja = (f:any, desde:string, hasta:string) => {
+    const fd = String(f.hora_desde||'').slice(0,5);
+    const fh = String(f.hora_hasta||'').slice(0,5);
+    return !(hasta <= fd || desde >= fh);
+  };
 
   const guardar = async () => {
     if (horaDesde >= horaHasta) { show('⚠️ La hora de inicio debe ser menor a la de fin'); return; }
     // Detectar solapamientos con franjas existentes
-    const solapa = franjas.find((f:any) =>
-      !(horaHasta <= f.hora_desde.slice(0,5) || horaDesde >= f.hora_hasta.slice(0,5))
-    );
-    if (solapa && !confirm(`⚠️ Se solapa con la franja ${solapa.hora_desde.slice(0,5)}–${solapa.hora_hasta.slice(0,5)}. ¿Continuar?`)) return;
+    const solapa = franjas.find((f:any) => solapaFranja(f, horaDesde, horaHasta));
+    if (solapa && !confirm(`⚠️ Se solapa con la franja ${String(solapa.hora_desde||'').slice(0,5)}–${String(solapa.hora_hasta||'').slice(0,5)}. ¿Continuar?`)) return;
     setSaving(true);
     const { error } = await supabase.from('reservas_franjas_bloqueadas').insert({
       restaurante_id: restauranteId, fecha: fechaModal,

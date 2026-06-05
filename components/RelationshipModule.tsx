@@ -236,8 +236,10 @@ export default function CustomersModule() {
 
   // ── CSV import ────────────────────────────────────────────────────────
   const parseCsv = (text:string) => {
-    const lines = text.split('\n').filter(l=>l.trim());
+    const lines = text.split(/\r?\n/).filter(l=>l.trim());
+    if (lines.length === 0) { showToast('⚠️ Archivo CSV vacío'); return; }
     const headers = lines[0].split(',').map(h=>h.trim().replace(/"/g,''));
+    if (headers.length === 0) { showToast('⚠️ CSV sin encabezados'); return; }
     const rows = lines.slice(1).map(l=>{ const vals=l.split(','); return Object.fromEntries(headers.map((h,i)=>[h,vals[i]?.trim().replace(/"/g,'')])); });
     setCsvHeaders(headers); setCsvRows(rows); setCsvStep('map');
     const auto:Record<string,string> = {};
@@ -257,12 +259,14 @@ export default function CustomersModule() {
     let ok=0, err=0;
     for (const row of csvPreview.slice(0,200)) {
       try {
-        await supabase.from('customers').insert({ ...row, score:0, total_visits:0, puntos:0 });
-        ok++;
+        // supabase-js no lanza en errores de BD: devuelve { error }.
+        // Hay que chequearlo explícitamente para contar bien.
+        const { error } = await supabase.from('customers').insert({ ...row, score:0, total_visits:0, puntos:0 });
+        if (error) err++; else ok++;
       } catch { err++; }
     }
     setCsvResultado({ok,err}); setCsvStep('done'); setCsvImporting(false);
-    showToast(`✓ ${ok} importados`); fetchClientes();
+    showToast(`✓ ${ok} importados${err>0?` · ${err} con error`:''}`); fetchClientes();
   };
 
   // Export — solo Nombres / correo / celular / ciudad / documento

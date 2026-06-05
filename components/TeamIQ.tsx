@@ -444,20 +444,25 @@ export default function TeamIQ() {
 
   useEffect(() => { cargar(); }, [cargar]);
 
-  // Cargar histórico de empleados retirados (Old School)
+  // Cargar histórico de empleados retirados (Old School).
+  // Bandera alive evita que una respuesta tardía pise un setHistorial reciente
+  // si el efecto re-corre (p. ej. cuando se despide otro empleado).
   useEffect(() => {
+    let alive = true;
     supabase.from('empleados_historial')
       .select('*, liquidaciones:liquidaciones(*)')
       .order('fecha_retiro', { ascending: false })
-      .then(({ data }) => setHistorial(data || []));
+      .then(({ data }) => { if (alive) setHistorial(data || []); });
+    return () => { alive = false; };
   }, [empleados.length]);
 
   // Filtrar
   const filtered = empleados.filter(e => {
     const matchArea = area === 'todos' || areaFromRol(e.rol) === area;
+    const q = search.toLowerCase();
     const matchSearch = !search ||
-      e.nombre_completo.toLowerCase().includes(search.toLowerCase()) ||
-      e.cargo_display.toLowerCase().includes(search.toLowerCase());
+      String(e.nombre_completo||'').toLowerCase().includes(q) ||
+      String(e.cargo_display||'').toLowerCase().includes(q);
     return matchArea && matchSearch;
   });
 
