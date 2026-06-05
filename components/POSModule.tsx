@@ -1277,6 +1277,45 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const [tipsVenta, setTipsVenta] = useState<any[]>([]);
   const [tips86, setTips86] = useState<any[]>([]);
   // Derivar 86 desde la carta (productos con _en86=true desde Mi Menú).
+  // ── Color por plato según el peor tiempo en Flow ─────────────────────
+  // Si "Cheesecake Wagashi" tiene 2 pedidos en cocina y uno está en rojo,
+  // la carta del catálogo se pinta en rojo para avisar al mesero "ojo,
+  // este plato está demorado en cocina — no pidas más sin avisar".
+  // Mapa: nombre_plato (sin sufijos de modificadores) → 'verde'|'amarillo'|'rojo'
+  // + conteo de pedidos activos para mostrar chip.
+  const [platosActivosColor, setPlatosActivosColor] = useState<Record<string, { sem:'verde'|'amarillo'|'rojo'; n:number }>>({});
+  useEffect(() => {
+    let alive = true;
+    const fetchActivos = async () => {
+      const { data } = await supabase.from('flow_order_items')
+        .select('nombre_plato,created_at,estacion')
+        .eq('restaurante_id', restauranteId)
+        .in('status', ['pending','preparing','almost']);
+      if (!alive || !data) return;
+      const priority: Record<string, number> = { rojo: 3, amarillo: 2, verde: 1 };
+      const map: Record<string, { sem:'verde'|'amarillo'|'rojo'; n:number }> = {};
+      data.forEach((item:any) => {
+        if (!item.nombre_plato) return;
+        // Normalizar: "Bao de Pato (Bien cocido)" → "Bao de Pato"
+        const base = String(item.nombre_plato).split('(')[0].trim();
+        const sem = getSemaforo(item.created_at, item.estacion);
+        const cur = map[base];
+        if (!cur) { map[base] = { sem, n: 1 }; }
+        else {
+          map[base].n += 1;
+          if (priority[sem] > priority[cur.sem]) map[base].sem = sem;
+        }
+      });
+      setPlatosActivosColor(map);
+    };
+    fetchActivos();
+    const t = setInterval(fetchActivos, 30000); // re-evaluar cada 30s para que cambie color al pasar el tiempo
+    const ch = supabase.channel('platos-activos-color')
+      .on('postgres_changes', { event:'*', schema:'public', table:'order_items' }, fetchActivos)
+      .subscribe();
+    return () => { alive = false; clearInterval(t); supabase.removeChannel(ch); };
+  }, [restauranteId]);
+
   // Esto conecta la lista de 86 con el toggle "disponible" del menú.
   useEffect(() => {
     const en86: any[] = [];
@@ -5923,14 +5962,26 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               const en86 = (p as any)._en86 === true || flowStock <= 0;
               const stock = en86 ? 0 : flowStock;
               const badgeColors: Record<string, string> = { green: 'bg-[#3dba6f]/15 text-[#3dba6f]', gold: 'bg-[#d4943a]/15 text-[#d4943a]', orange: 'bg-[#e07830]/15 text-[#e07830]' };
+              // Color desde Flow: si este plato tiene pedidos activos en cocina,
+              // toma el color del peor tiempo (verde/naranja/rojo). Se aplica como
+              // override del border y se muestra chip con # pedidos activos.
+              const flowState = platosActivosColor[p.nombre];
+              const flowSem   = flowState?.sem;
+              const flowN     = flowState?.n || 0;
+              const flowColor = flowSem ? SEMAFORO_COLORS[flowSem] : null;
               return (
                 <div key={i}
                   onClick={() => { if (en86) { showToast(`🚫 ${p.nombre} está en 86 — no se puede pedir`); return; } setSelectedPlato(isSelected ? null : p); }}
-                  className={`bg-[#1c1c1c] border rounded-xl overflow-hidden transition-all flex flex-col relative
+                  style={flowColor && !en86 && !isSelected ? {
+                    borderColor: flowColor.fg,
+                    boxShadow: `0 0 14px ${flowColor.glow}`,
+                  } : undefined}
+                  className={`bg-[#1c1c1c] border-2 rounded-xl overflow-hidden transition-all flex flex-col relative
                     ${en86 ? 'cursor-not-allowed opacity-50 border-[#e05050]/60 grayscale' :
                       'cursor-pointer ' + (isSelected ? 'border-[#d4943a] ring-2 ring-[#d4943a]/30 -translate-y-0.5 shadow-lg shadow-[#d4943a]/10' :
                         isAdded ? 'border-[#3dba6f]' :
                         isMarchando ? 'border-[#4a8fd4]' :
+                        flowColor ? '' :
                         'border-[#2a2a2a] hover:border-[#d4943a]/50')}`}>
 
                   {/* Reto NX badge (x2 / x3 / x4) */}
@@ -5946,6 +5997,15 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                       </div>
                     );
                   })()}
+
+                  {/* Chip Flow · # pedidos activos + color del peor tiempo en cocina */}
+                  {flowColor && stock > 0 && (
+                    <div className="absolute top-1.5 right-1.5 z-10 px-2 py-1 rounded-full text-[10px] font-black flex items-center gap-1"
+                      style={{ background: `${flowColor.fg}22`, color: flowColor.fg, border: `1px solid ${flowColor.fg}80`, letterSpacing:'.06em' }}
+                      title={`${flowN} en cocina · ${flowSem === 'rojo' ? 'demorado' : flowSem === 'amarillo' ? 'al límite' : 'a tiempo'}`}>
+                      🔥 {flowN}
+                    </div>
+                  )}
 
                   {/* Estado: solo mostramos 86 (no disponible) — los tiempos
                       de producción los muestra Flow por estación, no hace falta
