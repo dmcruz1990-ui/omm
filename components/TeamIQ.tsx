@@ -638,82 +638,226 @@ export default function TeamIQ() {
         {/* ── TAB: EQUIPO ── */}
         {activeTab === 'equipo' && (
           <>
-            {/* Filtro área */}
-            <div style={{ display:'flex', gap:6, marginBottom:12, overflowX:'auto', scrollbarWidth:'none' }}>
-              {([
-                { id:'todos', label:'Todos' },
-                { id:'servicio', label:'🍽️ Servicio' },
-                { id:'bar', label:'🍸 Bar' },
-                { id:'cocina', label:'👨‍🍳 Cocina' },
-                { id:'admin', label:'📋 Admin' },
-              ] as const).map(a => (
-                <button key={a.id} onClick={() => setArea(a.id)} style={{
-                  padding:'6px 14px', borderRadius:20, cursor:'pointer',
-                  fontSize:12, fontWeight:600, whiteSpace:'nowrap', flexShrink:0,
-                  border: area === a.id ? '1px solid #d4943a' : '1px solid #1e1e1e',
-                  background: area === a.id ? 'rgba(212,148,58,.1)' : 'transparent',
-                  color: area === a.id ? '#d4943a' : '#606060',
-                }}>{a.label}</button>
-              ))}
+            {/* Toolbar · filtros + búsqueda + export Excel */}
+            <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap', alignItems:'center' }}>
+              <div style={{ display:'flex', gap:6, overflowX:'auto', scrollbarWidth:'none' }}>
+                {([
+                  { id:'todos', label:'Todos' },
+                  { id:'servicio', label:'🍽️ Servicio' },
+                  { id:'bar', label:'🍸 Bar' },
+                  { id:'cocina', label:'👨‍🍳 Cocina' },
+                  { id:'admin', label:'📋 Admin' },
+                ] as const).map(a => (
+                  <button key={a.id} onClick={() => setArea(a.id)} style={{
+                    padding:'6px 14px', borderRadius:20, cursor:'pointer',
+                    fontSize:12, fontWeight:600, whiteSpace:'nowrap', flexShrink:0,
+                    border: area === a.id ? '1px solid #d4943a' : '1px solid #1e1e1e',
+                    background: area === a.id ? 'rgba(212,148,58,.1)' : 'transparent',
+                    color: area === a.id ? '#d4943a' : '#606060',
+                  }}>{a.label}</button>
+                ))}
+              </div>
+              <div style={{ position:'relative', flex:'1 1 200px', maxWidth:280 }}>
+                <Search size={14} color="#404040" style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', pointerEvents:'none' }}/>
+                <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar nombre, cargo, CC, email…"
+                  style={{ width:'100%', background:'#0d0d0d', border:'1px solid #1e1e1e', borderRadius:10, padding:'9px 12px 9px 34px', color:'#f0f0f0', fontSize:12, outline:'none', boxSizing:'border-box' }}/>
+              </div>
+              <button onClick={() => {
+                  // Export Excel-compatible CSV con TODA la info
+                  const cols = ['Nombre','Cargo','Rol','CC','Email','Teléfono','Contrato','Banco','Cuenta','Salario base','Fecha ingreso','Días empresa','ARL','EPS','AFP','Dirección','Contacto emergencia','Vacaciones disponibles','Score','Memorandos'];
+                  const rows = filtered.map((e:any) => [
+                    e.nombre_completo||'', e.cargo_display||'', e.rol||'',
+                    e.cedula||'', e.email||'', e.telefono||'',
+                    e.tipo_contrato||'', e.banco||'', e.cuenta_bancaria||'',
+                    e.salario_base||0,
+                    e.fecha_ingreso||'', e.dias_empresa||0,
+                    e.arl||'', e.eps||'', e.afp||'',
+                    (e.direccion||'').replace(/[,;]/g,' '),
+                    (e.contacto_emergencia||'').replace(/[,;]/g,' '),
+                    e.vacaciones_disponibles||0,
+                    e.score||0, e.memorandos||0,
+                  ]);
+                  const csv = '﻿' + [cols.join(';'), ...rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(';'))].join('\n');
+                  const blob = new Blob([csv], { type:'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url; a.download = `empleados_OMM_${new Date().toISOString().split('T')[0]}.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                }}
+                style={{ marginLeft:'auto', padding:'8px 14px', borderRadius:10, border:'1px solid #22D07A55', background:'rgba(34,208,122,0.10)', color:'#22D07A', fontSize:12, fontWeight:700, cursor:'pointer', whiteSpace:'nowrap', display:'flex', alignItems:'center', gap:6 }}>
+                📊 Exportar Excel
+              </button>
+              <div style={{ fontSize:11, color:'#606060', fontWeight:700, whiteSpace:'nowrap' }}>
+                {filtered.length} empleado{filtered.length===1?'':'s'}
+              </div>
             </div>
 
             {loading ? (
               <div style={{ textAlign:'center', padding:40, color:'#404040' }}>Cargando equipo...</div>
             ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                {filtered.map(emp => {
-                  const badge = scoreBadge(emp.score);
-                  return (
-                    <div key={emp.id}
-                      onClick={() => setEmpSel(emp)}
-                      style={{
-                        background:'#0d0d0d', border:`1px solid ${emp.alertas.length > 0 ? 'rgba(255,92,53,.2)' : '#141414'}`,
-                        borderRadius:14, padding:'14px 16px', cursor:'pointer',
-                        transition:'border-color .15s',
-                        display:'flex', alignItems:'center', gap:12,
-                      }}>
-                      {/* Avatar */}
-                      <div style={{
-                        width:44, height:44, borderRadius:12, flexShrink:0,
-                        background:`linear-gradient(135deg,${scoreColor(emp.score)}25,${scoreColor(emp.score)}10)`,
-                        border:`1px solid ${scoreColor(emp.score)}30`,
-                        display:'flex', alignItems:'center', justifyContent:'center',
-                        fontFamily:'Syne,sans-serif', fontWeight:800, fontSize:15, color:'#f0f0f0',
-                      }}>{emp.avatar_iniciales}</div>
-
-                      {/* Info */}
-                      <div style={{ flex:1, minWidth:0 }}>
-                        <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:4 }}>
-                          <span style={{ fontWeight:700, fontSize:14, color:'#f0f0f0',
-                            overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-                            {emp.nombre_completo}
-                          </span>
-                          {emp.alertas.length > 0 && <AlertTriangle size={12} color="#FF5C5C" />}
-                        </div>
-                        <div style={{ fontSize:11, color:'#505050', marginBottom:6 }}>
-                          {emp.cargo_display}
-                          {emp.turno_hoy && <span style={{ color:'#22D07A' }}> · {emp.turno_hoy}</span>}
-                        </div>
-                        <ScoreBar score={emp.score} />
-                      </div>
-
-                      {/* Badge + delta */}
-                      <div style={{ flexShrink:0, display:'flex', flexDirection:'column',
-                        alignItems:'flex-end', gap:5 }}>
-                        <span style={{ padding:'3px 9px', borderRadius:20, fontSize:10,
-                          fontWeight:700, background:badge.bg, color:badge.color }}>
-                          {badge.label}
-                        </span>
-                        <DeltaChip delta={emp.score_delta} />
-                      </div>
-                    </div>
-                  );
-                })}
-                {filtered.length === 0 && (
-                  <div style={{ textAlign:'center', padding:32, color:'#404040', fontSize:13 }}>
-                    No hay resultados
-                  </div>
-                )}
+              // ── TABLA PRO ESTILO EXCEL — todos los campos de empleados ──
+              <div style={{ background:'#0d0d0d', border:'1px solid #1e1e1e', borderRadius:12, overflow:'hidden' }}>
+                <div style={{ overflowX:'auto', overflowY:'auto', maxHeight:'70vh', scrollbarColor:'#2a2a2a #0a0a0a' }}>
+                  <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12, minWidth:1400 }}>
+                    <thead>
+                      <tr style={{ background:'#141414', position:'sticky', top:0, zIndex:5 }}>
+                        {[
+                          { l:'Empleado',     w:200, sticky:true },
+                          { l:'Cargo',        w:140 },
+                          { l:'CC',           w:110 },
+                          { l:'Email',        w:200 },
+                          { l:'📱 Teléfono',  w:130 },
+                          { l:'Contrato',     w:120 },
+                          { l:'🏦 Cuenta',    w:160 },
+                          { l:'💰 Salario',   w:110 },
+                          { l:'Ingresó',      w:110 },
+                          { l:'Antigüedad',   w:100 },
+                          { l:'ARL · EPS · AFP', w:180 },
+                          { l:'📍 Dirección', w:200 },
+                          { l:'🆘 Emergencia', w:170 },
+                          { l:'🏖 Vac.',      w:80  },
+                          { l:'Score',        w:80  },
+                          { l:'⚠',            w:60  },
+                        ].map(h => (
+                          <th key={h.l} style={{
+                            padding:'10px 12px', textAlign:'left', fontSize:10, color:'#606060',
+                            fontWeight:800, textTransform:'uppercase', letterSpacing:'.08em',
+                            borderBottom:'1px solid #2a2a2a', whiteSpace:'nowrap',
+                            minWidth:h.w,
+                            position: h.sticky ? 'sticky' as const : undefined,
+                            left: h.sticky ? 0 : undefined,
+                            background: h.sticky ? '#141414' : undefined,
+                            zIndex: h.sticky ? 6 : undefined,
+                          }}>{h.l}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((emp, i) => {
+                        const c = scoreColor(emp.score);
+                        const cuentaMasked = emp.cuenta_bancaria ? `••${String(emp.cuenta_bancaria).slice(-4)}` : '—';
+                        const antiguedad = emp.dias_empresa
+                          ? (emp.dias_empresa >= 365 ? `${Math.floor(emp.dias_empresa/365)}a ${Math.floor((emp.dias_empresa%365)/30)}m` : `${Math.floor(emp.dias_empresa/30)}m ${emp.dias_empresa%30}d`)
+                          : '—';
+                        const bg = i % 2 === 0 ? '#0d0d0d' : '#0f0f10';
+                        return (
+                          <tr key={emp.id}
+                            onClick={() => setEmpSel(emp)}
+                            style={{ background:bg, borderBottom:'1px solid rgba(255,255,255,0.02)', cursor:'pointer' }}
+                            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(212,148,58,0.05)')}
+                            onMouseLeave={e => (e.currentTarget.style.background = bg)}>
+                            {/* Empleado · sticky */}
+                            <td style={{ padding:'10px 12px', position:'sticky', left:0, background:bg, borderRight:'1px solid #1a1a1a' }}>
+                              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                                <div style={{
+                                  width:32, height:32, borderRadius:9, flexShrink:0,
+                                  background:`linear-gradient(135deg,${c}25,${c}10)`,
+                                  border:`1px solid ${c}30`,
+                                  display:'flex', alignItems:'center', justifyContent:'center',
+                                  fontFamily:'Syne,sans-serif', fontWeight:800, fontSize:11, color:'#f0f0f0',
+                                }}>{emp.avatar_iniciales || (emp.nombre_completo||'').split(' ').map((x:string)=>x[0]).slice(0,2).join('').toUpperCase()}</div>
+                                <div style={{ minWidth:0 }}>
+                                  <div style={{ fontWeight:700, color:'#f0f0f0', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{emp.nombre_completo}</div>
+                                  <div style={{ fontSize:10, color:emp.activo?'#22D07A':'#FF5C53' }}>{emp.activo ? '● activo' : '○ inactivo'}</div>
+                                </div>
+                              </div>
+                            </td>
+                            {/* Cargo */}
+                            <td style={{ padding:'10px 12px', color:'#a0a0a0' }}>
+                              <div>{emp.cargo_display || '—'}</div>
+                              <div style={{ fontSize:9, color:'#505050', textTransform:'capitalize' }}>{emp.rol || ''}</div>
+                            </td>
+                            {/* CC */}
+                            <td style={{ padding:'10px 12px', color:emp.cedula?'#f0f0f0':'#505050', fontFamily:'monospace', fontSize:11 }}>
+                              {emp.cedula || '—'}
+                            </td>
+                            {/* Email */}
+                            <td style={{ padding:'10px 12px', color:emp.email?'#4a8fd4':'#505050', fontSize:11 }}>
+                              {emp.email ? (
+                                <a href={`mailto:${emp.email}`} onClick={ev=>ev.stopPropagation()} style={{ color:'inherit', textDecoration:'none' }}>
+                                  ✉ {emp.email}
+                                </a>
+                              ) : '—'}
+                            </td>
+                            {/* Teléfono */}
+                            <td style={{ padding:'10px 12px', color:emp.telefono?'#22D07A':'#505050' }}>
+                              {emp.telefono ? (
+                                <a href={`https://wa.me/${String(emp.telefono).replace(/\D/g,'')}`} target="_blank" rel="noopener noreferrer" onClick={ev=>ev.stopPropagation()} style={{ color:'inherit', textDecoration:'none' }}>
+                                  💬 {emp.telefono}
+                                </a>
+                              ) : '—'}
+                            </td>
+                            {/* Contrato */}
+                            <td style={{ padding:'10px 12px' }}>
+                              {emp.tipo_contrato ? (
+                                <span style={{ fontSize:10, padding:'3px 9px', borderRadius:50, fontWeight:700,
+                                  background:'rgba(155,114,255,0.12)', color:'#b388ff', border:'1px solid rgba(155,114,255,0.3)', textTransform:'capitalize' }}>
+                                  {emp.tipo_contrato.replace(/_/g,' ')}
+                                </span>
+                              ) : <span style={{ color:'#505050' }}>—</span>}
+                            </td>
+                            {/* Cuenta · enmascarada por seguridad */}
+                            <td style={{ padding:'10px 12px', fontSize:11 }}>
+                              <div style={{ color:emp.banco?'#f0f0f0':'#505050', fontWeight:700 }}>{emp.banco || '—'}</div>
+                              <div style={{ color:'#606060', fontFamily:'monospace' }}>{cuentaMasked}</div>
+                            </td>
+                            {/* Salario */}
+                            <td style={{ padding:'10px 12px', textAlign:'right' as const, color:'#d4943a', fontWeight:700, fontFamily:'Syne,sans-serif' }}>
+                              {emp.salario_base ? `$${Number(emp.salario_base).toLocaleString('es-CO')}` : '—'}
+                            </td>
+                            {/* Fecha ingreso */}
+                            <td style={{ padding:'10px 12px', color:'#a0a0a0', fontSize:11 }}>
+                              {emp.fecha_ingreso ? new Date(emp.fecha_ingreso+'T12:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'}) : '—'}
+                            </td>
+                            {/* Antigüedad */}
+                            <td style={{ padding:'10px 12px', color:'#22D07A', fontWeight:700, fontSize:11 }}>{antiguedad}</td>
+                            {/* ARL · EPS · AFP */}
+                            <td style={{ padding:'10px 12px', fontSize:10, color:'#a0a0a0' }}>
+                              <div>🛡 {emp.arl || '—'}</div>
+                              <div>+ {emp.eps || '—'}</div>
+                              <div>💼 {emp.afp || '—'}</div>
+                            </td>
+                            {/* Dirección */}
+                            <td style={{ padding:'10px 12px', color:'#a0a0a0', fontSize:11, maxWidth:200, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
+                              title={emp.direccion||''}>
+                              {emp.direccion || '—'}
+                            </td>
+                            {/* Contacto emergencia */}
+                            <td style={{ padding:'10px 12px', color:'#FF5C53', fontSize:11, maxWidth:170, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}
+                              title={emp.contacto_emergencia||''}>
+                              {emp.contacto_emergencia || '—'}
+                            </td>
+                            {/* Vacaciones */}
+                            <td style={{ padding:'10px 12px', textAlign:'center' as const }}>
+                              <div style={{ fontFamily:'Syne,sans-serif', fontSize:14, fontWeight:900, color:'#22d3ee' }}>{emp.vacaciones_disponibles ?? 0}</div>
+                              <div style={{ fontSize:9, color:'#505050' }}>días</div>
+                            </td>
+                            {/* Score */}
+                            <td style={{ padding:'10px 12px', textAlign:'center' as const }}>
+                              <div style={{ fontFamily:'Syne,sans-serif', fontSize:16, fontWeight:900, color:c }}>{emp.score}</div>
+                            </td>
+                            {/* Alertas */}
+                            <td style={{ padding:'10px 12px', textAlign:'center' as const }}>
+                              {emp.alertas?.length > 0 ? (
+                                <span title={emp.alertas.join(' · ')}>
+                                  <AlertTriangle size={14} color="#FF5C5C" />
+                                </span>
+                              ) : <span style={{ color:'#22D07A' }}>✓</span>}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                      {filtered.length === 0 && (
+                        <tr>
+                          <td colSpan={16} style={{ textAlign:'center', padding:32, color:'#404040', fontSize:13 }}>
+                            No hay resultados
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             )}
           </>
