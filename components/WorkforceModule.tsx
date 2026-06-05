@@ -681,11 +681,32 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
                 </tr>
               </thead>
               <tbody>
-                {empleados.map(e=>(
+                {empleados.map(e=>{
+                  const h = (horasPorEmp as any)[e.id] || { efectivas:0, base:0, extras:0, faltan:0, nTurnos:0 };
+                  const vh = valorHora(e);
+                  const pagoSemana = Math.round(h.efectivas * vh);
+                  const colorH = h.extras > 0 ? C.gold : h.efectivas >= HORAS_SEMANA_LEGAL ? C.green : h.efectivas > 0 ? C.t2 : C.t3;
+                return (
                   <tr key={e.id} style={{borderTop:`1px solid ${C.border}`}}>
-                    <td className="p-2 sticky left-0 z-10" style={{background:C.card}}>
+                    <td className="p-2 sticky left-0 z-10" style={{background:C.card,minWidth:170}}>
                       <div className="text-[12px] font-bold" style={{color:C.t1}}>{e.nombre_completo}</div>
                       <div className="text-[10px]" style={{color:C.t3}}>{e.cargo_display||e.rol}</div>
+                      {/* Horas acumuladas semana + valor pagado */}
+                      <div style={{display:'flex',gap:5,marginTop:5,flexWrap:'wrap'}}>
+                        <span style={{fontSize:9,fontFamily:"'Syne',serif",fontWeight:900,padding:'2px 7px',borderRadius:50,background:`${colorH}15`,color:colorH,border:`1px solid ${colorH}50`}}>
+                          {h.efectivas.toFixed(1)}h
+                        </span>
+                        {pagoSemana > 0 && (
+                          <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:50,background:'rgba(0,230,118,0.10)',color:'#00E676',border:'1px solid rgba(0,230,118,0.30)'}}>
+                            ${pagoSemana.toLocaleString('es-CO')}
+                          </span>
+                        )}
+                        {h.extras > 0 && (
+                          <span style={{fontSize:9,fontWeight:700,padding:'2px 7px',borderRadius:50,background:`${C.gold}15`,color:C.gold}}>
+                            +{h.extras.toFixed(1)}h ext
+                          </span>
+                        )}
+                      </div>
                     </td>
                     {weekDays.map((d,i)=>{
                       const fecha=ymd(d);
@@ -709,7 +730,7 @@ export default function WorkforceModule({ userName = 'Gerencia' }: { userName?: 
                       );
                     })}
                   </tr>
-                ))}
+                );})}
               </tbody>
             </table>
           </div>
