@@ -265,6 +265,14 @@ export default function ReserveModule() {
   };
   const [sugerenciasHora, setSugerenciasHora] = useState<{hora:string,libres:number}[]>([]);
   const [sobreventa, setSobreventa] = useState(0);
+  // Config del Cerebro — duración estancia, sugerir franja, auto-bloqueo
+  const [cerebroCfg, setCerebroCfg] = useState<{
+    duracion_estancia_min:number;
+    auto_bloqueo_lleno:boolean;
+    sugerir_franja_pax:number;
+    sugerir_franja_offset_min:number;
+  }>({ duracion_estancia_min:120, auto_bloqueo_lleno:true, sugerir_franja_pax:30, sugerir_franja_offset_min:15 });
+  const [cerebroOpen, setCerebroOpen] = useState(false);
   // PDF NEXUM § Roadmap 1 — Modos dinámicos (Base / Smart Peak / Evento Especial)
   const [modoDinamico, setModoDinamico] = useState<'base'|'smart_peak'|'evento'>(() => {
     try { return (localStorage.getItem('omm_modo_dinamico') as any) || 'base'; } catch { return 'base'; }
@@ -294,8 +302,16 @@ export default function ReserveModule() {
     setLoading(true);
     const { data: planta } = await supabase.from('planta_mesas').select('*').eq('restaurante_id',restauranteIdActivo).eq('activa',true).order('num');
     if (planta && planta.length > 0) setPlantaDB(planta);
-    supabase.from('reservas_config').select('sobreventa_pct').eq('restaurante_id',restauranteIdActivo).maybeSingle()
-      .then(({data})=>{ if(data) setSobreventa(Math.min(10, data.sobreventa_pct||0)); });
+    supabase.from('reservas_config').select('sobreventa_pct,duracion_estancia_min,auto_bloqueo_lleno,sugerir_franja_pax,sugerir_franja_offset_min').eq('restaurante_id',restauranteIdActivo).maybeSingle()
+      .then(({data})=>{ if(data) {
+        setSobreventa(Math.min(10, data.sobreventa_pct||0));
+        setCerebroCfg({
+          duracion_estancia_min: data.duracion_estancia_min || 120,
+          auto_bloqueo_lleno:    data.auto_bloqueo_lleno ?? true,
+          sugerir_franja_pax:    data.sugerir_franja_pax || 30,
+          sugerir_franja_offset_min: data.sugerir_franja_offset_min || 15,
+        });
+      }});
     const [rv, ms, ohyeah] = await Promise.all([
       supabase.from('reservations').select('*').eq('restaurante_id',restauranteIdActivo).eq('fecha',fechaFiltro).order('hora'),
       supabase.from('tables').select('*').eq('restaurante_id',restauranteIdActivo).order('name'),
@@ -629,6 +645,98 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
           show={show}
           S={S}
         />
+      )}
+
+      {/* ── MODAL CEREBRO de RESERVA · duración + auto-bloqueo + sugerir franja ── */}
+      {cerebroOpen && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>setCerebroOpen(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:S.bg2,border:`2px solid ${S.purple}`,borderRadius:20,width:'100%',maxWidth:440,padding:24,maxHeight:'92vh',overflowY:'auto'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:18}}>
+              <span style={{fontSize:26}}>🧠</span>
+              <div>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:900}}>Cerebro de Reserva</div>
+                <div style={{fontSize:11,color:S.t3}}>Reglas operativas que aplica el sistema en automático.</div>
+              </div>
+            </div>
+
+            <div style={{display:'flex',flexDirection:'column',gap:14}}>
+              {/* Duración estancia */}
+              <div style={{background:S.bg3,borderRadius:12,padding:14,border:`1px solid ${S.border}`}}>
+                <div style={{fontSize:11,color:S.gold,fontWeight:800,marginBottom:4,textTransform:'uppercase',letterSpacing:'.1em'}}>⏱ Duración promedio mesa</div>
+                <div style={{fontSize:10,color:S.t3,marginBottom:8,lineHeight:1.4}}>Minutos que el sistema reserva una mesa al sentarla. Tras este tiempo la libera para próximos turnos.</div>
+                <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                  <input type="number" min={45} max={240} value={cerebroCfg.duracion_estancia_min}
+                    onChange={e=>setCerebroCfg(c=>({...c,duracion_estancia_min: parseInt(e.target.value)||120}))}
+                    style={{width:90,background:S.bg,border:`1px solid ${S.gold}55`,borderRadius:8,padding:'8px 12px',color:S.gold,fontSize:14,fontWeight:800,outline:'none',textAlign:'center'}}/>
+                  <span style={{fontSize:12,color:S.t2}}>minutos · default 120</span>
+                </div>
+              </div>
+
+              {/* Auto-bloqueo */}
+              <div style={{background:S.bg3,borderRadius:12,padding:14,border:`1px solid ${S.border}`}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:11,color:S.red,fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em'}}>🚫 Auto-bloqueo cuando lleno</div>
+                    <div style={{fontSize:10,color:S.t3,marginTop:3,lineHeight:1.4}}>Si todas las mesas están reservadas/sentadas, la franja completa se bloquea por {cerebroCfg.duracion_estancia_min} min y no acepta más reservas.</div>
+                  </div>
+                  <button onClick={()=>setCerebroCfg(c=>({...c,auto_bloqueo_lleno:!c.auto_bloqueo_lleno}))}
+                    style={{width:48,height:26,borderRadius:50,border:'none',background:cerebroCfg.auto_bloqueo_lleno?S.green:S.bg4,position:'relative',cursor:'pointer',flexShrink:0,transition:'all .15s'}}>
+                    <div style={{width:20,height:20,borderRadius:'50%',background:'#fff',position:'absolute',top:3,left:cerebroCfg.auto_bloqueo_lleno?25:3,transition:'all .15s'}}/>
+                  </button>
+                </div>
+              </div>
+
+              {/* Sugerir franja */}
+              <div style={{background:S.bg3,borderRadius:12,padding:14,border:`1px solid ${S.border}`}}>
+                <div style={{fontSize:11,color:S.cyan,fontWeight:800,marginBottom:4,textTransform:'uppercase',letterSpacing:'.1em'}}>⏰ Sugerir franja al saturar</div>
+                <div style={{fontSize:10,color:S.t3,marginBottom:8,lineHeight:1.4}}>Cuando llegan más de N pax al mismo horario, sugerir ±M min para no saturar cocina.</div>
+                <div style={{display:'flex',gap:10,alignItems:'center',flexWrap:'wrap'}}>
+                  <div>
+                    <div style={{fontSize:9,color:S.t3,marginBottom:3}}>Umbral pax</div>
+                    <input type="number" min={10} max={80} value={cerebroCfg.sugerir_franja_pax}
+                      onChange={e=>setCerebroCfg(c=>({...c,sugerir_franja_pax: parseInt(e.target.value)||30}))}
+                      style={{width:70,background:S.bg,border:`1px solid ${S.cyan}55`,borderRadius:8,padding:'6px 10px',color:S.cyan,fontSize:13,fontWeight:800,outline:'none',textAlign:'center'}}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:S.t3,marginBottom:3}}>Offset ±min</div>
+                    <input type="number" min={5} max={60} value={cerebroCfg.sugerir_franja_offset_min}
+                      onChange={e=>setCerebroCfg(c=>({...c,sugerir_franja_offset_min: parseInt(e.target.value)||15}))}
+                      style={{width:70,background:S.bg,border:`1px solid ${S.cyan}55`,borderRadius:8,padding:'6px 10px',color:S.cyan,fontSize:13,fontWeight:800,outline:'none',textAlign:'center'}}/>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sobreventa (ya existía) */}
+              <div style={{background:S.bg3,borderRadius:12,padding:14,border:`1px solid ${S.border}`}}>
+                <div style={{fontSize:11,color:S.purple,fontWeight:800,marginBottom:4,textTransform:'uppercase',letterSpacing:'.1em'}}>📈 Sobreventa VIP</div>
+                <div style={{fontSize:10,color:S.t3,marginBottom:8,lineHeight:1.4}}>% de reservas extra sobre la capacidad (apuesta a no-shows). Máx 10%.</div>
+                <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                  <input type="number" min={0} max={10} value={sobreventa}
+                    onChange={e=>setSobreventa(Math.max(0,Math.min(10, parseInt(e.target.value)||0)))}
+                    style={{width:80,background:S.bg,border:`1px solid ${S.purple}55`,borderRadius:8,padding:'8px 12px',color:S.purple,fontSize:14,fontWeight:800,outline:'none',textAlign:'center'}}/>
+                  <span style={{fontSize:12,color:S.t2}}>%</span>
+                </div>
+              </div>
+            </div>
+
+            <button onClick={async()=>{
+                await supabase.from('reservas_config').upsert({
+                  restaurante_id: restauranteIdActivo,
+                  sobreventa_pct: sobreventa,
+                  duracion_estancia_min: cerebroCfg.duracion_estancia_min,
+                  auto_bloqueo_lleno: cerebroCfg.auto_bloqueo_lleno,
+                  sugerir_franja_pax: cerebroCfg.sugerir_franja_pax,
+                  sugerir_franja_offset_min: cerebroCfg.sugerir_franja_offset_min,
+                  updated_at: new Date().toISOString(),
+                });
+                show('✓ Cerebro actualizado');
+                setCerebroOpen(false);
+              }}
+              style={{width:'100%',marginTop:18,padding:'12px',borderRadius:12,border:'none',background:`linear-gradient(135deg,${S.purple},${S.blue})`,color:'#fff',fontSize:13,fontWeight:900,cursor:'pointer'}}>
+              💾 Guardar reglas del Cerebro
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── MODAL WALK-IN ── */}
@@ -976,22 +1084,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                             style={{marginTop:10,width:'100%',padding:'10px',borderRadius:10,border:'none',background:top.vip?`linear-gradient(135deg, ${S.gold}, ${S.gold}aa)`:`linear-gradient(135deg, ${S.green}, ${S.green}aa)`,color:'#000',fontSize:12,fontWeight:900,cursor:'pointer'}}>
                             ✓ Asignar a M{top.num} (sugerencia IA)
                           </button>
-
-                          {/* Top 3 distintas — alternativas válidas por pax */}
-                          {topDistintas.length > 1 && (
-                            <div style={{marginTop:12,paddingTop:10,borderTop:`1px solid ${S.border}`}}>
-                              <div style={{fontSize:9,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:6}}>Otras opciones distintas (IA)</div>
-                              <div style={{display:'grid',gridTemplateColumns:`repeat(${topDistintas.length-1},1fr)`,gap:6}}>
-                                {topDistintas.slice(1).map((t:any)=>(
-                                  <button key={t.num} onClick={()=>{ asignarMesa(r.id, t.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
-                                    style={{padding:'8px',borderRadius:8,border:`1px solid ${t.vip?S.gold:S.green}55`,background:`${t.vip?S.gold:S.green}10`,color:t.vip?S.gold:S.green,cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-                                    <span style={{fontFamily:"'Syne',serif",fontSize:16,fontWeight:900}}>M{t.num}</span>
-                                    <span style={{fontSize:9,color:S.t3}}>{t.cap}p · score {Math.round(t.ia_score)}</span>
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          )}
+                          {/* Mesa sugerida SOLO 1 — el host decide rápido sin distracción.
+                              Si quiere ver alternativas, abajo está el zona-por-zona completo. */}
                         </div>
                       ) : combinaciones.length > 0 ? (
                         <div style={{marginBottom:14,padding:'14px 16px',borderRadius:14,background:`${S.purple}10`,border:`2px solid ${S.purple}55`}}>
@@ -1180,6 +1274,11 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
           <button onClick={()=>setFranjaModalOpen(true)}
             style={{padding:'8px 14px',borderRadius:10,border:`1px solid ${S.red}55`,background:`${S.red}12`,color:S.red,fontSize:12,fontWeight:700,cursor:'pointer'}}>
             🚫 Franja
+          </button>
+          {/* CEREBRO de Reserve — duración estancia + auto-bloqueo + sugerir franja */}
+          <button onClick={()=>setCerebroOpen(true)} title="Configuración del Cerebro de Reserva"
+            style={{padding:'8px 14px',borderRadius:10,border:`1px solid ${S.purple}55`,background:`${S.purple}12`,color:S.purple,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+            🧠 Cerebro
           </button>
           <button onClick={()=>setWalkin({nombre:'',pax:2,mesa:0,telefono:'',email:'',vip:false})}
             style={{padding:'8px 16px',borderRadius:10,border:`1px solid ${S.green}`,background:`${S.green}18`,color:S.green,fontSize:12,fontWeight:700,cursor:'pointer'}}>
@@ -1804,6 +1903,37 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
               <div>
                 <div style={{fontSize:10,color:S.cyan,fontWeight:800,marginBottom:5,letterSpacing:'.1em'}}>⏰ HORA *</div>
                 <input type="time" style={{background:`linear-gradient(135deg, ${S.cyan}18, ${S.cyan}08)`,border:`2px solid ${S.cyan}80`,borderRadius:10,padding:'12px 14px',color:S.cyan,fontSize:14,fontWeight:800,outline:'none',width:'100%',colorScheme:'dark',boxShadow:`0 0 14px ${S.cyan}22`}} value={form.hora} onChange={e=>{ setF('hora',e.target.value); setSugerenciasHora([]); }}/>
+                {/* Sugerir franja ±N min cuando se satura el mismo horario (Cerebro) */}
+                {(() => {
+                  const horaForm2 = (form.hora||'').slice(0,5);
+                  if (!horaForm2) return null;
+                  const paxMismoHorario = reservasHoy
+                    .filter(r => !['cancelada','no_show'].includes(r.estado) && (r.hora||'').slice(0,5) === horaForm2 && r.id !== selected?.id)
+                    .reduce((s, r) => s + (r.pax || 0), 0) + (form.pax || 0);
+                  if (paxMismoHorario < cerebroCfg.sugerir_franja_pax) return null;
+                  const [hh,mm] = horaForm2.split(':').map(Number);
+                  const baseMin = hh*60+mm;
+                  const offsets = [-cerebroCfg.sugerir_franja_offset_min, cerebroCfg.sugerir_franja_offset_min];
+                  return (
+                    <div style={{marginTop:8,padding:'10px 12px',background:`${S.cyan}10`,border:`1px solid ${S.cyan}55`,borderRadius:10}}>
+                      <div style={{fontSize:10,color:S.cyan,fontWeight:800,textTransform:'uppercase',marginBottom:6}}>⏰ {paxMismoHorario} pax al mismo horario — sugerir corrimiento</div>
+                      <div style={{fontSize:10,color:S.t3,marginBottom:6}}>Cocina se satura si {paxMismoHorario} llegan a las {horaForm2}. Mover ±{cerebroCfg.sugerir_franja_offset_min} min:</div>
+                      <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+                        {offsets.map(off => {
+                          const m = baseMin + off;
+                          if (m < 0 || m >= 24*60) return null;
+                          const hOut = String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0');
+                          return (
+                            <button key={off} type="button" onClick={()=>setF('hora', hOut)}
+                              style={{padding:'5px 12px',borderRadius:8,border:`1px solid ${S.cyan}`,background:`${S.cyan}20`,color:S.cyan,fontSize:11,fontWeight:800,cursor:'pointer'}}>
+                              {off<0?'⬅':'➡'} {hOut}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
                 {sugerenciasHora.length > 0 && (
                   <div style={{marginTop:8,display:'flex',gap:5,flexWrap:'wrap',alignItems:'center'}}>
                     <span style={{fontSize:9,color:S.gold,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em'}}>🌟 Mejor disponibilidad:</span>

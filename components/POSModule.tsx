@@ -5918,13 +5918,13 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
               const badgeColors: Record<string, string> = { green: 'bg-[#3dba6f]/15 text-[#3dba6f]', gold: 'bg-[#d4943a]/15 text-[#d4943a]', orange: 'bg-[#e07830]/15 text-[#e07830]' };
               return (
                 <div key={i}
-                  onClick={() => setSelectedPlato(isSelected ? null : p)}
-                  className={`bg-[#1c1c1c] border rounded-xl overflow-hidden transition-all flex flex-col relative cursor-pointer
-                    ${stock <= 0 ? 'opacity-50 border-[#e05050]/40' :
-                      isSelected ? 'border-[#d4943a] ring-2 ring-[#d4943a]/30 -translate-y-0.5 shadow-lg shadow-[#d4943a]/10' :
-                      isAdded ? 'border-[#3dba6f]' :
-                      isMarchando ? 'border-[#4a8fd4]' :
-                      'border-[#2a2a2a] hover:border-[#d4943a]/50'}`}>
+                  onClick={() => { if (en86) { showToast(`🚫 ${p.nombre} está en 86 — no se puede pedir`); return; } setSelectedPlato(isSelected ? null : p); }}
+                  className={`bg-[#1c1c1c] border rounded-xl overflow-hidden transition-all flex flex-col relative
+                    ${en86 ? 'cursor-not-allowed opacity-50 border-[#e05050]/60 grayscale' :
+                      'cursor-pointer ' + (isSelected ? 'border-[#d4943a] ring-2 ring-[#d4943a]/30 -translate-y-0.5 shadow-lg shadow-[#d4943a]/10' :
+                        isAdded ? 'border-[#3dba6f]' :
+                        isMarchando ? 'border-[#4a8fd4]' :
+                        'border-[#2a2a2a] hover:border-[#d4943a]/50')}`}>
 
                   {/* Reto NX badge (x2 / x3 / x4) */}
                   {(() => {
