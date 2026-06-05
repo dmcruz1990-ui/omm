@@ -1095,9 +1095,24 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                             <div key={i} style={{padding:'10px 12px',background:S.bg3,border:`1px solid ${S.border}`,borderRadius:10,marginBottom:6,display:'flex',alignItems:'center',gap:10}}>
                               <span style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900,color:S.purple}}>M{c.m1.num} + M{c.m2.num}</span>
                               <span style={{fontSize:10,color:S.t3,flex:1}}>{c.cap}p · {c.m1.zona}</span>
-                              <button onClick={()=>{ asignarMesa(r.id, c.m1.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); show(`✓ Asignado a M${c.m1.num} · sugerir unir M${c.m2.num} físicamente`); }}
+                              <button onClick={async ()=>{
+                                  // Registrar la unión en mesas_combinadas (para que POS y plano
+                                  // sepan que M{m1} y M{m2} están físicamente juntas hoy)
+                                  await supabase.from('mesas_combinadas').insert({
+                                    restaurante_id: restauranteIdActivo,
+                                    fecha: r.fecha || hoy,
+                                    mesa_principal: c.m1.num,
+                                    mesa_secundaria: c.m2.num,
+                                    pax_total: pax,
+                                    unida_por: profile?.nombre_completo || profile?.full_name || 'Sistema',
+                                  });
+                                  await asignarMesa(r.id, c.m1.num, meseroAsignar);
+                                  setAsignandoMesa(null);
+                                  setMeseroAsignar('');
+                                  show(`✓ M${c.m1.num} + M${c.m2.num} unidas · ${pax}p sentados en M${c.m1.num}. M${c.m2.num} queda bloqueada para esta franja.`);
+                                }}
                                 style={{padding:'5px 10px',borderRadius:7,border:'none',background:S.purple,color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer'}}>
-                                Usar
+                                🔗 Unir
                               </button>
                             </div>
                           ))}
