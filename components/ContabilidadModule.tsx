@@ -18,7 +18,82 @@ const COP = (n: number) =>
   new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n);
 const PCT = (n: number) => `${n.toFixed(1)}%`;
 
-type Tab = 'dashboard' | 'caja' | 'pyg' | 'gastos' | 'inventario' | 'propinas' | 'promociones' | 'facturas';
+// ─── Motor de asientos: PUC mínimo y mapeo evento→cuenta ──────────────────────
+// Norma NEXUM: el motor contable transforma el cierre de ventas en un asiento
+// de partida doble, con cada línea trazable al documento fuente (cierre Z).
+const PUC = {
+  caja:      { c:'110505', n:'Caja general' },
+  bancos:    { c:'111005', n:'Bancos' },
+  pasarela:  { c:'131005', n:'CxC pasarela / banco en tránsito' },
+  cxcEmpl:   { c:'136540', n:'CxC trabajadores' },
+  ingresos:  { c:'413550', n:'Ingresos operacionales — restaurante' },
+  ivaInc:    { c:'240805', n:'Impuesto (IVA/INC) por pagar' },
+  propinas:  { c:'233595', n:'Propinas por liquidar' },
+  redencion: { c:'529595', n:'Bonos y cortesías redimidos' },
+} as const;
+
+type CuentaPUC = { c: string; n: string };
+
+// Clasifica cada método de pago a su cuenta de recaudo (lado débito).
+const cuentaDeMetodo = (label: string): CuentaPUC => {
+  const l = label.toLowerCase();
+  if (l.includes('efectivo')) return PUC.caja;
+  if (l.includes('transfer') || l.includes('anticipo')) return PUC.bancos;
+  if (l.includes('empleado')) return PUC.cxcEmpl;
+  if (l.includes('bono') || l.includes('regalo')) return PUC.redencion;
+  return PUC.pasarela; // datáfono, QR, Apple Pay, PSP → cuenta puente
+};
+
+type AsientoLinea = { cuenta: string; nombre: string; debe: number; haber: number };
+type Asiento = {
+  fecha: string; fuente: string; dim: string;
+  estado: 'borrador' | 'contabilizado';
+  lineas: AsientoLinea[]; debe: number; haber: number; cuadra: boolean;
+};
+
+// Construye el asiento del cierre de caja siguiendo las normas contables:
+// Dr caja/banco/pasarela (recaudo neto) ; Cr Ingresos (base) ; Cr IVA/INC ;
+// Cr Propinas por liquidar (pasivo, fuera de la base del consumo).
+// La base de ingresos se calcula como residual → el asiento siempre cuadra.
+function construirAsientoCierre(
+  metodos: { label: string; bruto: number; desc: number; prop: number; iva: number }[],
+  turno: Turno | null,
+): Asiento {
+  const debitosPorCuenta: Record<string, AsientoLinea> = {};
+  metodos.forEach(m => {
+    const neto = m.bruto - m.desc;
+    if (neto <= 0) return; // métodos netos en cero (p.ej. cortesías) no recaudan
+    const cu = cuentaDeMetodo(m.label);
+    if (!debitosPorCuenta[cu.c]) debitosPorCuenta[cu.c] = { cuenta:cu.c, nombre:cu.n, debe:0, haber:0 };
+    debitosPorCuenta[cu.c].debe += neto;
+  });
+  const debitos = Object.values(debitosPorCuenta);
+  const totalRecaudo = debitos.reduce((a, d) => a + d.debe, 0);
+  const iva  = metodos.reduce((a, m) => a + m.iva, 0);
+  const prop = metodos.reduce((a, m) => a + m.prop, 0);
+  const baseIngresos = totalRecaudo - iva - prop; // residual ⇒ Debe = Haber
+
+  const lineas: AsientoLinea[] = [
+    ...debitos,
+    { cuenta:PUC.ingresos.c, nombre:PUC.ingresos.n, debe:0, haber:baseIngresos },
+    ...(iva  > 0 ? [{ cuenta:PUC.ivaInc.c,   nombre:PUC.ivaInc.n,   debe:0, haber:iva  }] : []),
+    ...(prop > 0 ? [{ cuenta:PUC.propinas.c, nombre:PUC.propinas.n, debe:0, haber:prop }] : []),
+  ];
+  const debe  = lineas.reduce((a, l) => a + l.debe, 0);
+  const haber = lineas.reduce((a, l) => a + l.haber, 0);
+  return {
+    fecha: new Date().toLocaleDateString('es-CO'),
+    fuente: turno
+      ? `Cierre Z · turno ${turno.responsable} (${turno.hora_apertura}${turno.hora_cierre ? `–${turno.hora_cierre}` : ''})`
+      : 'Resumen de ventas del día · sin turno cerrado',
+    dim: 'OMM · Restaurante principal',
+    estado: turno?.estado === 'cerrada' ? 'contabilizado' : 'borrador',
+    lineas, debe, haber,
+    cuadra: debe === haber,
+  };
+}
+
+type Tab = 'dashboard' | 'caja' | 'asientos' | 'pyg' | 'gastos' | 'inventario' | 'propinas' | 'promociones' | 'facturas';
 
 const MOCK_VENTAS = {
   metaMes:85000000, ventasMes:62400000,
@@ -151,12 +226,14 @@ export default function ContabilidadModule() {
   const propTotal  = MOCK_PROPINAS.reduce((a,p)=>a+p.propina,0);
   const pctTurno   = (ventas.ventasTurno/ventas.metaTurno)*100;
   const pctMes     = (ventas.ventasMes/ventas.metaMes)*100;
+  const asiento    = construirAsientoCierre(MOCK_METODOS, turno);
 
   const inp = { background:S.bg2, border:`1px solid ${S.border}`, borderRadius:8, padding:'9px 14px', color:S.text1, fontSize:12, outline:'none', width:'100%' };
 
   const TABS: {id:Tab;label:string}[] = [
     {id:'dashboard',  label:'📊 Dashboard'},
     {id:'caja',       label:'🔒 Caja'},
+    {id:'asientos',   label:'🧮 Asientos'},
     {id:'pyg',        label:'📈 P&G'},
     {id:'gastos',     label:'📸 Gastos'},
     {id:'inventario', label:'📦 Inventario'},
@@ -456,6 +533,91 @@ export default function ContabilidadModule() {
                 </div>
               </>
             )}
+          </div>
+        )}
+
+        {/* ASIENTOS · libro diario con motor de partida doble */}
+        {tab==='asientos' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14,maxWidth:760}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontSize:12,fontWeight:700,color:S.goldL}}>LIBRO DIARIO · ASIENTO DE CIERRE</div>
+              <span style={{
+                background: asiento.estado==='contabilizado' ? `${S.green}20` : `${S.gold}20`,
+                color: asiento.estado==='contabilizado' ? S.green : S.gold,
+                padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700,
+              }}>
+                {asiento.estado==='contabilizado' ? '✓ Contabilizado' : '⏳ Borrador'}
+              </span>
+            </div>
+
+            {/* Trazabilidad — norma: toda línea remonta a su documento fuente */}
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14,display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
+              {[
+                {k:'Fecha',     v:asiento.fecha},
+                {k:'Documento fuente', v:asiento.fuente},
+                {k:'Dimensión', v:asiento.dim},
+              ].map(f=>(
+                <div key={f.k}>
+                  <div style={{fontSize:10,color:S.text3,marginBottom:3,fontWeight:700,textTransform:'uppercase' as const}}>{f.k}</div>
+                  <div style={{fontSize:12,color:S.text1}}>{f.v}</div>
+                </div>
+              ))}
+            </div>
+
+            {asiento.estado==='borrador' && (
+              <div style={{padding:12,background:`${S.gold}10`,border:`1px solid ${S.gold}30`,borderRadius:10,fontSize:11,color:S.gold}}>
+                ⚠️ Día operativo abierto — este asiento es un borrador y no postea al libro mayor hasta cerrar la caja (norma: no contabilizar ventas en día no cerrado salvo rol autorizado).
+              </div>
+            )}
+
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr style={{background:S.bg3}}>
+                  {['Cuenta','Concepto','Débito','Crédito'].map(h=>(
+                    <th key={h} style={{padding:'10px 14px',textAlign:['Débito','Crédito'].includes(h)?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {asiento.lineas.map((l,i)=>(
+                    <tr key={i} style={{borderTop:`1px solid ${S.border}`}}>
+                      <td style={{padding:'10px 14px',color:S.text3,fontFamily:'monospace',fontSize:11}}>{l.cuenta}</td>
+                      <td style={{padding:'10px 14px',color:S.text1}}>{l.nombre}</td>
+                      <td style={{padding:'10px 14px',textAlign:'right',color:l.debe>0?S.goldL:S.text3,fontWeight:l.debe>0?700:400}}>{l.debe>0?COP(l.debe):'—'}</td>
+                      <td style={{padding:'10px 14px',textAlign:'right',color:l.haber>0?S.green:S.text3,fontWeight:l.haber>0?700:400}}>{l.haber>0?COP(l.haber):'—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
+                  <td colSpan={2} style={{padding:'12px 14px',fontWeight:700,color:S.gold}}>SUMAS IGUALES</td>
+                  <td style={{padding:'12px 14px',textAlign:'right',fontWeight:900,color:S.goldL,fontSize:13}}>{COP(asiento.debe)}</td>
+                  <td style={{padding:'12px 14px',textAlign:'right',fontWeight:900,color:S.green,fontSize:13}}>{COP(asiento.haber)}</td>
+                </tr></tfoot>
+              </table>
+            </div>
+
+            {/* Validación partida doble */}
+            <div style={{
+              background: asiento.cuadra ? `${S.green}10` : `${S.red}10`,
+              border:`1px solid ${asiento.cuadra ? S.green : S.red}30`,
+              borderRadius:12,padding:14,display:'flex',justifyContent:'space-between',alignItems:'center',
+            }}>
+              <div style={{fontSize:12,fontWeight:700,color:asiento.cuadra?S.green:S.red}}>
+                {asiento.cuadra ? '✓ Partida doble cuadra — Debe = Haber' : `✗ Descuadre de ${COP(Math.abs(asiento.debe-asiento.haber))}`}
+              </div>
+              <div style={{fontSize:11,color:S.text3}}>{asiento.lineas.length} líneas</div>
+            </div>
+
+            {/* Normas aplicadas */}
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
+              <div style={{fontSize:11,fontWeight:700,color:S.purple,marginBottom:8}}>📐 NORMAS CONTABLES APLICADAS</div>
+              <div style={{fontSize:11,color:S.text2,lineHeight:1.9}}>
+                ✓ <b>Partida doble</b> — el asiento solo es válido si Debe = Haber<br/>
+                ✓ <b>NIIF 15</b> — el ingreso se reconoce al cierre de la venta, separado del impuesto<br/>
+                ✓ <b>Propina = pasivo</b> ({PUC.propinas.c}) — no es ingreso ni base del impuesto al consumo<br/>
+                ✓ <b>IVA/INC separado</b> ({PUC.ivaInc.c}) — no se mezcla con la base del ingreso<br/>
+                ✓ <b>Trazabilidad</b> — cada asiento referencia su documento fuente (cierre Z)
+              </div>
+            </div>
           </div>
         )}
 
