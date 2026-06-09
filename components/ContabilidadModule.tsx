@@ -93,6 +93,56 @@ function construirAsientoCierre(
   };
 }
 
+// ─── Motor CxP: causación de factura de proveedor con IVA y retenciones ───────
+// Norma NEXUM: Dr gasto/costo + IVA descontable ; Cr Proveedores (neto) ;
+// Cr Retención en la fuente por pagar. Reglas Colombia (simplificadas).
+const PUC_AP = {
+  costoAlim:   { c:'613505', n:'Costo de alimentos' },
+  costoBeb:    { c:'613510', n:'Costo de bebidas' },
+  servicios:   { c:'513505', n:'Servicios públicos' },
+  aseo:        { c:'513540', n:'Aseo y mantenimiento' },
+  arriendo:    { c:'512010', n:'Arrendamientos' },
+  gastoGen:    { c:'519595', n:'Gastos diversos' },
+  ivaDesc:     { c:'240810', n:'IVA descontable' },
+  proveedores: { c:'220505', n:'Proveedores nacionales' },
+  reteFuente:  { c:'236540', n:'Retención en la fuente por pagar' },
+} as const;
+
+// Devuelve la cuenta de costo/gasto, tarifa de retefuente e IVA por categoría.
+const reglaGasto = (categoria: string) => {
+  const c = (categoria || '').toLowerCase();
+  if (c.includes('aliment')) return { cuenta:PUC_AP.costoAlim, rete:0.025, ivaTasa:0    }; // bienes 2.5%, alimentos exentos IVA
+  if (c.includes('bebida'))  return { cuenta:PUC_AP.costoBeb,  rete:0.025, ivaTasa:0.19 };
+  if (c.includes('servicio'))return { cuenta:PUC_AP.servicios, rete:0.04,  ivaTasa:0.19 }; // servicios 4%
+  if (c.includes('aseo') || c.includes('mtto')) return { cuenta:PUC_AP.aseo, rete:0.04, ivaTasa:0.19 };
+  if (c.includes('arrend'))  return { cuenta:PUC_AP.arriendo,  rete:0.035, ivaTasa:0    }; // arriendo 3.5%
+  return { cuenta:PUC_AP.gastoGen, rete:0.025, ivaTasa:0.19 };
+};
+
+// 'base' es el valor antes de IVA. Calcula IVA descontable y retefuente y arma
+// el asiento de causación de la factura del proveedor.
+function construirAsientoGasto(g: { proveedor:string; concepto:string; base:number; categoria:string; fecha:string }): Asiento & { base:number; iva:number; rete:number; neto:number; reteTasa:number } {
+  const r = reglaGasto(g.categoria);
+  const base = g.base;
+  const iva  = Math.round(base * r.ivaTasa);
+  const rete = Math.round(base * r.rete);
+  const neto = base + iva - rete; // saldo por pagar al proveedor
+  const lineas: AsientoLinea[] = [
+    { cuenta:r.cuenta.c, nombre:r.cuenta.n, debe:base, haber:0 },
+    ...(iva  > 0 ? [{ cuenta:PUC_AP.ivaDesc.c,    nombre:PUC_AP.ivaDesc.n, debe:iva, haber:0 }] : []),
+    ...(rete > 0 ? [{ cuenta:PUC_AP.reteFuente.c, nombre:`${PUC_AP.reteFuente.n} (${(r.rete*100).toFixed(1)}%)`, debe:0, haber:rete }] : []),
+    { cuenta:PUC_AP.proveedores.c, nombre:PUC_AP.proveedores.n, debe:0, haber:neto },
+  ];
+  const debe  = lineas.reduce((a, l) => a + l.debe, 0);
+  const haber = lineas.reduce((a, l) => a + l.haber, 0);
+  return {
+    fecha:g.fecha, fuente:`Factura proveedor · ${g.proveedor} — ${g.concepto}`,
+    dim:'OMM · Restaurante principal', estado:'contabilizado',
+    lineas, debe, haber, cuadra: debe === haber,
+    base, iva, rete, neto, reteTasa:r.rete,
+  };
+}
+
 type Tab = 'dashboard' | 'caja' | 'asientos' | 'pyg' | 'gastos' | 'inventario' | 'propinas' | 'promociones' | 'facturas';
 
 const MOCK_VENTAS = {
@@ -185,6 +235,8 @@ export default function ContabilidadModule() {
   const [ocrProc, setOcrProc] = useState(false);
   const [ocrRes, setOcrRes] = useState<any>(null);
   const [ventas, setVentas] = useState(MOCK_VENTAS);
+  const [pygVista, setPygVista] = useState<'operativo'|'financiero'>('financiero');
+  const [gastoSel, setGastoSel] = useState<string|null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const showToast = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
@@ -219,7 +271,13 @@ export default function ContabilidadModule() {
   const totalNeto  = totalBruto - totalDesc;
   const ingTotal   = Object.values(MOCK_PYG.ingresos).reduce((a,b)=>a+b,0);
   const cosTotal   = Object.values(MOCK_PYG.costos).reduce((a,b)=>a+b,0);
-  const gasTotal   = Object.values(MOCK_PYG.gastos).reduce((a,b)=>a+b,0);
+  // Doble mirada P&G (norma NEXUM): el operativo usa nómina diaria estimada
+  // (accrual del POS); el financiero usa la nómina real reconciliada contra GL.
+  const NOMINA_ACCRUAL = MOCK_PYG.gastos.nomina;   // labor estimada del día (Flash)
+  const NOMINA_REAL    = 4150000;                   // nómina real causada (GL)
+  const ajusteNomina   = NOMINA_REAL - NOMINA_ACCRUAL;
+  const gastosVista = { ...MOCK_PYG.gastos, nomina: pygVista==='operativo' ? NOMINA_ACCRUAL : NOMINA_REAL };
+  const gasTotal   = Object.values(gastosVista).reduce((a,b)=>a+b,0);
   const utilBruta  = ingTotal - cosTotal;
   const ebitda     = utilBruta - gasTotal;
   const utilNeta   = ebitda * 0.67;
@@ -320,9 +378,20 @@ export default function ContabilidadModule() {
               <>
                 <div style={{background:`${S.green}10`,border:`1px solid ${S.green}30`,borderRadius:10,padding:14,marginBottom:16}}>
                   <div style={{fontSize:11,color:S.green,fontWeight:700,marginBottom:8}}>✓ Datos extraídos con {ocrRes.confianza}% de confianza</div>
-                  {[['Proveedor',ocrRes.proveedor],['NIT',ocrRes.nit],['Fecha',ocrRes.fecha],['Total',COP(ocrRes.total)],['IVA',COP(ocrRes.iva)],['Categoría',ocrRes.categoria]].map(([k,v])=>(
+                  {(()=>{
+                    const rg = reglaGasto(ocrRes.categoria);
+                    const base = ocrRes.total - ocrRes.iva;
+                    const rete = Math.round(base * rg.rete);
+                    const neto = ocrRes.total - rete;
+                    return [
+                      ['Proveedor',ocrRes.proveedor],['NIT',ocrRes.nit],['Fecha',ocrRes.fecha],
+                      ['Base',COP(base)],['IVA descontable',COP(ocrRes.iva)],
+                      [`Retefuente (${(rg.rete*100).toFixed(1)}%)`,`(${COP(rete)})`],
+                      ['Neto a pagar',COP(neto)],['Categoría',ocrRes.categoria],
+                    ] as [string,string][];
+                  })().map(([k,v])=>(
                     <div key={k} style={{display:'flex',justifyContent:'space-between',fontSize:12,padding:'4px 0',borderBottom:`1px solid ${S.border}`}}>
-                      <span style={{color:S.text3}}>{k}</span><span style={{color:S.text1,fontWeight:600}}>{v}</span>
+                      <span style={{color:S.text3}}>{k}</span><span style={{color:k==='Neto a pagar'?S.green:k.startsWith('Retefuente')?S.red:S.text1,fontWeight:k==='Neto a pagar'?700:600}}>{v}</span>
                     </div>
                   ))}
                 </div>
@@ -624,6 +693,37 @@ export default function ContabilidadModule() {
         {/* P&G */}
         {tab==='pyg' && (
           <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            {/* Doble mirada: P&G operativo (Flash) vs financiero (GL) */}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{display:'flex',background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,padding:3,gap:3}}>
+                {([
+                  {id:'operativo' as const,  label:'⚡ Operativo (Flash)'},
+                  {id:'financiero' as const, label:'📘 Financiero (GL)'},
+                ]).map(v=>(
+                  <button key={v.id} onClick={()=>setPygVista(v.id)} style={{
+                    padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',fontSize:11,fontWeight:700,
+                    background: pygVista===v.id ? S.gold : 'transparent',
+                    color: pygVista===v.id ? '#000' : S.text3,
+                  }}>{v.label}</button>
+                ))}
+              </div>
+              <div style={{fontSize:10,color:S.text3,textAlign:'right',maxWidth:280}}>
+                {pygVista==='operativo'
+                  ? 'Reporte del día con labor estimada del POS — para gestión'
+                  : 'Reconciliado contra libro mayor con nómina real — para cierre'}
+              </div>
+            </div>
+
+            {/* Bridge — norma: la diferencia operativo↔financiero queda explicada */}
+            <div style={{background:`${S.blue}10`,border:`1px solid ${S.blue}30`,borderRadius:10,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontSize:11,color:S.blue}}>
+                🔗 Puente operativo → financiero · ajuste nómina real vs accrual diario
+              </span>
+              <span style={{fontSize:12,fontWeight:700,color:ajusteNomina>=0?S.red:S.green}}>
+                {ajusteNomina>=0?'+':''}{COP(ajusteNomina)}
+              </span>
+            </div>
+
             <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
               {[
                 {label:'Ingresos totales',value:COP(ingTotal),color:S.goldL},
@@ -641,7 +741,7 @@ export default function ContabilidadModule() {
               {[
                 {titulo:'INGRESOS OPERACIONALES',color:S.goldL,items:[{puc:'4135',label:'Ventas de alimentos',valor:MOCK_PYG.ingresos.alimentos},{puc:'4135',label:'Ventas de bebidas',valor:MOCK_PYG.ingresos.bebidas},{puc:'4135',label:'Ventas de cocteles',valor:MOCK_PYG.ingresos.cocteles},{puc:'4295',label:'Otros ingresos',valor:MOCK_PYG.ingresos.otros}],total:ingTotal},
                 {titulo:'COSTOS DE VENTAS',color:S.red,items:[{puc:'6135',label:'Costo de alimentos',valor:MOCK_PYG.costos.alimentos},{puc:'6135',label:'Costo de bebidas',valor:MOCK_PYG.costos.bebidas}],total:cosTotal},
-                {titulo:'GASTOS OPERACIONALES',color:S.purple,items:[{puc:'5105',label:'Nómina y prestaciones',valor:MOCK_PYG.gastos.nomina},{puc:'5120',label:'Arriendo',valor:MOCK_PYG.gastos.arriendo},{puc:'5115',label:'Servicios públicos',valor:MOCK_PYG.gastos.servicios},{puc:'5145',label:'Marketing',valor:MOCK_PYG.gastos.marketing},{puc:'5195',label:'Tecnología (Nexum)',valor:MOCK_PYG.gastos.tecnologia},{puc:'5140',label:'Aseo y mtto',valor:MOCK_PYG.gastos.aseo},{puc:'5295',label:'Otros',valor:MOCK_PYG.gastos.otros}],total:gasTotal},
+                {titulo:'GASTOS OPERACIONALES',color:S.purple,items:[{puc:'5105',label:`Nómina y prestaciones ${pygVista==='financiero'?'(real)':'(estimada)'}`,valor:gastosVista.nomina},{puc:'5120',label:'Arriendo',valor:gastosVista.arriendo},{puc:'5115',label:'Servicios públicos',valor:gastosVista.servicios},{puc:'5145',label:'Marketing',valor:gastosVista.marketing},{puc:'5195',label:'Tecnología (Nexum)',valor:gastosVista.tecnologia},{puc:'5140',label:'Aseo y mtto',valor:gastosVista.aseo},{puc:'5295',label:'Otros',valor:gastosVista.otros}],total:gasTotal},
               ].map(sec=>(
                 <div key={sec.titulo} style={{borderTop:`1px solid ${S.border}`}}>
                   <div style={{padding:'10px 16px',background:S.bg3}}><span style={{fontSize:10,fontWeight:700,color:sec.color,textTransform:'uppercase' as const,letterSpacing:'.08em'}}>{sec.titulo}</span></div>
@@ -689,18 +789,22 @@ export default function ContabilidadModule() {
               </button>
             </div>
             <div style={{padding:14,background:`${S.purple}10`,border:`1px solid ${S.purple}30`,borderRadius:12,fontSize:12,color:S.purple}}>
-              ✨ IA activa — toma foto del tiquete o factura del proveedor y Nexum extrae proveedor, NIT, monto, IVA y categoriza automáticamente.
+              ✨ IA activa — toma foto del tiquete o factura del proveedor y Nexum extrae proveedor, NIT, monto, IVA y categoriza automáticamente. Toca una fila para ver el <b>asiento de causación</b> con IVA descontable y retención.
             </div>
             <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead><tr style={{background:S.bg3}}>
-                  {['Proveedor','Concepto','Categoría','Fecha','Monto','Estado'].map(h=>(
-                    <th key={h} style={{padding:'10px 12px',textAlign:h==='Monto'?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  {['Proveedor','Concepto','Categoría','Fecha','Base','Estado',''].map((h,i)=>(
+                    <th key={i} style={{padding:'10px 12px',textAlign:h==='Base'?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>
-                  {MOCK_GASTOS.map((g,i)=>(
-                    <tr key={i} style={{borderTop:`1px solid ${S.border}`}}>
+                  {MOCK_GASTOS.map((g)=>{
+                    const open = gastoSel===g.id;
+                    const a = construirAsientoGasto({ proveedor:g.proveedor, concepto:g.concepto, base:g.monto, categoria:g.categoria, fecha:g.fecha });
+                    return (
+                    <React.Fragment key={g.id}>
+                    <tr onClick={()=>setGastoSel(open?null:g.id)} style={{borderTop:`1px solid ${S.border}`,cursor:'pointer',background:open?S.bg3:'transparent'}}>
                       <td style={{padding:'10px 12px',color:S.text1,fontWeight:600}}>{g.proveedor}</td>
                       <td style={{padding:'10px 12px',color:S.text2}}>{g.concepto}</td>
                       <td style={{padding:'10px 12px',color:S.text3,fontSize:11}}>{g.categoria}</td>
@@ -711,13 +815,44 @@ export default function ContabilidadModule() {
                           {g.estado==='causado'?'✓ Causado':'⏳ Pendiente'}
                         </span>
                       </td>
+                      <td style={{padding:'10px 12px',textAlign:'right',color:S.text3}}>{open?'▲':'▼'}</td>
                     </tr>
-                  ))}
+                    {open && (
+                      <tr style={{background:S.bg}}>
+                        <td colSpan={7} style={{padding:'0 12px 14px'}}>
+                          <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,overflow:'hidden',marginTop:4}}>
+                            <div style={{padding:'8px 12px',fontSize:10,fontWeight:700,color:S.text3,background:S.bg3,textTransform:'uppercase' as const}}>
+                              Asiento de causación · {a.fuente}
+                            </div>
+                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                              <tbody>
+                                {a.lineas.map((l,j)=>(
+                                  <tr key={j} style={{borderTop:`1px solid ${S.border}`}}>
+                                    <td style={{padding:'7px 12px',color:S.text3,fontFamily:'monospace'}}>{l.cuenta}</td>
+                                    <td style={{padding:'7px 12px',color:S.text1}}>{l.nombre}</td>
+                                    <td style={{padding:'7px 12px',textAlign:'right',color:l.debe>0?S.goldL:S.text3}}>{l.debe>0?COP(l.debe):'—'}</td>
+                                    <td style={{padding:'7px 12px',textAlign:'right',color:l.haber>0?S.green:S.text3}}>{l.haber>0?COP(l.haber):'—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
+                                <td colSpan={2} style={{padding:'8px 12px',fontWeight:700,color:a.cuadra?S.green:S.red}}>{a.cuadra?'✓ Cuadra':'✗ Descuadre'} · IVA {COP(a.iva)} · Retefuente {(a.reteTasa*100).toFixed(1)}% {COP(a.rete)} · Neto a pagar {COP(a.neto)}</td>
+                                <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:S.goldL}}>{COP(a.debe)}</td>
+                                <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:S.green}}>{COP(a.haber)}</td>
+                              </tr></tfoot>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
+                    );
+                  })}
                 </tbody>
                 <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
-                  <td colSpan={4} style={{padding:'12px',fontWeight:700,color:S.gold}}>TOTAL GASTOS</td>
+                  <td colSpan={4} style={{padding:'12px',fontWeight:700,color:S.gold}}>TOTAL BASE GASTOS</td>
                   <td style={{padding:'12px',textAlign:'right',fontWeight:900,color:S.red,fontSize:14}}>{COP(MOCK_GASTOS.reduce((a,g)=>a+g.monto,0))}</td>
-                  <td/>
+                  <td colSpan={2}/>
                 </tr></tfoot>
               </table>
             </div>
