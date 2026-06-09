@@ -9,7 +9,7 @@ import {
   COP, PUC, PUC_AP, construirAsientoCierre, construirAsientoGasto, reglaGasto,
   ROLES, can, libroMayor, balancePrueba, agingCartera, TASA_ECL,
   construirAsientoARFactura, construirAsientoARRecaudo, construirAsientoDeterioro,
-  construirAsientoPagoImpuesto, tramoVencimiento,
+  construirAsientoPagoImpuesto, construirAsientoNomina, tramoVencimiento,
 } from '../lib/contabilidad';
 import type { Rol, Accion, Asiento, SaldoCuenta, Tramo } from '../lib/contabilidad';
 import {
@@ -27,7 +27,7 @@ const S = {
 
 const PCT = (n: number) => `${n.toFixed(1)}%`;
 
-type Tab = 'dashboard' | 'caja' | 'asientos' | 'mayor' | 'balance' | 'cxc' | 'tesoreria' | 'impuestos' | 'pyg' | 'gastos' | 'inventario' | 'propinas' | 'promociones' | 'facturas';
+type Tab = 'dashboard' | 'caja' | 'asientos' | 'mayor' | 'balance' | 'cxc' | 'tesoreria' | 'impuestos' | 'nomina' | 'pyg' | 'gastos' | 'inventario' | 'propinas' | 'promociones' | 'facturas';
 
 const MOCK_VENTAS = {
   metaMes:85000000, ventasMes:62400000,
@@ -164,6 +164,46 @@ export default function ContabilidadModule() {
     showToast(diff===0?'✓ Caja cuadrada perfectamente':`⚠️ Diferencia de ${COP(Math.abs(diff))}`);
   };
 
+  const causarGastoOCR = async () => {
+    if (!can(rol,'causar_gasto')) { showToast(`🔒 Rol ${ROLES[rol].label} no puede causar gastos`); return; }
+    if (!ocrRes) return;
+    const base = ocrRes.total - ocrRes.iva;
+    const a = construirAsientoGasto({ proveedor:ocrRes.proveedor, concepto:ocrRes.categoria, base, categoria:ocrRes.categoria, fecha:new Date().toISOString().slice(0,10), nit:ocrRes.nit });
+    showToast('⏳ Causando gasto…');
+    const r = await postearAsiento(a, ROLES[rol].label);
+    setShowOCR(false); setOcrRes(null);
+    if (r.ok) {
+      const frescos = await cargarAsientosReales();
+      if (frescos) { setAsientosReales(frescos); setFuenteDatos('supabase'); }
+      showToast('✓ Gasto causado y contabilizado en Supabase');
+    } else showToast(`✗ Rechazado: ${r.error}`);
+  };
+
+  const provisionarDeterioro = async () => {
+    if (!can(rol,'postear_asiento')) { showToast(`🔒 Rol ${ROLES[rol].label} no puede postear el deterioro`); return; }
+    const monto = Math.round(aging.eclTotal);
+    if (monto <= 0) { showToast('Sin deterioro que provisionar'); return; }
+    const a = construirAsientoDeterioro(monto, new Date().toISOString().slice(0,10));
+    showToast('⏳ Provisionando deterioro…');
+    const r = await postearAsiento(a, ROLES[rol].label);
+    if (r.ok) {
+      const frescos = await cargarAsientosReales();
+      if (frescos) { setAsientosReales(frescos); setFuenteDatos('supabase'); }
+      showToast(`✓ Deterioro provisionado ${COP(monto)} (Dr gasto · Cr provisión)`);
+    } else showToast(`✗ Rechazado: ${r.error}`);
+  };
+
+  const causarNomina = async () => {
+    if (!can(rol,'postear_asiento')) { showToast(`🔒 Rol ${ROLES[rol].label} no puede causar nómina`); return; }
+    showToast('⏳ Causando nómina…');
+    const r = await postearAsiento(asientoNomina, ROLES[rol].label);
+    if (r.ok) {
+      const frescos = await cargarAsientosReales();
+      if (frescos) { setAsientosReales(frescos); setFuenteDatos('supabase'); }
+      showToast('✓ Nómina causada y contabilizada en Supabase');
+    } else showToast(`✗ Rechazado: ${r.error}`);
+  };
+
   const postear = async () => {
     showToast('⏳ Posteando al libro mayor…');
     const r = await postearAsiento(asiento, ROLES[rol].label);
@@ -213,6 +253,8 @@ export default function ContabilidadModule() {
   const mayor   = libroMayor(todosAsientos);
   const balance = balancePrueba(todosAsientos);
   const aging   = agingCartera(cartera);
+  // Nómina del período (demo): bruto + cargas patronales − seg. social − deducciones
+  const asientoNomina = construirAsientoNomina({ salarios:4150000, cargas:1245000, seguridadSocial:1328000, retenciones:166000, fecha:new Date().toISOString().slice(0,10) });
   const inp = { background:S.bg2, border:`1px solid ${S.border}`, borderRadius:8, padding:'9px 14px', color:S.text1, fontSize:12, outline:'none', width:'100%' };
 
   const TABS: {id:Tab;label:string}[] = [
@@ -224,6 +266,7 @@ export default function ContabilidadModule() {
     {id:'cxc',        label:'📇 Cartera'},
     {id:'tesoreria',  label:'🏦 Tesorería'},
     {id:'impuestos',  label:'🧾 Impuestos'},
+    {id:'nomina',     label:'👥 Nómina'},
     {id:'pyg',        label:'📈 P&G'},
     {id:'gastos',     label:'📸 Gastos'},
     {id:'inventario', label:'📦 Inventario'},
@@ -329,7 +372,7 @@ export default function ContabilidadModule() {
                 </div>
                 <div style={{display:'flex',gap:10}}>
                   <button onClick={()=>setOcrRes(null)} style={{flex:1,padding:12,borderRadius:10,border:`1px solid ${S.border}`,background:'none',color:S.text2,fontSize:12,cursor:'pointer'}}>↩ Nueva foto</button>
-                  <button onClick={()=>{ if(!can(rol,'causar_gasto')){showToast(`🔒 Rol ${ROLES[rol].label} no puede causar gastos`);return;} setShowOCR(false);setOcrRes(null);showToast('✓ Gasto registrado y causado');}} style={{flex:2,padding:12,borderRadius:10,border:'none',background:can(rol,'causar_gasto')?S.green:S.bg3,color:can(rol,'causar_gasto')?'#fff':S.text3,fontSize:12,fontWeight:900,cursor:can(rol,'causar_gasto')?'pointer':'not-allowed'}}>✓ Registrar gasto</button>
+                  <button onClick={causarGastoOCR} style={{flex:2,padding:12,borderRadius:10,border:'none',background:can(rol,'causar_gasto')?S.green:S.bg3,color:can(rol,'causar_gasto')?'#fff':S.text3,fontSize:12,fontWeight:900,cursor:can(rol,'causar_gasto')?'pointer':'not-allowed'}}>✓ Registrar y causar gasto</button>
                 </div>
               </>
             )}
@@ -778,7 +821,7 @@ export default function ContabilidadModule() {
                 </tr></tfoot>
               </table>
             </div>
-            <button onClick={()=> can(rol,'postear_asiento')?showToast(`✓ Deterioro provisionado ${COP(Math.round(aging.eclTotal))} (Dr gasto · Cr provisión)`):showToast(`🔒 Rol ${ROLES[rol].label} no puede postear el deterioro`)}
+            <button onClick={provisionarDeterioro}
               style={{alignSelf:'flex-start',padding:'10px 18px',borderRadius:10,border:'none',fontSize:12,fontWeight:700,cursor:'pointer',background:can(rol,'postear_asiento')?`${S.red}20`:S.bg3,color:can(rol,'postear_asiento')?S.red:S.text3}}>
               📉 Provisionar deterioro (ECL)
             </button>
@@ -910,6 +953,56 @@ export default function ContabilidadModule() {
             </div>
             <button onClick={()=>showToast('✓ Borrador de declaración preparado')} style={{alignSelf:'flex-start',padding:'10px 18px',borderRadius:10,border:'none',fontSize:12,fontWeight:700,cursor:'pointer',background:`${S.gold}20`,color:S.gold}}>
               📄 Preparar borrador de declaración
+            </button>
+          </div>
+        )}
+
+        {/* NÓMINA · causación del período */}
+        {tab==='nomina' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14,maxWidth:760}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+              {[
+                {label:'Devengado bruto',value:COP(4150000),color:S.goldL},
+                {label:'Cargas patronales',value:COP(1245000),color:S.purple},
+                {label:'Neto a pagar',value:COP(asientoNomina.neto),color:S.green},
+              ].map(k=>(
+                <div key={k.label} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
+                  <div style={{fontSize:10,color:S.text3,marginBottom:4}}>{k.label}</div>
+                  <div style={{fontSize:18,fontWeight:900,color:k.color,fontFamily:"'Syne',sans-serif"}}>{k.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:12,background:`${S.purple}10`,border:`1px solid ${S.purple}30`,borderRadius:10,fontSize:11,color:S.purple}}>
+              💼 La fuente operativa es turnos y asistencia (módulo TeamIQ/Workforce). Aquí se causa el gasto y los pasivos laborales, separando seguridad social y deducciones.
+            </div>
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <div style={{padding:'10px 14px',borderBottom:`1px solid ${S.border}`,fontSize:11,fontWeight:700,color:S.goldL}}>ASIENTO DE CAUSACIÓN DE NÓMINA</div>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr style={{background:S.bg3}}>
+                  {['Cuenta','Concepto','Débito','Crédito'].map(h=>(
+                    <th key={h} style={{padding:'9px 14px',textAlign:['Débito','Crédito'].includes(h)?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {asientoNomina.lineas.map((l,i)=>(
+                    <tr key={i} style={{borderTop:`1px solid ${S.border}`}}>
+                      <td style={{padding:'9px 14px',color:S.text3,fontFamily:'monospace',fontSize:11}}>{l.cuenta}</td>
+                      <td style={{padding:'9px 14px',color:S.text1}}>{l.nombre}</td>
+                      <td style={{padding:'9px 14px',textAlign:'right',color:l.debe>0?S.goldL:S.text3}}>{l.debe>0?COP(l.debe):'—'}</td>
+                      <td style={{padding:'9px 14px',textAlign:'right',color:l.haber>0?S.green:S.text3}}>{l.haber>0?COP(l.haber):'—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
+                  <td colSpan={2} style={{padding:'12px 14px',fontWeight:700,color:asientoNomina.cuadra?S.green:S.red}}>{asientoNomina.cuadra?'✓ Cuadra':'✗ Descuadre'}</td>
+                  <td style={{padding:'12px 14px',textAlign:'right',fontWeight:900,color:S.goldL}}>{COP(asientoNomina.debe)}</td>
+                  <td style={{padding:'12px 14px',textAlign:'right',fontWeight:900,color:S.green}}>{COP(asientoNomina.haber)}</td>
+                </tr></tfoot>
+              </table>
+            </div>
+            <button onClick={causarNomina} disabled={!can(rol,'postear_asiento')}
+              style={{alignSelf:'flex-start',padding:'10px 18px',borderRadius:10,border:'none',fontSize:12,fontWeight:700,cursor:can(rol,'postear_asiento')?'pointer':'not-allowed',background:can(rol,'postear_asiento')?S.gold:S.bg3,color:can(rol,'postear_asiento')?'#000':S.text3}}>
+              👥 Causar nómina al libro mayor
             </button>
           </div>
         )}

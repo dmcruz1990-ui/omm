@@ -34,6 +34,11 @@ export const PUC = {
   propinas:  { c:'233595', n:'Propinas por liquidar' },
   redencion: { c:'529595', n:'Bonos y cortesías redimidos' },
   gastoDet:  { c:'519910', n:'Gasto deterioro de cartera' },
+  nomSueldos:{ c:'510506', n:'Sueldos y prestaciones' },
+  nomCargas: { c:'510569', n:'Aportes y cargas patronales' },
+  nomSegSoc: { c:'237006', n:'Aportes seguridad social por pagar' },
+  nomReten:  { c:'236505', n:'Deducciones de nómina por pagar' },
+  nomPorPagar:{ c:'250501', n:'Salarios por pagar' },
 } as const;
 
 export const PUC_AP = {
@@ -194,6 +199,26 @@ export function agingCartera(facturas: { saldo:number; vencimiento:string }[], h
   const saldoTotal = Object.values(tramos).reduce((a,t)=>a+t.saldo,0);
   const eclTotal   = Object.values(tramos).reduce((a,t)=>a+t.ecl,0);
   return { tramos, saldoTotal, eclTotal };
+}
+
+// ─── Nómina: causación del período ──────────────────────────────────────────
+// Dr gasto salarios + cargas patronales ; Cr seguridad social, deducciones y
+// nómina por pagar (neto). La base se reparte de modo que Debe = Haber.
+export function construirAsientoNomina(d: { salarios:number; cargas:number; seguridadSocial:number; retenciones:number; fecha:string })
+  : Asiento & { neto:number } {
+  const neto = d.salarios + d.cargas - d.seguridadSocial - d.retenciones;
+  const lineas: AsientoLinea[] = [
+    { cuenta:PUC.nomSueldos.c,  nombre:PUC.nomSueldos.n,  debe:d.salarios, haber:0 },
+    { cuenta:PUC.nomCargas.c,   nombre:PUC.nomCargas.n,   debe:d.cargas,   haber:0 },
+    { cuenta:PUC.nomSegSoc.c,   nombre:PUC.nomSegSoc.n,   debe:0, haber:d.seguridadSocial },
+    { cuenta:PUC.nomReten.c,    nombre:PUC.nomReten.n,    debe:0, haber:d.retenciones },
+    { cuenta:PUC.nomPorPagar.c, nombre:PUC.nomPorPagar.n, debe:0, haber:neto },
+  ];
+  const a = armar(lineas, {
+    fecha:d.fecha, fuente:'Causación de nómina del período',
+    dim:'OMM · Restaurante principal', origenTipo:'nomina', estado:'contabilizado',
+  });
+  return { ...a, neto };
 }
 
 // ─── Impuestos: pago de declaración ─────────────────────────────────────────
