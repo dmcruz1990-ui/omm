@@ -5,7 +5,18 @@
 // ============================================================
 
 import React, { useState, useEffect, useRef } from 'react';
-import { supabase } from '../lib/supabase';
+import {
+  COP, PUC, PUC_AP, construirAsientoCierre, construirAsientoGasto, reglaGasto,
+  ROLES, can, libroMayor, balancePrueba, agingCartera, TASA_ECL,
+  construirAsientoARFactura, construirAsientoARRecaudo, construirAsientoDeterioro,
+  construirAsientoPagoImpuesto, tramoVencimiento,
+} from '../lib/contabilidad';
+import type { Rol, Accion, Asiento, SaldoCuenta, Tramo } from '../lib/contabilidad';
+import {
+  MOCK_CARTERA, MOCK_BANCOS, MOCK_EXTRACTO, MOCK_IMPUESTOS, MOCK_ASIENTOS_HIST,
+  cargarAsientosReales,
+} from '../lib/contabilidadData';
+import type { ARFactura, ExtractoLinea, MovImpuesto, CuentaBanco } from '../lib/contabilidadData';
 
 const S = {
   bg:'#0a0a0a', bg2:'#141414', bg3:'#1c1c1c',
@@ -14,152 +25,9 @@ const S = {
   red:'#e05050', blue:'#4a8fd4', purple:'#9b72ff',
 };
 
-const COP = (n: number) =>
-  new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n);
 const PCT = (n: number) => `${n.toFixed(1)}%`;
 
-// ─── Motor de asientos: PUC mínimo y mapeo evento→cuenta ──────────────────────
-// Norma NEXUM: el motor contable transforma el cierre de ventas en un asiento
-// de partida doble, con cada línea trazable al documento fuente (cierre Z).
-const PUC = {
-  caja:      { c:'110505', n:'Caja general' },
-  bancos:    { c:'111005', n:'Bancos' },
-  pasarela:  { c:'131005', n:'CxC pasarela / banco en tránsito' },
-  cxcEmpl:   { c:'136540', n:'CxC trabajadores' },
-  ingresos:  { c:'413550', n:'Ingresos operacionales — restaurante' },
-  ivaInc:    { c:'240805', n:'Impuesto (IVA/INC) por pagar' },
-  propinas:  { c:'233595', n:'Propinas por liquidar' },
-  redencion: { c:'529595', n:'Bonos y cortesías redimidos' },
-} as const;
-
-type CuentaPUC = { c: string; n: string };
-
-// Clasifica cada método de pago a su cuenta de recaudo (lado débito).
-const cuentaDeMetodo = (label: string): CuentaPUC => {
-  const l = label.toLowerCase();
-  if (l.includes('efectivo')) return PUC.caja;
-  if (l.includes('transfer') || l.includes('anticipo')) return PUC.bancos;
-  if (l.includes('empleado')) return PUC.cxcEmpl;
-  if (l.includes('bono') || l.includes('regalo')) return PUC.redencion;
-  return PUC.pasarela; // datáfono, QR, Apple Pay, PSP → cuenta puente
-};
-
-type AsientoLinea = { cuenta: string; nombre: string; debe: number; haber: number };
-type Asiento = {
-  fecha: string; fuente: string; dim: string;
-  estado: 'borrador' | 'contabilizado';
-  lineas: AsientoLinea[]; debe: number; haber: number; cuadra: boolean;
-};
-
-// Construye el asiento del cierre de caja siguiendo las normas contables:
-// Dr caja/banco/pasarela (recaudo neto) ; Cr Ingresos (base) ; Cr IVA/INC ;
-// Cr Propinas por liquidar (pasivo, fuera de la base del consumo).
-// La base de ingresos se calcula como residual → el asiento siempre cuadra.
-function construirAsientoCierre(
-  metodos: { label: string; bruto: number; desc: number; prop: number; iva: number }[],
-  turno: Turno | null,
-): Asiento {
-  const debitosPorCuenta: Record<string, AsientoLinea> = {};
-  metodos.forEach(m => {
-    const neto = m.bruto - m.desc;
-    if (neto <= 0) return; // métodos netos en cero (p.ej. cortesías) no recaudan
-    const cu = cuentaDeMetodo(m.label);
-    if (!debitosPorCuenta[cu.c]) debitosPorCuenta[cu.c] = { cuenta:cu.c, nombre:cu.n, debe:0, haber:0 };
-    debitosPorCuenta[cu.c].debe += neto;
-  });
-  const debitos = Object.values(debitosPorCuenta);
-  const totalRecaudo = debitos.reduce((a, d) => a + d.debe, 0);
-  const iva  = metodos.reduce((a, m) => a + m.iva, 0);
-  const prop = metodos.reduce((a, m) => a + m.prop, 0);
-  const baseIngresos = totalRecaudo - iva - prop; // residual ⇒ Debe = Haber
-
-  const lineas: AsientoLinea[] = [
-    ...debitos,
-    { cuenta:PUC.ingresos.c, nombre:PUC.ingresos.n, debe:0, haber:baseIngresos },
-    ...(iva  > 0 ? [{ cuenta:PUC.ivaInc.c,   nombre:PUC.ivaInc.n,   debe:0, haber:iva  }] : []),
-    ...(prop > 0 ? [{ cuenta:PUC.propinas.c, nombre:PUC.propinas.n, debe:0, haber:prop }] : []),
-  ];
-  const debe  = lineas.reduce((a, l) => a + l.debe, 0);
-  const haber = lineas.reduce((a, l) => a + l.haber, 0);
-  return {
-    fecha: new Date().toLocaleDateString('es-CO'),
-    fuente: turno
-      ? `Cierre Z · turno ${turno.responsable} (${turno.hora_apertura}${turno.hora_cierre ? `–${turno.hora_cierre}` : ''})`
-      : 'Resumen de ventas del día · sin turno cerrado',
-    dim: 'OMM · Restaurante principal',
-    estado: turno?.estado === 'cerrada' ? 'contabilizado' : 'borrador',
-    lineas, debe, haber,
-    cuadra: debe === haber,
-  };
-}
-
-// ─── Motor CxP: causación de factura de proveedor con IVA y retenciones ───────
-// Norma NEXUM: Dr gasto/costo + IVA descontable ; Cr Proveedores (neto) ;
-// Cr Retención en la fuente por pagar. Reglas Colombia (simplificadas).
-const PUC_AP = {
-  costoAlim:   { c:'613505', n:'Costo de alimentos' },
-  costoBeb:    { c:'613510', n:'Costo de bebidas' },
-  servicios:   { c:'513505', n:'Servicios públicos' },
-  aseo:        { c:'513540', n:'Aseo y mantenimiento' },
-  arriendo:    { c:'512010', n:'Arrendamientos' },
-  gastoGen:    { c:'519595', n:'Gastos diversos' },
-  ivaDesc:     { c:'240810', n:'IVA descontable' },
-  proveedores: { c:'220505', n:'Proveedores nacionales' },
-  reteFuente:  { c:'236540', n:'Retención en la fuente por pagar' },
-} as const;
-
-// Devuelve la cuenta de costo/gasto, tarifa de retefuente e IVA por categoría.
-const reglaGasto = (categoria: string) => {
-  const c = (categoria || '').toLowerCase();
-  if (c.includes('aliment')) return { cuenta:PUC_AP.costoAlim, rete:0.025, ivaTasa:0    }; // bienes 2.5%, alimentos exentos IVA
-  if (c.includes('bebida'))  return { cuenta:PUC_AP.costoBeb,  rete:0.025, ivaTasa:0.19 };
-  if (c.includes('servicio'))return { cuenta:PUC_AP.servicios, rete:0.04,  ivaTasa:0.19 }; // servicios 4%
-  if (c.includes('aseo') || c.includes('mtto')) return { cuenta:PUC_AP.aseo, rete:0.04, ivaTasa:0.19 };
-  if (c.includes('arrend'))  return { cuenta:PUC_AP.arriendo,  rete:0.035, ivaTasa:0    }; // arriendo 3.5%
-  return { cuenta:PUC_AP.gastoGen, rete:0.025, ivaTasa:0.19 };
-};
-
-// 'base' es el valor antes de IVA. Calcula IVA descontable y retefuente y arma
-// el asiento de causación de la factura del proveedor.
-function construirAsientoGasto(g: { proveedor:string; concepto:string; base:number; categoria:string; fecha:string }): Asiento & { base:number; iva:number; rete:number; neto:number; reteTasa:number } {
-  const r = reglaGasto(g.categoria);
-  const base = g.base;
-  const iva  = Math.round(base * r.ivaTasa);
-  const rete = Math.round(base * r.rete);
-  const neto = base + iva - rete; // saldo por pagar al proveedor
-  const lineas: AsientoLinea[] = [
-    { cuenta:r.cuenta.c, nombre:r.cuenta.n, debe:base, haber:0 },
-    ...(iva  > 0 ? [{ cuenta:PUC_AP.ivaDesc.c,    nombre:PUC_AP.ivaDesc.n, debe:iva, haber:0 }] : []),
-    ...(rete > 0 ? [{ cuenta:PUC_AP.reteFuente.c, nombre:`${PUC_AP.reteFuente.n} (${(r.rete*100).toFixed(1)}%)`, debe:0, haber:rete }] : []),
-    { cuenta:PUC_AP.proveedores.c, nombre:PUC_AP.proveedores.n, debe:0, haber:neto },
-  ];
-  const debe  = lineas.reduce((a, l) => a + l.debe, 0);
-  const haber = lineas.reduce((a, l) => a + l.haber, 0);
-  return {
-    fecha:g.fecha, fuente:`Factura proveedor · ${g.proveedor} — ${g.concepto}`,
-    dim:'OMM · Restaurante principal', estado:'contabilizado',
-    lineas, debe, haber, cuadra: debe === haber,
-    base, iva, rete, neto, reteTasa:r.rete,
-  };
-}
-
-// ─── RBAC + Segregación de funciones (SoD) ────────────────────────────────────
-// Norma NEXUM: una misma persona no puede preparar y aprobar pagos, ni causar y
-// pagar su propia factura, ni editar fuentes operativas y postear journals sin
-// rastro. Cada acción crítica exige un rol habilitado.
-type Rol = 'cajero' | 'analista_cxp' | 'tesorero' | 'contador' | 'cfo' | 'auditor';
-type Accion = 'abrir_caja' | 'cerrar_caja' | 'causar_gasto' | 'preparar_pago' | 'aprobar_pago' | 'postear_asiento' | 'cerrar_periodo';
-const ROLES: Record<Rol, { label:string; puede:Accion[] }> = {
-  cajero:       { label:'Cajero / Supervisor', puede:['abrir_caja','cerrar_caja'] },
-  analista_cxp: { label:'Analista CxP',         puede:['causar_gasto'] },
-  tesorero:     { label:'Tesorero',             puede:['preparar_pago'] },
-  contador:     { label:'Contador',             puede:['causar_gasto','postear_asiento','cerrar_periodo'] },
-  cfo:          { label:'Controller / CFO',     puede:['abrir_caja','cerrar_caja','causar_gasto','preparar_pago','aprobar_pago','postear_asiento','cerrar_periodo'] },
-  auditor:      { label:'Auditor interno',      puede:[] }, // solo lectura
-};
-const can = (rol: Rol, accion: Accion) => ROLES[rol].puede.includes(accion);
-
-type Tab = 'dashboard' | 'caja' | 'asientos' | 'pyg' | 'gastos' | 'inventario' | 'propinas' | 'promociones' | 'facturas';
+type Tab = 'dashboard' | 'caja' | 'asientos' | 'mayor' | 'balance' | 'cxc' | 'tesoreria' | 'impuestos' | 'pyg' | 'gastos' | 'inventario' | 'propinas' | 'promociones' | 'facturas';
 
 const MOCK_VENTAS = {
   metaMes:85000000, ventasMes:62400000,
@@ -254,7 +122,10 @@ export default function ContabilidadModule() {
   const [pygVista, setPygVista] = useState<'operativo'|'financiero'>('financiero');
   const [gastoSel, setGastoSel] = useState<string|null>(null);
   const [rol, setRol] = useState<Rol>('cfo');
+  const [asientosReales, setAsientosReales] = useState<Asiento[]|null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => { cargarAsientosReales().then(r => { if (r && r.length) setAsientosReales(r); }); }, []);
 
   const showToast = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
 
@@ -305,12 +176,27 @@ export default function ContabilidadModule() {
   const pctMes     = (ventas.ventasMes/ventas.metaMes)*100;
   const asiento    = construirAsientoCierre(MOCK_METODOS, turno);
 
+  // ── Diario consolidado: Supabase si está disponible, si no histórico demo ──
+  const gastosAsientos = MOCK_GASTOS.map(g => construirAsientoGasto({ proveedor:g.proveedor, concepto:g.concepto, base:g.monto, categoria:g.categoria, fecha:g.fecha }));
+  const todosAsientos: Asiento[] = asientosReales ?? [
+    ...MOCK_ASIENTOS_HIST,
+    ...gastosAsientos,
+    ...(asiento.estado === 'contabilizado' ? [asiento] : []),
+  ];
+  const mayor   = libroMayor(todosAsientos);
+  const balance = balancePrueba(todosAsientos);
+  const aging   = agingCartera(MOCK_CARTERA);
   const inp = { background:S.bg2, border:`1px solid ${S.border}`, borderRadius:8, padding:'9px 14px', color:S.text1, fontSize:12, outline:'none', width:'100%' };
 
   const TABS: {id:Tab;label:string}[] = [
     {id:'dashboard',  label:'📊 Dashboard'},
     {id:'caja',       label:'🔒 Caja'},
     {id:'asientos',   label:'🧮 Asientos'},
+    {id:'mayor',      label:'📚 Libro mayor'},
+    {id:'balance',    label:'⚖️ Balance prueba'},
+    {id:'cxc',        label:'📇 Cartera'},
+    {id:'tesoreria',  label:'🏦 Tesorería'},
+    {id:'impuestos',  label:'🧾 Impuestos'},
     {id:'pyg',        label:'📈 P&G'},
     {id:'gastos',     label:'📸 Gastos'},
     {id:'inventario', label:'📦 Inventario'},
@@ -737,6 +623,267 @@ export default function ContabilidadModule() {
                 ✓ <b>Segregación de funciones (SoD)</b> — quien causa no aprueba; postear al mayor exige rol Contador/CFO
               </div>
             </div>
+          </div>
+        )}
+
+        {/* LIBRO MAYOR · diario consolidado por cuenta */}
+        {tab==='mayor' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+              {[
+                {label:'Asientos contabilizados',value:String(todosAsientos.length),color:S.goldL},
+                {label:'Cuentas con movimiento',value:String(mayor.length),color:S.blue},
+                {label:'Total debitado',value:COP(balance.totalDebe),color:S.gold},
+              ].map(k=>(
+                <div key={k.label} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
+                  <div style={{fontSize:10,color:S.text3,marginBottom:4}}>{k.label}</div>
+                  <div style={{fontSize:18,fontWeight:900,color:k.color,fontFamily:"'Syne',sans-serif"}}>{k.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{fontSize:11,color:S.text3}}>Cada saldo agrega los asientos contabilizados (cierre de caja, gastos, cartera). Norma: todo saldo remonta a su documento fuente.</div>
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr style={{background:S.bg3}}>
+                  {['Cuenta','Nombre','Débito','Crédito','Saldo'].map(h=>(
+                    <th key={h} style={{padding:'10px 14px',textAlign:['Débito','Crédito','Saldo'].includes(h)?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {mayor.map(c=>(
+                    <tr key={c.cuenta} style={{borderTop:`1px solid ${S.border}`}}>
+                      <td style={{padding:'9px 14px',color:S.text3,fontFamily:'monospace',fontSize:11}}>{c.cuenta}</td>
+                      <td style={{padding:'9px 14px',color:S.text1}}>{c.nombre}</td>
+                      <td style={{padding:'9px 14px',textAlign:'right',color:c.debe>0?S.goldL:S.text3}}>{c.debe>0?COP(c.debe):'—'}</td>
+                      <td style={{padding:'9px 14px',textAlign:'right',color:c.haber>0?S.green:S.text3}}>{c.haber>0?COP(c.haber):'—'}</td>
+                      <td style={{padding:'9px 14px',textAlign:'right',fontWeight:700,color:c.saldo>=0?S.goldL:S.green}}>{COP(Math.abs(c.saldo))}{c.saldo>=0?' D':' C'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
+                  <td colSpan={2} style={{padding:'12px 14px',fontWeight:700,color:S.gold}}>TOTALES</td>
+                  <td style={{padding:'12px 14px',textAlign:'right',fontWeight:900,color:S.goldL}}>{COP(balance.totalDebe)}</td>
+                  <td style={{padding:'12px 14px',textAlign:'right',fontWeight:900,color:S.green}}>{COP(balance.totalHaber)}</td>
+                  <td/>
+                </tr></tfoot>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* BALANCE DE PRUEBA · verificación de cuadre (NIC 1) */}
+        {tab==='balance' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <div style={{background:balance.cuadra?`${S.green}10`:`${S.red}10`,border:`1px solid ${balance.cuadra?S.green:S.red}30`,borderRadius:12,padding:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:900,color:balance.cuadra?S.green:S.red,fontFamily:"'Syne',sans-serif"}}>
+                  {balance.cuadra?'✓ Balance de prueba cuadra':'✗ Balance descuadrado'}
+                </div>
+                <div style={{fontSize:11,color:S.text3,marginTop:3}}>NIC 1 · suma de débitos = suma de créditos sobre asientos contabilizados</div>
+              </div>
+              <div style={{textAlign:'right'}}>
+                <div style={{fontSize:11,color:S.text3}}>Débitos {COP(balance.totalDebe)}</div>
+                <div style={{fontSize:11,color:S.text3}}>Créditos {COP(balance.totalHaber)}</div>
+              </div>
+            </div>
+            {[1,2,4,5,6].map(clase=>{
+              const filas = mayor.filter(c=>Number(c.cuenta[0])===clase);
+              if (!filas.length) return null;
+              const nombreClase:Record<number,string>={1:'ACTIVO',2:'PASIVO',3:'PATRIMONIO',4:'INGRESOS',5:'GASTOS',6:'COSTOS'};
+              return (
+                <div key={clase} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+                  <div style={{padding:'8px 14px',background:S.bg3,fontSize:10,fontWeight:700,color:S.gold,letterSpacing:'.08em'}}>CLASE {clase} · {nombreClase[clase]}</div>
+                  <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                    <tbody>
+                      {filas.map(c=>(
+                        <tr key={c.cuenta} style={{borderTop:`1px solid ${S.border}`}}>
+                          <td style={{padding:'8px 14px',color:S.text3,fontFamily:'monospace',fontSize:11,width:80}}>{c.cuenta}</td>
+                          <td style={{padding:'8px 14px',color:S.text1}}>{c.nombre}</td>
+                          <td style={{padding:'8px 14px',textAlign:'right',fontWeight:700,color:c.saldo>=0?S.goldL:S.green}}>{COP(Math.abs(c.saldo))}{c.saldo>=0?' D':' C'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* CARTERA · CxC, aging y deterioro (NIIF 9) */}
+        {tab==='cxc' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+              {[
+                {label:'Cartera total',value:COP(aging.saldoTotal),color:S.goldL},
+                {label:'Pérdida esperada (ECL)',value:COP(aging.eclTotal),color:S.red},
+                {label:'Facturas abiertas',value:String(MOCK_CARTERA.filter(f=>f.saldo>0).length),color:S.blue},
+              ].map(k=>(
+                <div key={k.label} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
+                  <div style={{fontSize:10,color:S.text3,marginBottom:4}}>{k.label}</div>
+                  <div style={{fontSize:18,fontWeight:900,color:k.color,fontFamily:"'Syne',sans-serif"}}>{k.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <div style={{padding:'10px 14px',borderBottom:`1px solid ${S.border}`,fontSize:11,fontWeight:700,color:S.goldL}}>AGING · PÉRDIDA CREDITICIA ESPERADA POR TRAMO</div>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr style={{background:S.bg3}}>
+                  {['Tramo','Saldo','Tasa ECL','Provisión'].map(h=>(
+                    <th key={h} style={{padding:'8px 14px',textAlign:h==='Tramo'?'left':'right',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {(['corriente','1-30','31-60','61-90','+90'] as const).map(t=>(
+                    <tr key={t} style={{borderTop:`1px solid ${S.border}`}}>
+                      <td style={{padding:'9px 14px',color:t==='+90'?S.red:S.text1}}>{t==='corriente'?'Corriente':`${t} días`}</td>
+                      <td style={{padding:'9px 14px',textAlign:'right',color:S.text1}}>{COP(aging.tramos[t].saldo)}</td>
+                      <td style={{padding:'9px 14px',textAlign:'right',color:S.text3}}>{PCT(TASA_ECL[t]*100)}</td>
+                      <td style={{padding:'9px 14px',textAlign:'right',fontWeight:700,color:S.red}}>{COP(aging.tramos[t].ecl)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
+                  <td style={{padding:'12px 14px',fontWeight:700,color:S.gold}}>TOTAL</td>
+                  <td style={{padding:'12px 14px',textAlign:'right',fontWeight:700,color:S.goldL}}>{COP(aging.saldoTotal)}</td>
+                  <td/>
+                  <td style={{padding:'12px 14px',textAlign:'right',fontWeight:900,color:S.red}}>{COP(aging.eclTotal)}</td>
+                </tr></tfoot>
+              </table>
+            </div>
+            <button onClick={()=> can(rol,'postear_asiento')?showToast(`✓ Deterioro provisionado ${COP(Math.round(aging.eclTotal))} (Dr gasto · Cr provisión)`):showToast(`🔒 Rol ${ROLES[rol].label} no puede postear el deterioro`)}
+              style={{alignSelf:'flex-start',padding:'10px 18px',borderRadius:10,border:'none',fontSize:12,fontWeight:700,cursor:'pointer',background:can(rol,'postear_asiento')?`${S.red}20`:S.bg3,color:can(rol,'postear_asiento')?S.red:S.text3}}>
+              📉 Provisionar deterioro (ECL)
+            </button>
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr style={{background:S.bg3}}>
+                  {['Factura','Cliente','Vence','Tramo','Total','Saldo'].map(h=>(
+                    <th key={h} style={{padding:'9px 12px',textAlign:['Total','Saldo'].includes(h)?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {MOCK_CARTERA.map(f=>{
+                    const t=tramoVencimiento(f.vencimiento);
+                    return (
+                      <tr key={f.id} style={{borderTop:`1px solid ${S.border}`}}>
+                        <td style={{padding:'9px 12px',color:S.goldL}}>{f.numero}</td>
+                        <td style={{padding:'9px 12px',color:S.text1}}>{f.cliente}</td>
+                        <td style={{padding:'9px 12px',color:S.text3}}>{f.vencimiento}</td>
+                        <td style={{padding:'9px 12px'}}><span style={{fontSize:10,fontWeight:700,color:t==='+90'?S.red:t==='corriente'?S.green:S.gold}}>{t==='corriente'?'Corriente':t}</span></td>
+                        <td style={{padding:'9px 12px',textAlign:'right',color:S.text2}}>{COP(f.total)}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:S.goldL}}>{COP(f.saldo)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* TESORERÍA · posición de caja y conciliación */}
+        {tab==='tesoreria' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+              {[
+                {label:'Saldo en libros',value:COP(MOCK_BANCOS.reduce((a,b)=>a+b.saldoLibros,0)),color:S.goldL},
+                {label:'Partidas conciliadas',value:String(MOCK_EXTRACTO.filter(e=>e.conciliado).length)+`/${MOCK_EXTRACTO.length}`,color:S.green},
+                {label:'Sin conciliar',value:COP(MOCK_EXTRACTO.filter(e=>!e.conciliado).reduce((a,e)=>a+Math.abs(e.valor),0)),color:S.red},
+              ].map(k=>(
+                <div key={k.label} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
+                  <div style={{fontSize:10,color:S.text3,marginBottom:4}}>{k.label}</div>
+                  <div style={{fontSize:18,fontWeight:900,color:k.color,fontFamily:"'Syne',sans-serif"}}>{k.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{display:'flex',gap:10,flexWrap:'wrap' as const}}>
+              {MOCK_BANCOS.map(b=>(
+                <div key={b.id} style={{flex:1,minWidth:200,background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
+                  <div style={{fontSize:12,fontWeight:700,color:S.text1}}>{b.banco}</div>
+                  <div style={{fontSize:11,color:S.text3}}>{b.tipo} · {b.numero}</div>
+                  <div style={{fontSize:16,fontWeight:900,color:S.goldL,marginTop:6}}>{COP(b.saldoLibros)}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <div style={{padding:'10px 14px',borderBottom:`1px solid ${S.border}`,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+                <span style={{fontSize:11,fontWeight:700,color:S.goldL}}>EXTRACTO BANCARIO · CONCILIACIÓN</span>
+                <button onClick={()=> can(rol,'conciliar')?showToast('✓ Motor de conciliación ejecutado'):showToast(`🔒 Rol ${ROLES[rol].label} no puede conciliar`)}
+                  style={{padding:'6px 12px',borderRadius:8,border:'none',fontSize:11,fontWeight:700,cursor:'pointer',background:can(rol,'conciliar')?`${S.blue}20`:S.bg3,color:can(rol,'conciliar')?S.blue:S.text3}}>
+                  🔄 Conciliar
+                </button>
+              </div>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr style={{background:S.bg3}}>
+                  {['Fecha','Descripción','Referencia','Valor','Estado'].map(h=>(
+                    <th key={h} style={{padding:'9px 12px',textAlign:h==='Valor'?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {MOCK_EXTRACTO.map(e=>(
+                    <tr key={e.id} style={{borderTop:`1px solid ${S.border}`}}>
+                      <td style={{padding:'9px 12px',color:S.text3}}>{e.fecha}</td>
+                      <td style={{padding:'9px 12px',color:S.text1}}>{e.descripcion}{e.match&&<span style={{color:S.text3,fontSize:10}}> · {e.match}</span>}</td>
+                      <td style={{padding:'9px 12px',color:S.text3,fontFamily:'monospace',fontSize:11}}>{e.referencia}</td>
+                      <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:e.valor>=0?S.green:S.red}}>{COP(e.valor)}</td>
+                      <td style={{padding:'9px 12px'}}>
+                        <span style={{background:e.conciliado?`${S.green}20`:`${S.gold}20`,color:e.conciliado?S.green:S.gold,padding:'3px 8px',borderRadius:20,fontSize:10,fontWeight:700}}>
+                          {e.conciliado?'✓ Conciliado':'⏳ Pendiente'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
+        {/* IMPUESTOS · consolidado del período */}
+        {tab==='impuestos' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10}}>
+              {[
+                {label:'Neto a pagar (período)',value:COP(MOCK_IMPUESTOS.reduce((a,m)=>a+m.neto,0)),color:S.red},
+                {label:'IVA descontable acumulado',value:COP(MOCK_IMPUESTOS.reduce((a,m)=>a+m.descontable,0)),color:S.green},
+              ].map(k=>(
+                <div key={k.label} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
+                  <div style={{fontSize:10,color:S.text3,marginBottom:4}}>{k.label}</div>
+                  <div style={{fontSize:18,fontWeight:900,color:k.color,fontFamily:"'Syne',sans-serif"}}>{k.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:12,background:`${S.blue}10`,border:`1px solid ${S.blue}30`,borderRadius:10,fontSize:11,color:S.blue}}>
+              📌 La propina voluntaria no hace parte de la base del impuesto al consumo (DIAN). El motor la separa como pasivo desde el cierre.
+            </div>
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr style={{background:S.bg3}}>
+                  {['Impuesto','Cuenta','Generado','Descontable','Neto a pagar'].map(h=>(
+                    <th key={h} style={{padding:'9px 12px',textAlign:['Generado','Descontable','Neto a pagar'].includes(h)?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {MOCK_IMPUESTOS.map(m=>(
+                    <tr key={m.tipo} style={{borderTop:`1px solid ${S.border}`}}>
+                      <td style={{padding:'9px 12px',color:S.text1,fontWeight:600}}>{m.tipo}<div style={{fontSize:10,color:S.text3}}>{m.etiqueta}</div></td>
+                      <td style={{padding:'9px 12px',color:S.text3,fontFamily:'monospace',fontSize:11}}>{m.cuenta}</td>
+                      <td style={{padding:'9px 12px',textAlign:'right',color:m.generado>0?S.goldL:S.text3}}>{m.generado>0?COP(m.generado):'—'}</td>
+                      <td style={{padding:'9px 12px',textAlign:'right',color:m.descontable>0?S.green:S.text3}}>{m.descontable>0?COP(m.descontable):'—'}</td>
+                      <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:S.red}}>{COP(m.neto)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
+                  <td colSpan={4} style={{padding:'12px',fontWeight:700,color:S.gold}}>TOTAL A DECLARAR</td>
+                  <td style={{padding:'12px',textAlign:'right',fontWeight:900,color:S.red,fontSize:14}}>{COP(MOCK_IMPUESTOS.reduce((a,m)=>a+m.neto,0))}</td>
+                </tr></tfoot>
+              </table>
+            </div>
+            <button onClick={()=>showToast('✓ Borrador de declaración preparado')} style={{alignSelf:'flex-start',padding:'10px 18px',borderRadius:10,border:'none',fontSize:12,fontWeight:700,cursor:'pointer',background:`${S.gold}20`,color:S.gold}}>
+              📄 Preparar borrador de declaración
+            </button>
           </div>
         )}
 
