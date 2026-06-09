@@ -304,6 +304,7 @@ insert into public.cont_cuenta (codigo, nombre, clase, naturaleza, imputable) va
   ('513540','Aseo y mantenimiento',                5, 'debito',  true),
   ('5195',  'Diversos (gastos)',                   5, 'debito',  false),
   ('519595','Gastos diversos',                     5, 'debito',  true),
+  ('519910','Gasto deterioro de cartera',          5, 'debito',  true),
   ('6135',  'Costo de ventas',                     6, 'debito',  false),
   ('613505','Costo de alimentos',                  6, 'debito',  true),
   ('613510','Costo de bebidas',                    6, 'debito',  true)
