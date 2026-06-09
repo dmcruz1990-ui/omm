@@ -10,11 +10,13 @@ import {
   ROLES, can, libroMayor, balancePrueba, agingCartera, TASA_ECL,
   construirAsientoARFactura, construirAsientoARRecaudo, construirAsientoDeterioro,
   construirAsientoPagoImpuesto, construirAsientoNomina, tramoVencimiento,
+  construirAsientoDepreciacion, construirAsientoCierrePeriodo, consolidar, depreciacionMensual,
 } from '../lib/contabilidad';
-import type { Rol, Accion, Asiento, SaldoCuenta, Tramo } from '../lib/contabilidad';
+import type { Rol, Accion, Asiento, SaldoCuenta, Tramo, Activo } from '../lib/contabilidad';
 import {
   MOCK_CARTERA, MOCK_BANCOS, MOCK_EXTRACTO, MOCK_IMPUESTOS, MOCK_ASIENTOS_HIST,
-  cargarAsientosReales, cargarCartera, cargarTesoreria, cargarImpuestos, postearAsiento,
+  MOCK_ACTIVOS, MOCK_ENTIDADES, MOCK_ELIMINACIONES,
+  cargarAsientosReales, cargarCartera, cargarTesoreria, cargarImpuestos, cargarActivos, postearAsiento,
 } from '../lib/contabilidadData';
 import type { ARFactura, ExtractoLinea, MovImpuesto, CuentaBanco } from '../lib/contabilidadData';
 
@@ -27,7 +29,7 @@ const S = {
 
 const PCT = (n: number) => `${n.toFixed(1)}%`;
 
-type Tab = 'dashboard' | 'caja' | 'asientos' | 'mayor' | 'balance' | 'cxc' | 'tesoreria' | 'impuestos' | 'nomina' | 'pyg' | 'gastos' | 'inventario' | 'propinas' | 'promociones' | 'facturas';
+type Tab = 'dashboard' | 'caja' | 'asientos' | 'mayor' | 'balance' | 'cxc' | 'tesoreria' | 'impuestos' | 'nomina' | 'activos' | 'consolidacion' | 'cierre' | 'pyg' | 'gastos' | 'inventario' | 'propinas' | 'promociones' | 'facturas';
 
 const MOCK_VENTAS = {
   metaMes:85000000, ventasMes:62400000,
@@ -126,6 +128,7 @@ export default function ContabilidadModule() {
   const [carteraData, setCarteraData]     = useState<ARFactura[]|null>(null);
   const [tesoreriaData, setTesoreriaData] = useState<{ bancos:CuentaBanco[]; extracto:ExtractoLinea[] }|null>(null);
   const [impuestosData, setImpuestosData] = useState<MovImpuesto[]|null>(null);
+  const [activosData, setActivosData]     = useState<Activo[]|null>(null);
   const [fuenteDatos, setFuenteDatos]     = useState<'supabase'|'demo'>('demo');
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -134,6 +137,7 @@ export default function ContabilidadModule() {
     cargarCartera().then(r => { if (r && r.length) setCarteraData(r); });
     cargarTesoreria().then(r => { if (r && r.bancos.length) setTesoreriaData(r); });
     cargarImpuestos().then(r => { if (r && r.length) setImpuestosData(r); });
+    cargarActivos().then(r => { if (r && r.length) setActivosData(r); });
   }, []);
 
   // Datos efectivos: Supabase si llegó, si no la demo en memoria.
@@ -141,6 +145,7 @@ export default function ContabilidadModule() {
   const bancos    = tesoreriaData?.bancos ?? MOCK_BANCOS;
   const extracto  = tesoreriaData?.extracto ?? MOCK_EXTRACTO;
   const impuestos = impuestosData ?? MOCK_IMPUESTOS;
+  const activos   = activosData ?? MOCK_ACTIVOS;
 
   const showToast = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
 
@@ -191,6 +196,22 @@ export default function ContabilidadModule() {
       if (frescos) { setAsientosReales(frescos); setFuenteDatos('supabase'); }
       showToast(`✓ Deterioro provisionado ${COP(monto)} (Dr gasto · Cr provisión)`);
     } else showToast(`✗ Rechazado: ${r.error}`);
+  };
+
+  const correrDepreciacion = async () => {
+    if (!can(rol,'postear_asiento')) { showToast(`🔒 Rol ${ROLES[rol].label} no puede postear depreciación`); return; }
+    showToast('⏳ Corriendo depreciación…');
+    const r = await postearAsiento(asientoDep, ROLES[rol].label);
+    if (r.ok) { const f = await cargarAsientosReales(); if (f) { setAsientosReales(f); setFuenteDatos('supabase'); } showToast('✓ Depreciación contabilizada en Supabase'); }
+    else showToast(`✗ Rechazado: ${r.error}`);
+  };
+
+  const cerrarPeriodo = async () => {
+    if (!can(rol,'cerrar_periodo')) { showToast(`🔒 Rol ${ROLES[rol].label} no puede cerrar el período`); return; }
+    showToast('⏳ Posteando asiento de cierre…');
+    const r = await postearAsiento(asientoCierre, ROLES[rol].label);
+    if (r.ok) { const f = await cargarAsientosReales(); if (f) { setAsientosReales(f); setFuenteDatos('supabase'); } showToast(`✓ Período cerrado · resultado ${COP(asientoCierre.utilidad)}`); }
+    else showToast(`✗ Rechazado: ${r.error}`);
   };
 
   const causarNomina = async () => {
@@ -255,6 +276,13 @@ export default function ContabilidadModule() {
   const aging   = agingCartera(cartera);
   // Nómina del período (demo): bruto + cargas patronales − seg. social − deducciones
   const asientoNomina = construirAsientoNomina({ salarios:4150000, cargas:1245000, seguridadSocial:1328000, retenciones:166000, fecha:new Date().toISOString().slice(0,10) });
+  // Activos fijos: depreciación mensual y su asiento
+  const depMensualTotal = activos.reduce((a,x)=>a + depreciacionMensual(x), 0);
+  const asientoDep = construirAsientoDepreciacion(depMensualTotal, new Date().toISOString().slice(0,10));
+  // Cierre del período sobre el mayor consolidado
+  const asientoCierre = construirAsientoCierrePeriodo(mayor, new Date().toISOString().slice(0,10));
+  // Consolidación multiempresa
+  const cons = consolidar(MOCK_ENTIDADES, MOCK_ELIMINACIONES);
   const inp = { background:S.bg2, border:`1px solid ${S.border}`, borderRadius:8, padding:'9px 14px', color:S.text1, fontSize:12, outline:'none', width:'100%' };
 
   const TABS: {id:Tab;label:string}[] = [
@@ -267,6 +295,9 @@ export default function ContabilidadModule() {
     {id:'tesoreria',  label:'🏦 Tesorería'},
     {id:'impuestos',  label:'🧾 Impuestos'},
     {id:'nomina',     label:'👥 Nómina'},
+    {id:'activos',    label:'🏭 Activos'},
+    {id:'consolidacion',label:'🏢 Consolidación'},
+    {id:'cierre',     label:'🔐 Cierre'},
     {id:'pyg',        label:'📈 P&G'},
     {id:'gastos',     label:'📸 Gastos'},
     {id:'inventario', label:'📦 Inventario'},
@@ -1004,6 +1035,160 @@ export default function ContabilidadModule() {
               style={{alignSelf:'flex-start',padding:'10px 18px',borderRadius:10,border:'none',fontSize:12,fontWeight:700,cursor:can(rol,'postear_asiento')?'pointer':'not-allowed',background:can(rol,'postear_asiento')?S.gold:S.bg3,color:can(rol,'postear_asiento')?'#000':S.text3}}>
               👥 Causar nómina al libro mayor
             </button>
+          </div>
+        )}
+
+        {/* ACTIVOS FIJOS · NIC 16 */}
+        {tab==='activos' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+              {[
+                {label:'Activos registrados',value:String(activos.length),color:S.blue},
+                {label:'Costo total',value:COP(activos.reduce((a,x)=>a+x.costo,0)),color:S.goldL},
+                {label:'Depreciación mensual',value:COP(depMensualTotal),color:S.red},
+              ].map(k=>(
+                <div key={k.label} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
+                  <div style={{fontSize:10,color:S.text3,marginBottom:4}}>{k.label}</div>
+                  <div style={{fontSize:18,fontWeight:900,color:k.color,fontFamily:"'Syne',sans-serif"}}>{k.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr style={{background:S.bg3}}>
+                  {['Activo','Clase','En uso','Costo','Vida','Dep. mensual'].map(h=>(
+                    <th key={h} style={{padding:'9px 12px',textAlign:['Costo','Vida','Dep. mensual'].includes(h)?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {activos.map(x=>(
+                    <tr key={x.id} style={{borderTop:`1px solid ${S.border}`}}>
+                      <td style={{padding:'9px 12px',color:S.text1}}>{x.nombre}</td>
+                      <td style={{padding:'9px 12px',color:S.text3,fontSize:11}}>{x.clase}</td>
+                      <td style={{padding:'9px 12px',color:S.text3}}>{x.fecha_uso}</td>
+                      <td style={{padding:'9px 12px',textAlign:'right',color:S.goldL}}>{COP(x.costo)}</td>
+                      <td style={{padding:'9px 12px',textAlign:'right',color:S.text2}}>{x.vida_util_meses}m</td>
+                      <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:S.red}}>{COP(depreciacionMensual(x))}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
+                  <td colSpan={5} style={{padding:'12px',fontWeight:700,color:S.gold}}>DEPRECIACIÓN DEL MES</td>
+                  <td style={{padding:'12px',textAlign:'right',fontWeight:900,color:S.red,fontSize:14}}>{COP(depMensualTotal)}</td>
+                </tr></tfoot>
+              </table>
+            </div>
+            <div style={{padding:12,background:`${S.blue}10`,border:`1px solid ${S.blue}30`,borderRadius:10,fontSize:11,color:S.blue}}>
+              📐 NIC 16 — la depreciación inicia desde la fecha de disponibilidad para uso. Asiento: Dr Gasto depreciación (516005) · Cr Depreciación acumulada (159205).
+            </div>
+            <button onClick={correrDepreciacion} disabled={!can(rol,'postear_asiento')}
+              style={{alignSelf:'flex-start',padding:'10px 18px',borderRadius:10,border:'none',fontSize:12,fontWeight:700,cursor:can(rol,'postear_asiento')?'pointer':'not-allowed',background:can(rol,'postear_asiento')?S.gold:S.bg3,color:can(rol,'postear_asiento')?'#000':S.text3}}>
+              🏭 Correr depreciación del mes
+            </button>
+          </div>
+        )}
+
+        {/* CONSOLIDACIÓN MULTIEMPRESA · NIIF 10 */}
+        {tab==='consolidacion' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+              {[
+                {label:'Ingresos consolidados',value:COP(cons.ingresos),color:S.goldL},
+                {label:'Eliminaciones intercompañía',value:COP(cons.elimTotal),color:S.red},
+                {label:'Utilidad consolidada',value:COP(cons.utilidad),color:S.green},
+              ].map(k=>(
+                <div key={k.label} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
+                  <div style={{fontSize:10,color:S.text3,marginBottom:4}}>{k.label}</div>
+                  <div style={{fontSize:18,fontWeight:900,color:k.color,fontFamily:"'Syne',sans-serif"}}>{k.value}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <div style={{padding:'10px 14px',borderBottom:`1px solid ${S.border}`,fontSize:11,fontWeight:700,color:S.goldL}}>ESTADOS POR ENTIDAD LEGAL</div>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr style={{background:S.bg3}}>
+                  {['Entidad','Ingresos','Costos','Gastos','Utilidad'].map(h=>(
+                    <th key={h} style={{padding:'9px 12px',textAlign:h==='Entidad'?'left':'right',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {MOCK_ENTIDADES.map(e=>{
+                    const u=e.ingresos-e.costos-e.gastos;
+                    return (
+                      <tr key={e.entidad} style={{borderTop:`1px solid ${S.border}`}}>
+                        <td style={{padding:'9px 12px',color:S.text1,fontWeight:600}}>{e.entidad}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',color:S.goldL}}>{COP(e.ingresos)}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',color:S.text2}}>{COP(e.costos)}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',color:S.text2}}>{COP(e.gastos)}</td>
+                        <td style={{padding:'9px 12px',textAlign:'right',fontWeight:700,color:S.green}}>{COP(u)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <div style={{padding:'10px 14px',borderBottom:`1px solid ${S.border}`,fontSize:11,fontWeight:700,color:S.red}}>ELIMINACIONES INTERCOMPAÑÍA</div>
+              {MOCK_ELIMINACIONES.map((e,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'10px 14px',borderTop:i>0?`1px solid ${S.border}`:'none'}}>
+                  <span style={{fontSize:12,color:S.text2}}>{e.concepto}</span>
+                  <span style={{fontSize:12,fontWeight:700,color:S.red}}>({COP(e.monto)})</span>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:12,background:`${S.purple}10`,border:`1px solid ${S.purple}30`,borderRadius:10,fontSize:11,color:S.purple}}>
+              📐 NIIF 10 — la consolidación elimina ingresos/costos recíprocos entre entidades; los ajustes viven en un libro de consolidación separado del libro legal de cada empresa.
+            </div>
+          </div>
+        )}
+
+        {/* CIERRE DE PERÍODO */}
+        {tab==='cierre' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14,maxWidth:760}}>
+            <div style={{background:asientoCierre.utilidad>=0?`${S.green}10`:`${S.red}10`,border:`1px solid ${asientoCierre.utilidad>=0?S.green:S.red}30`,borderRadius:12,padding:16,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div>
+                <div style={{fontSize:14,fontWeight:900,color:asientoCierre.utilidad>=0?S.green:S.red,fontFamily:"'Syne',sans-serif"}}>
+                  {asientoCierre.utilidad>=0?'Utilidad del ejercicio':'Pérdida del ejercicio'}
+                </div>
+                <div style={{fontSize:11,color:S.text3,marginTop:3}}>Cancela ingresos (clase 4), gastos (5) y costos (6) contra resultado (360505)</div>
+              </div>
+              <div style={{fontSize:20,fontWeight:900,color:asientoCierre.utilidad>=0?S.green:S.red}}>{COP(asientoCierre.utilidad)}</div>
+            </div>
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <div style={{padding:'10px 14px',borderBottom:`1px solid ${S.border}`,fontSize:11,fontWeight:700,color:S.goldL}}>ASIENTO DE CIERRE</div>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr style={{background:S.bg3}}>
+                  {['Cuenta','Concepto','Débito','Crédito'].map(h=>(
+                    <th key={h} style={{padding:'9px 14px',textAlign:['Débito','Crédito'].includes(h)?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {asientoCierre.lineas.map((l,i)=>(
+                    <tr key={i} style={{borderTop:`1px solid ${S.border}`}}>
+                      <td style={{padding:'9px 14px',color:S.text3,fontFamily:'monospace',fontSize:11}}>{l.cuenta}</td>
+                      <td style={{padding:'9px 14px',color:S.text1}}>{l.nombre}</td>
+                      <td style={{padding:'9px 14px',textAlign:'right',color:l.debe>0?S.goldL:S.text3}}>{l.debe>0?COP(l.debe):'—'}</td>
+                      <td style={{padding:'9px 14px',textAlign:'right',color:l.haber>0?S.green:S.text3}}>{l.haber>0?COP(l.haber):'—'}</td>
+                    </tr>
+                  ))}
+                  {asientoCierre.lineas.length===0 && (
+                    <tr><td colSpan={4} style={{padding:14,color:S.text3,textAlign:'center'}}>No hay movimiento de resultado en el período.</td></tr>
+                  )}
+                </tbody>
+                <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
+                  <td colSpan={2} style={{padding:'12px 14px',fontWeight:700,color:asientoCierre.cuadra?S.green:S.red}}>{asientoCierre.cuadra?'✓ Cuadra':'✗ Descuadre'}</td>
+                  <td style={{padding:'12px 14px',textAlign:'right',fontWeight:900,color:S.goldL}}>{COP(asientoCierre.debe)}</td>
+                  <td style={{padding:'12px 14px',textAlign:'right',fontWeight:900,color:S.green}}>{COP(asientoCierre.haber)}</td>
+                </tr></tfoot>
+              </table>
+            </div>
+            <div style={{display:'flex',gap:10,alignItems:'center'}}>
+              <button onClick={cerrarPeriodo} disabled={!can(rol,'cerrar_periodo')||asientoCierre.lineas.length===0}
+                style={{padding:'10px 18px',borderRadius:10,border:'none',fontSize:12,fontWeight:700,cursor:can(rol,'cerrar_periodo')?'pointer':'not-allowed',background:can(rol,'cerrar_periodo')&&asientoCierre.lineas.length?S.gold:S.bg3,color:can(rol,'cerrar_periodo')&&asientoCierre.lineas.length?'#000':S.text3}}>
+                🔐 Postear cierre del período
+              </button>
+              <span style={{fontSize:10,color:S.text3}}>{can(rol,'cerrar_periodo')?`Habilitado para ${ROLES[rol].label}`:`Requiere Contador o CFO`}</span>
+            </div>
           </div>
         )}
 

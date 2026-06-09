@@ -221,6 +221,61 @@ export function construirAsientoNomina(d: { salarios:number; cargas:number; segu
   return { ...a, neto };
 }
 
+// ─── Activos fijos (NIC 16): depreciación ───────────────────────────────────
+export function construirAsientoDepreciacion(montoMensual: number, fecha: string): Asiento {
+  const lineas: AsientoLinea[] = [
+    { cuenta:'516005', nombre:'Gasto depreciación',     debe:montoMensual, haber:0 },
+    { cuenta:'159205', nombre:'Depreciación acumulada', debe:0, haber:montoMensual },
+  ];
+  return armar(lineas, {
+    fecha, fuente:'Corrida de depreciación del período',
+    dim:'OMM · Restaurante principal', origenTipo:'manual', estado:'contabilizado',
+  });
+}
+
+export type Activo = { id:string; nombre:string; clase:string; costo:number; vida_util_meses:number; valor_residual:number; fecha_uso:string };
+// Depreciación mensual lineal = (costo − residual) / vida útil, solo si ya está en uso.
+export const depreciacionMensual = (a: Activo, hoy = new Date()) => {
+  if (!a.fecha_uso || new Date(a.fecha_uso + 'T12:00:00') > hoy) return 0; // norma: no depreciar antes de la fecha de uso
+  return Math.round((a.costo - a.valor_residual) / a.vida_util_meses);
+};
+
+// ─── Cierre de período: cancelar ingresos/gastos/costos a resultado ─────────
+// Norma NIC 1/8: cierra clases 4 (ingresos), 5 (gastos) y 6 (costos) contra la
+// cuenta de resultado del ejercicio (360505). El asiento siempre cuadra.
+export function construirAsientoCierrePeriodo(mayor: SaldoCuenta[], fecha: string): Asiento & { utilidad:number } {
+  const ingresos = mayor.filter(c => c.cuenta[0] === '4');
+  const gastos   = mayor.filter(c => c.cuenta[0] === '5' || c.cuenta[0] === '6');
+  const totalIngresos = ingresos.reduce((a,c)=>a + (c.haber - c.debe), 0);
+  const totalGastos   = gastos.reduce((a,c)=>a + (c.debe - c.haber), 0);
+  const utilidad = totalIngresos - totalGastos;
+  const lineas: AsientoLinea[] = [
+    ...ingresos.filter(c=>c.haber-c.debe!==0).map(c => ({ cuenta:c.cuenta, nombre:c.nombre, debe:c.haber - c.debe, haber:0 })),
+    ...gastos.filter(c=>c.debe-c.haber!==0).map(c => ({ cuenta:c.cuenta, nombre:c.nombre, debe:0, haber:c.debe - c.haber })),
+    utilidad >= 0
+      ? { cuenta:'360505', nombre:'Utilidad del ejercicio', debe:0, haber:utilidad }
+      : { cuenta:'360505', nombre:'Pérdida del ejercicio',  debe:-utilidad, haber:0 },
+  ];
+  const a = armar(lineas, {
+    fecha, fuente:'Asiento de cierre del período', dim:'OMM · Restaurante principal',
+    origenTipo:'manual', estado:'contabilizado',
+  });
+  return { ...a, utilidad };
+}
+
+// ─── Consolidación multiempresa (NIIF 10) ───────────────────────────────────
+export type EntidadFin = { entidad:string; ingresos:number; costos:number; gastos:number };
+export type Eliminacion = { concepto:string; monto:number };
+export function consolidar(entidades: EntidadFin[], eliminaciones: Eliminacion[]) {
+  const sum = (k: keyof Omit<EntidadFin,'entidad'>) => entidades.reduce((a,e)=>a + e[k], 0);
+  const elimTotal = eliminaciones.reduce((a,e)=>a + e.monto, 0);
+  const ingresos = sum('ingresos') - elimTotal;   // se eliminan ingresos intercompañía
+  const costos   = sum('costos')   - elimTotal;    // y su costo recíproco
+  const gastos   = sum('gastos');
+  const utilidad = ingresos - costos - gastos;
+  return { ingresosBruto:sum('ingresos'), elimTotal, ingresos, costos, gastos, utilidad };
+}
+
 // ─── Impuestos: pago de declaración ─────────────────────────────────────────
 export function construirAsientoPagoImpuesto(cuenta: CuentaPUC, monto: number, fecha: string, concepto: string): Asiento {
   const lineas: AsientoLinea[] = [

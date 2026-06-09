@@ -5,7 +5,27 @@
 // modo demostración sin romper cuando la migración ya está aplicada.
 // ═══════════════════════════════════════════════════════════════════════════
 import { supabase } from './supabase.ts';
-import type { Asiento } from './contabilidad.ts';
+import type { Asiento, Activo, EntidadFin, Eliminacion } from './contabilidad.ts';
+
+// ─── Activos fijos (demo + lector) ──────────────────────────────────────────
+export const MOCK_ACTIVOS: Activo[] = [
+  { id:'1', nombre:'Horno industrial Rational', clase:'Equipo cocina', costo:12000000, vida_util_meses:120, valor_residual:1200000, fecha_uso:'2024-02-01' },
+  { id:'2', nombre:'Cuarto frío / refrigeración', clase:'Equipo cocina', costo:8000000, vida_util_meses:120, valor_residual:800000, fecha_uso:'2024-02-01' },
+  { id:'3', nombre:'Mobiliario salón', clase:'Mobiliario', costo:15000000, vida_util_meses:120, valor_residual:1500000, fecha_uso:'2023-12-01' },
+  { id:'4', nombre:'Hardware POS x6', clase:'Cómputo', costo:6000000, vida_util_meses:60, valor_residual:0, fecha_uso:'2025-03-15' },
+  { id:'5', nombre:'Equipo de bar', clase:'Equipo bar', costo:9500000, vida_util_meses:120, valor_residual:950000, fecha_uso:'2024-07-01' },
+];
+
+// ─── Consolidación multiempresa (demo) ──────────────────────────────────────
+export const MOCK_ENTIDADES: EntidadFin[] = [
+  { entidad:'Seratta SAS',  ingresos:62400000, costos:21500000, gastos:18200000 },
+  { entidad:'Oh Yeah SAS',  ingresos:28800000, costos:10100000, gastos:8400000 },
+  { entidad:'Barra Nexum SAS', ingresos:14200000, costos:5600000, gastos:4100000 },
+];
+export const MOCK_ELIMINACIONES: Eliminacion[] = [
+  { concepto:'Cobro de management fee Seratta → Oh Yeah', monto:2400000 },
+  { concepto:'Venta intercompañía de insumos', monto:1100000 },
+];
 
 // ─── CxC / cartera (demo) ───────────────────────────────────────────────────
 export type ARFactura = { id:string; numero:string; cliente:string; nit:string; fecha:string; vencimiento:string; base:number; iva:number; total:number; saldo:number; estado:string };
@@ -129,6 +149,15 @@ export async function cargarTesoreria(): Promise<{ bancos:CuentaBanco[]; extract
       bancos: bancos.map((b:any)=>({ id:String(b.id), banco:b.banco, numero:b.numero, tipo:b.tipo, saldoLibros:Number(b.saldo) })),
       extracto: (ext||[]).map((e:any)=>({ id:String(e.id), fecha:e.fecha, descripcion:e.descripcion, referencia:e.referencia, valor:Number(e.valor), conciliado:e.conciliado })),
     };
+  } catch { return null; }
+}
+
+export async function cargarActivos(): Promise<Activo[] | null> {
+  try {
+    const { data, error } = await supabase.from('cont_activo')
+      .select('id,nombre,clase,costo,vida_util_meses,valor_residual,fecha_uso').eq('estado','activo');
+    if (error || !data || data.length === 0) return null;
+    return data.map((a:any)=>({ id:String(a.id), nombre:a.nombre, clase:a.clase||'', costo:Number(a.costo), vida_util_meses:a.vida_util_meses, valor_residual:Number(a.valor_residual), fecha_uso:a.fecha_uso }));
   } catch { return null; }
 }
 
