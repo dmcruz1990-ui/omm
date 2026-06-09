@@ -143,6 +143,22 @@ function construirAsientoGasto(g: { proveedor:string; concepto:string; base:numb
   };
 }
 
+// ─── RBAC + Segregación de funciones (SoD) ────────────────────────────────────
+// Norma NEXUM: una misma persona no puede preparar y aprobar pagos, ni causar y
+// pagar su propia factura, ni editar fuentes operativas y postear journals sin
+// rastro. Cada acción crítica exige un rol habilitado.
+type Rol = 'cajero' | 'analista_cxp' | 'tesorero' | 'contador' | 'cfo' | 'auditor';
+type Accion = 'abrir_caja' | 'cerrar_caja' | 'causar_gasto' | 'preparar_pago' | 'aprobar_pago' | 'postear_asiento' | 'cerrar_periodo';
+const ROLES: Record<Rol, { label:string; puede:Accion[] }> = {
+  cajero:       { label:'Cajero / Supervisor', puede:['abrir_caja','cerrar_caja'] },
+  analista_cxp: { label:'Analista CxP',         puede:['causar_gasto'] },
+  tesorero:     { label:'Tesorero',             puede:['preparar_pago'] },
+  contador:     { label:'Contador',             puede:['causar_gasto','postear_asiento','cerrar_periodo'] },
+  cfo:          { label:'Controller / CFO',     puede:['abrir_caja','cerrar_caja','causar_gasto','preparar_pago','aprobar_pago','postear_asiento','cerrar_periodo'] },
+  auditor:      { label:'Auditor interno',      puede:[] }, // solo lectura
+};
+const can = (rol: Rol, accion: Accion) => ROLES[rol].puede.includes(accion);
+
 type Tab = 'dashboard' | 'caja' | 'asientos' | 'pyg' | 'gastos' | 'inventario' | 'propinas' | 'promociones' | 'facturas';
 
 const MOCK_VENTAS = {
@@ -237,11 +253,13 @@ export default function ContabilidadModule() {
   const [ventas, setVentas] = useState(MOCK_VENTAS);
   const [pygVista, setPygVista] = useState<'operativo'|'financiero'>('financiero');
   const [gastoSel, setGastoSel] = useState<string|null>(null);
+  const [rol, setRol] = useState<Rol>('cfo');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const showToast = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
 
   const abrirCaja = () => {
+    if (!can(rol,'abrir_caja')) { showToast(`🔒 Rol ${ROLES[rol].label} no puede abrir caja`); return; }
     if (!resp || !montoA) { showToast('⚠️ Completa todos los campos'); return; }
     setTurno({ responsable:resp, hora_apertura:new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}), monto_apertura:parseInt(montoA), estado:'abierta' });
     setShowAbrir(false); setMontoA(''); setResp('');
@@ -249,6 +267,7 @@ export default function ContabilidadModule() {
   };
 
   const cerrarCaja = () => {
+    if (!can(rol,'cerrar_caja')) { showToast(`🔒 Rol ${ROLES[rol].label} no puede cerrar caja`); return; }
     if (!montoC || !turno) return;
     const totalNeto = MOCK_METODOS.reduce((a,m)=>a+m.bruto-m.desc,0);
     const esperado = turno.monto_apertura + totalNeto;
@@ -397,7 +416,7 @@ export default function ContabilidadModule() {
                 </div>
                 <div style={{display:'flex',gap:10}}>
                   <button onClick={()=>setOcrRes(null)} style={{flex:1,padding:12,borderRadius:10,border:`1px solid ${S.border}`,background:'none',color:S.text2,fontSize:12,cursor:'pointer'}}>↩ Nueva foto</button>
-                  <button onClick={()=>{setShowOCR(false);setOcrRes(null);showToast('✓ Gasto registrado y causado');}} style={{flex:2,padding:12,borderRadius:10,border:'none',background:S.green,color:'#fff',fontSize:12,fontWeight:900,cursor:'pointer'}}>✓ Registrar gasto</button>
+                  <button onClick={()=>{ if(!can(rol,'causar_gasto')){showToast(`🔒 Rol ${ROLES[rol].label} no puede causar gastos`);return;} setShowOCR(false);setOcrRes(null);showToast('✓ Gasto registrado y causado');}} style={{flex:2,padding:12,borderRadius:10,border:'none',background:can(rol,'causar_gasto')?S.green:S.bg3,color:can(rol,'causar_gasto')?'#fff':S.text3,fontSize:12,fontWeight:900,cursor:can(rol,'causar_gasto')?'pointer':'not-allowed'}}>✓ Registrar gasto</button>
                 </div>
               </>
             )}
@@ -421,12 +440,21 @@ export default function ContabilidadModule() {
             </span>
           </div>
         </div>
-        <div style={{display:'flex',gap:8}}>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {/* Selector de rol — controla SoD */}
+          <div style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:8,background:S.bg3,border:`1px solid ${S.border}`}}>
+            <span style={{fontSize:13}}>👤</span>
+            <select value={rol} onChange={e=>setRol(e.target.value as Rol)} style={{background:'transparent',border:'none',color:S.text2,fontSize:11,fontWeight:700,outline:'none',cursor:'pointer'}}>
+              {(Object.keys(ROLES) as Rol[]).map(r=>(
+                <option key={r} value={r} style={{background:S.bg3,color:S.text1}}>{ROLES[r].label}</option>
+              ))}
+            </select>
+          </div>
           <button onClick={()=>showToast('⬇️ Excel generado')} style={{background:S.bg3,border:`1px solid ${S.border}`,color:S.text2,padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer'}}>⬇️ Excel</button>
           <button onClick={()=>showToast('⬇️ PDF generado')} style={{background:S.bg3,border:`1px solid ${S.border}`,color:S.text2,padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer'}}>⬇️ PDF</button>
           {!turno||turno.estado==='cerrada'
-            ? <button onClick={()=>setShowAbrir(true)} style={{background:S.green,color:'#fff',border:'none',padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer'}}>🔓 Abrir caja</button>
-            : <button onClick={()=>setShowCerrar(true)} style={{background:S.red,color:'#fff',border:'none',padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer'}}>🔒 Cerrar turno</button>
+            ? <button onClick={()=>can(rol,'abrir_caja')?setShowAbrir(true):showToast(`🔒 Rol ${ROLES[rol].label} no puede abrir caja`)} disabled={!can(rol,'abrir_caja')} style={{background:can(rol,'abrir_caja')?S.green:S.bg3,color:can(rol,'abrir_caja')?'#fff':S.text3,border:`1px solid ${can(rol,'abrir_caja')?'transparent':S.border}`,padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:700,cursor:can(rol,'abrir_caja')?'pointer':'not-allowed'}}>🔓 Abrir caja</button>
+            : <button onClick={()=>can(rol,'cerrar_caja')?setShowCerrar(true):showToast(`🔒 Rol ${ROLES[rol].label} no puede cerrar caja`)} disabled={!can(rol,'cerrar_caja')} style={{background:can(rol,'cerrar_caja')?S.red:S.bg3,color:can(rol,'cerrar_caja')?'#fff':S.text3,border:`1px solid ${can(rol,'cerrar_caja')?'transparent':S.border}`,padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:700,cursor:can(rol,'cerrar_caja')?'pointer':'not-allowed'}}>🔒 Cerrar turno</button>
           }
         </div>
       </div>
@@ -676,6 +704,27 @@ export default function ContabilidadModule() {
               <div style={{fontSize:11,color:S.text3}}>{asiento.lineas.length} líneas</div>
             </div>
 
+            {/* Postear al mayor — exige rol con permiso (SoD) */}
+            <div style={{display:'flex',gap:10,alignItems:'center'}}>
+              <button
+                onClick={()=> !asiento.cuadra ? showToast('✗ No se postea un asiento descuadrado')
+                  : !can(rol,'postear_asiento') ? showToast(`🔒 Rol ${ROLES[rol].label} no puede postear al mayor`)
+                  : asiento.estado==='borrador' ? showToast('⚠️ Cierra la caja antes de postear')
+                  : showToast('✓ Asiento posteado al libro mayor')}
+                disabled={!can(rol,'postear_asiento')||!asiento.cuadra}
+                style={{flex:1,padding:12,borderRadius:10,border:'none',fontSize:12,fontWeight:900,
+                  background:can(rol,'postear_asiento')&&asiento.cuadra?S.gold:S.bg3,
+                  color:can(rol,'postear_asiento')&&asiento.cuadra?'#000':S.text3,
+                  cursor:can(rol,'postear_asiento')&&asiento.cuadra?'pointer':'not-allowed'}}>
+                🧾 Postear al libro mayor
+              </button>
+              <span style={{fontSize:10,color:S.text3,maxWidth:220}}>
+                {can(rol,'postear_asiento')
+                  ? `Habilitado para ${ROLES[rol].label}`
+                  : `Requiere rol Contador o CFO · ${ROLES[rol].label} no autorizado`}
+              </span>
+            </div>
+
             {/* Normas aplicadas */}
             <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
               <div style={{fontSize:11,fontWeight:700,color:S.purple,marginBottom:8}}>📐 NORMAS CONTABLES APLICADAS</div>
@@ -684,7 +733,8 @@ export default function ContabilidadModule() {
                 ✓ <b>NIIF 15</b> — el ingreso se reconoce al cierre de la venta, separado del impuesto<br/>
                 ✓ <b>Propina = pasivo</b> ({PUC.propinas.c}) — no es ingreso ni base del impuesto al consumo<br/>
                 ✓ <b>IVA/INC separado</b> ({PUC.ivaInc.c}) — no se mezcla con la base del ingreso<br/>
-                ✓ <b>Trazabilidad</b> — cada asiento referencia su documento fuente (cierre Z)
+                ✓ <b>Trazabilidad</b> — cada asiento referencia su documento fuente (cierre Z)<br/>
+                ✓ <b>Segregación de funciones (SoD)</b> — quien causa no aprueba; postear al mayor exige rol Contador/CFO
               </div>
             </div>
           </div>
