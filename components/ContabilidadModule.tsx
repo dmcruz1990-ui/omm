@@ -14,7 +14,7 @@ import {
 import type { Rol, Accion, Asiento, SaldoCuenta, Tramo } from '../lib/contabilidad';
 import {
   MOCK_CARTERA, MOCK_BANCOS, MOCK_EXTRACTO, MOCK_IMPUESTOS, MOCK_ASIENTOS_HIST,
-  cargarAsientosReales,
+  cargarAsientosReales, cargarCartera, cargarTesoreria, cargarImpuestos, postearAsiento,
 } from '../lib/contabilidadData';
 import type { ARFactura, ExtractoLinea, MovImpuesto, CuentaBanco } from '../lib/contabilidadData';
 
@@ -123,9 +123,24 @@ export default function ContabilidadModule() {
   const [gastoSel, setGastoSel] = useState<string|null>(null);
   const [rol, setRol] = useState<Rol>('cfo');
   const [asientosReales, setAsientosReales] = useState<Asiento[]|null>(null);
+  const [carteraData, setCarteraData]     = useState<ARFactura[]|null>(null);
+  const [tesoreriaData, setTesoreriaData] = useState<{ bancos:CuentaBanco[]; extracto:ExtractoLinea[] }|null>(null);
+  const [impuestosData, setImpuestosData] = useState<MovImpuesto[]|null>(null);
+  const [fuenteDatos, setFuenteDatos]     = useState<'supabase'|'demo'>('demo');
   const fileRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => { cargarAsientosReales().then(r => { if (r && r.length) setAsientosReales(r); }); }, []);
+  useEffect(() => {
+    cargarAsientosReales().then(r => { if (r && r.length) { setAsientosReales(r); setFuenteDatos('supabase'); } });
+    cargarCartera().then(r => { if (r && r.length) setCarteraData(r); });
+    cargarTesoreria().then(r => { if (r && r.bancos.length) setTesoreriaData(r); });
+    cargarImpuestos().then(r => { if (r && r.length) setImpuestosData(r); });
+  }, []);
+
+  // Datos efectivos: Supabase si llegó, si no la demo en memoria.
+  const cartera   = carteraData ?? MOCK_CARTERA;
+  const bancos    = tesoreriaData?.bancos ?? MOCK_BANCOS;
+  const extracto  = tesoreriaData?.extracto ?? MOCK_EXTRACTO;
+  const impuestos = impuestosData ?? MOCK_IMPUESTOS;
 
   const showToast = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
 
@@ -147,6 +162,18 @@ export default function ContabilidadModule() {
     setTurno(p=>p?{...p,estado:'cerrada',hora_cierre:new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}),diferencia:diff}:null);
     setShowCerrar(false); setMontoC('');
     showToast(diff===0?'✓ Caja cuadrada perfectamente':`⚠️ Diferencia de ${COP(Math.abs(diff))}`);
+  };
+
+  const postear = async () => {
+    showToast('⏳ Posteando al libro mayor…');
+    const r = await postearAsiento(asiento, ROLES[rol].label);
+    if (r.ok) {
+      const frescos = await cargarAsientosReales();
+      if (frescos) { setAsientosReales(frescos); setFuenteDatos('supabase'); }
+      showToast('✓ Asiento posteado y contabilizado en Supabase');
+    } else {
+      showToast(`✗ Rechazado: ${r.error}`);
+    }
   };
 
   const simOCR = () => {
@@ -185,7 +212,7 @@ export default function ContabilidadModule() {
   ];
   const mayor   = libroMayor(todosAsientos);
   const balance = balancePrueba(todosAsientos);
-  const aging   = agingCartera(MOCK_CARTERA);
+  const aging   = agingCartera(cartera);
   const inp = { background:S.bg2, border:`1px solid ${S.border}`, borderRadius:8, padding:'9px 14px', color:S.text1, fontSize:12, outline:'none', width:'100%' };
 
   const TABS: {id:Tab;label:string}[] = [
@@ -317,7 +344,7 @@ export default function ContabilidadModule() {
           <div style={{width:36,height:36,borderRadius:10,background:`linear-gradient(135deg,${S.gold},#b07820)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18}}>📊</div>
           <div>
             <div style={{fontFamily:"'Syne',sans-serif",fontSize:15,fontWeight:900}}>CONTABILIDAD</div>
-            <div style={{fontSize:11,color:S.text3}}>OMM · en vivo</div>
+            <div style={{fontSize:11,color:S.text3}}>OMM · {fuenteDatos==='supabase'?'🟢 Supabase':'demo'}</div>
           </div>
           <div style={{marginLeft:8,display:'flex',alignItems:'center',gap:6,padding:'4px 12px',borderRadius:20,background:turno?.estado==='abierta'?`${S.green}15`:S.border,border:`1px solid ${turno?.estado==='abierta'?S.green+'40':S.border}`}}>
             <div style={{width:7,height:7,borderRadius:'50%',background:turno?.estado==='abierta'?S.green:S.text3}}/>
@@ -596,7 +623,7 @@ export default function ContabilidadModule() {
                 onClick={()=> !asiento.cuadra ? showToast('✗ No se postea un asiento descuadrado')
                   : !can(rol,'postear_asiento') ? showToast(`🔒 Rol ${ROLES[rol].label} no puede postear al mayor`)
                   : asiento.estado==='borrador' ? showToast('⚠️ Cierra la caja antes de postear')
-                  : showToast('✓ Asiento posteado al libro mayor')}
+                  : postear()}
                 disabled={!can(rol,'postear_asiento')||!asiento.cuadra}
                 style={{flex:1,padding:12,borderRadius:10,border:'none',fontSize:12,fontWeight:900,
                   background:can(rol,'postear_asiento')&&asiento.cuadra?S.gold:S.bg3,
@@ -717,7 +744,7 @@ export default function ContabilidadModule() {
               {[
                 {label:'Cartera total',value:COP(aging.saldoTotal),color:S.goldL},
                 {label:'Pérdida esperada (ECL)',value:COP(aging.eclTotal),color:S.red},
-                {label:'Facturas abiertas',value:String(MOCK_CARTERA.filter(f=>f.saldo>0).length),color:S.blue},
+                {label:'Facturas abiertas',value:String(cartera.filter(f=>f.saldo>0).length),color:S.blue},
               ].map(k=>(
                 <div key={k.label} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
                   <div style={{fontSize:10,color:S.text3,marginBottom:4}}>{k.label}</div>
@@ -763,7 +790,7 @@ export default function ContabilidadModule() {
                   ))}
                 </tr></thead>
                 <tbody>
-                  {MOCK_CARTERA.map(f=>{
+                  {cartera.map(f=>{
                     const t=tramoVencimiento(f.vencimiento);
                     return (
                       <tr key={f.id} style={{borderTop:`1px solid ${S.border}`}}>
@@ -787,9 +814,9 @@ export default function ContabilidadModule() {
           <div style={{display:'flex',flexDirection:'column',gap:14}}>
             <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
               {[
-                {label:'Saldo en libros',value:COP(MOCK_BANCOS.reduce((a,b)=>a+b.saldoLibros,0)),color:S.goldL},
-                {label:'Partidas conciliadas',value:String(MOCK_EXTRACTO.filter(e=>e.conciliado).length)+`/${MOCK_EXTRACTO.length}`,color:S.green},
-                {label:'Sin conciliar',value:COP(MOCK_EXTRACTO.filter(e=>!e.conciliado).reduce((a,e)=>a+Math.abs(e.valor),0)),color:S.red},
+                {label:'Saldo en libros',value:COP(bancos.reduce((a,b)=>a+b.saldoLibros,0)),color:S.goldL},
+                {label:'Partidas conciliadas',value:String(extracto.filter(e=>e.conciliado).length)+`/${extracto.length}`,color:S.green},
+                {label:'Sin conciliar',value:COP(extracto.filter(e=>!e.conciliado).reduce((a,e)=>a+Math.abs(e.valor),0)),color:S.red},
               ].map(k=>(
                 <div key={k.label} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
                   <div style={{fontSize:10,color:S.text3,marginBottom:4}}>{k.label}</div>
@@ -798,7 +825,7 @@ export default function ContabilidadModule() {
               ))}
             </div>
             <div style={{display:'flex',gap:10,flexWrap:'wrap' as const}}>
-              {MOCK_BANCOS.map(b=>(
+              {bancos.map(b=>(
                 <div key={b.id} style={{flex:1,minWidth:200,background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
                   <div style={{fontSize:12,fontWeight:700,color:S.text1}}>{b.banco}</div>
                   <div style={{fontSize:11,color:S.text3}}>{b.tipo} · {b.numero}</div>
@@ -821,7 +848,7 @@ export default function ContabilidadModule() {
                   ))}
                 </tr></thead>
                 <tbody>
-                  {MOCK_EXTRACTO.map(e=>(
+                  {extracto.map(e=>(
                     <tr key={e.id} style={{borderTop:`1px solid ${S.border}`}}>
                       <td style={{padding:'9px 12px',color:S.text3}}>{e.fecha}</td>
                       <td style={{padding:'9px 12px',color:S.text1}}>{e.descripcion}{e.match&&<span style={{color:S.text3,fontSize:10}}> · {e.match}</span>}</td>
@@ -845,8 +872,8 @@ export default function ContabilidadModule() {
           <div style={{display:'flex',flexDirection:'column',gap:14}}>
             <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10}}>
               {[
-                {label:'Neto a pagar (período)',value:COP(MOCK_IMPUESTOS.reduce((a,m)=>a+m.neto,0)),color:S.red},
-                {label:'IVA descontable acumulado',value:COP(MOCK_IMPUESTOS.reduce((a,m)=>a+m.descontable,0)),color:S.green},
+                {label:'Neto a pagar (período)',value:COP(impuestos.reduce((a,m)=>a+m.neto,0)),color:S.red},
+                {label:'IVA descontable acumulado',value:COP(impuestos.reduce((a,m)=>a+m.descontable,0)),color:S.green},
               ].map(k=>(
                 <div key={k.label} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
                   <div style={{fontSize:10,color:S.text3,marginBottom:4}}>{k.label}</div>
@@ -865,7 +892,7 @@ export default function ContabilidadModule() {
                   ))}
                 </tr></thead>
                 <tbody>
-                  {MOCK_IMPUESTOS.map(m=>(
+                  {impuestos.map(m=>(
                     <tr key={m.tipo} style={{borderTop:`1px solid ${S.border}`}}>
                       <td style={{padding:'9px 12px',color:S.text1,fontWeight:600}}>{m.tipo}<div style={{fontSize:10,color:S.text3}}>{m.etiqueta}</div></td>
                       <td style={{padding:'9px 12px',color:S.text3,fontFamily:'monospace',fontSize:11}}>{m.cuenta}</td>
@@ -877,7 +904,7 @@ export default function ContabilidadModule() {
                 </tbody>
                 <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
                   <td colSpan={4} style={{padding:'12px',fontWeight:700,color:S.gold}}>TOTAL A DECLARAR</td>
-                  <td style={{padding:'12px',textAlign:'right',fontWeight:900,color:S.red,fontSize:14}}>{COP(MOCK_IMPUESTOS.reduce((a,m)=>a+m.neto,0))}</td>
+                  <td style={{padding:'12px',textAlign:'right',fontWeight:900,color:S.red,fontSize:14}}>{COP(impuestos.reduce((a,m)=>a+m.neto,0))}</td>
                 </tr></tfoot>
               </table>
             </div>

@@ -93,7 +93,7 @@ export async function cargarAsientosReales(): Promise<Asiento[] | null> {
     const ids = cab.map((c:any)=>c.id);
     const { data: lns } = await supabase
       .from('cont_asiento_linea')
-      .select('asiento_id,cuenta,nombre:cuenta,debe,haber')
+      .select('asiento_id,cuenta,nombre:descripcion,debe,haber')
       .in('asiento_id', ids);
     const porAsiento: Record<string, any[]> = {};
     (lns||[]).forEach((l:any)=>{ (porAsiento[l.asiento_id] ||= []).push(l); });
@@ -105,5 +105,71 @@ export async function cargarAsientosReales(): Promise<Asiento[] | null> {
     });
   } catch {
     return null;
+  }
+}
+
+export async function cargarCartera(): Promise<ARFactura[] | null> {
+  try {
+    const { data, error } = await supabase.from('cont_ar_factura')
+      .select('id,numero,cliente,nit,fecha,vencimiento,base,iva,total,saldo,estado')
+      .order('vencimiento');
+    if (error || !data || data.length === 0) return null;
+    return data.map((f:any)=>({ ...f, id:String(f.id), base:Number(f.base), iva:Number(f.iva), total:Number(f.total), saldo:Number(f.saldo) }));
+  } catch { return null; }
+}
+
+export async function cargarTesoreria(): Promise<{ bancos:CuentaBanco[]; extracto:ExtractoLinea[] } | null> {
+  try {
+    const { data: bancos, error: e1 } = await supabase.from('cont_cuenta_banco')
+      .select('id,banco,numero,tipo,saldo');
+    if (e1 || !bancos || bancos.length === 0) return null;
+    const { data: ext } = await supabase.from('cont_extracto_linea')
+      .select('id,fecha,descripcion,referencia,valor,conciliado').order('fecha', { ascending:false });
+    return {
+      bancos: bancos.map((b:any)=>({ id:String(b.id), banco:b.banco, numero:b.numero, tipo:b.tipo, saldoLibros:Number(b.saldo) })),
+      extracto: (ext||[]).map((e:any)=>({ id:String(e.id), fecha:e.fecha, descripcion:e.descripcion, referencia:e.referencia, valor:Number(e.valor), conciliado:e.conciliado })),
+    };
+  } catch { return null; }
+}
+
+export async function cargarImpuestos(): Promise<MovImpuesto[] | null> {
+  try {
+    const { data, error } = await supabase.from('cont_impuesto_mov')
+      .select('tipo,base,valor,origen_tipo');
+    if (error || !data || data.length === 0) return null;
+    // Consolida por tipo: generado (ventas) vs descontable (compras) y neto.
+    const map: Record<string, MovImpuesto> = {};
+    data.forEach((m:any)=>{
+      const k = m.tipo;
+      map[k] ||= { tipo:k, etiqueta:k, generado:0, descontable:0, neto:0, cuenta:'240805' };
+      const v = Number(m.valor)||0;
+      if (m.origen_tipo === 'compra') map[k].descontable += v; else map[k].generado += v;
+    });
+    return Object.values(map).map(m => ({ ...m, neto: m.generado - m.descontable }));
+  } catch { return null; }
+}
+
+// ─── Posteo real: inserta el asiento y sus líneas, luego lo contabiliza ─────
+// Flujo: borrador → líneas → update a 'contabilizado' (el trigger valida la
+// partida doble y el período abierto). Devuelve {ok, error}.
+export async function postearAsiento(a: Asiento, usuario: string): Promise<{ ok:boolean; error?:string }> {
+  try {
+    const { data: per } = await supabase.from('cont_periodo')
+      .select('id').eq('estado','abierto').order('id',{ascending:false}).limit(1).maybeSingle();
+    const periodoId = per?.id ?? null;
+    const idem = `${a.origenTipo}:${a.fuente}:${a.debe}`;
+    const { data: cab, error: e1 } = await supabase.from('cont_asiento')
+      .insert({ fecha:new Date().toISOString().slice(0,10), periodo_id:periodoId, fuente:a.fuente, origen_tipo:a.origenTipo, descripcion:a.fuente, estado:'borrador', idempotency_key:idem, creado_por:usuario })
+      .select('id').single();
+    if (e1 || !cab) return { ok:false, error: e1?.message || 'No se pudo crear el asiento' };
+    const lineas = a.lineas.map(l => ({ asiento_id:cab.id, cuenta:l.cuenta, descripcion:l.nombre, tercero:l.tercero, debe:l.debe, haber:l.haber }));
+    const { error: e2 } = await supabase.from('cont_asiento_linea').insert(lineas);
+    if (e2) return { ok:false, error:e2.message };
+    const { error: e3 } = await supabase.from('cont_asiento')
+      .update({ estado:'contabilizado', posteado_por:usuario }).eq('id', cab.id);
+    if (e3) return { ok:false, error:e3.message };
+    return { ok:true };
+  } catch (err:any) {
+    return { ok:false, error: err?.message || 'Error de red' };
   }
 }
