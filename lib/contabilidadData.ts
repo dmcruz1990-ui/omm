@@ -152,6 +152,63 @@ export async function cargarTesoreria(): Promise<{ bancos:CuentaBanco[]; extract
   } catch { return null; }
 }
 
+// ─── Conexión a eventos operativos reales de NEXUM ──────────────────────────
+export type MetodoVenta = { label:string; bruto:number; desc:number; prop:number; iva:number };
+const etiquetaMetodo = (m: string) => {
+  const k = (m||'').toLowerCase();
+  if (k.includes('efectivo')) return '💵 Efectivo';
+  if (k.includes('transfer')) return '🏦 Transferencia';
+  if (k.includes('qr')) return '📱 QR';
+  if (k.includes('nequi') || k.includes('daviplata')) return '📱 Wallet';
+  if (k.includes('tarjeta') || k.includes('datafono') || k.includes('datáfono') || k.includes('credito') || k.includes('debito')) return '💳 Datáfono';
+  return m ? `💳 ${m}` : '💳 Otro';
+};
+
+// Ventas del día desde cobros_trazabilidad, agregadas por método de pago →
+// alimentan el asiento de cierre. El recaudo (total) incluye IVA y propina;
+// el motor los separa (propina = pasivo, IVA = impuesto por pagar).
+export async function cargarVentasDia(): Promise<MetodoVenta[] | null> {
+  try {
+    const hoy = new Date(); hoy.setHours(0,0,0,0);
+    const { data, error } = await supabase.from('cobros_trazabilidad')
+      .select('total,propina,iva,descuento,metodo_pago,created_at')
+      .gte('created_at', hoy.toISOString());
+    if (error || !data || data.length === 0) return null;
+    const map: Record<string, MetodoVenta> = {};
+    data.forEach((c:any) => {
+      const label = etiquetaMetodo(c.metodo_pago);
+      map[label] ||= { label, bruto:0, desc:0, prop:0, iva:0 };
+      map[label].bruto += Number(c.total)||0;
+      map[label].desc  += Number(c.descuento)||0;
+      map[label].prop  += Number(c.propina)||0;
+      map[label].iva   += Number(c.iva)||0;
+    });
+    return Object.values(map);
+  } catch { return null; }
+}
+
+// Egresos reales (módulo Finance Hub) → causación de gastos. Usa la cuenta
+// contable que el catálogo ya mapeó en cada egreso.
+export type GastoReal = { id:string; proveedor:string; concepto:string; monto:number; fecha:string; categoria:string; estado:string };
+export async function cargarEgresosReales(): Promise<GastoReal[] | null> {
+  try {
+    const desde = new Date(Date.now() - 30*86400000).toISOString().slice(0,10);
+    const { data, error } = await supabase.from('egresos')
+      .select('id,proveedor,concepto,categoria,valor,subtotal,fecha,aprobado,created_at')
+      .gte('fecha', desde).order('fecha', { ascending:false }).limit(50);
+    if (error || !data || data.length === 0) return null;
+    return data.map((e:any) => ({
+      id: String(e.id),
+      proveedor: e.proveedor || '—',
+      concepto: e.concepto || e.categoria || 'Egreso',
+      monto: Number(e.subtotal ?? e.valor) || 0,
+      fecha: (e.fecha || e.created_at || '').slice(0,10),
+      categoria: e.categoria || 'Gasto',
+      estado: e.aprobado === false ? 'pendiente' : 'causado',
+    }));
+  } catch { return null; }
+}
+
 export async function cargarActivos(): Promise<Activo[] | null> {
   try {
     const { data, error } = await supabase.from('cont_activo')

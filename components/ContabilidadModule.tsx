@@ -16,9 +16,10 @@ import type { Rol, Accion, Asiento, SaldoCuenta, Tramo, Activo } from '../lib/co
 import {
   MOCK_CARTERA, MOCK_BANCOS, MOCK_EXTRACTO, MOCK_IMPUESTOS, MOCK_ASIENTOS_HIST,
   MOCK_ACTIVOS, MOCK_ENTIDADES, MOCK_ELIMINACIONES,
-  cargarAsientosReales, cargarCartera, cargarTesoreria, cargarImpuestos, cargarActivos, postearAsiento,
+  cargarAsientosReales, cargarCartera, cargarTesoreria, cargarImpuestos, cargarActivos,
+  cargarVentasDia, cargarEgresosReales, postearAsiento,
 } from '../lib/contabilidadData';
-import type { ARFactura, ExtractoLinea, MovImpuesto, CuentaBanco } from '../lib/contabilidadData';
+import type { ARFactura, ExtractoLinea, MovImpuesto, CuentaBanco, MetodoVenta, GastoReal } from '../lib/contabilidadData';
 
 const S = {
   bg:'#0a0a0a', bg2:'#141414', bg3:'#1c1c1c',
@@ -129,18 +130,25 @@ export default function ContabilidadModule() {
   const [tesoreriaData, setTesoreriaData] = useState<{ bancos:CuentaBanco[]; extracto:ExtractoLinea[] }|null>(null);
   const [impuestosData, setImpuestosData] = useState<MovImpuesto[]|null>(null);
   const [activosData, setActivosData]     = useState<Activo[]|null>(null);
+  const [ventasData, setVentasData]       = useState<MetodoVenta[]|null>(null);
+  const [egresosData, setEgresosData]     = useState<GastoReal[]|null>(null);
   const [fuenteDatos, setFuenteDatos]     = useState<'supabase'|'demo'>('demo');
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    cargarAsientosReales().then(r => { if (r && r.length) { setAsientosReales(r); setFuenteDatos('supabase'); } });
+    const marca = () => setFuenteDatos('supabase');
+    cargarAsientosReales().then(r => { if (r && r.length) { setAsientosReales(r); marca(); } });
     cargarCartera().then(r => { if (r && r.length) setCarteraData(r); });
     cargarTesoreria().then(r => { if (r && r.bancos.length) setTesoreriaData(r); });
     cargarImpuestos().then(r => { if (r && r.length) setImpuestosData(r); });
     cargarActivos().then(r => { if (r && r.length) setActivosData(r); });
+    cargarVentasDia().then(r => { if (r && r.length) { setVentasData(r); marca(); } });
+    cargarEgresosReales().then(r => { if (r && r.length) { setEgresosData(r); marca(); } });
   }, []);
 
   // Datos efectivos: Supabase si llegó, si no la demo en memoria.
+  const metodos   = ventasData ?? MOCK_METODOS;
+  const gastos    = egresosData ?? MOCK_GASTOS;
   const cartera   = carteraData ?? MOCK_CARTERA;
   const bancos    = tesoreriaData?.bancos ?? MOCK_BANCOS;
   const extracto  = tesoreriaData?.extracto ?? MOCK_EXTRACTO;
@@ -160,7 +168,7 @@ export default function ContabilidadModule() {
   const cerrarCaja = () => {
     if (!can(rol,'cerrar_caja')) { showToast(`🔒 Rol ${ROLES[rol].label} no puede cerrar caja`); return; }
     if (!montoC || !turno) return;
-    const totalNeto = MOCK_METODOS.reduce((a,m)=>a+m.bruto-m.desc,0);
+    const totalNeto = metodos.reduce((a,m)=>a+m.bruto-m.desc,0);
     const esperado = turno.monto_apertura + totalNeto;
     const real = parseInt(montoC);
     const diff = real - esperado;
@@ -242,10 +250,10 @@ export default function ContabilidadModule() {
     setTimeout(()=>{ setOcrRes({ proveedor:'Pescadería La Marina', nit:'900456789-1', fecha:new Date().toLocaleDateString('es-CO'), total:1240000, iva:235600, categoria:'Costo alimentos', confianza:94 }); setOcrProc(false); }, 2000);
   };
 
-  const totalBruto = MOCK_METODOS.reduce((a,m)=>a+m.bruto,0);
-  const totalDesc  = MOCK_METODOS.reduce((a,m)=>a+m.desc,0);
-  const totalProp  = MOCK_METODOS.reduce((a,m)=>a+m.prop,0);
-  const totalIVA   = MOCK_METODOS.reduce((a,m)=>a+m.iva,0);
+  const totalBruto = metodos.reduce((a,m)=>a+m.bruto,0);
+  const totalDesc  = metodos.reduce((a,m)=>a+m.desc,0);
+  const totalProp  = metodos.reduce((a,m)=>a+m.prop,0);
+  const totalIVA   = metodos.reduce((a,m)=>a+m.iva,0);
   const totalNeto  = totalBruto - totalDesc;
   const ingTotal   = Object.values(MOCK_PYG.ingresos).reduce((a,b)=>a+b,0);
   const cosTotal   = Object.values(MOCK_PYG.costos).reduce((a,b)=>a+b,0);
@@ -262,10 +270,10 @@ export default function ContabilidadModule() {
   const propTotal  = MOCK_PROPINAS.reduce((a,p)=>a+p.propina,0);
   const pctTurno   = (ventas.ventasTurno/ventas.metaTurno)*100;
   const pctMes     = (ventas.ventasMes/ventas.metaMes)*100;
-  const asiento    = construirAsientoCierre(MOCK_METODOS, turno);
+  const asiento    = construirAsientoCierre(metodos, turno);
 
   // ── Diario consolidado: Supabase si está disponible, si no histórico demo ──
-  const gastosAsientos = MOCK_GASTOS.map(g => construirAsientoGasto({ proveedor:g.proveedor, concepto:g.concepto, base:g.monto, categoria:g.categoria, fecha:g.fecha }));
+  const gastosAsientos = gastos.map(g => construirAsientoGasto({ proveedor:g.proveedor, concepto:g.concepto, base:g.monto, categoria:g.categoria, fecha:g.fecha }));
   const todosAsientos: Asiento[] = asientosReales ?? [
     ...MOCK_ASIENTOS_HIST,
     ...gastosAsientos,
@@ -338,8 +346,8 @@ export default function ContabilidadModule() {
             <div style={{fontFamily:"'Syne',sans-serif",fontSize:16,fontWeight:900,marginBottom:4}}>Cierre de turno</div>
             <div style={{fontSize:12,color:S.text3,marginBottom:16}}>Turno de {turno.responsable} — apertura {turno.hora_apertura}</div>
             <div style={{background:S.bg2,borderRadius:12,padding:14,marginBottom:16}}>
-              {MOCK_METODOS.map((m,i)=>(
-                <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:i<MOCK_METODOS.length-1?`1px solid ${S.border}`:'none',fontSize:12}}>
+              {metodos.map((m,i)=>(
+                <div key={i} style={{display:'flex',justifyContent:'space-between',padding:'6px 0',borderBottom:i<metodos.length-1?`1px solid ${S.border}`:'none',fontSize:12}}>
                   <span style={{color:S.text2}}>{m.label}</span>
                   <span style={{color:S.goldL,fontWeight:700}}>{COP(m.bruto-m.desc)}</span>
                 </div>
@@ -519,7 +527,7 @@ export default function ContabilidadModule() {
             <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
               <div style={{fontSize:12,fontWeight:700,color:S.goldL,marginBottom:12}}>VENTAS DEL DÍA POR MÉTODO</div>
               <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:8}}>
-                {MOCK_METODOS.filter(m=>m.bruto>0).map((m,i)=>(
+                {metodos.filter(m=>m.bruto>0).map((m,i)=>(
                   <div key={i} style={{background:S.bg3,borderRadius:10,padding:'10px 12px'}}>
                     <div style={{fontSize:11,color:S.text2,marginBottom:4}}>{m.label}</div>
                     <div style={{fontSize:14,fontWeight:700,color:S.goldL}}>{COP(m.bruto-m.desc)}</div>
@@ -577,7 +585,7 @@ export default function ContabilidadModule() {
                       ))}
                     </tr></thead>
                     <tbody>
-                      {MOCK_METODOS.map((m,i)=>(
+                      {metodos.map((m,i)=>(
                         <tr key={i} style={{borderTop:`1px solid ${S.border}`}}>
                           <td style={{padding:'10px 14px'}}>{m.label}</td>
                           <td style={{padding:'10px 14px',textAlign:'right',color:S.goldL}}>{COP(m.bruto)}</td>
@@ -1301,7 +1309,7 @@ export default function ContabilidadModule() {
                   ))}
                 </tr></thead>
                 <tbody>
-                  {MOCK_GASTOS.map((g)=>{
+                  {gastos.map((g)=>{
                     const open = gastoSel===g.id;
                     const a = construirAsientoGasto({ proveedor:g.proveedor, concepto:g.concepto, base:g.monto, categoria:g.categoria, fecha:g.fecha });
                     return (
@@ -1353,7 +1361,7 @@ export default function ContabilidadModule() {
                 </tbody>
                 <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
                   <td colSpan={4} style={{padding:'12px',fontWeight:700,color:S.gold}}>TOTAL BASE GASTOS</td>
-                  <td style={{padding:'12px',textAlign:'right',fontWeight:900,color:S.red,fontSize:14}}>{COP(MOCK_GASTOS.reduce((a,g)=>a+g.monto,0))}</td>
+                  <td style={{padding:'12px',textAlign:'right',fontWeight:900,color:S.red,fontSize:14}}>{COP(gastos.reduce((a,g)=>a+g.monto,0))}</td>
                   <td colSpan={2}/>
                 </tr></tfoot>
               </table>
