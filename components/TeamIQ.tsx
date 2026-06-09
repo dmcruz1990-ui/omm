@@ -24,6 +24,24 @@ interface Empleado {
   fecha_ingreso: string;
   restaurante?: { nombre: string; emoji: string };
   complejos?: { nombre: string };
+  // ── Datos RH / contacto (de la tabla `empleados`; opcionales en demo) ──
+  cedula?: string;
+  tipo_documento?: string;
+  email?: string;
+  telefono?: string;
+  direccion?: string;
+  contacto_emergencia?: string;
+  tipo_contrato?: string;
+  arl?: string;
+  eps?: string;
+  afp?: string;
+  banco?: string;
+  cuenta_bancaria?: string;
+  // ── Calculados en cargar() para data real ──
+  dias_empresa?: number;
+  vacaciones_disponibles?: number;
+  vacaciones_acumuladas?: number;
+  vacaciones_usadas?: number;
   // Calculados / demo
   ventas_mes: number;
   ticket_promedio: number;
@@ -38,17 +56,28 @@ interface Empleado {
 
 // ─── DEMO DATA ────────────────────────────────────────────────────────────────
 const DEMO_EMPLEADOS: Empleado[] = [
-  { id:1,  nombre_completo:'Juan Camilo Rojas',   rol:'mesero',     cargo_display:'Mesero',         avatar_iniciales:'JR', salario_base:1800000, memorandos:1, vacaciones_dias:10, fecha_ingreso:'2023-05-12', ventas_mes:38000000, ticket_promedio:84000,  upselling_pct:18, score:72,  score_delta:+3,  propinas_mes:270000, turno_hoy:'17:00–23:00', estado:'turno',  alertas:['1 memorando activo'] },
-  { id:2,  nombre_completo:'Andrés Felipe Mora',  rol:'mesero',     cargo_display:'Mesero',         avatar_iniciales:'AM', salario_base:1900000, memorandos:0, vacaciones_dias:0,  fecha_ingreso:'2022-11-03', ventas_mes:52000000, ticket_promedio:96000,  upselling_pct:31, score:88,  score_delta:+5,  propinas_mes:320000, turno_hoy:'17:00–23:00', estado:'turno',  alertas:[] },
-  { id:3,  nombre_completo:'Sebastián Duarte',    rol:'mesero',     cargo_display:'Mesero',         avatar_iniciales:'SD', salario_base:1750000, memorandos:2, vacaciones_dias:12, fecha_ingreso:'2024-02-10', ventas_mes:24000000, ticket_promedio:61000,  upselling_pct:9,  score:54,  score_delta:-4,  propinas_mes:180000, turno_hoy:undefined,     estado:'ausente', alertas:['2 memorandos','Rendimiento por debajo -28%'] },
-  { id:4,  nombre_completo:'Mateo Herrera',       rol:'mesero',     cargo_display:'Mesero Senior',  avatar_iniciales:'MH', salario_base:2100000, memorandos:0, vacaciones_dias:5,  fecha_ingreso:'2021-07-01', ventas_mes:61000000, ticket_promedio:112000, upselling_pct:42, score:93,  score_delta:+8,  propinas_mes:410000, turno_hoy:'17:00–23:00', estado:'turno',  alertas:[] },
-  { id:5,  nombre_completo:'Laura Villalobos',    rol:'maitre',     cargo_display:'Maître',         avatar_iniciales:'LV', salario_base:4500000, memorandos:0, vacaciones_dias:0,  fecha_ingreso:'2020-03-15', ventas_mes:0,         ticket_promedio:0,      upselling_pct:0,  score:91,  score_delta:+2,  propinas_mes:520000, turno_hoy:'17:00–23:00', estado:'turno',  alertas:[] },
-  { id:6,  nombre_completo:'Carlos Méndez',       rol:'cocinero',   cargo_display:'Cocinero',       avatar_iniciales:'CM', salario_base:2200000, memorandos:1, vacaciones_dias:8,  fecha_ingreso:'2023-01-20', ventas_mes:0,         ticket_promedio:0,      upselling_pct:0,  score:68,  score_delta:+1,  propinas_mes:130000, turno_hoy:'11:00–18:00', estado:'turno',  alertas:['1 memorando'] },
-  { id:7,  nombre_completo:'Diego Ramírez',       rol:'cocinero',   cargo_display:'Cocinero',       avatar_iniciales:'DR', salario_base:2300000, memorandos:0, vacaciones_dias:0,  fecha_ingreso:'2022-09-10', ventas_mes:0,         ticket_promedio:0,      upselling_pct:0,  score:82,  score_delta:+4,  propinas_mes:130000, turno_hoy:'11:00–18:00', estado:'turno',  alertas:[] },
-  { id:10, nombre_completo:'Santiago León',       rol:'bartender',  cargo_display:'Bartender',      avatar_iniciales:'SL', salario_base:2800000, memorandos:0, vacaciones_dias:0,  fecha_ingreso:'2022-06-18', ventas_mes:44000000, ticket_promedio:88000,  upselling_pct:28, score:85,  score_delta:+6,  propinas_mes:380000, turno_hoy:'18:00–02:00', estado:'turno',  alertas:[] },
-  { id:11, nombre_completo:'Esteban Salazar',     rol:'sommelier',  cargo_display:'Sommelier',      avatar_iniciales:'ES', salario_base:3800000, memorandos:0, vacaciones_dias:7,  fecha_ingreso:'2021-04-22', ventas_mes:58000000, ticket_promedio:118000, upselling_pct:55, score:96,  score_delta:+3,  propinas_mes:460000, turno_hoy:'17:00–23:00', estado:'turno',  alertas:[] },
-  { id:14, nombre_completo:'Kenji Nakamura',      rol:'cocinero',   cargo_display:'Sushero',        avatar_iniciales:'KN', salario_base:3200000, memorandos:0, vacaciones_dias:0,  fecha_ingreso:'2022-02-28', ventas_mes:0,         ticket_promedio:0,      upselling_pct:0,  score:89,  score_delta:+2,  propinas_mes:150000, turno_hoy:'11:00–18:00', estado:'turno',  alertas:[] },
-  { id:19, nombre_completo:'Alejandro Trinidade', rol:'jefe_cocina',cargo_display:'Chef Ejecutivo', avatar_iniciales:'AT', salario_base:7500000, memorandos:0, vacaciones_dias:15, fecha_ingreso:'2020-02-01', ventas_mes:0,         ticket_promedio:0,      upselling_pct:0,  score:94,  score_delta:+1,  propinas_mes:0,      turno_hoy:'09:00–18:00', estado:'turno',  alertas:[] },
+  { id:1,  nombre_completo:'Juan Camilo Rojas',   rol:'mesero',     cargo_display:'Mesero',         avatar_iniciales:'JR', salario_base:1800000, memorandos:1, vacaciones_dias:10, fecha_ingreso:'2023-05-12', ventas_mes:38000000, ticket_promedio:84000,  upselling_pct:18, score:72,  score_delta:+3,  propinas_mes:270000, turno_hoy:'17:00–23:00', estado:'turno',  alertas:['1 memorando activo'],
+    cedula:'1.018.452.331', tipo_documento:'CC', email:'jc.rojas@grupoomm.co',   telefono:'+57 311 845 2233', direccion:'Cra 13 #85-32, Chapinero, Bogotá',      contacto_emergencia:'Marta Rojas (madre) · 310 442 7781', tipo_contrato:'indefinido',     arl:'Sura',     eps:'Sanitas',   afp:'Porvenir',    banco:'Bancolombia',  cuenta_bancaria:'24500087712' },
+  { id:2,  nombre_completo:'Andrés Felipe Mora',  rol:'mesero',     cargo_display:'Mesero',         avatar_iniciales:'AM', salario_base:1900000, memorandos:0, vacaciones_dias:0,  fecha_ingreso:'2022-11-03', ventas_mes:52000000, ticket_promedio:96000,  upselling_pct:31, score:88,  score_delta:+5,  propinas_mes:320000, turno_hoy:'17:00–23:00', estado:'turno',  alertas:[],
+    cedula:'1.030.778.114', tipo_documento:'CC', email:'af.mora@grupoomm.co',    telefono:'+57 320 117 9043', direccion:'Calle 53 #24-18, Galerías, Bogotá',       contacto_emergencia:'Paula Mora (esposa) · 315 908 2210',  tipo_contrato:'indefinido',     arl:'Positiva', eps:'Sura',      afp:'Protección',  banco:'Davivienda',   cuenta_bancaria:'00489912034' },
+  { id:3,  nombre_completo:'Sebastián Duarte',    rol:'mesero',     cargo_display:'Mesero',         avatar_iniciales:'SD', salario_base:1750000, memorandos:2, vacaciones_dias:12, fecha_ingreso:'2024-02-10', ventas_mes:24000000, ticket_promedio:61000,  upselling_pct:9,  score:54,  score_delta:-4,  propinas_mes:180000, turno_hoy:undefined,     estado:'ausente', alertas:['2 memorandos','Rendimiento por debajo -28%'],
+    cedula:'1.022.901.556', tipo_documento:'CC', email:'s.duarte@grupoomm.co',   telefono:'+57 312 556 8890', direccion:'Cra 7 #45-09, Soledad, Bogotá',           contacto_emergencia:'Luis Duarte (padre) · 318 220 1145',  tipo_contrato:'fijo',           arl:'Sura',     eps:'Compensar', afp:'Colpensiones',banco:'Nequi',        cuenta_bancaria:'3125568890' },
+  { id:4,  nombre_completo:'Mateo Herrera',       rol:'mesero',     cargo_display:'Mesero Senior',  avatar_iniciales:'MH', salario_base:2100000, memorandos:0, vacaciones_dias:5,  fecha_ingreso:'2021-07-01', ventas_mes:61000000, ticket_promedio:112000, upselling_pct:42, score:93,  score_delta:+8,  propinas_mes:410000, turno_hoy:'17:00–23:00', estado:'turno',  alertas:[],
+    cedula:'1.014.223.870', tipo_documento:'CC', email:'m.herrera@grupoomm.co',  telefono:'+57 301 778 4521', direccion:'Calle 100 #19-54, Chicó, Bogotá',         contacto_emergencia:'Sofía Herrera (hermana) · 304 119 6678',tipo_contrato:'indefinido',   arl:'Colmena',  eps:'Sura',      afp:'Porvenir',    banco:'Bancolombia',  cuenta_bancaria:'24500119087' },
+  { id:5,  nombre_completo:'Laura Villalobos',    rol:'maitre',     cargo_display:'Maître',         avatar_iniciales:'LV', salario_base:4500000, memorandos:0, vacaciones_dias:0,  fecha_ingreso:'2020-03-15', ventas_mes:0,         ticket_promedio:0,      upselling_pct:0,  score:91,  score_delta:+2,  propinas_mes:520000, turno_hoy:'17:00–23:00', estado:'turno',  alertas:[],
+    cedula:'52.778.190',    tipo_documento:'CC', email:'l.villalobos@grupoomm.co',telefono:'+57 314 220 7765',direccion:'Cra 11 #93-44, El Nogal, Bogotá',         contacto_emergencia:'Carlos Villalobos (esposo) · 312 778 0091',tipo_contrato:'indefinido',arl:'Sura',     eps:'Sanitas',   afp:'Protección',  banco:'BBVA',         cuenta_bancaria:'01900456231' },
+  { id:6,  nombre_completo:'Carlos Méndez',       rol:'cocinero',   cargo_display:'Cocinero',       avatar_iniciales:'CM', salario_base:2200000, memorandos:1, vacaciones_dias:8,  fecha_ingreso:'2023-01-20', ventas_mes:0,         ticket_promedio:0,      upselling_pct:0,  score:68,  score_delta:+1,  propinas_mes:130000, turno_hoy:'11:00–18:00', estado:'turno',  alertas:['1 memorando'],
+    cedula:'80.451.223',    tipo_documento:'CC', email:'c.mendez@grupoomm.co',   telefono:'+57 313 905 1182', direccion:'Calle 22 Sur #18-30, Restrepo, Bogotá',   contacto_emergencia:'Ana Méndez (esposa) · 311 556 9043',  tipo_contrato:'indefinido',     arl:'Positiva', eps:'Famisanar', afp:'Colfondos',   banco:'Davivienda',   cuenta_bancaria:'00489088771' },
+  { id:7,  nombre_completo:'Diego Ramírez',       rol:'cocinero',   cargo_display:'Cocinero',       avatar_iniciales:'DR', salario_base:2300000, memorandos:0, vacaciones_dias:0,  fecha_ingreso:'2022-09-10', ventas_mes:0,         ticket_promedio:0,      upselling_pct:0,  score:82,  score_delta:+4,  propinas_mes:130000, turno_hoy:'11:00–18:00', estado:'turno',  alertas:[],
+    cedula:'1.026.334.901', tipo_documento:'CC', email:'d.ramirez@grupoomm.co',  telefono:'+57 318 442 6610', direccion:'Cra 30 #1-50, Quiroga, Bogotá',           contacto_emergencia:'Jorge Ramírez (padre) · 320 118 7745', tipo_contrato:'indefinido',    arl:'Sura',     eps:'Sura',      afp:'Porvenir',    banco:'Bancolombia',  cuenta_bancaria:'24500220114' },
+  { id:10, nombre_completo:'Santiago León',       rol:'bartender',  cargo_display:'Bartender',      avatar_iniciales:'SL', salario_base:2800000, memorandos:0, vacaciones_dias:0,  fecha_ingreso:'2022-06-18', ventas_mes:44000000, ticket_promedio:88000,  upselling_pct:28, score:85,  score_delta:+6,  propinas_mes:380000, turno_hoy:'18:00–02:00', estado:'turno',  alertas:[],
+    cedula:'1.019.667.402', tipo_documento:'CC', email:'s.leon@grupoomm.co',     telefono:'+57 305 778 3392', direccion:'Calle 70 #5-22, Quinta Camacho, Bogotá',  contacto_emergencia:'Diana León (hermana) · 314 009 5567', tipo_contrato:'indefinido',     arl:'Colmena',  eps:'Compensar', afp:'Protección',  banco:'Nu',           cuenta_bancaria:'3057783392' },
+  { id:11, nombre_completo:'Esteban Salazar',     rol:'sommelier',  cargo_display:'Sommelier',      avatar_iniciales:'ES', salario_base:3800000, memorandos:0, vacaciones_dias:7,  fecha_ingreso:'2021-04-22', ventas_mes:58000000, ticket_promedio:118000, upselling_pct:55, score:96,  score_delta:+3,  propinas_mes:460000, turno_hoy:'17:00–23:00', estado:'turno',  alertas:[],
+    cedula:'79.554.118',    tipo_documento:'CC', email:'e.salazar@grupoomm.co',  telefono:'+57 310 667 1190', direccion:'Cra 9 #80-15, Zona G, Bogotá',            contacto_emergencia:'Camila Salazar (esposa) · 315 220 8843',tipo_contrato:'indefinido',   arl:'Sura',     eps:'Sanitas',   afp:'Porvenir',    banco:'Bancolombia',  cuenta_bancaria:'24500334876' },
+  { id:14, nombre_completo:'Kenji Nakamura',      rol:'cocinero',   cargo_display:'Sushero',        avatar_iniciales:'KN', salario_base:3200000, memorandos:0, vacaciones_dias:0,  fecha_ingreso:'2022-02-28', ventas_mes:0,         ticket_promedio:0,      upselling_pct:0,  score:89,  score_delta:+2,  propinas_mes:150000, turno_hoy:'11:00–18:00', estado:'turno',  alertas:[],
+    cedula:'1.233.908.551', tipo_documento:'CE', email:'k.nakamura@grupoomm.co', telefono:'+57 319 005 7781', direccion:'Calle 81 #11-08, El Retiro, Bogotá',      contacto_emergencia:'Yuki Nakamura (esposa) · 318 776 2204', tipo_contrato:'indefinido',    arl:'Positiva', eps:'Sura',      afp:'Protección',  banco:'Davivienda',   cuenta_bancaria:'00489556102' },
+  { id:19, nombre_completo:'Alejandro Trinidade', rol:'jefe_cocina',cargo_display:'Chef Ejecutivo', avatar_iniciales:'AT', salario_base:7500000, memorandos:0, vacaciones_dias:15, fecha_ingreso:'2020-02-01', ventas_mes:0,         ticket_promedio:0,      upselling_pct:0,  score:94,  score_delta:+1,  propinas_mes:0,      turno_hoy:'09:00–18:00', estado:'turno',  alertas:[],
+    cedula:'70.118.554',    tipo_documento:'CC', email:'a.trinidade@grupoomm.co',telefono:'+57 300 442 1198', direccion:'Cra 15 #88-64, El Chicó, Bogotá',         contacto_emergencia:'Renata Trinidade (esposa) · 311 009 4456',tipo_contrato:'indefinido',  arl:'Sura',     eps:'Sanitas',   afp:'Porvenir',    banco:'BBVA',         cuenta_bancaria:'01900778334' },
 ];
 
 const PROMEDIO_VENTAS = 44000000;
@@ -311,7 +340,7 @@ function PanelEmpleado({ emp, onClose }: { emp: Empleado; onClose: () => void })
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginBottom:16 }}>
           {[
             { label:'Memorandos', val: emp.memorandos, warn: emp.memorandos > 0 },
-            { label:'Días vacaciones', val: (emp as any).vacaciones_disponibles ?? emp.vacaciones_dias ?? 0 },
+            { label:'Días vacaciones', val: emp.vacaciones_disponibles ?? emp.vacaciones_dias ?? 0 },
             { label:'Antigüedad', val: emp.fecha_ingreso ? Math.floor((Date.now() - new Date(emp.fecha_ingreso).getTime()) / (365.25*86400000)) + ' años' : '—' },
             { label:'Upselling', val: emp.upselling_pct > 0 ? emp.upselling_pct + '%' : 'N/A' },
           ].map((f, i) => (
@@ -343,7 +372,7 @@ function PanelEmpleado({ emp, onClose }: { emp: Empleado; onClose: () => void })
               🆔 Identificación
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
-              <FichaRow label="Cédula" val={(emp as any).cedula} mono />
+              <FichaRow label="Cédula" val={emp.cedula} mono />
               <FichaRow label="Avatar / iniciales" val={emp.avatar_iniciales} />
             </div>
           </div>
@@ -356,11 +385,11 @@ function PanelEmpleado({ emp, onClose }: { emp: Empleado; onClose: () => void })
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
               <FichaRow label="Email" val={emp.email}
                 href={emp.email ? `mailto:${emp.email}` : undefined} icon="✉" colorVal="#4a8fd4"/>
-              <FichaRow label="Teléfono" val={(emp as any).telefono}
-                href={(emp as any).telefono ? `https://wa.me/${String((emp as any).telefono).replace(/\D/g,'')}` : undefined}
+              <FichaRow label="Teléfono" val={emp.telefono}
+                href={emp.telefono ? `https://wa.me/${String(emp.telefono).replace(/\D/g,'')}` : undefined}
                 target="_blank" icon="💬" colorVal="#22D07A"/>
-              <FichaRow label="Dirección" val={(emp as any).direccion} icon="📍" full/>
-              <FichaRow label="Contacto emergencia" val={(emp as any).contacto_emergencia} icon="🆘" colorVal="#FF5C53" full/>
+              <FichaRow label="Dirección" val={emp.direccion} icon="📍" full/>
+              <FichaRow label="Contacto emergencia" val={emp.contacto_emergencia} icon="🆘" colorVal="#FF5C53" full/>
             </div>
           </div>
 
@@ -372,7 +401,7 @@ function PanelEmpleado({ emp, onClose }: { emp: Empleado; onClose: () => void })
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
               <FichaRow label="Cargo" val={emp.cargo_display} />
               <FichaRow label="Rol sistema" val={emp.rol} />
-              <FichaRow label="Tipo contrato" val={(emp as any).tipo_contrato} colorVal="#b388ff"/>
+              <FichaRow label="Tipo contrato" val={emp.tipo_contrato} colorVal="#b388ff"/>
               <FichaRow label="Fecha ingreso" val={emp.fecha_ingreso ? new Date(emp.fecha_ingreso+'T12:00:00').toLocaleDateString('es-CO',{day:'2-digit',month:'short',year:'numeric'}) : null} />
               <FichaRow label="Salario base" val={emp.salario_base ? `$${Number(emp.salario_base).toLocaleString('es-CO')}` : null} colorVal="#d4943a"/>
               <FichaRow label="Valor hora" val={emp.salario_base ? `$${Math.round(emp.salario_base/168).toLocaleString('es-CO')}` : null} />
@@ -385,9 +414,9 @@ function PanelEmpleado({ emp, onClose }: { emp: Empleado; onClose: () => void })
               🛡 Seguridad social
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:6 }}>
-              <FichaRow label="ARL" val={(emp as any).arl} />
-              <FichaRow label="EPS" val={(emp as any).eps} />
-              <FichaRow label="AFP" val={(emp as any).afp} />
+              <FichaRow label="ARL" val={emp.arl} />
+              <FichaRow label="EPS" val={emp.eps} />
+              <FichaRow label="AFP" val={emp.afp} />
             </div>
           </div>
 
@@ -397,8 +426,8 @@ function PanelEmpleado({ emp, onClose }: { emp: Empleado; onClose: () => void })
               🏦 Cuenta bancaria · para nómina
             </div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
-              <FichaRow label="Banco" val={(emp as any).banco} colorVal="#FFB547"/>
-              <FichaRow label="N° cuenta" val={(emp as any).cuenta_bancaria} mono />
+              <FichaRow label="Banco" val={emp.banco} colorVal="#FFB547"/>
+              <FichaRow label="N° cuenta" val={emp.cuenta_bancaria} mono />
             </div>
           </div>
         </div>

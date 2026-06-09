@@ -18,7 +18,148 @@ const COP = (n: number) =>
   new Intl.NumberFormat('es-CO', { style:'currency', currency:'COP', maximumFractionDigits:0 }).format(n);
 const PCT = (n: number) => `${n.toFixed(1)}%`;
 
-type Tab = 'dashboard' | 'caja' | 'pyg' | 'gastos' | 'inventario' | 'propinas' | 'promociones' | 'facturas';
+// ─── Motor de asientos: PUC mínimo y mapeo evento→cuenta ──────────────────────
+// Norma NEXUM: el motor contable transforma el cierre de ventas en un asiento
+// de partida doble, con cada línea trazable al documento fuente (cierre Z).
+const PUC = {
+  caja:      { c:'110505', n:'Caja general' },
+  bancos:    { c:'111005', n:'Bancos' },
+  pasarela:  { c:'131005', n:'CxC pasarela / banco en tránsito' },
+  cxcEmpl:   { c:'136540', n:'CxC trabajadores' },
+  ingresos:  { c:'413550', n:'Ingresos operacionales — restaurante' },
+  ivaInc:    { c:'240805', n:'Impuesto (IVA/INC) por pagar' },
+  propinas:  { c:'233595', n:'Propinas por liquidar' },
+  redencion: { c:'529595', n:'Bonos y cortesías redimidos' },
+} as const;
+
+type CuentaPUC = { c: string; n: string };
+
+// Clasifica cada método de pago a su cuenta de recaudo (lado débito).
+const cuentaDeMetodo = (label: string): CuentaPUC => {
+  const l = label.toLowerCase();
+  if (l.includes('efectivo')) return PUC.caja;
+  if (l.includes('transfer') || l.includes('anticipo')) return PUC.bancos;
+  if (l.includes('empleado')) return PUC.cxcEmpl;
+  if (l.includes('bono') || l.includes('regalo')) return PUC.redencion;
+  return PUC.pasarela; // datáfono, QR, Apple Pay, PSP → cuenta puente
+};
+
+type AsientoLinea = { cuenta: string; nombre: string; debe: number; haber: number };
+type Asiento = {
+  fecha: string; fuente: string; dim: string;
+  estado: 'borrador' | 'contabilizado';
+  lineas: AsientoLinea[]; debe: number; haber: number; cuadra: boolean;
+};
+
+// Construye el asiento del cierre de caja siguiendo las normas contables:
+// Dr caja/banco/pasarela (recaudo neto) ; Cr Ingresos (base) ; Cr IVA/INC ;
+// Cr Propinas por liquidar (pasivo, fuera de la base del consumo).
+// La base de ingresos se calcula como residual → el asiento siempre cuadra.
+function construirAsientoCierre(
+  metodos: { label: string; bruto: number; desc: number; prop: number; iva: number }[],
+  turno: Turno | null,
+): Asiento {
+  const debitosPorCuenta: Record<string, AsientoLinea> = {};
+  metodos.forEach(m => {
+    const neto = m.bruto - m.desc;
+    if (neto <= 0) return; // métodos netos en cero (p.ej. cortesías) no recaudan
+    const cu = cuentaDeMetodo(m.label);
+    if (!debitosPorCuenta[cu.c]) debitosPorCuenta[cu.c] = { cuenta:cu.c, nombre:cu.n, debe:0, haber:0 };
+    debitosPorCuenta[cu.c].debe += neto;
+  });
+  const debitos = Object.values(debitosPorCuenta);
+  const totalRecaudo = debitos.reduce((a, d) => a + d.debe, 0);
+  const iva  = metodos.reduce((a, m) => a + m.iva, 0);
+  const prop = metodos.reduce((a, m) => a + m.prop, 0);
+  const baseIngresos = totalRecaudo - iva - prop; // residual ⇒ Debe = Haber
+
+  const lineas: AsientoLinea[] = [
+    ...debitos,
+    { cuenta:PUC.ingresos.c, nombre:PUC.ingresos.n, debe:0, haber:baseIngresos },
+    ...(iva  > 0 ? [{ cuenta:PUC.ivaInc.c,   nombre:PUC.ivaInc.n,   debe:0, haber:iva  }] : []),
+    ...(prop > 0 ? [{ cuenta:PUC.propinas.c, nombre:PUC.propinas.n, debe:0, haber:prop }] : []),
+  ];
+  const debe  = lineas.reduce((a, l) => a + l.debe, 0);
+  const haber = lineas.reduce((a, l) => a + l.haber, 0);
+  return {
+    fecha: new Date().toLocaleDateString('es-CO'),
+    fuente: turno
+      ? `Cierre Z · turno ${turno.responsable} (${turno.hora_apertura}${turno.hora_cierre ? `–${turno.hora_cierre}` : ''})`
+      : 'Resumen de ventas del día · sin turno cerrado',
+    dim: 'OMM · Restaurante principal',
+    estado: turno?.estado === 'cerrada' ? 'contabilizado' : 'borrador',
+    lineas, debe, haber,
+    cuadra: debe === haber,
+  };
+}
+
+// ─── Motor CxP: causación de factura de proveedor con IVA y retenciones ───────
+// Norma NEXUM: Dr gasto/costo + IVA descontable ; Cr Proveedores (neto) ;
+// Cr Retención en la fuente por pagar. Reglas Colombia (simplificadas).
+const PUC_AP = {
+  costoAlim:   { c:'613505', n:'Costo de alimentos' },
+  costoBeb:    { c:'613510', n:'Costo de bebidas' },
+  servicios:   { c:'513505', n:'Servicios públicos' },
+  aseo:        { c:'513540', n:'Aseo y mantenimiento' },
+  arriendo:    { c:'512010', n:'Arrendamientos' },
+  gastoGen:    { c:'519595', n:'Gastos diversos' },
+  ivaDesc:     { c:'240810', n:'IVA descontable' },
+  proveedores: { c:'220505', n:'Proveedores nacionales' },
+  reteFuente:  { c:'236540', n:'Retención en la fuente por pagar' },
+} as const;
+
+// Devuelve la cuenta de costo/gasto, tarifa de retefuente e IVA por categoría.
+const reglaGasto = (categoria: string) => {
+  const c = (categoria || '').toLowerCase();
+  if (c.includes('aliment')) return { cuenta:PUC_AP.costoAlim, rete:0.025, ivaTasa:0    }; // bienes 2.5%, alimentos exentos IVA
+  if (c.includes('bebida'))  return { cuenta:PUC_AP.costoBeb,  rete:0.025, ivaTasa:0.19 };
+  if (c.includes('servicio'))return { cuenta:PUC_AP.servicios, rete:0.04,  ivaTasa:0.19 }; // servicios 4%
+  if (c.includes('aseo') || c.includes('mtto')) return { cuenta:PUC_AP.aseo, rete:0.04, ivaTasa:0.19 };
+  if (c.includes('arrend'))  return { cuenta:PUC_AP.arriendo,  rete:0.035, ivaTasa:0    }; // arriendo 3.5%
+  return { cuenta:PUC_AP.gastoGen, rete:0.025, ivaTasa:0.19 };
+};
+
+// 'base' es el valor antes de IVA. Calcula IVA descontable y retefuente y arma
+// el asiento de causación de la factura del proveedor.
+function construirAsientoGasto(g: { proveedor:string; concepto:string; base:number; categoria:string; fecha:string }): Asiento & { base:number; iva:number; rete:number; neto:number; reteTasa:number } {
+  const r = reglaGasto(g.categoria);
+  const base = g.base;
+  const iva  = Math.round(base * r.ivaTasa);
+  const rete = Math.round(base * r.rete);
+  const neto = base + iva - rete; // saldo por pagar al proveedor
+  const lineas: AsientoLinea[] = [
+    { cuenta:r.cuenta.c, nombre:r.cuenta.n, debe:base, haber:0 },
+    ...(iva  > 0 ? [{ cuenta:PUC_AP.ivaDesc.c,    nombre:PUC_AP.ivaDesc.n, debe:iva, haber:0 }] : []),
+    ...(rete > 0 ? [{ cuenta:PUC_AP.reteFuente.c, nombre:`${PUC_AP.reteFuente.n} (${(r.rete*100).toFixed(1)}%)`, debe:0, haber:rete }] : []),
+    { cuenta:PUC_AP.proveedores.c, nombre:PUC_AP.proveedores.n, debe:0, haber:neto },
+  ];
+  const debe  = lineas.reduce((a, l) => a + l.debe, 0);
+  const haber = lineas.reduce((a, l) => a + l.haber, 0);
+  return {
+    fecha:g.fecha, fuente:`Factura proveedor · ${g.proveedor} — ${g.concepto}`,
+    dim:'OMM · Restaurante principal', estado:'contabilizado',
+    lineas, debe, haber, cuadra: debe === haber,
+    base, iva, rete, neto, reteTasa:r.rete,
+  };
+}
+
+// ─── RBAC + Segregación de funciones (SoD) ────────────────────────────────────
+// Norma NEXUM: una misma persona no puede preparar y aprobar pagos, ni causar y
+// pagar su propia factura, ni editar fuentes operativas y postear journals sin
+// rastro. Cada acción crítica exige un rol habilitado.
+type Rol = 'cajero' | 'analista_cxp' | 'tesorero' | 'contador' | 'cfo' | 'auditor';
+type Accion = 'abrir_caja' | 'cerrar_caja' | 'causar_gasto' | 'preparar_pago' | 'aprobar_pago' | 'postear_asiento' | 'cerrar_periodo';
+const ROLES: Record<Rol, { label:string; puede:Accion[] }> = {
+  cajero:       { label:'Cajero / Supervisor', puede:['abrir_caja','cerrar_caja'] },
+  analista_cxp: { label:'Analista CxP',         puede:['causar_gasto'] },
+  tesorero:     { label:'Tesorero',             puede:['preparar_pago'] },
+  contador:     { label:'Contador',             puede:['causar_gasto','postear_asiento','cerrar_periodo'] },
+  cfo:          { label:'Controller / CFO',     puede:['abrir_caja','cerrar_caja','causar_gasto','preparar_pago','aprobar_pago','postear_asiento','cerrar_periodo'] },
+  auditor:      { label:'Auditor interno',      puede:[] }, // solo lectura
+};
+const can = (rol: Rol, accion: Accion) => ROLES[rol].puede.includes(accion);
+
+type Tab = 'dashboard' | 'caja' | 'asientos' | 'pyg' | 'gastos' | 'inventario' | 'propinas' | 'promociones' | 'facturas';
 
 const MOCK_VENTAS = {
   metaMes:85000000, ventasMes:62400000,
@@ -110,11 +251,15 @@ export default function ContabilidadModule() {
   const [ocrProc, setOcrProc] = useState(false);
   const [ocrRes, setOcrRes] = useState<any>(null);
   const [ventas, setVentas] = useState(MOCK_VENTAS);
+  const [pygVista, setPygVista] = useState<'operativo'|'financiero'>('financiero');
+  const [gastoSel, setGastoSel] = useState<string|null>(null);
+  const [rol, setRol] = useState<Rol>('cfo');
   const fileRef = useRef<HTMLInputElement>(null);
 
   const showToast = (m:string) => { setToast(m); setTimeout(()=>setToast(''),3000); };
 
   const abrirCaja = () => {
+    if (!can(rol,'abrir_caja')) { showToast(`🔒 Rol ${ROLES[rol].label} no puede abrir caja`); return; }
     if (!resp || !montoA) { showToast('⚠️ Completa todos los campos'); return; }
     setTurno({ responsable:resp, hora_apertura:new Date().toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit'}), monto_apertura:parseInt(montoA), estado:'abierta' });
     setShowAbrir(false); setMontoA(''); setResp('');
@@ -122,6 +267,7 @@ export default function ContabilidadModule() {
   };
 
   const cerrarCaja = () => {
+    if (!can(rol,'cerrar_caja')) { showToast(`🔒 Rol ${ROLES[rol].label} no puede cerrar caja`); return; }
     if (!montoC || !turno) return;
     const totalNeto = MOCK_METODOS.reduce((a,m)=>a+m.bruto-m.desc,0);
     const esperado = turno.monto_apertura + totalNeto;
@@ -144,19 +290,27 @@ export default function ContabilidadModule() {
   const totalNeto  = totalBruto - totalDesc;
   const ingTotal   = Object.values(MOCK_PYG.ingresos).reduce((a,b)=>a+b,0);
   const cosTotal   = Object.values(MOCK_PYG.costos).reduce((a,b)=>a+b,0);
-  const gasTotal   = Object.values(MOCK_PYG.gastos).reduce((a,b)=>a+b,0);
+  // Doble mirada P&G (norma NEXUM): el operativo usa nómina diaria estimada
+  // (accrual del POS); el financiero usa la nómina real reconciliada contra GL.
+  const NOMINA_ACCRUAL = MOCK_PYG.gastos.nomina;   // labor estimada del día (Flash)
+  const NOMINA_REAL    = 4150000;                   // nómina real causada (GL)
+  const ajusteNomina   = NOMINA_REAL - NOMINA_ACCRUAL;
+  const gastosVista = { ...MOCK_PYG.gastos, nomina: pygVista==='operativo' ? NOMINA_ACCRUAL : NOMINA_REAL };
+  const gasTotal   = Object.values(gastosVista).reduce((a,b)=>a+b,0);
   const utilBruta  = ingTotal - cosTotal;
   const ebitda     = utilBruta - gasTotal;
   const utilNeta   = ebitda * 0.67;
   const propTotal  = MOCK_PROPINAS.reduce((a,p)=>a+p.propina,0);
   const pctTurno   = (ventas.ventasTurno/ventas.metaTurno)*100;
   const pctMes     = (ventas.ventasMes/ventas.metaMes)*100;
+  const asiento    = construirAsientoCierre(MOCK_METODOS, turno);
 
   const inp = { background:S.bg2, border:`1px solid ${S.border}`, borderRadius:8, padding:'9px 14px', color:S.text1, fontSize:12, outline:'none', width:'100%' };
 
   const TABS: {id:Tab;label:string}[] = [
     {id:'dashboard',  label:'📊 Dashboard'},
     {id:'caja',       label:'🔒 Caja'},
+    {id:'asientos',   label:'🧮 Asientos'},
     {id:'pyg',        label:'📈 P&G'},
     {id:'gastos',     label:'📸 Gastos'},
     {id:'inventario', label:'📦 Inventario'},
@@ -243,15 +397,26 @@ export default function ContabilidadModule() {
               <>
                 <div style={{background:`${S.green}10`,border:`1px solid ${S.green}30`,borderRadius:10,padding:14,marginBottom:16}}>
                   <div style={{fontSize:11,color:S.green,fontWeight:700,marginBottom:8}}>✓ Datos extraídos con {ocrRes.confianza}% de confianza</div>
-                  {[['Proveedor',ocrRes.proveedor],['NIT',ocrRes.nit],['Fecha',ocrRes.fecha],['Total',COP(ocrRes.total)],['IVA',COP(ocrRes.iva)],['Categoría',ocrRes.categoria]].map(([k,v])=>(
+                  {(()=>{
+                    const rg = reglaGasto(ocrRes.categoria);
+                    const base = ocrRes.total - ocrRes.iva;
+                    const rete = Math.round(base * rg.rete);
+                    const neto = ocrRes.total - rete;
+                    return [
+                      ['Proveedor',ocrRes.proveedor],['NIT',ocrRes.nit],['Fecha',ocrRes.fecha],
+                      ['Base',COP(base)],['IVA descontable',COP(ocrRes.iva)],
+                      [`Retefuente (${(rg.rete*100).toFixed(1)}%)`,`(${COP(rete)})`],
+                      ['Neto a pagar',COP(neto)],['Categoría',ocrRes.categoria],
+                    ] as [string,string][];
+                  })().map(([k,v])=>(
                     <div key={k} style={{display:'flex',justifyContent:'space-between',fontSize:12,padding:'4px 0',borderBottom:`1px solid ${S.border}`}}>
-                      <span style={{color:S.text3}}>{k}</span><span style={{color:S.text1,fontWeight:600}}>{v}</span>
+                      <span style={{color:S.text3}}>{k}</span><span style={{color:k==='Neto a pagar'?S.green:k.startsWith('Retefuente')?S.red:S.text1,fontWeight:k==='Neto a pagar'?700:600}}>{v}</span>
                     </div>
                   ))}
                 </div>
                 <div style={{display:'flex',gap:10}}>
                   <button onClick={()=>setOcrRes(null)} style={{flex:1,padding:12,borderRadius:10,border:`1px solid ${S.border}`,background:'none',color:S.text2,fontSize:12,cursor:'pointer'}}>↩ Nueva foto</button>
-                  <button onClick={()=>{setShowOCR(false);setOcrRes(null);showToast('✓ Gasto registrado y causado');}} style={{flex:2,padding:12,borderRadius:10,border:'none',background:S.green,color:'#fff',fontSize:12,fontWeight:900,cursor:'pointer'}}>✓ Registrar gasto</button>
+                  <button onClick={()=>{ if(!can(rol,'causar_gasto')){showToast(`🔒 Rol ${ROLES[rol].label} no puede causar gastos`);return;} setShowOCR(false);setOcrRes(null);showToast('✓ Gasto registrado y causado');}} style={{flex:2,padding:12,borderRadius:10,border:'none',background:can(rol,'causar_gasto')?S.green:S.bg3,color:can(rol,'causar_gasto')?'#fff':S.text3,fontSize:12,fontWeight:900,cursor:can(rol,'causar_gasto')?'pointer':'not-allowed'}}>✓ Registrar gasto</button>
                 </div>
               </>
             )}
@@ -275,12 +440,21 @@ export default function ContabilidadModule() {
             </span>
           </div>
         </div>
-        <div style={{display:'flex',gap:8}}>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          {/* Selector de rol — controla SoD */}
+          <div style={{display:'flex',alignItems:'center',gap:6,padding:'4px 10px',borderRadius:8,background:S.bg3,border:`1px solid ${S.border}`}}>
+            <span style={{fontSize:13}}>👤</span>
+            <select value={rol} onChange={e=>setRol(e.target.value as Rol)} style={{background:'transparent',border:'none',color:S.text2,fontSize:11,fontWeight:700,outline:'none',cursor:'pointer'}}>
+              {(Object.keys(ROLES) as Rol[]).map(r=>(
+                <option key={r} value={r} style={{background:S.bg3,color:S.text1}}>{ROLES[r].label}</option>
+              ))}
+            </select>
+          </div>
           <button onClick={()=>showToast('⬇️ Excel generado')} style={{background:S.bg3,border:`1px solid ${S.border}`,color:S.text2,padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer'}}>⬇️ Excel</button>
           <button onClick={()=>showToast('⬇️ PDF generado')} style={{background:S.bg3,border:`1px solid ${S.border}`,color:S.text2,padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer'}}>⬇️ PDF</button>
           {!turno||turno.estado==='cerrada'
-            ? <button onClick={()=>setShowAbrir(true)} style={{background:S.green,color:'#fff',border:'none',padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer'}}>🔓 Abrir caja</button>
-            : <button onClick={()=>setShowCerrar(true)} style={{background:S.red,color:'#fff',border:'none',padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:700,cursor:'pointer'}}>🔒 Cerrar turno</button>
+            ? <button onClick={()=>can(rol,'abrir_caja')?setShowAbrir(true):showToast(`🔒 Rol ${ROLES[rol].label} no puede abrir caja`)} disabled={!can(rol,'abrir_caja')} style={{background:can(rol,'abrir_caja')?S.green:S.bg3,color:can(rol,'abrir_caja')?'#fff':S.text3,border:`1px solid ${can(rol,'abrir_caja')?'transparent':S.border}`,padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:700,cursor:can(rol,'abrir_caja')?'pointer':'not-allowed'}}>🔓 Abrir caja</button>
+            : <button onClick={()=>can(rol,'cerrar_caja')?setShowCerrar(true):showToast(`🔒 Rol ${ROLES[rol].label} no puede cerrar caja`)} disabled={!can(rol,'cerrar_caja')} style={{background:can(rol,'cerrar_caja')?S.red:S.bg3,color:can(rol,'cerrar_caja')?'#fff':S.text3,border:`1px solid ${can(rol,'cerrar_caja')?'transparent':S.border}`,padding:'7px 14px',borderRadius:8,fontSize:11,fontWeight:700,cursor:can(rol,'cerrar_caja')?'pointer':'not-allowed'}}>🔒 Cerrar turno</button>
           }
         </div>
       </div>
@@ -459,9 +633,147 @@ export default function ContabilidadModule() {
           </div>
         )}
 
+        {/* ASIENTOS · libro diario con motor de partida doble */}
+        {tab==='asientos' && (
+          <div style={{display:'flex',flexDirection:'column',gap:14,maxWidth:760}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{fontSize:12,fontWeight:700,color:S.goldL}}>LIBRO DIARIO · ASIENTO DE CIERRE</div>
+              <span style={{
+                background: asiento.estado==='contabilizado' ? `${S.green}20` : `${S.gold}20`,
+                color: asiento.estado==='contabilizado' ? S.green : S.gold,
+                padding:'4px 12px',borderRadius:20,fontSize:11,fontWeight:700,
+              }}>
+                {asiento.estado==='contabilizado' ? '✓ Contabilizado' : '⏳ Borrador'}
+              </span>
+            </div>
+
+            {/* Trazabilidad — norma: toda línea remonta a su documento fuente */}
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14,display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12}}>
+              {[
+                {k:'Fecha',     v:asiento.fecha},
+                {k:'Documento fuente', v:asiento.fuente},
+                {k:'Dimensión', v:asiento.dim},
+              ].map(f=>(
+                <div key={f.k}>
+                  <div style={{fontSize:10,color:S.text3,marginBottom:3,fontWeight:700,textTransform:'uppercase' as const}}>{f.k}</div>
+                  <div style={{fontSize:12,color:S.text1}}>{f.v}</div>
+                </div>
+              ))}
+            </div>
+
+            {asiento.estado==='borrador' && (
+              <div style={{padding:12,background:`${S.gold}10`,border:`1px solid ${S.gold}30`,borderRadius:10,fontSize:11,color:S.gold}}>
+                ⚠️ Día operativo abierto — este asiento es un borrador y no postea al libro mayor hasta cerrar la caja (norma: no contabilizar ventas en día no cerrado salvo rol autorizado).
+              </div>
+            )}
+
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
+              <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
+                <thead><tr style={{background:S.bg3}}>
+                  {['Cuenta','Concepto','Débito','Crédito'].map(h=>(
+                    <th key={h} style={{padding:'10px 14px',textAlign:['Débito','Crédito'].includes(h)?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {asiento.lineas.map((l,i)=>(
+                    <tr key={i} style={{borderTop:`1px solid ${S.border}`}}>
+                      <td style={{padding:'10px 14px',color:S.text3,fontFamily:'monospace',fontSize:11}}>{l.cuenta}</td>
+                      <td style={{padding:'10px 14px',color:S.text1}}>{l.nombre}</td>
+                      <td style={{padding:'10px 14px',textAlign:'right',color:l.debe>0?S.goldL:S.text3,fontWeight:l.debe>0?700:400}}>{l.debe>0?COP(l.debe):'—'}</td>
+                      <td style={{padding:'10px 14px',textAlign:'right',color:l.haber>0?S.green:S.text3,fontWeight:l.haber>0?700:400}}>{l.haber>0?COP(l.haber):'—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
+                  <td colSpan={2} style={{padding:'12px 14px',fontWeight:700,color:S.gold}}>SUMAS IGUALES</td>
+                  <td style={{padding:'12px 14px',textAlign:'right',fontWeight:900,color:S.goldL,fontSize:13}}>{COP(asiento.debe)}</td>
+                  <td style={{padding:'12px 14px',textAlign:'right',fontWeight:900,color:S.green,fontSize:13}}>{COP(asiento.haber)}</td>
+                </tr></tfoot>
+              </table>
+            </div>
+
+            {/* Validación partida doble */}
+            <div style={{
+              background: asiento.cuadra ? `${S.green}10` : `${S.red}10`,
+              border:`1px solid ${asiento.cuadra ? S.green : S.red}30`,
+              borderRadius:12,padding:14,display:'flex',justifyContent:'space-between',alignItems:'center',
+            }}>
+              <div style={{fontSize:12,fontWeight:700,color:asiento.cuadra?S.green:S.red}}>
+                {asiento.cuadra ? '✓ Partida doble cuadra — Debe = Haber' : `✗ Descuadre de ${COP(Math.abs(asiento.debe-asiento.haber))}`}
+              </div>
+              <div style={{fontSize:11,color:S.text3}}>{asiento.lineas.length} líneas</div>
+            </div>
+
+            {/* Postear al mayor — exige rol con permiso (SoD) */}
+            <div style={{display:'flex',gap:10,alignItems:'center'}}>
+              <button
+                onClick={()=> !asiento.cuadra ? showToast('✗ No se postea un asiento descuadrado')
+                  : !can(rol,'postear_asiento') ? showToast(`🔒 Rol ${ROLES[rol].label} no puede postear al mayor`)
+                  : asiento.estado==='borrador' ? showToast('⚠️ Cierra la caja antes de postear')
+                  : showToast('✓ Asiento posteado al libro mayor')}
+                disabled={!can(rol,'postear_asiento')||!asiento.cuadra}
+                style={{flex:1,padding:12,borderRadius:10,border:'none',fontSize:12,fontWeight:900,
+                  background:can(rol,'postear_asiento')&&asiento.cuadra?S.gold:S.bg3,
+                  color:can(rol,'postear_asiento')&&asiento.cuadra?'#000':S.text3,
+                  cursor:can(rol,'postear_asiento')&&asiento.cuadra?'pointer':'not-allowed'}}>
+                🧾 Postear al libro mayor
+              </button>
+              <span style={{fontSize:10,color:S.text3,maxWidth:220}}>
+                {can(rol,'postear_asiento')
+                  ? `Habilitado para ${ROLES[rol].label}`
+                  : `Requiere rol Contador o CFO · ${ROLES[rol].label} no autorizado`}
+              </span>
+            </div>
+
+            {/* Normas aplicadas */}
+            <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:12,padding:14}}>
+              <div style={{fontSize:11,fontWeight:700,color:S.purple,marginBottom:8}}>📐 NORMAS CONTABLES APLICADAS</div>
+              <div style={{fontSize:11,color:S.text2,lineHeight:1.9}}>
+                ✓ <b>Partida doble</b> — el asiento solo es válido si Debe = Haber<br/>
+                ✓ <b>NIIF 15</b> — el ingreso se reconoce al cierre de la venta, separado del impuesto<br/>
+                ✓ <b>Propina = pasivo</b> ({PUC.propinas.c}) — no es ingreso ni base del impuesto al consumo<br/>
+                ✓ <b>IVA/INC separado</b> ({PUC.ivaInc.c}) — no se mezcla con la base del ingreso<br/>
+                ✓ <b>Trazabilidad</b> — cada asiento referencia su documento fuente (cierre Z)<br/>
+                ✓ <b>Segregación de funciones (SoD)</b> — quien causa no aprueba; postear al mayor exige rol Contador/CFO
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* P&G */}
         {tab==='pyg' && (
           <div style={{display:'flex',flexDirection:'column',gap:14}}>
+            {/* Doble mirada: P&G operativo (Flash) vs financiero (GL) */}
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <div style={{display:'flex',background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,padding:3,gap:3}}>
+                {([
+                  {id:'operativo' as const,  label:'⚡ Operativo (Flash)'},
+                  {id:'financiero' as const, label:'📘 Financiero (GL)'},
+                ]).map(v=>(
+                  <button key={v.id} onClick={()=>setPygVista(v.id)} style={{
+                    padding:'7px 14px',borderRadius:8,border:'none',cursor:'pointer',fontSize:11,fontWeight:700,
+                    background: pygVista===v.id ? S.gold : 'transparent',
+                    color: pygVista===v.id ? '#000' : S.text3,
+                  }}>{v.label}</button>
+                ))}
+              </div>
+              <div style={{fontSize:10,color:S.text3,textAlign:'right',maxWidth:280}}>
+                {pygVista==='operativo'
+                  ? 'Reporte del día con labor estimada del POS — para gestión'
+                  : 'Reconciliado contra libro mayor con nómina real — para cierre'}
+              </div>
+            </div>
+
+            {/* Bridge — norma: la diferencia operativo↔financiero queda explicada */}
+            <div style={{background:`${S.blue}10`,border:`1px solid ${S.blue}30`,borderRadius:10,padding:'10px 14px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+              <span style={{fontSize:11,color:S.blue}}>
+                🔗 Puente operativo → financiero · ajuste nómina real vs accrual diario
+              </span>
+              <span style={{fontSize:12,fontWeight:700,color:ajusteNomina>=0?S.red:S.green}}>
+                {ajusteNomina>=0?'+':''}{COP(ajusteNomina)}
+              </span>
+            </div>
+
             <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10}}>
               {[
                 {label:'Ingresos totales',value:COP(ingTotal),color:S.goldL},
@@ -479,7 +791,7 @@ export default function ContabilidadModule() {
               {[
                 {titulo:'INGRESOS OPERACIONALES',color:S.goldL,items:[{puc:'4135',label:'Ventas de alimentos',valor:MOCK_PYG.ingresos.alimentos},{puc:'4135',label:'Ventas de bebidas',valor:MOCK_PYG.ingresos.bebidas},{puc:'4135',label:'Ventas de cocteles',valor:MOCK_PYG.ingresos.cocteles},{puc:'4295',label:'Otros ingresos',valor:MOCK_PYG.ingresos.otros}],total:ingTotal},
                 {titulo:'COSTOS DE VENTAS',color:S.red,items:[{puc:'6135',label:'Costo de alimentos',valor:MOCK_PYG.costos.alimentos},{puc:'6135',label:'Costo de bebidas',valor:MOCK_PYG.costos.bebidas}],total:cosTotal},
-                {titulo:'GASTOS OPERACIONALES',color:S.purple,items:[{puc:'5105',label:'Nómina y prestaciones',valor:MOCK_PYG.gastos.nomina},{puc:'5120',label:'Arriendo',valor:MOCK_PYG.gastos.arriendo},{puc:'5115',label:'Servicios públicos',valor:MOCK_PYG.gastos.servicios},{puc:'5145',label:'Marketing',valor:MOCK_PYG.gastos.marketing},{puc:'5195',label:'Tecnología (Nexum)',valor:MOCK_PYG.gastos.tecnologia},{puc:'5140',label:'Aseo y mtto',valor:MOCK_PYG.gastos.aseo},{puc:'5295',label:'Otros',valor:MOCK_PYG.gastos.otros}],total:gasTotal},
+                {titulo:'GASTOS OPERACIONALES',color:S.purple,items:[{puc:'5105',label:`Nómina y prestaciones ${pygVista==='financiero'?'(real)':'(estimada)'}`,valor:gastosVista.nomina},{puc:'5120',label:'Arriendo',valor:gastosVista.arriendo},{puc:'5115',label:'Servicios públicos',valor:gastosVista.servicios},{puc:'5145',label:'Marketing',valor:gastosVista.marketing},{puc:'5195',label:'Tecnología (Nexum)',valor:gastosVista.tecnologia},{puc:'5140',label:'Aseo y mtto',valor:gastosVista.aseo},{puc:'5295',label:'Otros',valor:gastosVista.otros}],total:gasTotal},
               ].map(sec=>(
                 <div key={sec.titulo} style={{borderTop:`1px solid ${S.border}`}}>
                   <div style={{padding:'10px 16px',background:S.bg3}}><span style={{fontSize:10,fontWeight:700,color:sec.color,textTransform:'uppercase' as const,letterSpacing:'.08em'}}>{sec.titulo}</span></div>
@@ -527,18 +839,22 @@ export default function ContabilidadModule() {
               </button>
             </div>
             <div style={{padding:14,background:`${S.purple}10`,border:`1px solid ${S.purple}30`,borderRadius:12,fontSize:12,color:S.purple}}>
-              ✨ IA activa — toma foto del tiquete o factura del proveedor y Nexum extrae proveedor, NIT, monto, IVA y categoriza automáticamente.
+              ✨ IA activa — toma foto del tiquete o factura del proveedor y Nexum extrae proveedor, NIT, monto, IVA y categoriza automáticamente. Toca una fila para ver el <b>asiento de causación</b> con IVA descontable y retención.
             </div>
             <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
               <table style={{width:'100%',borderCollapse:'collapse',fontSize:12}}>
                 <thead><tr style={{background:S.bg3}}>
-                  {['Proveedor','Concepto','Categoría','Fecha','Monto','Estado'].map(h=>(
-                    <th key={h} style={{padding:'10px 12px',textAlign:h==='Monto'?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
+                  {['Proveedor','Concepto','Categoría','Fecha','Base','Estado',''].map((h,i)=>(
+                    <th key={i} style={{padding:'10px 12px',textAlign:h==='Base'?'right':'left',color:S.text3,fontWeight:700,fontSize:10,textTransform:'uppercase' as const}}>{h}</th>
                   ))}
                 </tr></thead>
                 <tbody>
-                  {MOCK_GASTOS.map((g,i)=>(
-                    <tr key={i} style={{borderTop:`1px solid ${S.border}`}}>
+                  {MOCK_GASTOS.map((g)=>{
+                    const open = gastoSel===g.id;
+                    const a = construirAsientoGasto({ proveedor:g.proveedor, concepto:g.concepto, base:g.monto, categoria:g.categoria, fecha:g.fecha });
+                    return (
+                    <React.Fragment key={g.id}>
+                    <tr onClick={()=>setGastoSel(open?null:g.id)} style={{borderTop:`1px solid ${S.border}`,cursor:'pointer',background:open?S.bg3:'transparent'}}>
                       <td style={{padding:'10px 12px',color:S.text1,fontWeight:600}}>{g.proveedor}</td>
                       <td style={{padding:'10px 12px',color:S.text2}}>{g.concepto}</td>
                       <td style={{padding:'10px 12px',color:S.text3,fontSize:11}}>{g.categoria}</td>
@@ -549,13 +865,44 @@ export default function ContabilidadModule() {
                           {g.estado==='causado'?'✓ Causado':'⏳ Pendiente'}
                         </span>
                       </td>
+                      <td style={{padding:'10px 12px',textAlign:'right',color:S.text3}}>{open?'▲':'▼'}</td>
                     </tr>
-                  ))}
+                    {open && (
+                      <tr style={{background:S.bg}}>
+                        <td colSpan={7} style={{padding:'0 12px 14px'}}>
+                          <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:10,overflow:'hidden',marginTop:4}}>
+                            <div style={{padding:'8px 12px',fontSize:10,fontWeight:700,color:S.text3,background:S.bg3,textTransform:'uppercase' as const}}>
+                              Asiento de causación · {a.fuente}
+                            </div>
+                            <table style={{width:'100%',borderCollapse:'collapse',fontSize:11}}>
+                              <tbody>
+                                {a.lineas.map((l,j)=>(
+                                  <tr key={j} style={{borderTop:`1px solid ${S.border}`}}>
+                                    <td style={{padding:'7px 12px',color:S.text3,fontFamily:'monospace'}}>{l.cuenta}</td>
+                                    <td style={{padding:'7px 12px',color:S.text1}}>{l.nombre}</td>
+                                    <td style={{padding:'7px 12px',textAlign:'right',color:l.debe>0?S.goldL:S.text3}}>{l.debe>0?COP(l.debe):'—'}</td>
+                                    <td style={{padding:'7px 12px',textAlign:'right',color:l.haber>0?S.green:S.text3}}>{l.haber>0?COP(l.haber):'—'}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                              <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
+                                <td colSpan={2} style={{padding:'8px 12px',fontWeight:700,color:a.cuadra?S.green:S.red}}>{a.cuadra?'✓ Cuadra':'✗ Descuadre'} · IVA {COP(a.iva)} · Retefuente {(a.reteTasa*100).toFixed(1)}% {COP(a.rete)} · Neto a pagar {COP(a.neto)}</td>
+                                <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:S.goldL}}>{COP(a.debe)}</td>
+                                <td style={{padding:'8px 12px',textAlign:'right',fontWeight:700,color:S.green}}>{COP(a.haber)}</td>
+                              </tr></tfoot>
+                            </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                    </React.Fragment>
+                    );
+                  })}
                 </tbody>
                 <tfoot><tr style={{background:S.bg3,borderTop:`2px solid ${S.border}`}}>
-                  <td colSpan={4} style={{padding:'12px',fontWeight:700,color:S.gold}}>TOTAL GASTOS</td>
+                  <td colSpan={4} style={{padding:'12px',fontWeight:700,color:S.gold}}>TOTAL BASE GASTOS</td>
                   <td style={{padding:'12px',textAlign:'right',fontWeight:900,color:S.red,fontSize:14}}>{COP(MOCK_GASTOS.reduce((a,g)=>a+g.monto,0))}</td>
-                  <td/>
+                  <td colSpan={2}/>
                 </tr></tfoot>
               </table>
             </div>
