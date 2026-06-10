@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>X-CARE™ · Tu experiencia en OMM</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800;900&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#06060f; --bg2:#0d0d1a; --bg4:#1c1c30;
+      --pink:#FF2D78; --pinkD:#cc2260;
+      --gold:#FFB547; --green:#00E676; --purple:#B388FF; --red:#FF5252;
+      --t1:#fff; --t2:#A0A0C0; --t3:#50507A; --border:rgba(255,255,255,.08);
+    }
+    *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+    html,body{margin:0; min-height:100%; background:var(--bg); color:var(--t1);
+      font-family:'DM Sans',system-ui,sans-serif}
+    body{display:flex; align-items:center; justify-content:center; padding:18px;
+      background:radial-gradient(circle at 50% 25%, rgba(255,45,120,.12) 0%, transparent 60%), var(--bg)}
+    .card{background:var(--bg2); border:1px solid rgba(255,45,120,.2); border-radius:26px;
+      padding:26px 22px; width:100%; max-width:460px;
+      box-shadow:0 0 70px rgba(255,45,120,.14), inset 0 0 40px rgba(255,45,120,.03)}
+    .brand{display:flex; align-items:center; gap:8px; margin-bottom:18px}
+    .brand .logo{width:30px; height:30px; border-radius:9px;
+      background:linear-gradient(135deg,var(--pink),var(--purple));
+      display:flex; align-items:center; justify-content:center; font-size:15px}
+    .brand .tag{font-size:11px; font-weight:900; color:var(--pink); letter-spacing:.15em; text-transform:uppercase}
+    .center{text-align:center}
+    .kicker{font-size:12px; color:var(--pink); font-weight:700; text-transform:uppercase; letter-spacing:.15em; margin-bottom:10px}
+    h1{font-family:'Syne',sans-serif; font-size:24px; font-weight:900; line-height:1.2; margin:0 0 6px}
+    .sub{font-size:13px; color:var(--t3)}
+    .stars{display:flex; justify-content:center; gap:12px; margin:26px 0 8px}
+    .star{cursor:pointer; font-size:46px; transition:transform .25s cubic-bezier(.34,1.56,.64,1), filter .25s;
+      filter:grayscale(1) opacity(.3)}
+    .star.on{filter:drop-shadow(0 0 12px var(--gold)); transform:scale(1.12)}
+    .starlabel{height:30px; display:flex; align-items:center; justify-content:center;
+      font-family:'Syne',sans-serif; font-size:16px; font-weight:900; color:var(--t3)}
+    .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:20px 0}
+    .grid2{grid-template-columns:repeat(2,1fr)}
+    .opt{padding:14px 6px; border-radius:14px; border:2px solid var(--border); background:var(--bg4);
+      color:var(--t2); cursor:pointer; text-align:center; transition:all .2s; font-family:'DM Sans',sans-serif}
+    .opt .ic{font-size:26px; margin-bottom:4px}
+    .opt .lb{font-size:11px; font-weight:700}
+    .opt.sel{border-color:var(--pink); background:rgba(255,45,120,.13); color:var(--pink)}
+    .opt.selred{border-color:var(--red); background:rgba(255,82,82,.13); color:var(--red)}
+    textarea{width:100%; min-height:70px; resize:none; background:rgba(255,255,255,.05);
+      border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--t1);
+      font-size:13px; outline:none; font-family:'DM Sans',sans-serif; margin-bottom:14px}
+    .btn{width:100%; padding:14px; border-radius:14px; border:none; color:#fff; font-size:15px;
+      font-weight:900; cursor:pointer; font-family:'Syne',sans-serif;
+      background:linear-gradient(135deg,var(--pink),var(--pinkD)); box-shadow:0 6px 26px rgba(255,45,120,.25)}
+    .btn[disabled]{opacity:.4; cursor:not-allowed; box-shadow:none}
+    .back{background:none; border:none; color:var(--t3); cursor:pointer; font-size:12px; padding:0; margin-bottom:12px}
+    .linkbtn{display:block; padding:14px; border-radius:14px; color:#fff; font-size:14px; font-weight:800;
+      text-decoration:none; text-align:center; font-family:'Syne',sans-serif; margin-bottom:10px}
+    .muted{background:none; border:none; color:var(--t3); cursor:pointer; font-size:13px; text-decoration:underline}
+    .hidden{display:none !important}
+    .smallhead{font-family:'Syne',sans-serif; font-size:18px; font-weight:900; line-height:1.3; margin:0 0 4px}
+    .ribbon{display:flex; gap:6px; margin-bottom:10px}
+    .ribbon span{font-size:18px; filter:grayscale(1) opacity(.3)}
+    .ribbon span.on{filter:drop-shadow(0 0 6px var(--gold))}
+    @keyframes fadeUp{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:translateY(0)}}
+    @keyframes bounceIn{0%{transform:scale(0)} 60%{transform:scale(1.2)} 100%{transform:scale(1)}}
+    .step{animation:fadeUp .3s ease}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand"><div class="logo">✦</div><div class="tag">X-CARE™</div></div>
+    <div id="app"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script>
+  (function(){
+    // ── Config: la encuesta corre con la llave anónima (pública) ──────────────
+    var SUPABASE_URL = 'https://kxaxjttvkaeewsjbpert.supabase.co';
+    var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YXhqdHR2a2FlZXdzamJwZXJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkxMTc0MjgsImV4cCI6MjA4NDY5MzQyOH0.fMINxNqrLT6f8lNPrpRZYPpm6IjTlKg6wAH7aAlfz_o';
+    var db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+    // ── Parámetros por QR: ?mesa=12&nombre=Juan&r=6 (todos opcionales) ────────
+    var qp = new URLSearchParams(location.search);
+    var _mesa = qp.get('mesa');
+    var MESA = (_mesa && /^\d+$/.test(_mesa)) ? parseInt(_mesa,10) : null; // mesa_numero es entero
+    var NOMBRE = qp.get('nombre') || '';
+    var REST = parseInt(qp.get('r') || '6', 10);
+
+    // ── Datos del cuestionario (sin platos) ───────────────────────────────────
+    var TAGS_5 = [['🍽️','Comida'],['🍸','Cócteles'],['🤵','Servicio'],['👨‍🍳','Chef'],['🎶','Ambiente'],['🕯️','Experiencia']];
+    var TAGS_4 = [['⏱️','Tiempo'],['🌡️','Temperatura'],['🍽️','Sabor'],['🍸','Balance'],['🤵','Atención'],['🎶','Ambiente']];
+    var TAGS_NEG = [['🌡️','Frío'],['⏱️','Demora'],['🧂','Sabor'],['🍸','Muy dulce'],['🍸','Muy fuerte'],['🤵','Atención'],['🎶','Ruido'],['💬','Otro']];
+    var MSG = {
+      5:['🔥 Nos encanta saberlo.','¿Qué fue lo que más destacarías?'],
+      4:['✨ Gracias.','¿Qué faltó para que fuera perfecta?'],
+      3:['🙏 Queremos hacerlo mejor.','Ayúdanos a entender qué pasó.'],
+      2:['🙏 Queremos hacerlo mejor.','Ayúdanos a entender qué pasó.'],
+      1:['🙏 Queremos hacerlo mejor.','Ayúdanos a entender qué pasó.']
+    };
+    var RESPUESTAS_IA = {
+      5:'', 4:'',
+      3:'Hola {n},\n\nGracias por confiar en nosotros hoy. Hemos revisado tu experiencia y ya estamos ajustando los detalles que nos compartiste. Tu próxima visita será atendida con especial cuidado.',
+      2:'Hola {n},\n\nTu experiencia es importante para nosotros. Nuestro equipo ya está trabajando para que lo ocurrido no vuelva a suceder. Será un honor recibirte nuevamente.',
+      1:'Hola {n},\n\nLo que nos compartiste merece toda nuestra atención. Ya tomamos acciones concretas con nuestro equipo. Nos gustaría recibirte para ofrecerte una experiencia completamente distinta.'
+    };
+    var LABELS = ['','Muy mala','Mala','Regular','Muy buena','Increíble'];
+    var COLORS = ['','#FF5252','#FF7043','#FFB547','#69F0AE','#00E676'];
+
+    // ── Estado ────────────────────────────────────────────────────────────────
+    var st = { estrellas:0, tags:[], micro:[], comentario:'', guardando:false };
+    var app = document.getElementById('app');
+    var firstName = (NOMBRE||'').split(' ')[0];
+    function esNeg(){ return st.estrellas>0 && st.estrellas<=3; }
+    function toggle(arr,v){ var i=arr.indexOf(v); if(i>=0)arr.splice(i,1); else arr.push(v); }
+
+    // ── Guardar en Supabase ─────────────────────────────────────────────────
+    function npsDe(e){ return e===5?10:e===4?8:e===3?6:e===2?3:1; }
+    async function guardar(){
+      if(st.guardando) return; st.guardando=true; render();
+      var ia = (RESPUESTAS_IA[st.estrellas]||'').replace('{n}', firstName||'cliente');
+      var pos = (st.estrellas>=4) ? st.tags : null;
+      var neg = esNeg() ? st.tags.concat(st.micro) : null;
+      try {
+        var ins = await db.from('xcare_encuestas').insert({
+          restaurante_id: REST,
+          mesa_numero: MESA,
+          nombre_cliente: NOMBRE || null,
+          estrellas: st.estrellas,
+          tags_positivos: pos,
+          tags_negativos: neg,
+          comentario: st.comentario || null,
+          nps_score: npsDe(st.estrellas),
+          alerta_gerente: st.estrellas<=3,
+          respuesta_ia: ia || null
+        });
+        if(ins.error) throw ins.error;
+        if(st.estrellas<=3){
+          await db.from('xcare_alertas').insert({
+            restaurante_id: REST, mesa_numero: MESA, tipo:'encuesta_negativa',
+            descripcion:(NOMBRE||'Cliente')+' — '+st.estrellas+'★ — '+(st.tags.join(', ')||'Sin tags'),
+            activa:true
+          });
+        }
+        st.guardando=false;
+        view = (st.estrellas===5) ? 'redes' : 'done';
+        render();
+      } catch(e){
+        st.guardando=false;
+        alert('No pudimos enviar tu opinión: '+(e.message||e)+'. Intenta de nuevo.');
+        render();
+      }
+    }
+
+    // ── Vistas ────────────────────────────────────────────────────────────────
+    var view = 'rating';
+
+    function ribbon(){
+      var s=''; for(var n=1;n<=5;n++){ s+='<span class="'+(n<=st.estrellas?'on':'')+'">'+(n<=st.estrellas?'⭐':'☆')+'</span>'; }
+      return '<div class="ribbon">'+s+'</div>';
+    }
+    function header(titulo,sub,back){
+      return (back?'<button class="back" data-act="back" data-to="'+back+'">← Volver</button>':'')
+        + ribbon()
+        + '<div class="smallhead">'+titulo+'</div><div class="sub">'+sub+'</div>';
+    }
+    function tagsGrid(list, selArr, cls){
+      return list.map(function(t){
+        var on = selArr.indexOf(t[1])>=0;
+        return '<button class="opt '+(on?cls:'')+'" data-act="tag" data-v="'+t[1]+'">'
+          + '<div class="ic">'+t[0]+'</div><div class="lb">'+t[1]+'</div></button>';
+      }).join('');
+    }
+
+    function render(){
+      if(view==='rating'){
+        var act=st.estrellas;
+        var stars=''; for(var n=1;n<=5;n++){ stars+='<div class="star '+(n<=act?'on':'')+'" data-act="star" data-n="'+n+'">⭐</div>'; }
+        app.innerHTML =
+          '<div class="step center">'
+          + '<div class="kicker">Experience Intelligence</div>'
+          + '<h1>'+(NOMBRE?('¿Cómo estuvo tu experiencia '+firstName+'?'):'¿Cómo se sintió tu experiencia hoy?')+'</h1>'
+          + '<div class="sub">Tu opinión transforma nuestro servicio'+(MESA?(' · Mesa '+MESA):'')+'</div>'
+          + '<div class="stars">'+stars+'</div>'
+          + '<div class="starlabel" style="color:'+(act?COLORS[act]:'var(--t3)')+'">'+(act?LABELS[act]:'Toca para calificar')+'</div>'
+          + (act>0 ? '<div style="margin-top:18px"><button class="btn" data-act="go" data-to="tags">Continuar →</button></div>' : '')
+          + '</div>';
+      }
+      else if(view==='tags'){
+        var m = MSG[st.estrellas];
+        var list = (st.estrellas>=4)?TAGS_5:TAGS_4;
+        app.innerHTML =
+          '<div class="step">'
+          + header(m[0], m[1], 'rating')
+          + '<div class="grid">'+tagsGrid(list, st.tags, 'sel')+'</div>'
+          + '<textarea data-act="coment" placeholder="Comentario opcional...">'+st.comentario+'</textarea>'
+          + (esNeg()
+              ? '<button class="btn" data-act="go" data-to="micro" '+(st.tags.length?'':'disabled')+'>Siguiente →</button>'
+              : '<button class="btn" data-act="save" '+(st.tags.length&&!st.guardando?'':'disabled')+'>'+(st.guardando?'Enviando...':'Enviar ✓')+'</button>')
+          + '</div>';
+      }
+      else if(view==='micro'){
+        app.innerHTML =
+          '<div class="step">'
+          + header('¿Qué tipo de problema fue?','Precisión para mejorar más rápido','tags')
+          + '<div class="grid grid2">'+tagsGrid(TAGS_NEG, st.micro, 'selred')+'</div>'
+          + '<textarea data-act="coment" placeholder="Cuéntanos un poco más...">'+st.comentario+'</textarea>'
+          + '<button class="btn" data-act="save" '+(st.guardando?'disabled':'')+'>'+(st.guardando?'Enviando...':'Enviar ✓')+'</button>'
+          + '</div>';
+      }
+      else if(view==='done'){
+        var ia = (st.estrellas<=3) ? (RESPUESTAS_IA[st.estrellas]||'').replace('{n}', firstName||'cliente') : '';
+        app.innerHTML =
+          '<div class="step center" style="padding:10px 0">'
+          + '<div style="font-size:74px;margin-bottom:14px;animation:bounceIn .6s ease">'+(st.estrellas>=4?'🎉':st.estrellas===3?'🙏':'💎')+'</div>'
+          + '<h1>'+(st.estrellas>=4?'¡Hasta pronto!':st.estrellas===3?'Gracias por tu honestidad':'Gracias por contarnos')+'</h1>'
+          + '<div class="sub" style="max-width:300px;margin:8px auto 0;line-height:1.6">'
+          + (st.estrellas>=4?'Fue un placer tenerte. Vuelve pronto.':st.estrellas===3?'Ya estamos trabajando en mejorarlo para tu próxima visita.':'Tu voz genera cambios reales en nuestro equipo.')
+          + '</div>'
+          + (ia? '<div style="background:rgba(179,136,255,.1);border:1px solid rgba(179,136,255,.3);border-radius:16px;padding:14px 18px;max-width:340px;margin:18px auto 0;font-size:13px;color:var(--purple);line-height:1.6;text-align:left;white-space:pre-line">'+ia+'</div>':'')
+          + '</div>';
+      }
+      else if(view==='redes'){
+        app.innerHTML =
+          '<div class="step center">'
+          + '<div style="font-size:60px;margin-bottom:10px">🌟</div>'
+          + '<h1>Tu experiencia puede inspirar a otros.</h1>'
+          + '<div class="sub" style="margin:8px 0 22px;line-height:1.6">Ayuda a que más personas vivan momentos memorables en OMM.</div>'
+          + '<a class="linkbtn" style="background:linear-gradient(135deg,#4285F4,#0F9D58)" href="https://g.page/r/review" target="_blank" rel="noopener">⭐ Opinar en Google</a>'
+          + '<a class="linkbtn" style="background:linear-gradient(135deg,#00AA6C,#007A4D)" href="https://tripadvisor.com" target="_blank" rel="noopener">🦉 Opinar en TripAdvisor</a>'
+          + '<button class="muted" data-act="go" data-to="done" style="margin-top:6px">Omitir por ahora</button>'
+          + '</div>';
+      }
+    }
+
+    // ── Eventos (delegación) ──────────────────────────────────────────────────
+    app.addEventListener('click', function(ev){
+      var el = ev.target.closest('[data-act]'); if(!el) return;
+      var act = el.getAttribute('data-act');
+      if(act==='star'){ st.estrellas = parseInt(el.getAttribute('data-n'),10); render(); }
+      else if(act==='go'){ view = el.getAttribute('data-to'); render(); }
+      else if(act==='back'){ var to=el.getAttribute('data-to'); if(to==='rating'){st.tags=[];} if(to==='tags'){st.micro=[];} view=to; render(); }
+      else if(act==='tag'){ toggle(view==='micro'?st.micro:st.tags, el.getAttribute('data-v')); render(); }
+      else if(act==='save'){ guardar(); }
+    });
+    app.addEventListener('input', function(ev){
+      var el = ev.target.closest('[data-act="coment"]'); if(!el) return;
+      st.comentario = el.value;
+    });
+
+    render();
+  })();
+  </script>
+</body>
+</html>
