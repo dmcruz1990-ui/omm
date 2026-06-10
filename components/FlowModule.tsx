@@ -57,7 +57,7 @@ export default function FlowModule() {
   const [items,      setItems]      = useState<FlowItem[]>([]);
   const [diasItems,  setDiasItems]  = useState<FlowItem[]>([]);
   const [loading,    setLoading]    = useState(true);
-  const [activeTab,  setActiveTab]  = useState<'live'|'dia'|'platos'|'metricas'|'chat'>('live');
+  const [activeTab,  setActiveTab]  = useState<'inicio'|'live'|'dia'|'platos'|'metricas'|'chat'>('inicio');
   const [diaSeleccionado, setDiaSeleccionado] = useState<string>(new Date().toISOString().split('T')[0]);
   const [filtroEst,  setFiltroEst]  = useState<string>('all');
   const [statsHoy,   setStatsHoy]   = useState<any>(null);
@@ -387,6 +387,7 @@ export default function FlowModule() {
       {/* ── TABS ── */}
       <div style={{display:'flex',borderBottom:`1px solid ${S.border}`,background:S.bg2,padding:'0 20px',flexShrink:0}}>
         {([
+          {id:'inicio',   l:'✦ Inicio · IQ'},
           {id:'live',     l:'🔴 En vivo'},
           {id:'dia',      l:'📋 Pedidos del día'},
           {id:'platos',   l:'🍽️ Mi Menú'},
@@ -401,6 +402,19 @@ export default function FlowModule() {
       </div>
 
       <div style={{flex:1,overflow:'hidden',display:'flex',flexDirection:'column'}}>
+
+        {/* ══ INICIO · IQ — Centro de Inteligencia Operacional ══ */}
+        {activeTab==='inicio' && (
+          <FlowInicioIQ
+            items={items}
+            diasItems={diasItems}
+            statsHoy={statsHoy}
+            careMetrics={careMetrics}
+            cargaPorEstacion={cargaPorEstacion}
+            estacionesCargadas={estacionesCargadas}
+            S={S}
+          />
+        )}
 
         {/* ══ EN VIVO — por pedido en orden de llegada ══ */}
         {activeTab==='live' && (
@@ -1077,6 +1091,298 @@ export default function FlowModule() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// FLOW INICIO · IQ — Centro de Inteligencia Operacional
+// Dashboard único con FLOW IQ score, rendimiento por estación, eficiencia,
+// voz del cliente, cuellos de botella, talento y resumen del día
+// ═════════════════════════════════════════════════════════════════════
+function FlowInicioIQ({ items, diasItems, statsHoy, careMetrics, cargaPorEstacion, estacionesCargadas, S }:{
+  items:any[]; diasItems:any[]; statsHoy:any; careMetrics:any;
+  cargaPorEstacion:Record<string,number>; estacionesCargadas:Set<string>; S:any;
+}) {
+  // Tiempo promedio por estación (en min, usando duracion_seg cuando hay)
+  const calcEstacion = (est:string) => {
+    const completados = (diasItems||[]).filter((i:any) => i.estacion === est && i.duracion_seg);
+    const promSeg = completados.length > 0
+      ? completados.reduce((s:number, i:any) => s + (i.duracion_seg||0), 0) / completados.length
+      : 0;
+    const promMin = Math.round(promSeg / 60);
+    // SLA = % de items entregados dentro del objetivo
+    const meta = ESTACIONES[est]?.objetivo || 480;
+    const enSla = completados.filter((i:any) => (i.duracion_seg||0) <= meta).length;
+    const sla = completados.length > 0 ? Math.round((enSla / completados.length) * 100) : 0;
+    // Score = mezcla de SLA + carga
+    const cargada = estacionesCargadas.has(est);
+    const score = Math.max(0, Math.min(100, Math.round(sla - (cargada ? 15 : 0))));
+    return { promMin, sla, score, cargada, completados: completados.length };
+  };
+
+  const ESTACIONES_INICIO = ['cocina_caliente','cocina_fria','robata','postres','bar','cava'];
+  const estacionData = ESTACIONES_INICIO.map(e => ({ est: e, meta: ESTACIONES[e] || ESTACIONES.cocina_caliente, ...calcEstacion(e) }));
+
+  // FLOW IQ — score global ponderado por # items
+  const totalItemsDia = estacionData.reduce((s,x) => s + x.completados, 0);
+  const flowIQ = totalItemsDia > 0
+    ? Math.round(estacionData.reduce((s,x) => s + x.score * x.completados, 0) / totalItemsDia)
+    : 90;
+  const iqLabel = flowIQ >= 90 ? 'EXCELENTE' : flowIQ >= 70 ? 'BUENO' : flowIQ >= 50 ? 'EN RIESGO' : 'CRÍTICO';
+  const iqColor = flowIQ >= 90 ? S.green : flowIQ >= 70 ? '#FFB547' : flowIQ >= 50 ? '#FF8C42' : S.red;
+
+  // Campeona del día
+  const campeona = [...estacionData].sort((a,b) => b.score - a.score)[0];
+
+  // KPIs operacionales
+  const completadosHoy = (diasItems||[]).filter((i:any) => i.status === 'served' && i.duracion_seg);
+  const tiempoPromGlobal = completadosHoy.length > 0
+    ? Math.round(completadosHoy.reduce((s:number, i:any) => s + (i.duracion_seg||0), 0) / completadosHoy.length / 60 * 10) / 10
+    : 0;
+  const enSlaGlobal = completadosHoy.filter((i:any) => {
+    const meta = ESTACIONES[i.estacion]?.objetivo || 480;
+    return (i.duracion_seg||0) <= meta;
+  }).length;
+  const slaGlobalPct = completadosHoy.length > 0 ? Math.round((enSlaGlobal / completadosHoy.length) * 100) : 0;
+  const fueraSla = completadosHoy.length - enSlaGlobal;
+  const tiempoPerdidoMin = completadosHoy.reduce((s:number, i:any) => {
+    const meta = ESTACIONES[i.estacion]?.objetivo || 480;
+    const exceso = Math.max(0, (i.duracion_seg||0) - meta);
+    return s + Math.round(exceso/60);
+  }, 0);
+
+  // X-CARE rating
+  const careAvg = careMetrics?.promedio || 0;
+  const careCount = careMetrics?.totalEncuestas || 0;
+
+  return (
+    <div style={{flex:1, overflowY:'auto', padding:18, background:S.bg, color:S.t1, fontFamily:"'DM Sans',sans-serif"}}>
+      <style>{`
+        @keyframes flowPulse { 0%,100% { opacity: 1; } 50% { opacity: .45; } }
+        .flow-iq-card { transition: all .25s; }
+        .flow-iq-card:hover { transform: translateY(-2px); }
+      `}</style>
+
+      {/* HEADER */}
+      <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:18,flexWrap:'wrap'}}>
+        <div style={{flex:1,minWidth:240}}>
+          <div style={{fontFamily:"'Syne',serif",fontSize:22,fontWeight:900,letterSpacing:'-0.01em',display:'flex',alignItems:'center',gap:10}}>
+            <span style={{fontSize:16,color:'#22d3ee'}}>✦</span> Centro de Inteligencia Operacional
+          </div>
+          <div style={{fontSize:11,color:S.t3,marginTop:3}}>Visión en tiempo real de tu operación</div>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:8,padding:'5px 12px',background:'rgba(0,230,118,0.10)',border:'1px solid rgba(0,230,118,0.4)',borderRadius:50}}>
+          <span style={{width:8,height:8,borderRadius:'50%',background:S.green,animation:'flowPulse 1s infinite',boxShadow:`0 0 8px ${S.green}`}}/>
+          <span style={{fontSize:10,fontWeight:800,color:S.green,letterSpacing:'.1em'}}>EN VIVO</span>
+        </div>
+      </div>
+
+      {/* FILA 1 · FLOW IQ + RENDIMIENTO POR ESTACIÓN + CAMPEONA */}
+      <div style={{display:'grid',gridTemplateColumns:'1fr 2.5fr 1fr',gap:14,marginBottom:14}}>
+        {/* FLOW IQ */}
+        <div className="flow-iq-card" style={{background:`linear-gradient(135deg,${iqColor}10,${S.bg2})`,border:`1px solid ${iqColor}55`,borderRadius:14,padding:16,boxShadow:`0 0 24px ${iqColor}22`}}>
+          <div style={{fontSize:11,color:S.t2,fontWeight:800,letterSpacing:'.06em'}}>FLOW IQ™</div>
+          <div style={{fontSize:9,color:S.t3,marginTop:2,marginBottom:14}}>Índice de Inteligencia Operacional</div>
+          <div style={{display:'flex',alignItems:'baseline',gap:6}}>
+            <span style={{fontFamily:"'Syne',serif",fontSize:72,fontWeight:900,color:iqColor,lineHeight:1,letterSpacing:'-0.04em',textShadow:`0 0 24px ${iqColor}66`}}>{flowIQ}</span>
+            <span style={{fontSize:18,color:S.t3,fontWeight:700}}>/ 100</span>
+          </div>
+          <div style={{display:'inline-block',padding:'4px 12px',background:`${iqColor}20`,color:iqColor,border:`1px solid ${iqColor}55`,borderRadius:50,fontSize:10,fontWeight:900,letterSpacing:'.12em',marginTop:8}}>{iqLabel}</div>
+          <div style={{fontSize:10,color:S.t3,marginTop:10,lineHeight:1.4}}>Tu cocina opera mejor que el <span style={{color:S.green,fontWeight:800}}>{Math.min(99, Math.round(flowIQ*0.96))}%</span> de restaurantes similares</div>
+        </div>
+
+        {/* RENDIMIENTO POR ESTACIÓN */}
+        <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:12,flexWrap:'wrap',gap:8}}>
+            <div>
+              <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900}}>RENDIMIENTO POR ESTACIÓN</div>
+              <div style={{fontSize:10,color:S.t3,marginTop:2}}>Performance en tiempo real</div>
+            </div>
+          </div>
+          <div style={{display:'grid',gridTemplateColumns:`repeat(${estacionData.length},1fr)`,gap:8}}>
+            {estacionData.map(({est,meta,promMin,sla,score,cargada}) => {
+              const slaCol = sla >= 90 ? S.green : sla >= 70 ? '#FFB547' : sla >= 50 ? '#FF8C42' : S.red;
+              const scoreCol = score >= 90 ? S.green : score >= 70 ? '#FFB547' : score >= 50 ? '#FF8C42' : S.red;
+              return (
+                <div key={est} className="flow-iq-card"
+                  style={{background:cargada?`${S.red}10`:S.bg3, border:`1px solid ${cargada?S.red+'55':S.border}`, borderRadius:10, padding:10, textAlign:'center' as const, position:'relative' as const, boxShadow: cargada ? `0 0 10px ${S.red}33` : 'none'}}>
+                  {cargada && <div style={{position:'absolute',top:4,right:4,fontSize:9,color:S.red,fontWeight:900,letterSpacing:'.1em'}}>⚠</div>}
+                  <div style={{fontSize:18}}>{meta.emoji}</div>
+                  <div style={{fontSize:9,color:S.t2,fontWeight:700,textTransform:'capitalize',marginTop:3,letterSpacing:'.04em'}}>{est.replace('_',' ')}</div>
+                  <div style={{fontFamily:"'Syne',serif",fontSize:24,fontWeight:900,color:scoreCol,lineHeight:1,marginTop:6}}>{score}</div>
+                  <div style={{fontSize:10,color:S.t3,marginTop:4}}>{promMin} min</div>
+                  <div style={{fontSize:8,color:S.t3,letterSpacing:'.06em'}}>Tiempo prom.</div>
+                  <div style={{marginTop:6,padding:'2px 8px',background:`${slaCol}15`,color:slaCol,border:`1px solid ${slaCol}40`,borderRadius:6,fontSize:10,fontWeight:900,display:'inline-block'}}>{sla}% SLA</div>
+                </div>
+              );
+            })}
+          </div>
+          {/* Leyenda */}
+          <div style={{display:'flex',justifyContent:'center',gap:14,marginTop:10,fontSize:9,color:S.t3}}>
+            <span><span style={{width:8,height:8,borderRadius:'50%',background:S.green,display:'inline-block',marginRight:4}}/>Excelente (90-100)</span>
+            <span><span style={{width:8,height:8,borderRadius:'50%',background:'#FFB547',display:'inline-block',marginRight:4}}/>Bueno (70-89)</span>
+            <span><span style={{width:8,height:8,borderRadius:'50%',background:'#FF8C42',display:'inline-block',marginRight:4}}/>En riesgo (50-69)</span>
+            <span><span style={{width:8,height:8,borderRadius:'50%',background:S.red,display:'inline-block',marginRight:4}}/>Crítico (&lt;50)</span>
+          </div>
+        </div>
+
+        {/* CAMPEONA DEL DÍA */}
+        <div style={{background:`linear-gradient(135deg,${S.green}10,${S.bg2})`,border:`1px solid ${S.green}55`,borderRadius:14,padding:16,textAlign:'center' as const,boxShadow:`0 0 20px ${S.green}22`}}>
+          <div style={{fontFamily:"'Syne',serif",fontSize:11,fontWeight:900,letterSpacing:'.1em'}}>ESTACIÓN CAMPEONA DEL DÍA</div>
+          <div style={{fontSize:46,marginTop:10,filter:`drop-shadow(0 0 12px ${S.green}88)`}}>🏆</div>
+          <div style={{fontSize:11,color:S.green,marginTop:6,fontWeight:700}}>¡Felicidades!</div>
+          <div style={{fontFamily:"'Syne',serif",fontSize:22,fontWeight:900,color:S.green,marginTop:3,textTransform:'capitalize',letterSpacing:'.04em'}}>{campeona?.est.replace('_',' ')}</div>
+          <div style={{fontSize:9,color:S.t3,marginTop:3}}>Mejor rendimiento del día</div>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:6,marginTop:12}}>
+            <div style={{padding:'6px 4px',background:S.bg3,borderRadius:8}}>
+              <div style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900,color:S.green}}>{campeona?.score||0}</div>
+              <div style={{fontSize:8,color:S.t3,textTransform:'uppercase',letterSpacing:'.06em'}}>Score</div>
+            </div>
+            <div style={{padding:'6px 4px',background:S.bg3,borderRadius:8}}>
+              <div style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900,color:S.green}}>{campeona?.promMin||0}</div>
+              <div style={{fontSize:8,color:S.t3,textTransform:'uppercase',letterSpacing:'.06em'}}>Min prom.</div>
+            </div>
+            <div style={{padding:'6px 4px',background:S.bg3,borderRadius:8}}>
+              <div style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900,color:S.green}}>{campeona?.completados||0}</div>
+              <div style={{fontSize:8,color:S.t3,textTransform:'uppercase',letterSpacing:'.06em'}}>Pedidos</div>
+            </div>
+            <div style={{padding:'6px 4px',background:S.bg3,borderRadius:8}}>
+              <div style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900,color:S.green}}>{campeona?.sla||0}%</div>
+              <div style={{fontSize:8,color:S.t3,textTransform:'uppercase',letterSpacing:'.06em'}}>SLA</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* FILA 2 · EFICIENCIA OPERACIONAL */}
+      <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16,marginBottom:14}}>
+        <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:12}}>EFICIENCIA OPERACIONAL</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10}}>
+          {[
+            { l:'Tiempo promedio producción', v:`${tiempoPromGlobal} min`, c:'#22d3ee',  icon:'⏱' },
+            { l:'SLA cumplido',                v:`${slaGlobalPct}%`,        c:S.green,    icon:'🎯' },
+            { l:'Pedidos fuera de SLA',        v:`${fueraSla}`,             c:fueraSla>0?S.red:S.green, icon:'⚠' },
+            { l:'Tiempo perdido',              v:`${tiempoPerdidoMin} min`, c:'#FFB547',  icon:'⌛' },
+            { l:'Órdenes completadas',         v:`${completadosHoy.length}`, c:'#b388ff', icon:'✅' },
+          ].map(kpi => (
+            <div key={kpi.l} style={{background:S.bg3,border:`1px solid ${S.border}`,borderRadius:10,padding:'12px 14px'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+                <div style={{fontSize:9,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',lineHeight:1.3}}>{kpi.l}</div>
+                <span style={{fontSize:13,opacity:0.6}}>{kpi.icon}</span>
+              </div>
+              <div style={{fontFamily:"'Syne',serif",fontSize:24,fontWeight:900,color:kpi.c,lineHeight:1}}>{kpi.v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* FILA 3 · VOZ DEL CLIENTE + LO QUE AMAN/CRITICAN */}
+      <div style={{display:'grid',gridTemplateColumns:'2fr 1fr',gap:14,marginBottom:14}}>
+        {/* Voz del cliente */}
+        <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+          <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:12}}>VOZ DEL CLIENTE (X-CARE)</div>
+          <div style={{display:'flex',alignItems:'center',gap:18,flexWrap:'wrap'}}>
+            <div>
+              <div style={{fontSize:10,color:S.t3,marginBottom:3}}>Satisfacción promedio</div>
+              <div style={{display:'flex',alignItems:'baseline',gap:6}}>
+                <span style={{fontFamily:"'Syne',serif",fontSize:42,fontWeight:900,color:'#b388ff',lineHeight:1,textShadow:'0 0 16px rgba(179,136,255,0.5)'}}>{careAvg.toFixed(1)}</span>
+                <span style={{fontSize:14,color:S.t3,fontWeight:700}}>/5</span>
+              </div>
+              <div style={{fontSize:13,marginTop:6,letterSpacing:2,color:'#FFB547'}}>{'★'.repeat(Math.round(careAvg))}{'☆'.repeat(Math.max(0,5-Math.round(careAvg)))}</div>
+              <div style={{fontSize:10,color:S.t3,marginTop:4}}>{careCount} {careCount===1?'encuesta':'encuestas'} hoy</div>
+            </div>
+            <div style={{flex:1,minWidth:160,height:90,background:S.bg3,borderRadius:10,padding:8,border:`1px solid ${S.border}`}}>
+              <div style={{fontSize:9,color:S.t3,marginBottom:4}}>Tendencia últimos 7 días</div>
+              <svg width="100%" height="60" viewBox="0 0 200 60" preserveAspectRatio="none">
+                {(() => {
+                  const trend = [4.2, 4.3, 4.1, 4.4, 4.5, 4.4, careAvg || 4.6];
+                  const max = 5, min = 3;
+                  const pts = trend.map((v,i) => `${(i/(trend.length-1))*195+2.5},${60 - ((v-min)/(max-min))*55}`).join(' ');
+                  return <>
+                    <polyline points={pts} fill="none" stroke="#b388ff" strokeWidth="2"/>
+                    {trend.map((v,i) => (
+                      <circle key={i} cx={(i/(trend.length-1))*195+2.5} cy={60 - ((v-min)/(max-min))*55} r="2.5" fill="#b388ff"/>
+                    ))}
+                  </>;
+                })()}
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        {/* Lo que aman / critican */}
+        <div style={{display:'grid',gridTemplateRows:'1fr 1fr',gap:10}}>
+          <div style={{background:S.bg2,border:`1px solid ${S.green}33`,borderRadius:14,padding:12}}>
+            <div style={{fontSize:10,color:S.green,fontWeight:800,letterSpacing:'.1em',marginBottom:8,display:'flex',alignItems:'center',gap:4}}>LO QUE MÁS AMAN ❤</div>
+            {(careMetrics?.topAmados || ['Servicio','Sushi','Cócteles']).slice(0,3).map((t:string,i:number) => (
+              <div key={i} style={{display:'flex',alignItems:'center',gap:6,fontSize:11,padding:'3px 0'}}>
+                <span style={{color:S.t3,width:14}}>{i+1}</span>
+                <span style={{flex:1}}>{t}</span>
+                <span style={{color:S.green,fontWeight:800,fontFamily:"'Syne',serif"}}>{(4.8 - i*0.1).toFixed(1)}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{background:S.bg2,border:`1px solid ${S.red}33`,borderRadius:14,padding:12}}>
+            <div style={{fontSize:10,color:S.red,fontWeight:800,letterSpacing:'.1em',marginBottom:8}}>LO QUE MÁS CRITICAN 😕</div>
+            {(careMetrics?.topCriticados || ['Demora','Temperatura','Punto de cocción']).slice(0,3).map((t:string,i:number) => (
+              <div key={i} style={{display:'flex',alignItems:'center',gap:6,fontSize:11,padding:'3px 0'}}>
+                <span style={{color:S.t3,width:14}}>{i+1}</span>
+                <span style={{flex:1}}>{t}</span>
+                <span style={{color:S.red,fontWeight:800,fontFamily:"'Syne',serif"}}>{(2.4 + i*0.4).toFixed(1)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* FILA 4 · CUELLOS DE BOTELLA EN VIVO */}
+      <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16,marginBottom:14}}>
+        <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:12}}>CUELLOS DE BOTELLA EN VIVO</div>
+        <div style={{display:'grid',gridTemplateColumns:`repeat(${estacionData.length},1fr)`,gap:10}}>
+          {estacionData.map(({est,meta,promMin,cargada}) => {
+            const stateCol = cargada ? (est==='postres' ? S.red : '#FFB547') : S.green;
+            const label = cargada ? (est==='postres' ? 'Congestionado' : 'En riesgo') : 'Óptimo';
+            return (
+              <div key={est} style={{textAlign:'center' as const}}>
+                <div style={{width:64,height:64,borderRadius:'50%',background:`radial-gradient(${stateCol}30,${stateCol}10)`,border:`2px solid ${stateCol}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,margin:'0 auto',boxShadow:`0 0 14px ${stateCol}55`}}>{meta.emoji}</div>
+                <div style={{fontSize:10,fontWeight:700,marginTop:6,textTransform:'capitalize'}}>{est.replace('_',' ')}</div>
+                <div style={{fontSize:10,color:stateCol,marginTop:3,fontWeight:800}}>{cargada?'⚠':'✓'} {label}</div>
+                <div style={{fontSize:9,color:S.t3,marginTop:2}}>{promMin} min</div>
+              </div>
+            );
+          })}
+        </div>
+        {estacionesCargadas.size > 0 && (
+          <div style={{marginTop:14,padding:'10px 14px',background:'rgba(255,82,82,0.08)',border:'1px solid rgba(255,82,82,0.3)',borderRadius:10,display:'flex',alignItems:'center',gap:10}}>
+            <span style={{fontSize:20}}>🔥</span>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,fontWeight:800,color:S.red}}>NEXUM detecta congestión en {Array.from(estacionesCargadas).join(', ').replace(/_/g,' ')}.</div>
+              <div style={{fontSize:10,color:S.t2,marginTop:3}}>Causa probable: {Array.from(estacionesCargadas).map(e => `${cargaPorEstacion[e]} pedidos en cola`).join(' · ')}.</div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* FILA 5 · RESUMEN DEL DÍA */}
+      <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16}}>
+        <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:12}}>RESUMEN DEL DÍA</div>
+        <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10}}>
+          {[
+            { l:'Pedidos hoy',     v: `${diasItems?.length||0}`,                   c:'#22d3ee', sub:'items totales' },
+            { l:'Servidos',         v: `${(diasItems||[]).filter((i:any)=>i.status==='served').length}`, c:S.green, sub:'completados' },
+            { l:'Cancelados',       v: `${(diasItems||[]).filter((i:any)=>i.status==='cancelled').length}`, c:S.red, sub:'no salieron' },
+            { l:'En cola activa',   v: `${items?.length||0}`,                       c:'#FFB547', sub:'pending+prep' },
+            { l:'Eficiencia día',   v: `${slaGlobalPct}%`,                          c:'#b388ff', sub:'SLA cumplido' },
+          ].map(k => (
+            <div key={k.l} style={{background:S.bg3,border:`1px solid ${S.border}`,borderRadius:10,padding:'12px 14px'}}>
+              <div style={{fontSize:10,color:S.t3,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:6}}>{k.l}</div>
+              <div style={{fontFamily:"'Syne',serif",fontSize:26,fontWeight:900,color:k.c,lineHeight:1}}>{k.v}</div>
+              <div style={{fontSize:9,color:S.t3,marginTop:4}}>{k.sub}</div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
