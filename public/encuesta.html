@@ -449,6 +449,13 @@
       setTimeout(function(){phase='pick';draw();},3700+5*430);
     }
 
+    // Cumpleaños en 3 desplegables (día / mes / año)
+    var MESES=['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+    function optsDia(){ var s=''; for(var d=1;d<=31;d++){ s+='<option value="'+d+'"'+(String(d)===String(data.cd)?' selected':'')+'>'+d+'</option>'; } return s; }
+    function optsMes(){ return MESES.map(function(m,i){ return '<option value="'+(i+1)+'"'+(String(i+1)===String(data.cm)?' selected':'')+'>'+m+'</option>'; }).join(''); }
+    function optsAnio(){ var s='', y=new Date().getFullYear(); for(var a=y-13;a>=1930;a--){ s+='<option value="'+a+'"'+(String(a)===String(data.ca)?' selected':'')+'>'+a+'</option>'; } return s; }
+    function componerCumple(){ if(data.cd&&data.cm&&data.ca){ var mm=('0'+data.cm).slice(-2), dd=('0'+data.cd).slice(-2); data.cumple=data.ca+'-'+mm+'-'+dd; } else { data.cumple=''; } }
+
     function ribbon(){ var s=''; for(var i=0;i<CARAS.length;i++){ s+='<span class="'+(CARAS[i].n<=st.cara?'on':'')+'">'+(CARAS[i].n<=st.cara?CARAS[i].emo:'·')+'</span>'; } return '<div class="ribbon">'+s+'</div>'; }
     function header(t,s,back){ return (back?'<button class="back" data-act="back" data-to="'+back+'">← Volver</button>':'')+ribbon()+'<div class="smallhead">'+t+'</div><div class="sub">'+s+'</div>'; }
     function tagsGrid(list,sel,cls){ return list.map(function(t){ var on=sel.indexOf(t[1])>=0; return '<button class="opt '+(on?cls:'')+'" data-act="tag" data-v="'+t[1]+'"><div class="ic">'+t[0]+'</div><div class="lb">'+t[1]+'</div></button>'; }).join(''); }
