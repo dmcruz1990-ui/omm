@@ -378,7 +378,14 @@ export default function ReserveModule() {
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'ohyeah_reservas'},(p)=>{
         show(`🦉 Nueva reserva Oh Yeah: ${(p.new as any).guest_name || 'cliente'} — ${(p.new as any).time}`);
         fetchData();
-      }).subscribe();
+      })
+      // Suscribirse también a tables — cuando el POS cambia el estado de
+      // una mesa (abre/cierra/comparte), el plano de Reserve refresca al
+      // instante. Antes quedaba desactualizado hasta el próximo fetch manual.
+      .on('postgres_changes',{event:'*',schema:'public',table:'tables'}, () => fetchData())
+      // Reservations: refresca cuando otro módulo cambia estado de reserva
+      .on('postgres_changes',{event:'*',schema:'public',table:'reservations'}, () => fetchData())
+      .subscribe();
     return ()=>{ supabase.removeChannel(ch); };
   },[fetchData]);
 
@@ -564,11 +571,14 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
   } else {
     await supabase.from('reservations').update({ mesa_num:mesaNum, estado:'sentada', sentado_at:new Date().toISOString() }).eq('id',reservaId);
   }
-  // Sentar al cliente: la mesa queda VERDE (asignada) en el mapa del POS.
-  // Si el Maître eligió mesero, queda dirigida a él (aparece en SU home);
-  // si no, queda en el pool para que cualquier mesero la tome.
+  // Sentar al cliente: la mesa queda OCUPADA en TODOS los planos
+  // (Reserve, POS y PlanoOMM). Antes quedaba como 'asignada' lo que
+  // hacía que POS la mostrara como "reservada/libre para tomar" aunque
+  // el cliente ya estuviera comiendo — ahora todos los planos coinciden.
+  // Si el Maître eligió mesero, queda dirigida a él; si no, queda en
+  // pool para que cualquier mesero la tome desde el POS.
   await supabase.from('tables').update({
-    estado:'asignada',
+    estado:'ocupada',
     cliente_nombre: reserva?.cliente_nombre || null,
     pax_actual: reserva?.pax || 0,
     mesero_nombre: mesero,
