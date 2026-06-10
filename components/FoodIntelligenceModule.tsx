@@ -136,7 +136,21 @@ Responde SOLO con un JSON con esta estructura:
       fetchData();
       show('✦ Análisis generado con IA');
     } catch(e) {
-      show('Error al generar análisis — intenta de nuevo');
+      // Sin API key o sin red: entrega un análisis demo para que el flujo siga vivo.
+      const demo = {
+        titulo: 'Oportunidades del menú · análisis NEXUM',
+        resumen: 'El mix actual concentra el 68% de la venta en 12 platos. Hay espacio para subir ticket con 3 lanzamientos de tendencia y reingeniería de 2 platos de baja rotación.',
+        recomendaciones: [
+          { nombre_comercial:'Tiradito nikkei de temporada', presentacion:'Plato hondo negro, leche de tigre al ají amarillo, aceite de cilantro', tendencia:'La cocina nikkei sigue en alza en LATAM; ingrediente estrella con buen margen', score_exito:87 },
+          { nombre_comercial:'Short rib 12h + purê ahumado', presentacion:'Cocción lenta, glaseado de tamarindo, servido al centro', tendencia:'Comfort food premium domina la noche; alto valor percibido', score_exito:82 },
+          { nombre_comercial:'Postre de autor con cacao 70% local', presentacion:'Esfera de chocolate, sorpresa líquida, storytelling de origen', tendencia:'Cacao de origen colombiano conecta con el comensal y la prensa', score_exito:78 },
+        ],
+        tendencias_globales: ['Fermentados y umami','Cortes a fuego lento','Cero desperdicio (root-to-leaf)'],
+        alerta_oportunidad: 'El maridaje por tiempo (música+plato+coctel) casi no existe en Bogotá: OMM puede ser el primero.',
+        proximos_pasos: ['Test A/B de 2 lanzamientos por 2 semanas','Medir margen real vs teórico de los top 12','Entrenar al equipo de sala en el storytelling de origen'],
+      };
+      setResultado(demo as any);
+      show('✦ Análisis demo (IA sin conexión) — configura la API key para análisis en vivo');
     }
     setLoading(false);
   };

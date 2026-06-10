@@ -482,9 +482,8 @@ const Dashboard: React.FC = () => {
                 {activeModule === ModuleType.WORKFORCE      && <WorkforceModule />}
                 {activeModule === ModuleType.COMMAND        && <CommandModule onSimulateEvent={() => {}} />}
                 {activeModule === ModuleType.RELATIONSHIP   && <RelationshipModule />}
-                {activeModule === ModuleType.SUPPLY        && <SupplyModule />}
-                {activeModule === ModuleType.STAFF_HUB      && <TeamIQ />}
                 {activeModule === ModuleType.SUPPLY         && <SupplyModule />}
+                {activeModule === ModuleType.STAFF_HUB      && <TeamIQ />}
                 {activeModule === ModuleType.CARE           && <CareModule />}
                 {activeModule === ModuleType.DIAN           && <DIANModule />}
                 {activeModule === ModuleType.CONTABILIDAD   && <ContabilidadModule />}

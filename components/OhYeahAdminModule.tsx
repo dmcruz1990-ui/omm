@@ -124,7 +124,7 @@ export default function OhYeahAdminModule() {
       const { data: { publicUrl } } = supabase.storage.from('ohyeah-fotos').getPublicUrl(path);
       return publicUrl;
     } catch(e) {
-      show('Error al subir imagen');
+      showToast('Error al subir imagen');
       return null;
     } finally { setUploading(false); }
   };
@@ -146,7 +146,7 @@ export default function OhYeahAdminModule() {
       await supabase.from('ohyeah_solicitudes').update({ fotos_storage: fotos }).eq('id', solicSel.id);
       setSolicSel((p:any) => ({...p, fotos_storage: fotos}));
     }
-    show('✓ Foto subida correctamente');
+    showToast('✓ Foto subida correctamente');
   };
 
   // ── Analizar foto con Claude IA ─────────────────────────────────────────
@@ -185,10 +185,10 @@ No incluyas texto adicional, solo el JSON.` }
       const clean = text.replace(/\`\`\`json|\`\`\`/g,'').trim();
       const resultado = JSON.parse(clean);
       setAnalIA(resultado);
-      show('✓ Análisis IA completado');
+      showToast('✓ Análisis IA completado');
       return resultado;
     } catch(e) {
-      show('Error en análisis IA');
+      showToast('Error en análisis IA');
       return null;
     } finally { setAnal(false); }
   };
@@ -198,7 +198,7 @@ No incluyas texto adicional, solo el JSON.` }
     await supabase.from('ohyeah_solicitudes')
       .update({ estado: 'aprobado', aprobado_por: 'Admin Nexum', aprobado_en: new Date().toISOString() })
       .eq('id', sol.id);
-    show('✓ Restaurante aprobado y publicado en Oh Yeah');
+    showToast('✓ Restaurante aprobado y publicado en Oh Yeah');
     fetchSolicitudes(); fetchRest();
     setSolicSel(null);
   };
@@ -207,7 +207,7 @@ No incluyas texto adicional, solo el JSON.` }
     await supabase.from('ohyeah_solicitudes')
       .update({ estado: 'rechazado', notas_admin: nota })
       .eq('id', id);
-    show('Solicitud rechazada');
+    showToast('Solicitud rechazada');
     fetchSolicitudes();
     setSolicSel(null);
   };
