@@ -78,11 +78,17 @@ export default function FlowModule() {
 
   // ── FETCH ─────────────────────────────────────────────────────────
   const fetchLive = useCallback(async () => {
+    // "En vivo" = producción de AHORA. Sin ventana de tiempo, cualquier plato
+    // que quede mal cerrado (pending/preparing) de un día pasado reaparece para
+    // siempre con tiempos absurdos (p.ej. 17000+ min). Filtramos a las últimas
+    // 16h para cubrir un servicio que cruza medianoche y excluir zombis.
+    const desdeLive = new Date(Date.now() - 16 * 60 * 60 * 1000).toISOString();
     const { data } = await supabase
       .from('flow_order_items')
       .select('*')
       .eq('restaurante_id', restauranteId)
       .in('status', ['pending','preparing','almost','ready'])
+      .gte('created_at', desdeLive)
       .order('created_at');
     if (data) setItems(data as FlowItem[]);
     setLoading(false);
