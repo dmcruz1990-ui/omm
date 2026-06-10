@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>X-CARE™ · Centro de Calidad · OMM</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800;900&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#08080f; --bg2:#0f0f1c; --bg3:#16162a; --bg4:#1d1d34;
+      --pink:#FF2D78; --gold:#FFB547; --green:#00E676; --blue:#448AFF; --purple:#B388FF; --red:#FF5252; --cyan:#22d3ee;
+      --t1:#fff; --t2:#A0A0C0; --t3:#5a5a7a; --border:rgba(255,255,255,.08);
+    }
+    *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+    html,body{margin:0; min-height:100%; background:var(--bg); color:var(--t1); font-family:'DM Sans',system-ui,sans-serif}
+    a{color:inherit}
+    .wrap{max-width:1100px; margin:0 auto; padding:16px}
+    /* GATE */
+    #gate{position:fixed; inset:0; background:var(--bg); display:flex; align-items:center; justify-content:center; z-index:100; padding:20px}
+    .gatecard{background:var(--bg2); border:1px solid rgba(255,45,120,.2); border-radius:22px; padding:30px; max-width:360px; width:100%; text-align:center}
+    /* HEADER */
+    .top{display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:14px}
+    .logo{width:36px; height:36px; border-radius:11px; background:linear-gradient(135deg,var(--pink),var(--purple)); display:flex; align-items:center; justify-content:center; font-size:18px}
+    .ttl{font-family:'Syne',sans-serif; font-weight:900; font-size:17px; line-height:1}
+    .ttl small{display:block; font-size:10px; color:var(--t3); font-weight:700; letter-spacing:.12em; text-transform:uppercase; margin-top:3px}
+    .spacer{flex:1}
+    .sel{background:var(--bg3); border:1px solid var(--border); color:var(--t1); border-radius:10px; padding:9px 12px; font-size:13px; outline:none; font-family:'DM Sans',sans-serif}
+    .kpis{display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-bottom:14px}
+    .kpi{background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:13px}
+    .kpi .l{font-size:10px; color:var(--t3); margin-bottom:4px}
+    .kpi .v{font-family:'Syne',sans-serif; font-size:21px; font-weight:900}
+    .tabs{display:flex; gap:6px; margin-bottom:12px; flex-wrap:wrap}
+    .tab{padding:9px 16px; border-radius:10px; border:1px solid var(--border); background:var(--bg2); color:var(--t2); font-size:12px; font-weight:700; cursor:pointer}
+    .tab.on{background:var(--pink); color:#fff; border-color:transparent}
+    .filterbar{display:flex; gap:8px; margin-bottom:12px; flex-wrap:wrap; align-items:center}
+    .chip{padding:6px 12px; border-radius:50px; border:1px solid var(--border); background:var(--bg2); color:var(--t2); font-size:11px; font-weight:700; cursor:pointer}
+    .chip.on{border-color:var(--pink); color:var(--pink); background:rgba(255,45,120,.1)}
+    .search{flex:1; min-width:160px; background:var(--bg3); border:1px solid var(--border); color:var(--t1); border-radius:10px; padding:9px 12px; font-size:13px; outline:none}
+    /* CARDS */
+    .row{background:var(--bg2); border:1px solid var(--border); border-radius:14px; padding:12px 14px; margin-bottom:8px; display:flex; gap:12px; align-items:flex-start; cursor:pointer; transition:border-color .15s}
+    .row:hover{border-color:rgba(255,45,120,.4)}
+    .face{font-size:30px; line-height:1; flex-shrink:0}
+    .row .body{flex:1; min-width:0}
+    .row .name{font-weight:700; font-size:14px}
+    .row .meta{font-size:11px; color:var(--t3); margin-top:2px}
+    .row .com{font-size:12px; color:var(--t2); margin-top:6px; line-height:1.4}
+    .tagchip{display:inline-block; font-size:10px; padding:2px 8px; border-radius:50px; margin:4px 4px 0 0; font-weight:700}
+    .badge{font-size:9px; padding:3px 8px; border-radius:50px; font-weight:800; white-space:nowrap}
+    .right{display:flex; flex-direction:column; align-items:flex-end; gap:6px; flex-shrink:0}
+    .alert{border-left:3px solid var(--red)}
+    .btn{padding:10px 16px; border-radius:11px; border:none; font-size:13px; font-weight:800; cursor:pointer; font-family:'DM Sans',sans-serif}
+    .btn.pink{background:linear-gradient(135deg,var(--pink),#cc2260); color:#fff}
+    .btn.green{background:rgba(0,230,118,.15); color:var(--green); border:1px solid rgba(0,230,118,.4)}
+    .btn.ghost{background:var(--bg3); color:var(--t2); border:1px solid var(--border)}
+    .empty{text-align:center; padding:50px; color:var(--t3)}
+    /* MODAL */
+    .modal{position:fixed; inset:0; background:rgba(0,0,0,.8); backdrop-filter:blur(10px); z-index:50; display:flex; align-items:center; justify-content:center; padding:18px}
+    .sheet{background:var(--bg2); border:1px solid rgba(255,45,120,.25); border-radius:22px; padding:24px; max-width:480px; width:100%; max-height:92vh; overflow-y:auto; position:relative}
+    .x{position:absolute; top:14px; right:14px; width:32px; height:32px; border-radius:9px; background:var(--bg3); border:1px solid var(--border); color:var(--t2); cursor:pointer; font-size:16px}
+    textarea{width:100%; min-height:80px; resize:vertical; background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:12px; padding:11px 13px; color:var(--t1); font-size:13px; outline:none; font-family:'DM Sans',sans-serif; margin:8px 0 12px}
+    .link{display:inline-flex; align-items:center; gap:6px; padding:9px 14px; border-radius:10px; font-size:13px; font-weight:700; text-decoration:none; margin:0 8px 8px 0}
+    @media(max-width:640px){ .kpis{grid-template-columns:repeat(2,1fr)} }
+  </style>
+</head>
+<body>
+  <!-- Puerta de acceso -->
+  <div id="gate">
+    <div class="gatecard">
+      <div class="logo" style="margin:0 auto 14px">✦</div>
+      <div class="ttl" style="font-size:20px">Centro de Calidad X-CARE</div>
+      <div style="color:var(--t3); font-size:13px; margin:8px 0 18px">Acceso para el equipo de calidad</div>
+      <input id="pin" type="password" placeholder="Clave de acceso" class="sel" style="width:100%; text-align:center; margin-bottom:12px" />
+      <button class="btn pink" id="enter" style="width:100%">Entrar</button>
+      <div id="pinerr" style="color:var(--red); font-size:12px; margin-top:10px; display:none">Clave incorrecta</div>
+    </div>
+  </div>
+
+  <div class="wrap" id="appwrap" style="display:none">
+    <div class="top">
+      <div class="logo">✦</div>
+      <div class="ttl">Centro de Calidad <small>X-CARE™ · Experience Intelligence</small></div>
+      <div class="spacer"></div>
+      <select id="restSel" class="sel"></select>
+      <button class="btn ghost" id="refresh">↻ Actualizar</button>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="tabs">
+      <button class="tab on" data-tab="bandeja" id="tabBandeja">📥 Bandeja</button>
+      <button class="tab" data-tab="alertas" id="tabAlertas">🚨 Alertas</button>
+    </div>
+    <div class="filterbar" id="filterbar">
+      <span class="chip on" data-f="todas">Todas</span>
+      <span class="chip" data-f="pendientes">Pendientes</span>
+      <span class="chip" data-f="negativas">Negativas</span>
+      <span class="chip" data-f="positivas">Positivas</span>
+      <input class="search" id="search" placeholder="🔍 Buscar por nombre, mesa o comentario..." />
+    </div>
+    <div id="list"></div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script>
+  (function(){
+    // ── CONFIG ────────────────────────────────────────────────────────────────
+    // CAMBIA esta clave por la que quieras darle a calidad:
+    var CLAVE_ACCESO = 'OMM2026';
+    var SUPABASE_URL = 'https://kxaxjttvkaeewsjbpert.supabase.co';
+    var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YXhqdHR2a2FlZXdzamJwZXJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkxMTc0MjgsImV4cCI6MjA4NDY5MzQyOH0.fMINxNqrLT6f8lNPrpRZYPpm6IjTlKg6wAH7aAlfz_o';
+    var db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
+
+    var CARAS = {1:'😡',2:'😞',3:'😐',4:'🙂',5:'😄'};
+    var CARA_COLOR = {1:'#FF5252',2:'#FF7043',3:'#FFB547',4:'#69F0AE',5:'#00E676'};
+
+    // ── Estado ──────────────────────────────────────────────────────────────
+    var encuestas=[], alertas=[], restaurantes=[], restMap={};
+    var restFiltro='todos', tab='bandeja', filtro='todas', q='', sel=null;
+
+    // ── Puerta de acceso (clave guardada en la sesión del navegador) ──────────
+    var gate=document.getElementById('gate'), appwrap=document.getElementById('appwrap');
+    function abrir(){ gate.style.display='none'; appwrap.style.display='block'; init(); }
+    if(sessionStorage.getItem('care_ok')==='1') abrir();
+    document.getElementById('enter').onclick=function(){
+      if(document.getElementById('pin').value===CLAVE_ACCESO){ sessionStorage.setItem('care_ok','1'); abrir(); }
+      else document.getElementById('pinerr').style.display='block';
+    };
+    document.getElementById('pin').addEventListener('keydown',function(e){ if(e.key==='Enter') document.getElementById('enter').click(); });
+
+    // ── Carga ─────────────────────────────────────────────────────────────────
+    async function cargar(){
+      var enc = db.from('xcare_encuestas').select('*').order('created_at',{ascending:false}).limit(400);
+      var alt = db.from('xcare_alertas').select('*').eq('resuelta',false).order('created_at',{ascending:false}).limit(80);
+      if(restFiltro!=='todos'){ enc = enc.eq('restaurante_id', parseInt(restFiltro,10)); alt = alt.eq('restaurante_id', parseInt(restFiltro,10)); }
+      var r1 = await enc, r2 = await alt;
+      encuestas = (r1.data||[]).map(function(e){ return {
+        id:e.id, restaurante_id:e.restaurante_id,
+        estrellas:e.estrellas||0,
+        mesa:e.mesa_num!=null?e.mesa_num:(e.mesa_numero!=null?e.mesa_numero:null),
+        nombre:e.cliente_nombre||e.nombre_cliente||'Cliente',
+        tel:e.cliente_telefono||'', email:e.cliente_email||'',
+        pos:e.tags_positivos||[], neg:e.tags_negativos||[],
+        comentario:e.comentario||'', estado:e.estado||'pendiente',
+        respuesta:e.respuesta_ia||'', created_at:e.created_at
+      }; });
+      alertas = (r2.data||[]).map(function(a){ return {
+        id:a.id, restaurante_id:a.restaurante_id, mesa:a.mesa_num!=null?a.mesa_num:a.mesa_numero,
+        nivel:a.nivel_riesgo||a.tipo||'media', descripcion:a.descripcion||'', created_at:a.created_at
+      }; });
+      render();
+    }
+
+    async function cargarRestaurantes(){
+      var r = await db.from('restaurantes').select('id,nombre,emoji').order('nombre');
+      restaurantes = r.data||[];
+      restaurantes.forEach(function(x){ restMap[x.id]=x; });
+      var sel=document.getElementById('restSel');
+      sel.innerHTML='<option value="todos">🏢 Todos los restaurantes</option>'
+        + restaurantes.map(function(x){ return '<option value="'+x.id+'">'+(x.emoji?x.emoji+' ':'')+x.nombre+'</option>'; }).join('');
+      sel.onchange=function(){ restFiltro=sel.value; cargar(); };
+    }
+
+    // ── Acciones ────────────────────────────────────────────────────────────
+    async function responder(enc, nota){
+      var upd = { estado:'respondida', respuesta_enviada:true, respuesta_at:new Date().toISOString() };
+      if(nota && nota.trim()) upd.respuesta_ia = nota.trim();
+      var r = await db.from('xcare_encuestas').update(upd).eq('id', enc.id);
+      if(r.error){ alert('No se pudo guardar: '+r.error.message); return; }
+      enc.estado='respondida'; if(nota) enc.respuesta=nota.trim(); sel=null; render();
+    }
+    async function resolver(a){
+      var r = await db.from('xcare_alertas').update({resuelta:true}).eq('id', a.id);
+      if(r.error){ alert('No se pudo resolver: '+r.error.message); return; }
+      alertas = alertas.filter(function(x){return x.id!==a.id;}); render();
+    }
+
+    // ── Helpers de render ─────────────────────────────────────────────────────
+    function fmtFecha(s){ if(!s) return ''; var d=new Date(s); return d.toLocaleString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+    function esNeg(e){ return e.estrellas>0 && e.estrellas<=3; }
+    function kpisHTML(){
+      var hoy=new Date().toISOString().slice(0,10);
+      var hoyArr=encuestas.filter(function(e){return String(e.created_at||'').slice(0,10)===hoy;});
+      var prom = hoyArr.length ? (hoyArr.reduce(function(s,e){return s+e.estrellas;},0)/hoyArr.length) : 0;
+      var negs = encuestas.filter(esNeg).length;
+      var pend = encuestas.filter(function(e){return e.estado!=='respondida' && esNeg(e);}).length;
+      var nps = encuestas.length ? Math.round((encuestas.filter(function(e){return e.estrellas===5;}).length - encuestas.filter(function(e){return e.estrellas<=3;}).length)/encuestas.length*100) : 0;
+      var K=[
+        ['Encuestas hoy', hoyArr.length, 'var(--blue)'],
+        ['Promedio hoy', (prom?prom.toFixed(1):'—')+(prom?' ⭐':''), CARA_COLOR[Math.round(prom)||3]],
+        ['NPS', (nps>0?'+':'')+nps, nps>=0?'var(--green)':'var(--red)'],
+        ['Negativas', negs, 'var(--red)'],
+        ['Por gestionar', pend, pend>0?'var(--gold)':'var(--t2)']
+      ];
+      return K.map(function(k){ return '<div class="kpi"><div class="l">'+k[0]+'</div><div class="v" style="color:'+k[2]+'">'+k[1]+'</div></div>'; }).join('');
+    }
+    function nombreRest(id){ return restMap[id] ? ((restMap[id].emoji||'')+' '+restMap[id].nombre) : ('Rest '+id); }
+
+    function filaEncuesta(e){
+      var col=CARA_COLOR[e.estrellas]||'#888';
+      var tags=(esNeg(e)?e.neg:e.pos)||[];
+      var tagsH=tags.slice(0,5).map(function(t){ return '<span class="tagchip" style="background:'+col+'18;color:'+col+'">'+t+'</span>'; }).join('');
+      var estadoB = e.estado==='respondida'
+        ? '<span class="badge" style="background:rgba(0,230,118,.15);color:var(--green)">✓ Respondida</span>'
+        : (esNeg(e)?'<span class="badge" style="background:rgba(255,82,82,.15);color:var(--red)">● Por gestionar</span>':'<span class="badge" style="background:rgba(255,255,255,.06);color:var(--t3)">—</span>');
+      return '<div class="row" data-enc="'+e.id+'">'
+        + '<div class="face">'+(CARAS[e.estrellas]||'·')+'</div>'
+        + '<div class="body"><div class="name">'+e.nombre+(e.mesa!=null?' · Mesa '+e.mesa:'')+'</div>'
+        +   '<div class="meta">'+nombreRest(e.restaurante_id)+' · '+fmtFecha(e.created_at)+'</div>'
+        +   (tagsH?'<div>'+tagsH+'</div>':'')
+        +   (e.comentario?'<div class="com">“'+e.comentario+'”</div>':'')
+        + '</div>'
+        + '<div class="right">'+estadoB+'</div></div>';
+    }
+    function filaAlerta(a){
+      var col = a.nivel==='critico'||a.nivel==='critica'?'var(--red)':a.nivel==='alto'||a.nivel==='alta'?'var(--gold)':'var(--blue)';
+      return '<div class="row alert" data-alert="'+a.id+'">'
+        + '<div class="face">🚨</div>'
+        + '<div class="body"><div class="name">'+nombreRest(a.restaurante_id)+(a.mesa!=null?' · Mesa '+a.mesa:'')+'</div>'
+        +   '<div class="meta">'+fmtFecha(a.created_at)+' · nivel '+a.nivel+'</div>'
+        +   '<div class="com">'+(a.descripcion||'')+'</div></div>'
+        + '<div class="right"><button class="btn green" data-resolver="'+a.id+'">✓ Resolver</button></div></div>';
+    }
+
+    function render(){
+      document.getElementById('kpis').innerHTML = kpisHTML();
+      document.getElementById('tabBandeja').classList.toggle('on', tab==='bandeja');
+      document.getElementById('tabAlertas').classList.toggle('on', tab==='alertas');
+      document.getElementById('tabAlertas').textContent = '🚨 Alertas'+(alertas.length?' · '+alertas.length:'');
+      document.getElementById('filterbar').style.display = tab==='bandeja'?'flex':'none';
+      var list=document.getElementById('list');
+      if(tab==='alertas'){
+        list.innerHTML = alertas.length ? alertas.map(filaAlerta).join('') : '<div class="empty">✓ Sin alertas abiertas</div>';
+      } else {
+        var arr=encuestas.filter(function(e){
+          if(filtro==='pendientes' && !(e.estado!=='respondida' && esNeg(e))) return false;
+          if(filtro==='negativas' && !esNeg(e)) return false;
+          if(filtro==='positivas' && e.estrellas<4) return false;
+          if(q){ var s=(e.nombre+' '+(e.mesa||'')+' '+e.comentario).toLowerCase(); if(s.indexOf(q)<0) return false; }
+          return true;
+        });
+        list.innerHTML = arr.length ? arr.map(filaEncuesta).join('') : '<div class="empty">Sin encuestas para este filtro</div>';
+      }
+      renderModal();
+    }
+
+    function renderModal(){
+      var prev=document.getElementById('modal'); if(prev) prev.remove();
+      if(!sel) return;
+      var e=sel, col=CARA_COLOR[e.estrellas]||'#888';
+      var tags=((esNeg(e)?e.neg:e.pos)||[]).map(function(t){return '<span class="tagchip" style="background:'+col+'18;color:'+col+'">'+t+'</span>';}).join('');
+      var waTel=(e.tel||'').replace(/\D/g,'');
+      var contactos='';
+      if(waTel) contactos+='<a class="link" style="background:rgba(0,230,118,.15);color:var(--green)" target="_blank" href="https://wa.me/'+waTel+'">💬 WhatsApp</a>';
+      if(e.email) contactos+='<a class="link" style="background:rgba(68,138,255,.15);color:var(--blue)" href="mailto:'+e.email+'">✉ Correo</a>';
+      var m=document.createElement('div'); m.className='modal'; m.id='modal';
+      m.innerHTML='<div class="sheet"><button class="x" id="mx">✕</button>'
+        + '<div style="text-align:center;margin-bottom:14px"><div style="font-size:54px">'+(CARAS[e.estrellas]||'·')+'</div>'
+        +   '<div style="font-family:\'Syne\',sans-serif;font-size:20px;font-weight:900;color:'+col+'">'+e.nombre+'</div>'
+        +   '<div class="meta" style="color:var(--t3);font-size:12px">'+nombreRest(e.restaurante_id)+(e.mesa!=null?' · Mesa '+e.mesa:'')+' · '+fmtFecha(e.created_at)+'</div></div>'
+        + (tags?'<div style="text-align:center;margin-bottom:10px">'+tags+'</div>':'')
+        + (e.comentario?'<div style="background:var(--bg3);border:1px solid var(--border);border-radius:12px;padding:12px;font-size:13px;color:var(--t2);margin-bottom:12px">“'+e.comentario+'”</div>':'')
+        + (contactos?'<div style="margin-bottom:6px"><div style="font-size:11px;color:var(--t3);margin-bottom:6px">Contactar al cliente</div>'+contactos+'</div>':'')
+        + '<div style="font-size:11px;color:var(--t3);margin-top:8px">Nota de gestión / respuesta</div>'
+        + '<textarea id="nota" placeholder="Qué se hizo o qué se le respondió al cliente...">'+(e.respuesta||'')+'</textarea>'
+        + '<div style="display:flex;gap:8px">'
+        +   '<button class="btn ghost" id="mcancel" style="flex:1">Cerrar</button>'
+        +   '<button class="btn pink" id="mresp" style="flex:2">✓ Marcar gestionada</button>'
+        + '</div>'
+        + (e.estado==='respondida'?'<div style="text-align:center;color:var(--green);font-size:12px;margin-top:10px">✓ Ya gestionada</div>':'')
+        + '</div>';
+      document.body.appendChild(m);
+      m.addEventListener('click',function(ev){ if(ev.target===m) sel=null,renderModal(); });
+      document.getElementById('mx').onclick=function(){ sel=null; renderModal(); };
+      document.getElementById('mcancel').onclick=function(){ sel=null; renderModal(); };
+      document.getElementById('mresp').onclick=function(){ responder(e, document.getElementById('nota').value); };
+    }
+
+    // ── Eventos ───────────────────────────────────────────────────────────────
+    document.getElementById('refresh').onclick=cargar;
+    document.querySelectorAll('.tab').forEach(function(t){ t.onclick=function(){ tab=t.getAttribute('data-tab'); render(); }; });
+    document.getElementById('filterbar').addEventListener('click',function(ev){
+      var c=ev.target.closest('.chip'); if(!c) return;
+      filtro=c.getAttribute('data-f');
+      document.querySelectorAll('.chip').forEach(function(x){x.classList.toggle('on',x===c);});
+      render();
+    });
+    document.getElementById('search').addEventListener('input',function(ev){ q=ev.target.value.toLowerCase(); render(); });
+    document.getElementById('list').addEventListener('click',function(ev){
+      var res=ev.target.closest('[data-resolver]');
+      if(res){ ev.stopPropagation(); var a=alertas.find(function(x){return String(x.id)===res.getAttribute('data-resolver');}); if(a) resolver(a); return; }
+      var enc=ev.target.closest('[data-enc]');
+      if(enc){ sel=encuestas.find(function(x){return String(x.id)===enc.getAttribute('data-enc');})||null; renderModal(); }
+    });
+
+    function init(){
+      cargarRestaurantes();
+      cargar();
+      // Realtime: nuevas encuestas/alertas refrescan la bandeja en vivo
+      db.channel('care-ext')
+        .on('postgres_changes',{event:'*',schema:'public',table:'xcare_encuestas'}, cargar)
+        .on('postgres_changes',{event:'*',schema:'public',table:'xcare_alertas'}, cargar)
+        .subscribe();
+    }
+  })();
+  </script>
+</body>
+</html>
