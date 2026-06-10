@@ -2552,14 +2552,14 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // cocina no haya comenzado a prepararlo (status='pending' en
   // flow_order_items). Si ya está 'preparing'/'almost'/'ready'/'served',
   // se bloquea con un toast explicando.
-  // Si se permite eliminar, también se borra del flow_order_items para
-  // que cocina no lo siga preparando.
+  // Reglas:
+  // · 'pending' (sólo marchado, cocina no empezó) → se puede cancelar con motivo
+  // · 'preparing'/'almost'/'ready' (cocina YA cocinó o cocinando) → BLOQUEADO,
+  //   sólo gerencia puede anular vía Cobro Gerencia para no perder traza
   const removeOrder = async (i: number) => {
     const item = order[i];
     if (!item) return;
-    // Pedir motivo de cancelación (queda en trazabilidad y notifica a Flow)
-    const motivo = prompt(`¿Por qué cancelas "${item.nombre}"?\n(error, cliente cambió de opinión, 86, etc.)`);
-    if (motivo === null) return; // canceló el prompt
+    // 1) Chequear estado actual en Flow antes de pedir motivo
     const desdeIso = item.created_at || new Date(Date.now() - 60_000).toISOString();
     const { data: matches } = await supabase
       .from('flow_order_items')
@@ -2571,24 +2571,24 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       .order('created_at', { ascending: false })
       .limit(1);
     const flowItem = matches?.[0];
-    if (flowItem && flowItem.status !== 'pending') {
-      // Cocina ya empezó — marca cancelado pero NO borra (mantiene historial)
-      await supabase.from('flow_order_items').update({
-        status: 'cancelled', cancelled_at: new Date().toISOString(), cancel_reason: motivo,
-      }).eq('id', flowItem.id);
-      // Notificar al puesto de cocina en vivo
-      await supabase.from('flow_alertas').insert({
-        restaurante_id: restauranteId, mesa_num: item.mesa,
-        plato: item.nombre, mesero: miNombre, tipo: 'cancelacion',
-        motivo, severidad: 'alta', leida: false,
-      }).then(()=>{},()=>{});
-      showToast(`🚫 ${item.nombre} cancelado · cocina notificada (${motivo})`);
-    } else if (flowItem) {
-      // Pending — se puede cancelar limpio pero registramos motivo en historial
+    // Estado "en preparación" — bloquear eliminación
+    if (flowItem && ['preparing','almost','ready'].includes(flowItem.status)) {
+      const label = flowItem.status === 'ready' ? 'listo para entregar'
+                  : flowItem.status === 'almost' ? 'casi listo'
+                  : 'en preparación';
+      showToast(`🔒 ${item.nombre} está ${label} — sólo Gerencia puede anularlo (Cobro Gerencia)`);
+      return;
+    }
+    // 2) Estado pending o sin entrada en Flow → pedir motivo y eliminar
+    const motivo = prompt(`¿Por qué cancelas "${item.nombre}"?\n(error, cliente cambió de opinión, 86, etc.)`);
+    if (motivo === null) return; // canceló el prompt
+    if (flowItem) {
       await supabase.from('flow_order_items').update({
         status: 'cancelled', cancelled_at: new Date().toISOString(), cancel_reason: motivo,
       }).eq('id', flowItem.id);
       showToast(`🗑️ ${item.nombre} eliminado · motivo: ${motivo}`);
+    } else {
+      showToast(`🗑️ ${item.nombre} eliminado`);
     }
     setOrder(prev => prev.filter((_, idx) => idx !== i));
   };

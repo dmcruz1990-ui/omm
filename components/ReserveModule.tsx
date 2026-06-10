@@ -7,7 +7,13 @@ import { ModuleType } from '../types';
 
 // Roles que pueden asignar mesas en Reserve (Host / Admin / Gerencia / Desarrollo).
 // Los meseros NO pueden asignar — sólo el equipo de salón gestiona la planta.
-const ROLES_ASIGNAR_MESA = new Set(['admin','gerencia','desarrollo','host','hostess','maitre','maître']);
+// Roles que pueden asignar mesas en Reserve.
+// Incluye meseros para que puedan tomar mesas reales desde su vista y
+// se conecten directo a Supabase al sentar al cliente — sin pasos extra.
+const ROLES_ASIGNAR_MESA = new Set([
+  'admin','gerencia','desarrollo','host','hostess','maitre','maître',
+  'mesero','capitan','capitán','sommelier',
+]);
 
 // ══ PLANO OMM — fiel al plano arquitectónico (mismo layout que el POS) ══
 const PLANTA: Record<string,{num:number;zona:string;shape:'round'|'rect';cap:number;x:number;y:number;w:number;h:number}> = {
@@ -4129,27 +4135,31 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
                  const id = e.dataTransfer.getData('text/reserva');
                  setHoverMesa(null);
                  if (!id) return;
-                 // Buscar la reserva arrastrada en el estado activo
                  const reservaArrastrada = activas.find((rr:any) => String(rr.id) === id);
-                 // Regla 1: si la reserva YA está sentada, no permite arrastre
                  if (reservaArrastrada && reservaArrastrada.estado === 'sentada') {
                    alert(`🪑 ${reservaArrastrada.cliente_nombre} ya está sentado en M${reservaArrastrada.mesa_num}.\nLevantá la mesa primero para reubicar.`);
                    return;
                  }
-                 // Regla 2: si la mesa destino ya tiene una reserva SENTADA distinta, no se puede ocupar
                  if (reserva && String(reserva.id)!==id && reserva.estado === 'sentada') {
                    alert(`🚫 M${m.name} ya tiene comensales sentados (${reserva.cliente_nombre}).\nNo se puede asignar otra reserva ahí hasta que se libere.`);
                    return;
                  }
-                 // Regla 3: si la mesa destino ya tiene OTRA reserva confirmada (no sentada),
-                 // confirmar el reemplazo (toma la mesa, la anterior queda sin mesa).
+                 // CONFIRMACIÓN PRINCIPAL — siempre pedir confirmación al soltar.
+                 // Antes se asignaba directo y a veces el host arrastraba por error.
+                 const nombre = reservaArrastrada?.cliente_nombre || 'cliente';
+                 const horaTxt = reservaArrastrada?.hora ? ` (${reservaArrastrada.hora})` : '';
+                 const paxTxt  = reservaArrastrada?.pax ? ` · ${reservaArrastrada.pax}p` : '';
+                 // Caso reemplazo: la mesa destino tiene otra reserva confirmada
                  if (reserva && String(reserva.id)!==id) {
-                   if (!confirm(`M${m.name} ya tiene asignada la reserva de ${reserva.cliente_nombre} (${reserva.hora}). ¿Reemplazar? La otra reserva quedará sin mesa.`)) return;
+                   if (!confirm(`⚠️ M${m.name} ya está asignada a ${reserva.cliente_nombre} (${reserva.hora}).\n\n¿Reemplazar y sentar a ${nombre}${horaTxt}${paxTxt}?\nLa reserva de ${reserva.cliente_nombre} quedará sin mesa.`)) return;
                  }
-                 // Regla 4: si la reserva arrastrada ya tenía otra mesa asignada,
-                 // se trata de un CAMBIO DE MESA (no doble asignación).
-                 if (reservaArrastrada?.mesa_num && Number(reservaArrastrada.mesa_num) !== Number(m.name)) {
-                   if (!confirm(`Cambiar la mesa de ${reservaArrastrada.cliente_nombre}: M${reservaArrastrada.mesa_num} → M${m.name}?`)) return;
+                 // Caso cambio de mesa
+                 else if (reservaArrastrada?.mesa_num && Number(reservaArrastrada.mesa_num) !== Number(m.name)) {
+                   if (!confirm(`Cambiar la mesa de ${nombre}: M${reservaArrastrada.mesa_num} → M${m.name}?`)) return;
+                 }
+                 // Caso asignación normal
+                 else {
+                   if (!confirm(`✓ Sentar a ${nombre}${horaTxt}${paxTxt} en M${m.name}?\n\nLa mesa quedará ocupada y aparecerá en todos los planos.`)) return;
                  }
                  asignarMesa(id, Number(m.name));
                }}
