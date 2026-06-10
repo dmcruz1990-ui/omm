@@ -962,73 +962,258 @@ export default function CustomersModule() {
           </div>
         )}
 
-        {/* ── ANALYTICS ── */}
-        {ctab==='analytics' && (
-          <div style={{height:'100%',overflowY:'auto',padding:24}}>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:16}}>
-              <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
-                <div style={{padding:'12px 16px',borderBottom:`1px solid ${S.border}`,fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900}}>🏆 Top por gasto</div>
-                {clientes.sort((a,b)=>(b.total_spent||0)-(a.total_spent||0)).slice(0,8).map((c,i)=>(
-                  <div key={c.id} style={{padding:'10px 16px',borderBottom:`1px solid rgba(255,255,255,0.03)`,display:'flex',alignItems:'center',gap:10,cursor:'pointer'}} onClick={()=>abrirPerfil(c)}>
-                    <div style={{width:22,height:22,borderRadius:7,background:i===0?`${S.gold}20`:S.bg3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:900,color:i===0?S.gold:S.t3}}>{i+1}</div>
-                    <div style={{flex:1}}>
-                      <div style={{fontSize:12,fontWeight:700}}>{c.name} {c.apellido||''}</div>
-                      <div style={{fontSize:10,color:S.t3}}>{c.total_visits||0} visitas</div>
+        {/* ── ANALYTICS · Guest Intelligence Dashboard ── */}
+        {ctab==='analytics' && (() => {
+          // KPIs principales calculados desde el state clientes
+          const totalClientes = clientes.length;
+          const cntVip   = clientes.filter(c=>c.vip_status || segmentar(c)==='vip').length;
+          const cntRec   = clientes.filter(c=>segmentar(c)==='recurrentes').length;
+          const cntNue   = clientes.filter(c=>segmentar(c)==='nuevos').length;
+          const cntDorm  = clientes.filter(c=>segmentar(c)==='dormidos').length;
+          // Satisfacción promedio (de los ratings agregados que ya carga fetchClientes)
+          const conRating = clientes.filter((c:any)=>typeof c.rating_avg==='number');
+          const satAvg = conRating.length > 0
+            ? conRating.reduce((s:number,c:any)=>s+c.rating_avg,0)/conRating.length
+            : 0;
+          // Mini-trend SVG genérico (chart pequeño debajo de cada KPI)
+          const miniTrend = (color:string, seed:number) => {
+            const pts = Array.from({length:14},(_,i)=>{
+              const x = i*9;
+              const y = 24 - (Math.sin(i*0.6 + seed)*8 + 12);
+              return `${x},${Math.max(2,Math.min(22,y))}`;
+            }).join(' ');
+            return (
+              <svg width="100%" height="28" viewBox="0 0 126 28" preserveAspectRatio="none" style={{display:'block'}}>
+                <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" opacity="0.9"/>
+                <polyline points={`0,28 ${pts} 126,28`} fill={`${color}25`}/>
+              </svg>
+            );
+          };
+
+          // Top por valor (gasto total)
+          const topGasto = [...clientes].sort((a,b)=>(b.total_spent||0)-(a.total_spent||0)).slice(0,5);
+          // Top ticket promedio
+          const topTicket = [...clientes].filter(c=>(c.promedio_ticket||0)>0).sort((a,b)=>(b.promedio_ticket||0)-(a.promedio_ticket||0)).slice(0,5);
+
+          // Por origen
+          const origenMap: Record<string, number> = {};
+          clientes.forEach((c:any) => {
+            const k = c.origen_captacion || 'desconocido';
+            origenMap[k] = (origenMap[k]||0) + 1;
+          });
+          const origenOrden = Object.entries(origenMap).sort(([,a],[,b])=>b-a);
+          const origenMax = Math.max(...origenOrden.map(([,v])=>v), 1);
+          const origenInfo: Record<string,{l:string;c:string;ico:string}> = {
+            'walk-in':       { l:'walk-in',       c:'#4a8fd4', ico:'🚶' },
+            'instagram':     { l:'Instagram',     c:'#E1306C', ico:'📷' },
+            'whatsapp':      { l:'WhatsApp',      c:'#25D366', ico:'💬' },
+            'oh_yeah':       { l:'Oh Yeah',       c:'#FFE600', ico:'🦉' },
+            'reserva_maitre':{ l:'reserva_maitre',c:S.t2,      ico:'🛎️' },
+            'telefono':      { l:'Teléfono',      c:'#FB923C', ico:'📞' },
+            'referido':      { l:'Referido',      c:'#9b72ff', ico:'👥' },
+            'desconocido':   { l:'desconocido',   c:S.t3,      ico:'·' },
+          };
+
+          // Satisfacción por segmento (promedio de rating por bucket)
+          const promSeg = (seg:string) => {
+            const list = clientes.filter((c:any)=> (seg==='vip' ? (c.vip_status || segmentar(c)==='vip') : segmentar(c)===seg) && typeof c.rating_avg==='number');
+            return list.length > 0 ? list.reduce((s:number,c:any)=>s+c.rating_avg,0)/list.length : 0;
+          };
+          const satVip = promSeg('vip');
+          const satRec = promSeg('recurrentes');
+          const satNue = promSeg('nuevos');
+          const satDor = promSeg('dormidos');
+
+          // Por ciudad
+          const ciudadMap: Record<string,number> = {};
+          clientes.forEach((c:any) => { if (c.ciudad) { const k = String(c.ciudad).trim(); ciudadMap[k] = (ciudadMap[k]||0)+1; } });
+          const ciudadOrden = Object.entries(ciudadMap).sort(([,a],[,b])=>b-a).slice(0,5);
+          const ciudadMax = Math.max(...ciudadOrden.map(([,v])=>v), 1);
+          const ciudadPrincipal = ciudadOrden[0]?.[0] || '—';
+
+          // Donut satisfacción
+          const satPct = Math.min(100, Math.round((satAvg/5)*100));
+          const satCirc = 2 * Math.PI * 38;
+          const satDash = (satPct/100) * satCirc;
+
+          return (
+            <div style={{height:'100%',overflowY:'auto',padding:18,background:S.bg}}>
+              <style>{`@keyframes giPulse{0%,100%{opacity:1}50%{opacity:.45}}`}</style>
+
+              {/* Header con título */}
+              <div style={{display:'flex',alignItems:'center',gap:14,marginBottom:16}}>
+                <div style={{flex:1}}>
+                  <div style={{fontFamily:"'Syne',serif",fontSize:11,color:S.t3,letterSpacing:'.22em',fontWeight:800,textTransform:'uppercase'}}>NEXUM · Guest Intelligence</div>
+                  <div style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900,marginTop:2}}>Dashboard de Clientes</div>
+                </div>
+              </div>
+
+              {/* FILA 1 · 6 KPIs principales */}
+              <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:10,marginBottom:14}}>
+                {([
+                  { l:'Clientes',     v:totalClientes.toLocaleString('es-CO'), c:'#4a8fd4', ico:'👥', seed:1 },
+                  { l:'VIP',          v:cntVip,    c:S.gold,    ico:'⭐', seed:2 },
+                  { l:'Recurrentes',  v:cntRec,    c:S.green,   ico:'🔄', seed:3 },
+                  { l:'Nuevos',       v:cntNue,    c:'#4a8fd4', ico:'👤', seed:4 },
+                  { l:'Dormidos',     v:cntDorm,   c:S.red,     ico:'💤', seed:5 },
+                  { l:'Satisfacción', v:`${satAvg.toFixed(1)}`, sub:'/5', c:S.cyan, ico:'❤', seed:6 },
+                ] as any[]).map(k => (
+                  <div key={k.l} style={{background:S.bg2,border:`1px solid ${k.c}33`,borderRadius:12,padding:'12px 14px',boxShadow:`0 0 14px ${k.c}15`}}>
+                    <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:6}}>
+                      <div style={{width:32,height:32,borderRadius:9,background:`${k.c}15`,border:`1px solid ${k.c}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:14}}>{k.ico}</div>
+                      <div style={{fontSize:10,color:k.c,fontWeight:800,letterSpacing:'.06em'}}>{k.l}</div>
                     </div>
-                    <div style={{fontSize:13,fontWeight:700,color:S.gold}}>{fmtMoney(c.total_spent)}</div>
+                    <div style={{display:'flex',alignItems:'baseline',gap:3}}>
+                      <span style={{fontFamily:"'Syne',serif",fontSize:30,fontWeight:900,color:'#fff',lineHeight:1,letterSpacing:'-0.02em'}}>{k.v}</span>
+                      {k.sub && <span style={{fontSize:12,color:S.t3,fontWeight:700}}>{k.sub}</span>}
+                    </div>
+                    <div style={{marginTop:8}}>{miniTrend(k.c, k.seed)}</div>
                   </div>
                 ))}
               </div>
-              <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
-                <div style={{padding:'12px 16px',borderBottom:`1px solid ${S.border}`,fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900}}>📊 Por segmento</div>
-                <div style={{padding:16,display:'flex',flexDirection:'column',gap:10}}>
-                  {([['vip','⭐ VIP',S.gold],['recurrentes','🔄 Recurrentes',S.green],['nuevos','🆕 Nuevos',S.blue],['dormidos','💤 Dormidos',S.red]] as const).map(([seg,lbl,col])=>{
-                    const cnt = clientes.filter(c=>segmentar(c)===seg).length;
-                    const pct = clientes.length ? Math.round(cnt/clientes.length*100) : 0;
-                    return (
-                      <div key={seg}>
-                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,fontSize:12}}>
-                          <span style={{color:col}}>{lbl}</span>
-                          <span style={{fontWeight:700}}>{cnt} ({pct}%)</span>
-                        </div>
-                        <div style={{height:6,background:S.bg4,borderRadius:3,overflow:'hidden'}}>
-                          <div style={{height:'100%',background:col,width:`${pct}%`,borderRadius:3}}/>
-                        </div>
+
+              {/* FILA 2 · Top por valor · Top ticket · Por origen */}
+              <div style={{display:'grid',gridTemplateColumns:'1.1fr 1.1fr 1fr',gap:14,marginBottom:14}}>
+                {/* Top por valor */}
+                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:'14px 16px'}}>
+                  <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:10,display:'flex',alignItems:'center',gap:6}}><span style={{color:S.gold}}>🏆</span> Top por valor</div>
+                  <div style={{display:'grid',gridTemplateColumns:'18px 1fr 60px 90px',gap:8,padding:'4px 0',fontSize:9,color:S.t3,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase' as const,borderBottom:`1px solid ${S.border}`,marginBottom:6}}>
+                    <span>#</span><span>Cliente</span><span style={{textAlign:'right' as const}}>Visitas</span><span style={{textAlign:'right' as const}}>Gasto total</span>
+                  </div>
+                  {topGasto.length === 0 && <div style={{textAlign:'center',padding:24,color:S.t3,fontSize:12}}>Sin datos todavía</div>}
+                  {topGasto.map((c:any,i) => (
+                    <div key={c.id} onClick={()=>abrirPerfil(c)}
+                      style={{display:'grid',gridTemplateColumns:'18px 1fr 60px 90px',gap:8,padding:'8px 0',alignItems:'center',cursor:'pointer',borderBottom:`1px solid rgba(255,255,255,0.03)`}}>
+                      <div style={{width:18,height:18,borderRadius:'50%',background:i<3?S.gold:S.bg3,color:i<3?'#000':S.t3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:900}}>{i+1}</div>
+                      <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                        <div style={{width:26,height:26,borderRadius:'50%',background:`linear-gradient(135deg,${S.pink}40,${S.purple}40)`,border:`1px solid ${S.border2}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:900,flexShrink:0}}>{iniciales(c.name,c.apellido)}</div>
+                        <span style={{fontSize:12,fontWeight:700,color:'#f0f0f0',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{c.name} {c.apellido||''}</span>
                       </div>
-                    );
-                  })}
-                  {/* Oh Yeah */}
-                  {(() => {
-                    const cnt = clientes.filter(c=>c.origen_captacion==='oh_yeah').length;
-                    const pct = clientes.length ? Math.round(cnt/clientes.length*100) : 0;
-                    return (
-                      <div>
-                        <div style={{display:'flex',justifyContent:'space-between',marginBottom:4,fontSize:12}}>
-                          <span style={{color:'#FFE600'}}>🦉 Oh Yeah</span>
-                          <span style={{fontWeight:700}}>{cnt} ({pct}%)</span>
-                        </div>
-                        <div style={{height:6,background:S.bg4,borderRadius:3,overflow:'hidden'}}>
-                          <div style={{height:'100%',background:'#FFE600',width:`${pct}%`,borderRadius:3}}/>
-                        </div>
-                      </div>
-                    );
-                  })()}
-                </div>
-              </div>
-              <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,overflow:'hidden'}}>
-                <div style={{padding:'12px 16px',borderBottom:`1px solid ${S.border}`,fontFamily:"'Syne',sans-serif",fontSize:13,fontWeight:900}}>📡 Por origen</div>
-                <div style={{padding:16,display:'flex',flexDirection:'column',gap:8}}>
-                  {Object.entries(clientes.reduce((acc:any,c)=>{ const k=c.origen_captacion||'desconocido'; acc[k]=(acc[k]||0)+1; return acc; },{})).sort(([,a]:any,[,b]:any)=>b-a).slice(0,6).map(([k,v]:any)=>(
-                    <div key={k} style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 10px',background:S.bg3,borderRadius:8}}>
-                      <span style={{fontSize:11,color:k==='oh_yeah'?'#FFE600':S.t2}}>{k==='oh_yeah'?'🦉 Oh Yeah':k}</span>
-                      <span style={{fontSize:13,fontWeight:700,color:k==='oh_yeah'?'#FFE600':S.blue}}>{v}</span>
+                      <div style={{fontSize:11,color:S.t2,textAlign:'right' as const}}>{c.total_visits||0} visitas</div>
+                      <div style={{fontSize:12,fontWeight:800,color:S.gold,textAlign:'right' as const}}>{fmtMoney(c.total_spent)}</div>
                     </div>
                   ))}
                 </div>
+
+                {/* Top ticket promedio */}
+                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:'14px 16px'}}>
+                  <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:10,display:'flex',alignItems:'center',gap:6}}><span style={{color:S.green}}>📊</span> Top ticket promedio</div>
+                  <div style={{display:'grid',gridTemplateColumns:'18px 1fr 60px 90px',gap:8,padding:'4px 0',fontSize:9,color:S.t3,fontWeight:700,letterSpacing:'.08em',textTransform:'uppercase' as const,borderBottom:`1px solid ${S.border}`,marginBottom:6}}>
+                    <span>#</span><span>Cliente</span><span style={{textAlign:'right' as const}}>Visitas</span><span style={{textAlign:'right' as const}}>Ticket</span>
+                  </div>
+                  {topTicket.length === 0 && <div style={{textAlign:'center',padding:24,color:S.t3,fontSize:12}}>Sin tickets registrados</div>}
+                  {topTicket.map((c:any,i) => (
+                    <div key={c.id} onClick={()=>abrirPerfil(c)}
+                      style={{display:'grid',gridTemplateColumns:'18px 1fr 60px 90px',gap:8,padding:'8px 0',alignItems:'center',cursor:'pointer',borderBottom:`1px solid rgba(255,255,255,0.03)`}}>
+                      <div style={{width:18,height:18,borderRadius:'50%',background:i<3?S.green:S.bg3,color:i<3?'#000':S.t3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:900}}>{i+1}</div>
+                      <div style={{display:'flex',alignItems:'center',gap:8,minWidth:0}}>
+                        <div style={{width:26,height:26,borderRadius:'50%',background:`linear-gradient(135deg,${S.pink}40,${S.purple}40)`,border:`1px solid ${S.border2}`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:900,flexShrink:0}}>{iniciales(c.name,c.apellido)}</div>
+                        <span style={{fontSize:12,fontWeight:700,color:'#f0f0f0',whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{c.name} {c.apellido||''}</span>
+                      </div>
+                      <div style={{fontSize:11,color:S.t2,textAlign:'right' as const}}>{c.total_visits||0} visitas</div>
+                      <div style={{fontSize:12,fontWeight:800,color:S.green,textAlign:'right' as const}}>{fmtMoney(c.promedio_ticket)}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Por origen */}
+                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:'14px 16px'}}>
+                  <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:14,display:'flex',alignItems:'center',gap:6}}><span style={{color:S.blue}}>📍</span> Por origen</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:10}}>
+                    {origenOrden.length === 0 && <div style={{textAlign:'center',padding:20,color:S.t3,fontSize:12}}>Sin orígenes registrados</div>}
+                    {origenOrden.slice(0,6).map(([k,v]) => {
+                      const info = origenInfo[k] || { l:k, c:S.t3, ico:'·' };
+                      const w = Math.round((v/origenMax)*100);
+                      return (
+                        <div key={k} style={{display:'flex',alignItems:'center',gap:10}}>
+                          <div style={{width:24,height:24,borderRadius:7,background:`${info.c}18`,border:`1px solid ${info.c}40`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:12,flexShrink:0}}>{info.ico}</div>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:11,color:'#f0f0f0',fontWeight:700,marginBottom:4}}>{info.l}</div>
+                            <div style={{height:6,background:S.bg4,borderRadius:3,overflow:'hidden'}}>
+                              <div style={{height:'100%',width:`${w}%`,background:info.c,borderRadius:3}}/>
+                            </div>
+                          </div>
+                          <div style={{fontSize:13,fontWeight:800,color:'#f0f0f0',fontFamily:"'Syne',serif",minWidth:36,textAlign:'right' as const}}>{v}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* FILA 3 · Satisfacción por cliente · Donut central · Por ciudad */}
+              <div style={{display:'grid',gridTemplateColumns:'1.2fr 0.7fr 1.4fr',gap:14}}>
+                {/* Satisfacción por cliente */}
+                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:'14px 16px'}}>
+                  <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:14,display:'flex',alignItems:'center',gap:6}}><span>😊</span> Satisfacción por cliente</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:14}}>
+                    {([
+                      { l:'VIP',         v:satVip, ico:'⭐', c:S.gold },
+                      { l:'Recurrentes', v:satRec, ico:'🔄', c:S.green },
+                      { l:'Nuevos',      v:satNue, ico:'👤', c:S.blue },
+                      { l:'Dormidos',    v:satDor, ico:'💤', c:S.red },
+                    ] as any[]).map(s => {
+                      const w = Math.round((s.v/5)*100);
+                      return (
+                        <div key={s.l} style={{display:'flex',alignItems:'center',gap:10}}>
+                          <span style={{fontSize:16,width:18,textAlign:'center' as const}}>{s.ico}</span>
+                          <div style={{minWidth:80,fontSize:12,color:'#f0f0f0',fontWeight:700}}>{s.l}</div>
+                          <div style={{flex:1,height:8,background:S.bg4,borderRadius:4,overflow:'hidden'}}>
+                            <div style={{height:'100%',width:`${w}%`,background:s.c,borderRadius:4,boxShadow:`0 0 8px ${s.c}55`}}/>
+                          </div>
+                          <div style={{fontFamily:"'Syne',serif",fontSize:16,fontWeight:900,color:s.c,minWidth:32,textAlign:'right' as const}}>{s.v.toFixed(1)}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Donut central · satisfacción promedio */}
+                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:'14px 16px',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center'}}>
+                  <svg width="120" height="120" viewBox="0 0 90 90">
+                    <circle cx={45} cy={45} r={38} fill="none" stroke={S.bg4} strokeWidth={6}/>
+                    <circle cx={45} cy={45} r={38} fill="none" stroke={S.cyan} strokeWidth={6}
+                      strokeDasharray={`${satDash} ${satCirc - satDash}`}
+                      strokeDashoffset={satCirc * 0.25}
+                      strokeLinecap="round"
+                      style={{filter:`drop-shadow(0 0 6px ${S.cyan})`}}/>
+                    <text x={45} y={42} textAnchor="middle" fill={S.cyan} fontSize={9} fontFamily="DM Sans">❤</text>
+                    <text x={45} y={56} textAnchor="middle" fill="#fff" fontSize={16} fontWeight="900" fontFamily="Syne,serif">{satAvg.toFixed(1)}</text>
+                    <text x={45} y={66} textAnchor="middle" fill={S.t3} fontSize={6}>/5</text>
+                  </svg>
+                  <div style={{fontSize:11,color:S.cyan,fontWeight:800,marginTop:10}}>Promedio general: {satAvg.toFixed(1)}</div>
+                </div>
+
+                {/* Por ciudad */}
+                <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:'14px 16px',display:'flex',flexDirection:'column'}}>
+                  <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,marginBottom:14,display:'flex',alignItems:'center',gap:6}}><span style={{color:S.gold}}>📊</span> Por ciudad</div>
+                  <div style={{display:'flex',flexDirection:'column',gap:10,flex:1}}>
+                    {ciudadOrden.length === 0 && <div style={{textAlign:'center',padding:20,color:S.t3,fontSize:12}}>Sin ciudades registradas</div>}
+                    {ciudadOrden.map(([nombre,v],i) => {
+                      const w = Math.round((v/ciudadMax)*100);
+                      return (
+                        <div key={nombre} style={{display:'flex',alignItems:'center',gap:10}}>
+                          <div style={{width:20,height:20,borderRadius:'50%',background:i===0?S.gold:S.bg3,color:i===0?'#000':S.t3,display:'flex',alignItems:'center',justifyContent:'center',fontSize:9,fontWeight:900,flexShrink:0}}>{i+1}</div>
+                          <div style={{minWidth:90,fontSize:12,color:'#f0f0f0',fontWeight:700}}>{nombre}</div>
+                          <div style={{flex:1,height:8,background:S.bg4,borderRadius:4,overflow:'hidden'}}>
+                            <div style={{height:'100%',width:`${w}%`,background:S.blue,borderRadius:4}}/>
+                          </div>
+                          <div style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:900,color:'#f0f0f0',minWidth:46,textAlign:'right' as const}}>{v}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {ciudadOrden.length > 0 && (
+                    <div style={{marginTop:14,padding:'8px 12px',background:S.bg3,borderRadius:8,display:'flex',justifyContent:'space-between',alignItems:'center',fontSize:11,color:S.t2}}>
+                      <span>📍 Ciudad principal: <span style={{color:S.cyan,fontWeight:800}}>{ciudadPrincipal}</span></span>
+                      <span style={{color:S.cyan,fontWeight:700}}>📊 {ciudadOrden.length} ciudades activas</span>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ── IMPORTAR CSV ── */}
         {ctab==='importar' && (
