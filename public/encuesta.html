@@ -116,7 +116,14 @@
     var qp = new URLSearchParams(location.search);
     var _mesa = qp.get('mesa');
     var MESA = (_mesa && /^\d+$/.test(_mesa)) ? parseInt(_mesa,10) : null;
-    var REST = parseInt(qp.get('r') || '6', 10);
+    var REST = parseInt(qp.get('r') || '6', 10); // restaurante elegido (default = el del QR)
+    var BLOQUEAR_REST = qp.has('r') && qp.get('lock') !== '0'; // si el QR ya trae ?r=, queda fijo (salvo ?lock=0)
+
+    // Lista de restaurantes para el selector del formulario (lectura pública).
+    var RESTAURANTES = [{id:REST, nombre:'Restaurante', emoji:'🍽️'}];
+    db.from('restaurantes').select('id,nombre,emoji').order('nombre').then(function(res){
+      if(res.data && res.data.length){ RESTAURANTES = res.data; if(view==='datos') render(); }
+    });
 
     // ── Caras (de triste a feliz) ─────────────────────────────────────────────
     var CARAS = [
@@ -376,6 +383,12 @@
           '<div class="step">'
           + '<div class="center" style="margin-bottom:16px"><div class="kicker">Antes de empezar</div>'
           + '<h1>Cuéntanos quién eres 👋</h1><div class="sub">30 segundos · y al final tienes premio 🎁</div></div>'
+          + '<div class="field"><label>¿En qué restaurante estás?</label>'
+          +   '<select class="inp" data-rest '+(BLOQUEAR_REST?'disabled':'')+'>'
+          +     RESTAURANTES.map(function(r){ return '<option value="'+r.id+'"'+(r.id===REST?' selected':'')+'>'+(r.emoji?r.emoji+' ':'')+r.nombre+'</option>'; }).join('')
+          +   '</select>'
+          +   (BLOQUEAR_REST?'<div class="sub" style="font-size:10px;margin-top:4px">Detectado por el código QR</div>':'')
+          + '</div>'
           + '<div class="field"><label>Nombre</label><input class="inp" data-f="nombre" value="'+(data.nombre)+'" placeholder="Tu nombre"></div>'
           + '<div class="row"><div class="field"><label>Celular</label><input class="inp" data-f="celular" inputmode="tel" value="'+(data.celular)+'" placeholder="+57 3..."></div>'
           +   '<div class="field"><label>Cumpleaños</label><input class="inp" data-f="cumple" type="date" value="'+(data.cumple)+'"></div></div>'
@@ -456,6 +469,11 @@
       else if(act==='tag'){ toggle(view==='micro'?st.micro:st.tags, el.getAttribute('data-v')); render(); }
       else if(act==='save'){ guardar(); }
       else if(act==='juego'){ view = el.getAttribute('data-j'); render(); }
+    });
+    // El selector de restaurante actualiza REST (lo que se guarda en la encuesta → Care)
+    app.addEventListener('change', function(ev){
+      var sel=ev.target.closest('[data-rest]'); if(!sel) return;
+      REST = parseInt(sel.value,10) || REST;
     });
     app.addEventListener('input', function(ev){
       var el=ev.target.closest('[data-f],[data-act="coment"]'); if(!el) return;
