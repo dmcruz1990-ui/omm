@@ -30,6 +30,7 @@ interface Customer {
   promedio_ticket?:number; canal_preferido?:string; activo?:boolean;
   ocasiones_especiales?:any[]; historial_notas?:any[];
   puntos?:number; puntos_historico?:number;
+  fecha_aniversario?:string; tipo_aniversario?:string;
 }
 
 const TAGS_PRESET = ['Cumpleañero frecuente','Primera vez','Crítico gastronómico','Influencer','Corporativo','Alérgico crítico','Sommelier','Vegetariano','Sin gluten','Madrugador','Noche larga','Propina generosa'];
@@ -200,13 +201,29 @@ export default function CustomersModule() {
   ];
 
   // ── Guardar cliente ───────────────────────────────────────────────────
+  // Todo cliente se puede editar (incluyendo los originados en Oh Yeah).
+  // Los originados en Oh Yeah no tienen registro en customers todavía →
+  // si el ID no existe en customers, se hace upsert para crear el espejo.
   const guardar = async () => {
     if (!form.name) { showToast('⚠️ Nombre requerido'); return; }
     if (selected && editMode) {
-      if (selected.origen_captacion === 'oh_yeah') { showToast('⚠️ Cliente de Oh Yeah — solo lectura'); return; }
-      const { error } = await supabase.from('customers').update(form).eq('id',selected.id);
-      if (error) { showToast('✗ No se pudo actualizar: ' + error.message); return; }
-      showToast('✓ Cliente actualizado');
+      const esOhYeah = selected.origen_captacion === 'oh_yeah';
+      if (esOhYeah) {
+        // Upsert: crea o actualiza el cliente como espejo en customers
+        const { error } = await supabase.from('customers').upsert({
+          ...form, origen_captacion: 'oh_yeah',
+          score: form.score || 0,
+          total_visits: form.total_visits || 0,
+          total_spent: form.total_spent || 0,
+          puntos: form.puntos || 0,
+        });
+        if (error) { showToast('✗ No se pudo guardar: ' + error.message); return; }
+        showToast('✓ Cliente actualizado (espejo Oh Yeah)');
+      } else {
+        const { error } = await supabase.from('customers').update(form).eq('id',selected.id);
+        if (error) { showToast('✗ No se pudo actualizar: ' + error.message); return; }
+        showToast('✓ Cliente actualizado');
+      }
     } else {
       const { error } = await supabase.from('customers').insert({ ...form, score:0, total_visits:0, total_spent:0, puntos:0 });
       if (error) { showToast('✗ No se pudo crear: ' + error.message); return; }
@@ -649,6 +666,8 @@ export default function CustomersModule() {
                       {l:'Email', v:selected.email, icon:'✉️'},
                       {l:'Documento', v:selected.documento?`${selected.tipo_documento}: ${selected.documento}`:null, icon:'🪪'},
                       {l:'Cumpleaños', v:formatFecha(selected.fecha_nacimiento), icon:'🎂'},
+                      {l:(selected as any).tipo_aniversario ? `${(selected as any).tipo_aniversario}` : 'Aniversario',
+                       v:formatFecha((selected as any).fecha_aniversario), icon:'💍'},
                       {l:'Canal', v:selected.canal_preferido, icon:'📡'},
                     ].filter(x=>x.v&&x.v!=='—').map(x=>(
                       <div key={x.l} style={{display:'flex',alignItems:'center',gap:10}}>
@@ -702,9 +721,9 @@ export default function CustomersModule() {
                 )}
 
                 <div style={{display:'flex',gap:8}}>
-                  <button onClick={()=>{ if(selected.origen_captacion==='oh_yeah'){ showToast('⚠️ Cliente de Oh Yeah — solo lectura'); return; } setEditMode(true); setCtab('nuevo'); }}
-                    style={{flex:1,padding:11,borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:selected.origen_captacion==='oh_yeah'?S.t3:S.t2,cursor:'pointer',fontSize:12,fontWeight:700}}>
-                    ✏️ Editar
+                  <button onClick={()=>{ setEditMode(true); setCtab('nuevo'); }}
+                    style={{flex:1,padding:11,borderRadius:10,border:`1px solid ${S.purple}`,background:`${S.purple}10`,color:S.purple,cursor:'pointer',fontSize:12,fontWeight:700}}>
+                    ✏️ Editar cliente
                   </button>
                   <button onClick={()=>setCtab('lista')}
                     style={{flex:1,padding:11,borderRadius:10,border:`1px solid ${S.border}`,background:'transparent',color:S.t3,cursor:'pointer',fontSize:12}}>
@@ -874,6 +893,38 @@ export default function CustomersModule() {
                   </select>
                 </div>
               </div>
+
+              {/* Fechas memorables — para upselling / saludos automáticos */}
+              <div style={{marginBottom:18,padding:14,background:`${S.purple}08`,border:`1px solid ${S.purple}33`,borderRadius:12}}>
+                <div style={{fontSize:10,color:S.purple,fontWeight:800,marginBottom:10,textTransform:'uppercase' as const,letterSpacing:'.12em'}}>🎂 Fechas memorables</div>
+                <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:10}}>
+                  <div>
+                    <div style={{fontSize:10,color:S.t3,marginBottom:4}}>🎂 Cumpleaños</div>
+                    <input type="date" style={{...inp, colorScheme:'dark' as const}}
+                      value={(form as any).fecha_nacimiento||''}
+                      onChange={e=>setF('fecha_nacimiento', e.target.value)}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:S.t3,marginBottom:4}}>💍 Aniversario</div>
+                    <input type="date" style={{...inp, colorScheme:'dark' as const}}
+                      value={(form as any).fecha_aniversario||''}
+                      onChange={e=>setF('fecha_aniversario', e.target.value)}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,color:S.t3,marginBottom:4}}>Tipo</div>
+                    <select style={inp}
+                      value={(form as any).tipo_aniversario||''}
+                      onChange={e=>setF('tipo_aniversario', e.target.value)}>
+                      <option value="">— Tipo —</option>
+                      {['Matrimonio','Pareja','Negocio','Amistad','Otro'].map(o=><option key={o} value={o}>{o}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div style={{fontSize:10,color:S.t3,marginTop:8,lineHeight:1.4}}>
+                  💡 Estas fechas habilitan saludos automáticos y ofertas el día (o la semana) del evento.
+                </div>
+              </div>
+
               <div style={{marginBottom:14}}>
                 <div style={{fontSize:10,color:S.red,fontWeight:700,marginBottom:8}}>⚠️ Alergias</div>
                 <div style={{display:'flex',flexWrap:'wrap',gap:6}}>

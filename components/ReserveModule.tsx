@@ -47,7 +47,8 @@ const RANGO_MESA: Record<number,{min:number;max:number}> = {
 };
 const rangoMesa = (cap:number) => RANGO_MESA[cap] || { min: Math.max(1, Math.floor(cap*0.6)), max: cap };
 // Más de 16 personas → reservar por evento escribiendo al restaurante
-const MAX_PAX_RESERVA = 16;
+const MAX_PAX_RESERVA = 500;        // tope total — eventos privados grandes
+const MAX_PAX_MODIFICACION = 10;    // sólo grupos pequeños se editan inline
 
 const S = {
   bg:'#08080f',bg2:'#0f0f1a',bg3:'#161624',
@@ -100,6 +101,17 @@ const ESTADOS:any = {
   no_show:         {c:'#50506A',l:'👻 No-show'},
 };
 const OCASIONES = ['Cumpleaños','Aniversario','Negocio','Primera cita','Graduación','Despedida','Celebración','Sin ocasión especial'];
+// Mismos datos pero con emoji para los chips de la nueva reserva
+const OCASIONES_CHIPS: { val:string; emoji:string }[] = [
+  { val:'Cumpleaños',           emoji:'🎂' },
+  { val:'Aniversario',          emoji:'💍' },
+  { val:'Negocio',              emoji:'💼' },
+  { val:'Primera cita',         emoji:'💕' },
+  { val:'Graduación',           emoji:'🎓' },
+  { val:'Despedida',            emoji:'👋' },
+  { val:'Celebración',          emoji:'🎉' },
+  { val:'Sin ocasión especial', emoji:'✦'  },
+];
 
 type Tab = 'home'|'lista'|'dashboard'|'nueva'|'editor'|'historial';
 
@@ -252,43 +264,80 @@ export default function ReserveModule() {
   // gasto total, ticket promedio y última encuesta (estrellas) — clave para
   // la atención y para el pago por gerencia.
   const [reservaCRM, setReservaCRM] = useState<any>(null);
-  const buscarClienteReserva = async (telRaw?:string) => {
-    const t = (telRaw ?? form.cliente_telefono).trim();
-    if (t.length < 7) { setReservaCRM(null); show('Ingresa un celular válido (mín. 7 dígitos)'); return; }
-    const [c1, c2, encUlt, encExtrema] = await Promise.all([
-      supabase.from('customers').select('id,name,email,vip_status,total_visits,total_spent,promedio_ticket,score,puntos,origen_captacion,alergias,preferencias').eq('phone', t).limit(1).maybeSingle(),
-      supabase.from('nexum_clientes_ohyeah').select('id,nombre,email,nivel,visitas,total_reservas,preferencias,restricciones,notas').eq('telefono', t).limit(1).maybeSingle(),
-      supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_telefono', t).order('created_at',{ascending:false}).limit(3),
-      supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_telefono', t).or('estrellas.eq.1,estrellas.eq.5').order('created_at',{ascending:false}).limit(1).maybeSingle(),
-    ]);
-    const base = c1.data || (c2.data ? { name:c2.data.nombre, email:c2.data.email, total_visits:c2.data.visitas, total_spent:0, nivel:c2.data.nivel, vip_status:String(c2.data.nivel||'').toUpperCase()==='VIP', origen_captacion:'oh_yeah', alergias:c2.data.restricciones, preferencias:c2.data.preferencias } : null);
+  const buscarClienteReserva = async (input?:string) => {
+    // Acepta teléfono o email — autodetecta por '@'
+    const raw = (input ?? form.cliente_telefono ?? '').trim();
+    const esEmail = raw.includes('@');
+    const t = raw;
+    if (!t || (esEmail ? !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(t) : t.length < 7)) {
+      setReservaCRM(null);
+      show(esEmail ? 'Email inválido' : 'Ingresa un celular válido (mín. 7 dígitos)');
+      return;
+    }
+    // Si es email busca por email, si no por teléfono — en ambas tablas
+    const q1 = esEmail
+      ? supabase.from('customers').select('id,name,email,phone,vip_status,total_visits,total_spent,promedio_ticket,score,puntos,origen_captacion,alergias,preferencias').ilike('email', t).limit(1).maybeSingle()
+      : supabase.from('customers').select('id,name,email,phone,vip_status,total_visits,total_spent,promedio_ticket,score,puntos,origen_captacion,alergias,preferencias').eq('phone', t).limit(1).maybeSingle();
+    const q2 = esEmail
+      ? supabase.from('nexum_clientes_ohyeah').select('id,nombre,email,telefono,nivel,visitas,total_reservas,preferencias,restricciones,notas').ilike('email', t).limit(1).maybeSingle()
+      : supabase.from('nexum_clientes_ohyeah').select('id,nombre,email,telefono,nivel,visitas,total_reservas,preferencias,restricciones,notas').eq('telefono', t).limit(1).maybeSingle();
+    const q3 = esEmail
+      ? supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_email', t).order('created_at',{ascending:false}).limit(3)
+      : supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_telefono', t).order('created_at',{ascending:false}).limit(3);
+    const q4 = esEmail
+      ? supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_email', t).or('estrellas.eq.1,estrellas.eq.5').order('created_at',{ascending:false}).limit(1).maybeSingle()
+      : supabase.from('xcare_encuestas').select('estrellas,comentario,created_at').eq('cliente_telefono', t).or('estrellas.eq.1,estrellas.eq.5').order('created_at',{ascending:false}).limit(1).maybeSingle();
+    const [c1, c2, encUlt, encExtrema] = await Promise.all([q1, q2, q3, q4]);
+    const base = c1.data || (c2.data ? { name:c2.data.nombre, email:c2.data.email, phone:c2.data.telefono, total_visits:c2.data.visitas, total_spent:0, nivel:c2.data.nivel, vip_status:String(c2.data.nivel||'').toUpperCase()==='VIP', origen_captacion:'oh_yeah', alergias:c2.data.restricciones, preferencias:c2.data.preferencias } : null);
     if (!base) {
       // CLIENTE NUEVO — no descartamos, sino que mostramos tag distintivo
-      setReservaCRM({ isNew:true, telefono:t });
+      setReservaCRM({ isNew:true, telefono: esEmail ? '' : t, email: esEmail ? t : '' });
       show('🆕 Cliente nuevo — completá los datos para crearlo');
+      // Pre-rellenar el campo del que vino la búsqueda
+      setForm(p=>({
+        ...p,
+        cliente_email: esEmail ? t : p.cliente_email,
+        cliente_telefono: !esEmail ? t : p.cliente_telefono,
+      }));
       return;
     }
     const ticketProm = base.promedio_ticket || (base.total_visits ? Math.round((base.total_spent||0)/base.total_visits) : 0);
     const ultimasEstrellas = (encUlt.data||[]).map((e:any)=>e.estrellas).filter((n:any)=>typeof n==='number');
-    // Tomar comentario relevante: el más reciente con 1 o 5 estrellas (sea de comida o bebida)
     const comentarioRelevante = encExtrema.data ? { estrellas: encExtrema.data.estrellas, texto: encExtrema.data.comentario||'' } : null;
-    // Mezclar preferencias y alergias del CRM principal y de Oh Yeah
     const alergias = base.alergias || c2.data?.restricciones || '';
     const preferencias = base.preferencias || c2.data?.preferencias || '';
     setReservaCRM({ ...base, ticketProm, ultimasEstrellas, comentarioRelevante, alergias, preferencias, isNew:false });
-    setForm(p=>({ ...p, cliente_nombre: p.cliente_nombre || base.name || '', cliente_email: p.cliente_email || base.email || '' }));
+    setForm(p=>({
+      ...p,
+      cliente_nombre:    p.cliente_nombre    || base.name  || '',
+      cliente_email:     p.cliente_email     || base.email || '',
+      cliente_telefono:  p.cliente_telefono  || base.phone || '',
+    }));
     show(`✓ Datos cargados: ${base.name||'cliente'}`);
   };
   const [sugerenciasHora, setSugerenciasHora] = useState<{hora:string,libres:number}[]>([]);
   const [sobreventa, setSobreventa] = useState(0);
-  // Config del Cerebro — duración estancia, sugerir franja, auto-bloqueo
+  // Config del Cerebro — duración estancia, sugerir franja, auto-bloqueo,
+  // horario de reservas y pax_max_modificacion
   const [cerebroCfg, setCerebroCfg] = useState<{
     duracion_estancia_min:number;
     auto_bloqueo_lleno:boolean;
     sugerir_franja_pax:number;
     sugerir_franja_offset_min:number;
-  }>({ duracion_estancia_min:120, auto_bloqueo_lleno:true, sugerir_franja_pax:30, sugerir_franja_offset_min:15 });
+    horario_apertura:string;
+    horario_cierre:string;
+    dias_operacion:string[];
+    pax_max_modificacion:number;
+  }>({
+    duracion_estancia_min:120, auto_bloqueo_lleno:true,
+    sugerir_franja_pax:30, sugerir_franja_offset_min:15,
+    horario_apertura:'12:00', horario_cierre:'23:00',
+    dias_operacion:['lun','mar','mie','jue','vie','sab','dom'],
+    pax_max_modificacion: MAX_PAX_MODIFICACION,
+  });
   const [cerebroOpen, setCerebroOpen] = useState(false);
+  const [fechasEspecialesOpen, setFechasEspecialesOpen] = useState(false);
+  const [fechasEspeciales, setFechasEspeciales] = useState<any[]>([]);
   // PDF NEXUM § Roadmap 1 — Modos dinámicos (Base / Smart Peak / Evento Especial)
   const [modoDinamico, setModoDinamico] = useState<'base'|'smart_peak'|'evento'>(() => {
     try { return (localStorage.getItem('omm_modo_dinamico') as any) || 'base'; } catch { return 'base'; }
@@ -318,16 +367,23 @@ export default function ReserveModule() {
     setLoading(true);
     const { data: planta } = await supabase.from('planta_mesas').select('*').eq('restaurante_id',restauranteIdActivo).eq('activa',true).order('num');
     if (planta && planta.length > 0) setPlantaDB(planta);
-    supabase.from('reservas_config').select('sobreventa_pct,duracion_estancia_min,auto_bloqueo_lleno,sugerir_franja_pax,sugerir_franja_offset_min').eq('restaurante_id',restauranteIdActivo).maybeSingle()
+    supabase.from('reservas_config').select('sobreventa_pct,duracion_estancia_min,auto_bloqueo_lleno,sugerir_franja_pax,sugerir_franja_offset_min,horario_apertura,horario_cierre,dias_operacion,pax_max_modificacion').eq('restaurante_id',restauranteIdActivo).maybeSingle()
       .then(({data})=>{ if(data) {
         setSobreventa(Math.min(10, data.sobreventa_pct||0));
-        setCerebroCfg({
+        setCerebroCfg(prev => ({
+          ...prev,
           duracion_estancia_min: data.duracion_estancia_min || 120,
           auto_bloqueo_lleno:    data.auto_bloqueo_lleno ?? true,
           sugerir_franja_pax:    data.sugerir_franja_pax || 30,
           sugerir_franja_offset_min: data.sugerir_franja_offset_min || 15,
-        });
+          horario_apertura:      String(data.horario_apertura||'12:00').slice(0,5),
+          horario_cierre:        String(data.horario_cierre||'23:00').slice(0,5),
+          dias_operacion:        Array.isArray(data.dias_operacion) ? data.dias_operacion : ['lun','mar','mie','jue','vie','sab','dom'],
+          pax_max_modificacion:  data.pax_max_modificacion || MAX_PAX_MODIFICACION,
+        }));
       }});
+    supabase.from('reservas_fechas_especiales').select('*').eq('restaurante_id',restauranteIdActivo).order('fecha')
+      .then(({data})=>{ if(data) setFechasEspeciales(data); });
     const [rv, ms, ohyeah] = await Promise.all([
       supabase.from('reservations').select('*').eq('restaurante_id',restauranteIdActivo).eq('fecha',fechaFiltro).order('hora'),
       supabase.from('tables').select('*').eq('restaurante_id',restauranteIdActivo).order('name'),
@@ -706,6 +762,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
           }}
           show={show}
           S={S}
+          userName={profile?.nombre_completo || profile?.full_name || 'Host'}
         />
       )}
 
@@ -768,6 +825,69 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                 </div>
               </div>
 
+              {/* Horario de reservas */}
+              <div style={{background:S.bg3,borderRadius:12,padding:14,border:`1px solid ${S.border}`}}>
+                <div style={{fontSize:11,color:S.green,fontWeight:800,marginBottom:4,textTransform:'uppercase',letterSpacing:'.1em'}}>🕐 Horario de reservas</div>
+                <div style={{fontSize:10,color:S.t3,marginBottom:8,lineHeight:1.4}}>Rango horario en que se aceptan reservas y días que opera el restaurante.</div>
+                <div style={{display:'flex',gap:8,alignItems:'flex-end',flexWrap:'wrap',marginBottom:10}}>
+                  <div>
+                    <div style={{fontSize:9,color:S.t3,marginBottom:3}}>Apertura</div>
+                    <input type="time" value={cerebroCfg.horario_apertura}
+                      onChange={e=>setCerebroCfg(c=>({...c,horario_apertura:e.target.value}))}
+                      style={{background:S.bg,border:`1px solid ${S.green}55`,borderRadius:8,padding:'8px 12px',color:S.green,fontSize:14,fontWeight:800,outline:'none',colorScheme:'dark'}}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9,color:S.t3,marginBottom:3}}>Cierre</div>
+                    <input type="time" value={cerebroCfg.horario_cierre}
+                      onChange={e=>setCerebroCfg(c=>({...c,horario_cierre:e.target.value}))}
+                      style={{background:S.bg,border:`1px solid ${S.green}55`,borderRadius:8,padding:'8px 12px',color:S.green,fontSize:14,fontWeight:800,outline:'none',colorScheme:'dark'}}/>
+                  </div>
+                </div>
+                <div style={{fontSize:9,color:S.t3,marginBottom:5}}>Días que opera</div>
+                <div style={{display:'flex',gap:4,flexWrap:'wrap'}}>
+                  {[
+                    {k:'lun',l:'Lun'},{k:'mar',l:'Mar'},{k:'mie',l:'Mié'},
+                    {k:'jue',l:'Jue'},{k:'vie',l:'Vie'},{k:'sab',l:'Sáb'},{k:'dom',l:'Dom'},
+                  ].map(d => {
+                    const sel = cerebroCfg.dias_operacion.includes(d.k);
+                    return (
+                      <button key={d.k} type="button"
+                        onClick={()=>setCerebroCfg(c=>({...c, dias_operacion: sel ? c.dias_operacion.filter(x=>x!==d.k) : [...c.dias_operacion, d.k] }))}
+                        style={{padding:'5px 11px',borderRadius:7,border:`1px solid ${sel?S.green:S.border}`,background:sel?`${S.green}18`:'transparent',color:sel?S.green:S.t3,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                        {d.l}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Fechas especiales — botón que abre modal */}
+              <div style={{background:`linear-gradient(135deg,${S.gold}10,${S.purple}06)`,borderRadius:12,padding:14,border:`1px solid ${S.gold}40`}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:10,marginBottom:8}}>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:11,color:S.gold,fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em'}}>✦ Fechas especiales</div>
+                    <div style={{fontSize:10,color:S.t3,marginTop:3,lineHeight:1.4}}>Días puntuales (San Valentín, Navidad, Madre, etc.) con horario libre — habilitan reservas aunque el día no opere normalmente.</div>
+                  </div>
+                  <span style={{fontSize:11,color:S.gold,fontWeight:900,background:`${S.gold}20`,padding:'4px 10px',borderRadius:50,whiteSpace:'nowrap'}}>{fechasEspeciales.length}</span>
+                </div>
+                <button type="button" onClick={()=>{ setCerebroOpen(false); setFechasEspecialesOpen(true); }}
+                  style={{width:'100%',padding:'10px',borderRadius:10,border:`1px solid ${S.gold}55`,background:`${S.gold}15`,color:S.gold,fontSize:12,fontWeight:800,cursor:'pointer'}}>
+                  📅 Configurar fechas especiales →
+                </button>
+              </div>
+
+              {/* Pax máximo para modificación inline */}
+              <div style={{background:S.bg3,borderRadius:12,padding:14,border:`1px solid ${S.border}`}}>
+                <div style={{fontSize:11,color:S.blue,fontWeight:800,marginBottom:4,textTransform:'uppercase',letterSpacing:'.1em'}}>✏️ Pax máx. modificación</div>
+                <div style={{fontSize:10,color:S.t3,marginBottom:8,lineHeight:1.4}}>Grupos hasta N pax se editan inline. Más grandes requieren reabrir como evento.</div>
+                <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                  <input type="number" min={2} max={50} value={cerebroCfg.pax_max_modificacion}
+                    onChange={e=>setCerebroCfg(c=>({...c,pax_max_modificacion: parseInt(e.target.value)||10}))}
+                    style={{width:90,background:S.bg,border:`1px solid ${S.blue}55`,borderRadius:8,padding:'8px 12px',color:S.blue,fontSize:14,fontWeight:800,outline:'none',textAlign:'center'}}/>
+                  <span style={{fontSize:12,color:S.t2}}>pax · default 10</span>
+                </div>
+              </div>
+
               {/* Sobreventa (ya existía) */}
               <div style={{background:S.bg3,borderRadius:12,padding:14,border:`1px solid ${S.border}`}}>
                 <div style={{fontSize:11,color:S.purple,fontWeight:800,marginBottom:4,textTransform:'uppercase',letterSpacing:'.1em'}}>📈 Sobreventa VIP</div>
@@ -789,6 +909,10 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                   auto_bloqueo_lleno: cerebroCfg.auto_bloqueo_lleno,
                   sugerir_franja_pax: cerebroCfg.sugerir_franja_pax,
                   sugerir_franja_offset_min: cerebroCfg.sugerir_franja_offset_min,
+                  horario_apertura: cerebroCfg.horario_apertura,
+                  horario_cierre: cerebroCfg.horario_cierre,
+                  dias_operacion: cerebroCfg.dias_operacion,
+                  pax_max_modificacion: cerebroCfg.pax_max_modificacion,
                   updated_at: new Date().toISOString(),
                 });
                 show('✓ Cerebro actualizado');
@@ -797,6 +921,77 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
               style={{width:'100%',marginTop:18,padding:'12px',borderRadius:12,border:'none',background:`linear-gradient(135deg,${S.purple},${S.blue})`,color:'#fff',fontSize:13,fontWeight:900,cursor:'pointer'}}>
               💾 Guardar reglas del Cerebro
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL FECHAS ESPECIALES · días puntuales con horario libre ── */}
+      {fechasEspecialesOpen && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={()=>setFechasEspecialesOpen(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:S.bg2,border:`2px solid ${S.gold}`,borderRadius:20,width:'100%',maxWidth:540,maxHeight:'90vh',overflowY:'auto',padding:24}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:18}}>
+              <span style={{fontSize:26}}>✦</span>
+              <div style={{flex:1}}>
+                <div style={{fontFamily:"'Syne',sans-serif",fontSize:17,fontWeight:900}}>Fechas especiales</div>
+                <div style={{fontSize:11,color:S.t3}}>Habilitan reservas en días puntuales con horario libre, aunque el restaurante no opere normalmente ese día.</div>
+              </div>
+              <button onClick={()=>setFechasEspecialesOpen(false)} style={{width:32,height:32,borderRadius:9,border:`1px solid ${S.border2}`,background:'transparent',color:S.t3,fontSize:15,cursor:'pointer'}}>✕</button>
+            </div>
+
+            {/* Form agregar fecha especial */}
+            <FechaEspecialForm
+              restauranteId={restauranteIdActivo}
+              onCreated={(nueva) => setFechasEspeciales(p => [...p, nueva].sort((a:any,b:any)=>String(a.fecha).localeCompare(b.fecha)))}
+              S={S}
+            />
+
+            {/* Lista */}
+            <div style={{marginTop:16,fontSize:10,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.14em',marginBottom:8}}>
+              Fechas registradas · {fechasEspeciales.length}
+            </div>
+            {fechasEspeciales.length === 0 ? (
+              <div style={{textAlign:'center',padding:30,color:S.t3,fontSize:12,background:S.bg3,borderRadius:10,border:`1px dashed ${S.border}`}}>
+                Sin fechas especiales todavía. Agregá una arriba.
+              </div>
+            ) : (
+              <div style={{display:'flex',flexDirection:'column',gap:6}}>
+                {fechasEspeciales.map((fe:any) => {
+                  const d = new Date(fe.fecha+'T12:00:00');
+                  const yaPaso = d < new Date(new Date().toISOString().split('T')[0]+'T12:00:00');
+                  return (
+                    <div key={fe.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',background:fe.habilitada?S.bg3:'rgba(255,82,82,0.04)',borderRadius:10,border:`1px solid ${fe.habilitada?S.gold+'33':S.border}`,opacity:yaPaso?0.5:1}}>
+                      <div style={{textAlign:'center',minWidth:50}}>
+                        <div style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900,color:S.gold,lineHeight:1}}>{d.getDate()}</div>
+                        <div style={{fontSize:9,color:S.t3,textTransform:'uppercase'}}>{d.toLocaleDateString('es-CO',{month:'short'})}</div>
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700,color:S.t1}}>{fe.titulo}</div>
+                        <div style={{fontSize:10,color:S.t3,display:'flex',gap:6,flexWrap:'wrap'}}>
+                          <span>🕐 {String(fe.hora_inicio||'00:00').slice(0,5)} – {String(fe.hora_fin||'23:59').slice(0,5)}</span>
+                          {fe.cupo_pax && <span>· 🪑 cupo {fe.cupo_pax}p</span>}
+                          {fe.override_horario && <span style={{color:S.gold}}>· libre</span>}
+                        </div>
+                      </div>
+                      <button onClick={async()=>{
+                          await supabase.from('reservas_fechas_especiales').update({ habilitada: !fe.habilitada }).eq('id', fe.id);
+                          setFechasEspeciales(p => p.map((x:any) => x.id===fe.id ? {...x, habilitada: !fe.habilitada} : x));
+                        }}
+                        style={{width:48,height:24,borderRadius:50,border:'none',background:fe.habilitada?S.green:S.bg4,position:'relative',cursor:'pointer',flexShrink:0,transition:'all .15s'}}>
+                        <div style={{width:18,height:18,borderRadius:'50%',background:'#fff',position:'absolute',top:3,left:fe.habilitada?27:3,transition:'all .15s'}}/>
+                      </button>
+                      <button onClick={async()=>{
+                          if (!confirm(`Eliminar "${fe.titulo}" del ${fe.fecha}?`)) return;
+                          await supabase.from('reservas_fechas_especiales').delete().eq('id', fe.id);
+                          setFechasEspeciales(p => p.filter((x:any) => x.id !== fe.id));
+                        }}
+                        style={{padding:'5px 9px',borderRadius:7,border:`1px solid ${S.red}40`,background:'transparent',color:S.red,fontSize:11,fontWeight:700,cursor:'pointer'}}>
+                        ✕
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1347,6 +1542,26 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             </div>
           )}
 
+          {/* Chips informativos por OCASIÓN del día activo · click pre-filtra */}
+          {(() => {
+            const ocasionesHoy: Record<string, number> = {};
+            reservasReales
+              .filter((r:any) => !['cancelada','no_show'].includes(r.estado) && r.ocasion && r.ocasion !== 'Sin ocasión especial')
+              .forEach((r:any) => { ocasionesHoy[r.ocasion] = (ocasionesHoy[r.ocasion]||0) + 1; });
+            const entries = Object.entries(ocasionesHoy).sort((a,b)=>b[1]-a[1]).slice(0,4);
+            if (entries.length === 0) return null;
+            const emojiMap: Record<string,string> = { 'Cumpleaños':'🎂', 'Aniversario':'💍', 'Negocio':'💼', 'Primera cita':'💕', 'Graduación':'🎓', 'Despedida':'👋', 'Celebración':'🎉' };
+            return entries.map(([o,n]) => (
+              <div key={o} title={`${n} ${o.toLowerCase()} · click para ver en lista`}
+                onClick={()=>setTab('lista')}
+                style={{display:'flex',alignItems:'center',gap:5,background:`${S.purple}12`,border:`1px solid ${S.purple}55`,borderRadius:10,padding:'4px 10px',cursor:'pointer'}}>
+                <span style={{fontSize:13}}>{emojiMap[o]||'🎉'}</span>
+                <span style={{fontSize:10,color:S.purple,fontWeight:800,textTransform:'uppercase'}}>{o}</span>
+                <span style={{fontSize:12,color:S.purple,fontWeight:900}}>{n}</span>
+              </div>
+            ));
+          })()}
+
           {/* Modo dinámico, Sobreventa VIP y Shift Pacing se gestionan desde el Cerebro. */}
           <button onClick={()=>setFranjaModalOpen(true)}
             style={{padding:'8px 14px',borderRadius:10,border:`1px solid ${S.red}55`,background:`${S.red}12`,color:S.red,fontSize:12,fontWeight:700,cursor:'pointer'}}>
@@ -1772,6 +1987,37 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                     style={{padding:'12px 16px',borderRadius:10,border:`1px solid ${S.red}55`,background:`${S.red}15`,color:S.red,fontSize:13,fontWeight:800,cursor:'pointer',display:'flex',alignItems:'center',gap:10}}>
                     <span style={{fontSize:18}}>✗</span> Cancelar reserva
                   </button>
+                  {/* Editar reserva — sólo para grupos pequeños según Cerebro */}
+                  {(() => {
+                    const max = cerebroCfg.pax_max_modificacion || MAX_PAX_MODIFICACION;
+                    const editable = (accionesPopup.pax||0) <= max && accionesPopup.origen !== 'ohyeah';
+                    return (
+                      <button onClick={()=>{
+                          if (!editable) { show(`🔒 Reservas de +${max} pax se gestionan como evento — abrí una nueva con el cliente`); return; }
+                          setSelected(accionesPopup);
+                          setForm({
+                            cliente_nombre: accionesPopup.cliente_nombre||'',
+                            cliente_email:  accionesPopup.cliente_email||'',
+                            cliente_telefono: accionesPopup.cliente_telefono||'',
+                            fecha: accionesPopup.fecha, hora: (accionesPopup.hora||'').slice(0,5),
+                            pax: accionesPopup.pax||2,
+                            ocasion: accionesPopup.ocasion||'Sin ocasión especial',
+                            notas: accionesPopup.notas||'',
+                            mesa_num: accionesPopup.mesa_num||0,
+                            canal: accionesPopup.canal||'',
+                          });
+                          setReservaCRM(null);
+                          setAccionesPopup(null);
+                          setTab('nueva');
+                        }}
+                        disabled={!editable}
+                        title={!editable ? `Reservas de +${max} pax son eventos — no se editan inline` : 'Editar reserva'}
+                        style={{padding:'12px 16px',borderRadius:10,border:`1px solid ${editable?S.cyan+'55':S.border}`,background:editable?`${S.cyan}10`:'transparent',color:editable?S.cyan:S.t3,fontSize:13,fontWeight:800,cursor:editable?'pointer':'not-allowed',display:'flex',alignItems:'center',gap:10,opacity:editable?1:0.5}}>
+                        <span style={{fontSize:18}}>✏️</span> Editar reserva
+                        {!editable && <span style={{marginLeft:'auto',fontSize:9,letterSpacing:'.08em'}}>+{max}p · evento</span>}
+                      </button>
+                    );
+                  })()}
                 </div>
                 <button onClick={()=>setAccionesPopup(null)}
                   style={{width:'100%',marginTop:12,padding:'8px 16px',borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t3,fontSize:11,cursor:'pointer'}}>
@@ -1984,8 +2230,18 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                 <input style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.cliente_nombre} onChange={e=>setF('cliente_nombre',e.target.value)} placeholder="Nombre completo"/>
               </div>
               <div style={{gridColumn:'1/-1'}}>
-                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>EMAIL</div>
-                <input style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.cliente_email} onChange={e=>setF('cliente_email',e.target.value)} placeholder="correo@email.com"/>
+                <div style={{fontSize:10,color:S.cyan,fontWeight:700,marginBottom:5}}>✉ EMAIL — también busca en el sistema</div>
+                <div style={{display:'flex',gap:8}}>
+                  <input style={{flex:1,background:'rgba(255,255,255,0.05)',border:`1px solid ${form.cliente_email?S.cyan:S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none'}}
+                    type="email" value={form.cliente_email}
+                    onChange={e=>setF('cliente_email',e.target.value)}
+                    onBlur={e=>{ const v=e.target.value.trim(); if(v.includes('@') && v.length>5) buscarClienteReserva(v); }}
+                    placeholder="correo@email.com" inputMode="email"/>
+                  <button type="button" onClick={()=>buscarClienteReserva(form.cliente_email)}
+                    style={{whiteSpace:'nowrap',padding:'10px 16px',borderRadius:10,border:`1px solid ${S.cyan}`,background:`${S.cyan}18`,color:S.cyan,fontSize:12,fontWeight:800,cursor:'pointer'}}>
+                    🔎 Buscar email
+                  </button>
+                </div>
               </div>
               <div>
                 <div style={{fontSize:10,color:S.gold,fontWeight:800,marginBottom:5,letterSpacing:'.1em'}}>📅 FECHA *</div>
@@ -2050,7 +2306,8 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                     value={form.pax > 10 ? form.pax : ''}
                     onChange={e=>{ const v=Number(e.target.value)||0; if (v>=11) setF('pax', v); }}
                     style={{width:62,padding:'8px 10px',borderRadius:8,border:`1px solid ${form.pax>10?S.purple:S.border2}`,background:form.pax>10?`${S.purple}15`:'transparent',color:form.pax>10?S.purple:S.t3,fontSize:12,fontWeight:700,outline:'none',textAlign:'center'}}/>
-                  {form.pax > 10 && <span style={{fontSize:10,color:S.purple,fontWeight:700}}>grupo grande</span>}
+                  {form.pax > 10 && form.pax <= 50 && <span style={{fontSize:10,color:S.purple,fontWeight:700}}>grupo grande</span>}
+                  {form.pax > 50 && <span style={{fontSize:10,color:S.gold,fontWeight:800}}>🎉 evento — confirmar capacidad y montaje</span>}
                 </div>
               </div>
               <div>
@@ -2104,11 +2361,29 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                   );
                 })()}
               </div>
-              <div>
-                <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>OCASIÓN</div>
-                <select style={{background:'rgba(255,255,255,0.05)',border:`1px solid ${S.border2}`,borderRadius:10,padding:'10px 14px',color:'#fff',fontSize:13,outline:'none',width:'100%'}} value={form.ocasion} onChange={e=>setF('ocasion',e.target.value)}>
-                  {OCASIONES.map(o=><option key={o}>{o}</option>)}
-                </select>
+              <div style={{gridColumn:'1/-1'}}>
+                <div style={{fontSize:10,color:S.purple,fontWeight:800,marginBottom:6,letterSpacing:'.1em'}}>🎉 OCASIÓN</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+                  {OCASIONES_CHIPS.map(o => {
+                    const sel = form.ocasion === o.val;
+                    return (
+                      <button key={o.val} type="button" onClick={()=>setF('ocasion', o.val)}
+                        style={{
+                          padding:'7px 14px', borderRadius:50,
+                          border:`1.5px solid ${sel ? S.purple : S.border2}`,
+                          background: sel ? `${S.purple}22` : 'transparent',
+                          color: sel ? S.purple : S.t2,
+                          fontSize:12, fontWeight:700, cursor:'pointer',
+                          display:'flex', alignItems:'center', gap:6,
+                          transition:'all .15s',
+                          boxShadow: sel ? `0 0 12px ${S.purple}30` : 'none',
+                        }}>
+                        <span style={{fontSize:14}}>{o.emoji}</span>
+                        <span>{o.val}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
               <div style={{gridColumn:'1/-1'}}>
                 <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:5}}>NOTAS</div>
@@ -2747,6 +3022,64 @@ function FooterStat({ label, v, c }:{ label:string; v:number|string; c:string })
   );
 }
 
+// Form inline para registrar una fecha especial — fecha + título + horario libre
+function FechaEspecialForm({ restauranteId, onCreated, S }:{ restauranteId:number; onCreated:(f:any)=>void; S:any }) {
+  const [fecha, setFecha] = React.useState('');
+  const [titulo, setTitulo] = React.useState('');
+  const [horaInicio, setHoraInicio] = React.useState('12:00');
+  const [horaFin, setHoraFin] = React.useState('23:00');
+  const [cupo, setCupo] = React.useState('');
+  const [msg, setMsg] = React.useState('');
+  const guardar = async () => {
+    if (!fecha) { setMsg('⚠ Falta fecha'); return; }
+    if (!titulo.trim()) { setMsg('⚠ Falta título (ej: San Valentín)'); return; }
+    const { data, error } = await supabase.from('reservas_fechas_especiales').insert({
+      restaurante_id: restauranteId,
+      fecha, titulo: titulo.trim(),
+      hora_inicio: horaInicio, hora_fin: horaFin,
+      habilitada: true, override_horario: true,
+      cupo_pax: cupo ? parseInt(cupo) : null,
+    }).select('*').single();
+    if (error) { setMsg('✗ '+error.message); return; }
+    onCreated(data);
+    setFecha(''); setTitulo(''); setHoraInicio('12:00'); setHoraFin('23:00'); setCupo(''); setMsg('✓ Fecha agregada');
+    setTimeout(()=>setMsg(''), 2500);
+  };
+  return (
+    <div style={{background:S.bg3,border:`1px dashed ${S.gold}55`,borderRadius:12,padding:14}}>
+      <div style={{fontSize:10,color:S.gold,fontWeight:800,textTransform:'uppercase',letterSpacing:'.12em',marginBottom:8}}>+ Agregar fecha especial</div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
+        <input type="date" value={fecha} onChange={e=>setFecha(e.target.value)}
+          style={{background:S.bg,border:`1px solid ${S.border2}`,borderRadius:8,padding:'8px 10px',color:S.t1,fontSize:13,outline:'none',colorScheme:'dark'}}/>
+        <input value={titulo} onChange={e=>setTitulo(e.target.value)} placeholder="Título: San Valentín, Día de la Madre…"
+          style={{background:S.bg,border:`1px solid ${S.border2}`,borderRadius:8,padding:'8px 10px',color:S.t1,fontSize:13,outline:'none'}}/>
+      </div>
+      <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:8,marginBottom:8}}>
+        <div>
+          <div style={{fontSize:9,color:S.t3,marginBottom:3}}>Hora inicio</div>
+          <input type="time" value={horaInicio} onChange={e=>setHoraInicio(e.target.value)}
+            style={{width:'100%',background:S.bg,border:`1px solid ${S.border2}`,borderRadius:8,padding:'8px 10px',color:S.t1,fontSize:13,outline:'none',colorScheme:'dark'}}/>
+        </div>
+        <div>
+          <div style={{fontSize:9,color:S.t3,marginBottom:3}}>Hora fin</div>
+          <input type="time" value={horaFin} onChange={e=>setHoraFin(e.target.value)}
+            style={{width:'100%',background:S.bg,border:`1px solid ${S.border2}`,borderRadius:8,padding:'8px 10px',color:S.t1,fontSize:13,outline:'none',colorScheme:'dark'}}/>
+        </div>
+        <div>
+          <div style={{fontSize:9,color:S.t3,marginBottom:3}}>Cupo pax (opc)</div>
+          <input type="number" min={0} value={cupo} onChange={e=>setCupo(e.target.value)} placeholder="—"
+            style={{width:'100%',background:S.bg,border:`1px solid ${S.border2}`,borderRadius:8,padding:'8px 10px',color:S.t1,fontSize:13,outline:'none',textAlign:'center'}}/>
+        </div>
+      </div>
+      <button onClick={guardar}
+        style={{width:'100%',padding:'9px',borderRadius:9,border:'none',background:`linear-gradient(135deg,${S.gold},#B07820)`,color:'#000',fontSize:12,fontWeight:900,cursor:'pointer'}}>
+        ✓ Agregar fecha especial
+      </button>
+      {msg && <div style={{marginTop:6,fontSize:10,color: msg.startsWith('✓') ? S.green : msg.startsWith('✗') || msg.startsWith('⚠') ? S.red : S.t3, textAlign:'center'}}>{msg}</div>}
+    </div>
+  );
+}
+
 function InfoChip({ label, v, c }:{ label:string; v:string; c:string }) {
   return (
     <div style={{padding:'10px 12px',borderRadius:10,border:`1px solid ${c}33`,background:`${c}10`,textAlign:'center'}}>
@@ -2832,20 +3165,25 @@ function NavegadorFecha({ fecha, setFecha, totalReservas }:{ fecha:string; setFe
 }
 
 // ══ MODAL FRANJA BLOQUEADA — bloquea horas para Oh Yeah / Google ══
-function FranjaBloqueoModal({ fecha, restauranteId, franjas: franjasInicial, onClose, onChange, show, S }:{
+function FranjaBloqueoModal({ fecha, restauranteId, franjas: franjasInicial, onClose, onChange, show, S, userName }:{
   fecha:string; restauranteId:number; franjas:any[];
-  onClose:()=>void; onChange:()=>void; show:(m:string)=>void; S:any;
+  onClose:()=>void; onChange:()=>void; show:(m:string)=>void; S:any; userName?:string;
 }) {
-  // Fecha es editable dentro del modal — se puede bloquear cualquier día.
   const [fechaModal, setFechaModal] = React.useState<string>(fecha);
-  const [franjas, setFranjas] = React.useState<any[]>(franjasInicial || []);
-  // Refetch franjas cada vez que cambia la fecha seleccionada
+  const [tab, setTab] = React.useState<'nuevo'|'historial'>('nuevo');
+  // Franjas activas de la fecha seleccionada
+  const [franjas, setFranjas] = React.useState<any[]>((franjasInicial || []).filter((f:any)=>!f.estado || f.estado==='activa'));
+  // Historial completo (incluye desbloqueados)
+  const [historial, setHistorial] = React.useState<any[]>([]);
   React.useEffect(() => {
-    if (fechaModal === fecha) { setFranjas(franjasInicial || []); return; }
     supabase.from('reservas_franjas_bloqueadas')
       .select('*').eq('restaurante_id', restauranteId).eq('fecha', fechaModal)
-      .then(({data}) => setFranjas(data || []));
-  }, [fechaModal, fecha, franjasInicial, restauranteId]);
+      .then(({data}) => {
+        const todas = data || [];
+        setFranjas(todas.filter((f:any)=>!f.estado || f.estado==='activa'));
+        setHistorial(todas);
+      });
+  }, [fechaModal, restauranteId]);
 
   const [horaDesde, setHoraDesde] = React.useState('12:00');
   const [horaHasta, setHoraHasta] = React.useState('15:00');
@@ -2887,29 +3225,40 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas: franjasInicial, onC
       hora_desde: horaDesde, hora_hasta: horaHasta,
       motivo: motivo || null,
       bloquea_oh_yeah: bloqueaOh, bloquea_google: bloqueaGoogle,
+      bloqueada_por: userName || 'Host',
+      estado: 'activa',
     });
     setSaving(false);
     if (error) { show('✗ '+error.message); return; }
     show(`✓ ${duracion} bloqueados`);
-    // Refrescar la lista local para reflejar el nuevo bloqueo
     const { data: nuevas } = await supabase.from('reservas_franjas_bloqueadas')
       .select('*').eq('restaurante_id', restauranteId).eq('fecha', fechaModal);
-    setFranjas(nuevas || []);
+    setFranjas((nuevas||[]).filter((f:any)=>!f.estado || f.estado==='activa'));
+    setHistorial(nuevas || []);
     onChange();
     setMotivo('');
   };
+  // Soft delete — mantiene la trazabilidad en historial
   const eliminar = async (id:string) => {
-    if (!confirm('¿Eliminar este bloqueo? Las nuevas reservas Oh Yeah / Google volverán a entrar.')) return;
-    await supabase.from('reservas_franjas_bloqueadas').delete().eq('id', id);
-    setFranjas(prev => prev.filter((f:any) => f.id !== id));
-    show('✓ Bloqueo eliminado');
+    if (!confirm('¿Desactivar este bloqueo? Queda en el historial para auditoría.')) return;
+    await supabase.from('reservas_franjas_bloqueadas').update({
+      estado: 'desbloqueada',
+      desbloqueada_at: new Date().toISOString(),
+      desbloqueada_por: userName || 'Host',
+    }).eq('id', id);
+    // Refresh ambas listas
+    const { data: nuevas } = await supabase.from('reservas_franjas_bloqueadas')
+      .select('*').eq('restaurante_id', restauranteId).eq('fecha', fechaModal);
+    setFranjas((nuevas||[]).filter((f:any)=>!f.estado || f.estado==='activa'));
+    setHistorial(nuevas || []);
+    show('✓ Bloqueo desactivado · queda en historial');
     onChange();
   };
 
   return (
     <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,0.85)',zIndex:9998,display:'flex',alignItems:'center',justifyContent:'center',padding:16}} onClick={onClose}>
       <div onClick={e=>e.stopPropagation()} style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:18,width:'100%',maxWidth:560,padding:24,maxHeight:'92vh',overflowY:'auto',color:'#fff'}}>
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
           <span style={{fontSize:22}}>🚫</span>
           <div style={{flex:1}}>
             <div style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900}}>Bloquear franja horaria</div>
@@ -2917,6 +3266,64 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas: franjasInicial, onC
           </div>
           <button onClick={onClose} style={{background:'transparent',border:'none',color:S.t3,fontSize:22,cursor:'pointer'}}>×</button>
         </div>
+
+        {/* Tabs · Nuevo bloqueo / Historial */}
+        <div style={{display:'flex',gap:6,marginBottom:10,borderBottom:`1px solid ${S.border}`}}>
+          {([
+            {id:'nuevo' as const,    l:'🚫 Nuevo bloqueo',   c:S.red},
+            {id:'historial' as const, l:`📜 Historial${historial.length>0?` · ${historial.length}`:''}`, c:S.gold},
+          ]).map(t => (
+            <button key={t.id} onClick={()=>setTab(t.id)}
+              style={{padding:'8px 14px',background:'none',border:'none',borderBottom:`2px solid ${tab===t.id?t.c:'transparent'}`,color:tab===t.id?t.c:S.t3,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+
+        {tab === 'historial' ? (
+          <div>
+            <div style={{fontSize:10,color:S.t3,fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em',marginBottom:10}}>
+              Auditoría de bloqueos · {new Date(fechaModal+'T12:00:00').toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})}
+            </div>
+            {historial.length === 0 ? (
+              <div style={{textAlign:'center',padding:30,color:S.t3,fontSize:12,background:S.bg3,borderRadius:10,border:`1px dashed ${S.border}`}}>
+                Sin bloqueos registrados para esta fecha.
+              </div>
+            ) : (
+              <div style={{display:'flex',flexDirection:'column',gap:6,maxHeight:380,overflowY:'auto'}}>
+                {historial.map((h:any) => {
+                  const activo = !h.estado || h.estado === 'activa';
+                  const bcol = activo ? S.red : S.t3;
+                  return (
+                    <div key={h.id} style={{padding:'10px 12px',background:S.bg3,border:`1px solid ${bcol}33`,borderLeft:`3px solid ${bcol}`,borderRadius:10,opacity:activo?1:0.65}}>
+                      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',gap:8,flexWrap:'wrap'}}>
+                        <div style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:900,color:bcol}}>
+                          {String(h.hora_desde||'').slice(0,5)} → {String(h.hora_hasta||'').slice(0,5)}
+                        </div>
+                        <span style={{fontSize:9,padding:'2px 8px',borderRadius:50,background:`${bcol}15`,color:bcol,fontWeight:800,textTransform:'uppercase',letterSpacing:'.1em'}}>
+                          {activo ? 'ACTIVA' : 'DESBLOQUEADA'}
+                        </span>
+                      </div>
+                      {h.motivo && <div style={{fontSize:11,color:S.t2,marginTop:4,fontStyle:'italic'}}>💬 {h.motivo}</div>}
+                      <div style={{fontSize:9,color:S.t3,marginTop:5,display:'flex',gap:8,flexWrap:'wrap'}}>
+                        <span>🔒 {h.bloqueada_por||'—'}</span>
+                        <span>· {h.bloqueada_at ? new Date(h.bloqueada_at).toLocaleString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'}</span>
+                        {h.bloquea_oh_yeah && <span style={{color:'#FFE600'}}>· 🦉</span>}
+                        {h.bloquea_google && <span style={{color:'#4285F4'}}>· G</span>}
+                      </div>
+                      {!activo && (
+                        <div style={{fontSize:9,color:S.green,marginTop:4,display:'flex',gap:8}}>
+                          <span>🔓 {h.desbloqueada_por||'—'}</span>
+                          <span>· {h.desbloqueada_at ? new Date(h.desbloqueada_at).toLocaleString('es-CO',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '—'}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (<>
 
         {/* CALENDARIO — fecha editable */}
         <div style={{marginTop:14,padding:'12px 14px',background:`${S.gold}0a`,border:`1px solid ${S.gold}33`,borderRadius:10}}>
@@ -3079,6 +3486,7 @@ function FranjaBloqueoModal({ fecha, restauranteId, franjas: franjasInicial, onC
             </div>
           </div>
         )}
+        </>)}
       </div>
     </div>
   );
@@ -3319,6 +3727,51 @@ function DashboardReservas(props:{
         <KPI title="No-Show Rate"         value={`${noShowRate}%`}                                              color={S.red}     icon="✕"  delta={noShowRate>0?-1*Math.round(noShowRate*10)/10:0} deltaCol={S.red}/>
         <KPI title="Canceladas"           value={canceladas} sub={`(${total?Math.round((canceladas/total)*100):0}%)`} color={'#94A3B8'} icon="🚫" delta={pct(canceladas, reservasAnt.filter((r:any)=>r.estado==='cancelada').length)} deltaCol={S.red}/>
       </div>
+
+      {/* Ocasiones del período · breakdown completo */}
+      {(() => {
+        const ocBreakdown: Record<string, number> = {};
+        let conOcasion = 0;
+        reservasPer.forEach((r:any) => {
+          if (!['cancelada','no_show'].includes(r.estado) && r.ocasion && r.ocasion !== 'Sin ocasión especial') {
+            ocBreakdown[r.ocasion] = (ocBreakdown[r.ocasion] || 0) + 1;
+            conOcasion++;
+          }
+        });
+        const sorted = Object.entries(ocBreakdown).sort((a,b)=>b[1]-a[1]);
+        const emojiMap: Record<string,string> = { 'Cumpleaños':'🎂', 'Aniversario':'💍', 'Negocio':'💼', 'Primera cita':'💕', 'Graduación':'🎓', 'Despedida':'👋', 'Celebración':'🎉' };
+        const colMap: Record<string,string> = { 'Cumpleaños':'#FFB547', 'Aniversario':'#FF2D78', 'Negocio':'#448AFF', 'Primera cita':'#FF6B8A', 'Graduación':'#9b72ff', 'Despedida':'#22d3ee', 'Celebración':'#10B981' };
+        if (sorted.length === 0) return null;
+        return (
+          <div style={{background:S.bg2,border:`1px solid ${S.border}`,borderRadius:14,padding:16,marginBottom:18}}>
+            <div style={{display:'flex',alignItems:'baseline',gap:10,marginBottom:14,flexWrap:'wrap'}}>
+              <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900}}>🎉 Ocasiones del período</div>
+              <span style={{fontSize:11,color:S.t3,fontWeight:500}}>{conOcasion} reservas con ocasión · {Math.round((conOcasion/Math.max(1,total))*100)}% del total</span>
+            </div>
+            <div style={{display:'grid',gridTemplateColumns:`repeat(auto-fit, minmax(150px, 1fr))`,gap:8}}>
+              {sorted.map(([o,n]) => {
+                const c = colMap[o] || S.purple;
+                const pctCol = Math.round((n/conOcasion)*100);
+                return (
+                  <div key={o} style={{background:`${c}10`,border:`1px solid ${c}40`,borderRadius:10,padding:'10px 12px'}}>
+                    <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+                      <span style={{fontSize:18}}>{emojiMap[o]||'🎉'}</span>
+                      <span style={{fontSize:11,fontWeight:800,color:c,textTransform:'uppercase',letterSpacing:'.04em'}}>{o}</span>
+                    </div>
+                    <div style={{display:'flex',alignItems:'baseline',gap:6}}>
+                      <span style={{fontFamily:"'Syne',serif",fontSize:24,fontWeight:900,color:c,lineHeight:1}}>{n}</span>
+                      <span style={{fontSize:11,color:S.t3,fontWeight:700}}>· {pctCol}%</span>
+                    </div>
+                    <div style={{marginTop:6,height:4,background:S.bg3,borderRadius:2,overflow:'hidden'}}>
+                      <div style={{height:'100%',width:`${pctCol}%`,background:c,borderRadius:2}}/>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Reservas por canal + Rendimiento por canal + Plan para llenar */}
       <div style={{display:'grid',gridTemplateColumns:'1fr 1.2fr 1.4fr',gap:14,marginBottom:18}}>
