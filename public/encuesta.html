@@ -41,6 +41,26 @@
     .inp{width:100%; background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:11px;
       padding:12px 14px; color:var(--t1); font-size:14px; outline:none; font-family:'DM Sans',sans-serif}
     .inp:focus{border-color:var(--pink)}
+    /* Fix Windows: las opciones del desplegable salían blanco-sobre-blanco */
+    select.inp{appearance:none;-webkit-appearance:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='8'><path d='M1 1l5 5 5-5' stroke='%23A0A0C0' stroke-width='2' fill='none'/></svg>");background-repeat:no-repeat;background-position:right 14px center;padding-right:34px}
+    select.inp option{background:#15152a;color:#fff}
+    .dmy{display:grid;grid-template-columns:.8fr 1.3fr .9fr;gap:8px}
+    .terms-line{font-size:11px;color:var(--t3);text-align:center;margin-top:12px;line-height:1.5}
+    .terms-line a{color:var(--pink);text-decoration:underline;cursor:pointer}
+    .tmodal{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:60;display:flex;align-items:center;justify-content:center;padding:18px}
+    .tsheet{background:var(--bg2);border:1px solid rgba(255,45,120,.25);border-radius:20px;padding:22px;max-width:440px;width:100%;max-height:88vh;overflow-y:auto;position:relative}
+    .tsheet h3{font-family:'Syne',sans-serif;margin:0 0 12px}
+    .tsheet ul{padding-left:18px;margin:0 0 12px}
+    .tsheet li{font-size:12px;color:var(--t2);line-height:1.55;margin-bottom:6px}
+    .twarn{font-size:12px;color:var(--red);font-weight:700;margin:8px 0 14px}
+    /* Doble ruleta */
+    .dr{position:relative;width:300px;height:300px;margin:6px auto 14px}
+    .dr .ringO,.dr .ringI{position:absolute;will-change:transform}
+    .dr .ringO{inset:0;transition:transform 5.2s cubic-bezier(.1,.78,.06,1)}
+    .dr .ringI{top:50%;left:50%;width:172px;height:172px;transform:translate(-50%,-50%);transition:transform 5.2s cubic-bezier(.1,.78,.06,1)}
+    .dr .hubdr{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:40px;height:40px;border-radius:50%;background:linear-gradient(135deg,var(--pink),var(--purple));border:3px solid #fff;z-index:6;display:flex;align-items:center;justify-content:center;font-size:17px;box-shadow:0 0 18px rgba(255,45,120,.8)}
+    .dr .ptr{position:absolute;top:-8px;left:50%;transform:translateX(-50%);z-index:8}
+    .drres{border-radius:16px;padding:14px 16px;text-align:center;margin:4px 0 14px;background:rgba(255,45,120,.08);border:1px solid rgba(255,45,120,.3)}
     .row{display:flex; gap:10px}
     .row .field{flex:1}
     /* OPCIONES tags */
@@ -143,25 +163,69 @@
       2:'Hola {n},\n\nTu experiencia es importante. Nuestro equipo ya trabaja para que lo ocurrido no vuelva a pasar. Será un honor recibirte de nuevo.',
       1:'Hola {n},\n\nLo que nos compartiste merece toda nuestra atención. Ya tomamos acciones con el equipo. Nos gustaría recibirte para una experiencia completamente distinta.'};
 
-    // ── Premios (ruleta + cartas) ─────────────────────────────────────────────
+    // ── Premios y restaurantes de redención (Doble Ruleta) ────────────────────
+    // pesos w = probabilidad relativa. Paleta en el estilo X-CARE.
+    var PAL=['#FF2D78','#FFB547','#B388FF','#448AFF','#00E676','#FF7043','#cd853f','#22d3ee','#e91e8c','#9b72ff','#f0b45a','#3dba6f'];
     var PREMIOS = [
-      {emoji:'☕', label:'Café gratis',   color:'#cd853f', bg:'#3d2a1a', desc:'Un espresso en tu próxima visita'},
-      {emoji:'🍷', label:'Copa de vino',  color:'#e91e8c', bg:'#3d0d25', desc:'Una copa de la casa en tu próxima visita'},
-      {emoji:'💸', label:'10% OFF',       color:'#d4943a', bg:'#3d2a00', desc:'10% de descuento en tu próxima cuenta'},
-      {emoji:'🍮', label:'Postre gratis', color:'#f0b45a', bg:'#3d2d00', desc:'El postre del chef — cortesía de OMM'},
-      {emoji:'🥂', label:'2x1 Coctel',    color:'#9b72ff', bg:'#1e1040', desc:'Dos cócteles por el precio de uno'},
-      {emoji:'🎁', label:'20% OFF',       color:'#3dba6f', bg:'#0d3020', desc:'Descuento especial OMM · válido 30 días'},
-      {emoji:'🥧', label:'Pie Central',   color:'#e07830', bg:'#3d1a00', desc:'Pie Central de cortesía — postre insignia'},
-      {emoji:'🍸', label:'Cóctel Firma',  color:'#448AFF', bg:'#001440', desc:'Cóctel insignia OMM de cortesía'}
+      {emoji:'🔁', nombre:'Sigue intentando',              w:2,    type:'respin'},
+      {emoji:'🍾', nombre:'Botella de Espumante',          w:0.30, type:'prize'},
+      {emoji:'🌷', nombre:'Botella de Vino Rosado',        w:5,    type:'prize'},
+      {emoji:'🍷', nombre:'Botella de Vino Tinto',         w:3,    type:'prize'},
+      {emoji:'🥃', nombre:'Copa de Vino Tinto',            w:14,   type:'prize'},
+      {emoji:'🍸', nombre:'Signature Cocktail',            w:16,   type:'prize'},
+      {emoji:'🍰', nombre:'Postre de la Casa',             w:16,   type:'prize'},
+      {emoji:'🍴', nombre:'Entrada de la Casa',            w:11,   type:'prize'},
+      {emoji:'🏷️', nombre:'10% de Descuento',              w:4,    type:'prize'},
+      {emoji:'🎟️', nombre:'7% de Descuento',               w:6,    type:'prize'},
+      {emoji:'💸', nombre:'5% de Descuento',               w:16,   type:'prize'},
+      {emoji:'🍹', nombre:'2x1 en Cócteles Seleccionados', w:6.70, type:'prize'}
     ];
-    var PIERDE    = {emoji:'💀', label:'Pierde todo',      color:'#ff5252', desc:'Esta vez no hubo suerte — ¡vuelve pronto!', special:'pierde'};
-    var REINTENTO = {emoji:'🔄', label:'Intenta otra vez', color:'#FFB547', desc:'¡Casi! Pica de nuevo', special:'reintento'};
-    var PROB_PIERDE=0.0001, PROB_REINTENTO=0.005;
+    PREMIOS.forEach(function(p,i){ p.color = PAL[i%PAL.length]; });
+    var REDIMIR = [
+      {emo:'🍷', nombre:'Seratta', w:4},   {emo:'❤️', nombre:'Viva la Vida (Bogotá o Cartagena)', w:3},
+      {emo:'🎎', nombre:'OMM', w:12},       {emo:'☕', nombre:'Giornatta (fines de semana)', w:8},
+      {emo:'🖤', nombre:'Sombras', w:4},    {emo:'🌻', nombre:'Campo dei Fiori', w:12},
+      {emo:'🌼', nombre:'Maldita Primavera', w:6}, {emo:'🌮', nombre:'Gallo Colorado', w:16},
+      {emo:'👑', nombre:'Maria Antonietta', w:8},  {emo:'🌸', nombre:'Todo es Color de Rosa', w:3},
+      {emo:'🧠', nombre:'Anima', w:6},      {emo:'🍣', nombre:'Otafuku', w:9}, {emo:'🐉', nombre:'Omnia', w:9}
+    ];
+    var WA_REDIMIR='573227256479', CONSUMO_MIN='$69.900';
+    var TERMINOS = [
+      'Promoción válida únicamente para mayores de edad.',
+      'Promoción válida hasta el 30 de junio de 2026.',
+      'Los premios se activan con un consumo mínimo de '+CONSUMO_MIN+'.',
+      'El premio es por persona; un solo premio por cuenta y/o mesa.',
+      'El premio es personal e intransferible.',
+      'La redención del premio se realiza a través de WhatsApp.',
+      'No acumulable con otras promociones, descuentos o beneficios vigentes.',
+      'Los premios en Giornatta son válidos únicamente los fines de semana.',
+      'Los premios serán enviados únicamente al correo electrónico registrado por el participante.',
+      'La organización podrá validar la información suministrada antes de autorizar la redención.',
+      'La redención está sujeta a disponibilidad del restaurante y sus productos.',
+      'Al participar, el usuario autoriza el tratamiento de sus datos personales para fines comerciales, promocionales y de mercadeo.'
+    ];
+    function weightedPick(arr){ var t=arr.reduce(function(s,x){return s+x.w;},0), r=Math.random()*t; for(var i=0;i<arr.length;i++){ r-=arr[i].w; if(r<=0) return i; } return arr.length-1; }
     function barajar(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
 
+    // ── Términos y condiciones (modal) ────────────────────────────────────────
+    function abrirTerminos(){
+      var prev=document.getElementById('tmodal'); if(prev) prev.remove();
+      var m=document.createElement('div'); m.className='tmodal'; m.id='tmodal';
+      m.innerHTML='<div class="tsheet"><button class="x" id="tx" style="position:absolute;top:12px;right:12px;width:30px;height:30px;border-radius:8px;background:var(--bg4);border:1px solid var(--border);color:var(--t2);cursor:pointer">✕</button>'
+        + '<h3>📜 Términos y Condiciones</h3>'
+        + '<ul>'+TERMINOS.map(function(t){return '<li>'+t+'</li>';}).join('')+'</ul>'
+        + '<div class="twarn">🚫 Prohibido el expendio de bebidas alcohólicas a menores de edad.</div>'
+        + '<button class="btn" id="tok">Entendido</button></div>';
+      document.body.appendChild(m);
+      m.addEventListener('click',function(ev){ if(ev.target===m) m.remove(); });
+      document.getElementById('tx').onclick=function(){ m.remove(); };
+      document.getElementById('tok').onclick=function(){ m.remove(); };
+    }
+    window.abrirTerminos = abrirTerminos;
+
     // ── Estado ────────────────────────────────────────────────────────────────
-    var data = {nombre:'', celular:'', correo:'', cumple:'', ciudad:''};
-    var st = {cara:0, tags:[], micro:[], comentario:'', guardando:false, encuestaId:null, premio:null};
+    var data = {nombre:'', celular:'', correo:'', cumple:'', cd:'', cm:'', ca:''};
+    var st = {cara:0, tags:[], micro:[], comentario:'', guardando:false, encuestaId:null, premio:null, premioRest:null};
     var app = document.getElementById('app');
     var view = 'datos';
     function firstName(){ return (data.nombre||'').trim().split(' ')[0]; }
@@ -173,7 +237,7 @@
       if(!data.celular && !data.correo) return;
       try{
         var payload={ name:data.nombre||null, phone:data.celular||null, email:data.correo||null,
-          fecha_nacimiento:data.cumple||null, ciudad:data.ciudad||null, origen_captacion:'encuesta_qr', activo:true };
+          fecha_nacimiento:data.cumple||null, origen_captacion:'encuesta_qr', activo:true };
         if(data.celular){
           var ex=await db.from('customers').select('id').eq('phone',data.celular).maybeSingle();
           if(ex.data) await db.from('customers').update(payload).eq('id',ex.data.id);
@@ -211,10 +275,11 @@
       }
     }
 
-    async function registrarPremio(p){
-      st.premio=p;
-      if(st.encuestaId && p && !p.special){
-        try{ await db.from('xcare_encuestas').update({ respuesta_ia:'PREMIO:'+p.label+(data.correo?('|EMAIL:'+data.correo):'') }).eq('id',st.encuestaId); }catch(e){}
+    async function registrarPremio(p, rest){
+      st.premio=p; st.premioRest=rest||null;
+      if(st.encuestaId && p && p.type!=='respin'){
+        var info='PREMIO:'+p.nombre+(rest?('|REST:'+rest.nombre):'')+(data.correo?('|EMAIL:'+data.correo):'');
+        try{ await db.from('xcare_encuestas').update({ respuesta_ia:info }).eq('id',st.encuestaId); }catch(e){}
       }
     }
 
@@ -237,77 +302,105 @@
     }
 
     // ── Tarjeta de premio ganado (se muestra al mesero) ───────────────────────
-    function prizeCardHTML(p){
+    // ── Tarjeta del premio ganado (con restaurante de redención) ──────────────
+    function prizeCardHTML(p, rest){
       if(!p) return '';
-      var esp = !!p.special;
-      return '<div class="prizebox" style="background:linear-gradient(135deg,'+p.color+'20,'+p.color+'08);border:2px solid '+p.color+'60;box-shadow:0 8px 40px '+p.color+'30">'
-        + '<div style="font-size:66px;filter:drop-shadow(0 0 20px '+p.color+')">'+p.emoji+'</div>'
-        + '<div style="font-family:\'Syne\',sans-serif;font-size:23px;font-weight:900;color:'+p.color+';margin:6px 0">'+p.label+'</div>'
-        + '<div class="sub" style="color:rgba(255,255,255,.7)">'+p.desc+'</div>'
-        + (esp ? '' :
-            '<div style="font-size:11px;color:rgba(255,255,255,.35);background:rgba(255,255,255,.05);border-radius:8px;padding:6px 12px;margin:10px 0">Muéstrale esta pantalla a tu mesero · Válido 30 días</div>'
-            + '<div class="mesero" style="background:linear-gradient(135deg,'+p.color+'30,'+p.color+'10);border:2px dashed '+p.color+'60">'
-            + '<div style="font-size:10px;color:rgba(255,255,255,.5);font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">📲 Premio para el mesero</div>'
-            + '<div style="font-size:15px;font-weight:900;color:'+p.color+'">'+p.emoji+' '+p.label+'</div></div>')
+      var c=p.color||'#FF2D78';
+      var txt=encodeURIComponent('Hola, gané "'+p.nombre+'"'+(rest?(' para redimir en '+rest.nombre):'')+' en la encuesta X-CARE. Quiero reservar y redimirlo.');
+      var wa='https://wa.me/'+WA_REDIMIR+'?text='+txt;
+      return '<div class="prizebox" style="background:linear-gradient(135deg,'+c+'20,'+c+'08);border:2px solid '+c+'60;box-shadow:0 8px 40px '+c+'30">'
+        + '<div style="font-size:60px;filter:drop-shadow(0 0 20px '+c+')">'+p.emoji+'</div>'
+        + '<div style="font-family:\'Syne\',sans-serif;font-size:21px;font-weight:900;color:'+c+';margin:6px 0">'+p.nombre+'</div>'
+        + (rest? '<div class="sub" style="color:rgba(255,255,255,.85)">📍 Redímelo en <b>'+rest.emo+' '+rest.nombre+'</b></div>':'')
+        + '<div style="font-size:11px;color:rgba(255,255,255,.45);background:rgba(255,255,255,.05);border-radius:8px;padding:8px 12px;margin:10px 0">🧾 Válido con consumo mínimo de '+CONSUMO_MIN+' · se redime por WhatsApp</div>'
+        + '<a class="linkbtn" style="background:linear-gradient(135deg,#25D366,#128C7E);max-width:300px;margin:0 auto" href="'+wa+'" target="_blank" rel="noopener">📲 Reservar y redimir por WhatsApp</a>'
+        + '<div style="font-size:11px;margin-top:8px"><a style="color:'+c+';text-decoration:underline;cursor:pointer" onclick="abrirTerminos()">Ver términos y condiciones</a></div>'
         + '</div>';
     }
 
-    // ── RULETA (SVG giratorio) ────────────────────────────────────────────────
-    function ruletaSVG(){
-      var seg=360/PREMIOS.length, paths='';
-      for(var i=0;i<PREMIOS.length;i++){
-        var p=PREMIOS[i], sa=i*seg-90, ea=sa+seg, r=160,cx=160,cy=160;
-        var x1=cx+r*Math.cos(sa*Math.PI/180), y1=cy+r*Math.sin(sa*Math.PI/180);
-        var x2=cx+r*Math.cos(ea*Math.PI/180), y2=cy+r*Math.sin(ea*Math.PI/180);
-        var ma=sa+seg/2;
-        var tx=cx+r*0.58*Math.cos(ma*Math.PI/180), ty=cy+r*0.58*Math.sin(ma*Math.PI/180);
-        var ex=cx+r*0.80*Math.cos(ma*Math.PI/180), ey=cy+r*0.80*Math.sin(ma*Math.PI/180);
-        paths+='<path d="M '+cx+' '+cy+' L '+x1+' '+y1+' A '+r+' '+r+' 0 0 1 '+x2+' '+y2+' Z" fill="'+p.color+'" stroke="rgba(255,255,255,.15)" stroke-width="1.5"/>';
-        paths+='<text x="'+tx+'" y="'+(ty+4)+'" text-anchor="middle" font-size="11" font-weight="900" fill="rgba(255,255,255,.92)">'+p.label+'</text>';
-        paths+='<text x="'+ex+'" y="'+(ey+8)+'" text-anchor="middle" font-size="20">'+p.emoji+'</text>';
+    // ── Doble ruleta: anillo exterior (restaurante) + interior (premio) ───────
+    function ringOuterSVG(){
+      var seg=360/REDIMIR.length, cx=200,cy=200,R=196,RI=126, g='';
+      for(var i=0;i<REDIMIR.length;i++){
+        var r=REDIMIR[i];
+        var a0=(i*seg-90)*Math.PI/180, a1=((i+1)*seg-90)*Math.PI/180;
+        var xo0=cx+R*Math.cos(a0),yo0=cy+R*Math.sin(a0), xo1=cx+R*Math.cos(a1),yo1=cy+R*Math.sin(a1);
+        var xi0=cx+RI*Math.cos(a0),yi0=cy+RI*Math.sin(a0), xi1=cx+RI*Math.cos(a1),yi1=cy+RI*Math.sin(a1);
+        var col=i%2===0?'#1a1a30':'#2a1130';
+        var mid=(i*seg+seg/2-90)*Math.PI/180, rl=(R+RI)/2;
+        var lx=cx+rl*Math.cos(mid), ly=cy+rl*Math.sin(mid);
+        g+='<path d="M '+xo0+' '+yo0+' A '+R+' '+R+' 0 0 1 '+xo1+' '+yo1+' L '+xi1+' '+yi1+' A '+RI+' '+RI+' 0 0 0 '+xi0+' '+yi0+' Z" fill="'+col+'" stroke="rgba(255,45,120,.22)" stroke-width="1"/>';
+        g+='<text x="'+lx+'" y="'+(ly+5)+'" text-anchor="middle" font-size="15">'+r.emo+'</text>';
       }
-      return '<svg id="wheel" viewBox="0 0 320 320" width="300" height="300" style="border-radius:50%;display:block;box-shadow:0 12px 60px rgba(0,0,0,.6)">'+paths+'</svg>';
+      return '<svg viewBox="0 0 400 400" width="300" height="300" style="display:block;filter:drop-shadow(0 10px 40px rgba(0,0,0,.6))">'+g+'</svg>';
     }
-    function renderRuleta(){
+    function ringInnerSVG(){
+      var seg=360/PREMIOS.length, cx=110,cy=110,r=106, g='';
+      for(var i=0;i<PREMIOS.length;i++){
+        var p=PREMIOS[i];
+        var a0=(i*seg-90)*Math.PI/180, a1=((i+1)*seg-90)*Math.PI/180;
+        var x0=cx+r*Math.cos(a0),y0=cy+r*Math.sin(a0), x1=cx+r*Math.cos(a1),y1=cy+r*Math.sin(a1);
+        var mid=(i*seg+seg/2-90)*Math.PI/180, lr=74;
+        var lx=cx+lr*Math.cos(mid), ly=cy+lr*Math.sin(mid);
+        g+='<path d="M '+cx+' '+cy+' L '+x0+' '+y0+' A '+r+' '+r+' 0 0 1 '+x1+' '+y1+' Z" fill="'+p.color+'" fill-opacity="0.9" stroke="rgba(0,0,0,.3)" stroke-width="1"/>';
+        g+='<text x="'+lx+'" y="'+(ly+6)+'" text-anchor="middle" font-size="16">'+p.emoji+'</text>';
+      }
+      return '<svg viewBox="0 0 220 220" width="172" height="172" style="display:block;border-radius:50%">'+g+'</svg>';
+    }
+    function renderDobleRuleta(){
       app.innerHTML =
         '<div class="step center">'
-        + '<div class="kicker">✦ OMM Rewards</div>'
-        + '<h1 id="rtit">¡Gira y gana!</h1>'
-        + '<div class="sub" id="rsub">Premio por tu experiencia en OMM</div>'
-        + '<div class="wheelwrap">'
-        +   '<div class="ticker"><svg width="26" height="34" viewBox="0 0 28 36"><polygon points="14,2 26,34 14,26 2,34" fill="#FF2D78" stroke="#fff" stroke-width="1.5"/></svg></div>'
-        +   ruletaSVG() + '<div class="hub">✦</div>'
+        + '<div class="kicker">✦ La Doble Ruleta</div>'
+        + '<h1 id="drtit">¡Gira y gana!</h1>'
+        + '<div class="sub" id="drsub">Un premio y el restaurante donde redimirlo</div>'
+        + '<div class="dr">'
+        +   '<div class="ptr"><svg width="24" height="30" viewBox="0 0 28 36"><polygon points="14,2 26,34 14,26 2,34" fill="#FF2D78" stroke="#fff" stroke-width="1.5"/></svg></div>'
+        +   '<div class="ringO" id="ringO">'+ringOuterSVG()+'</div>'
+        +   '<div class="ringI" id="ringI">'+ringInnerSVG()+'</div>'
+        +   '<div class="hubdr">✦</div>'
         + '</div>'
-        + '<div id="rprize"></div>'
-        + '<button class="btn" id="rbtn" style="border-radius:50px;max-width:240px;margin:0 auto">🎰 ¡GIRAR!</button>'
+        + '<div id="drprize"></div>'
+        + '<button class="btn" id="drbtn" style="border-radius:50px;max-width:240px;margin:0 auto">🎰 ¡GIRAR!</button>'
         + '</div>';
-      var spun=false;
-      document.getElementById('rbtn').onclick=function(){
-        if(spun) return; spun=true;
-        var seg=360/PREMIOS.length, winner=Math.floor(Math.random()*PREMIOS.length);
-        var target=8*360+(360-winner*seg-seg/2);
-        var wheel=document.getElementById('wheel');
-        wheel.style.transition='transform 7s cubic-bezier(0.08,0.82,0.06,1.0)';
-        wheel.style.transform='rotate('+target+'deg)';
-        document.getElementById('rtit').textContent='✨ ¡Girando!...';
-        var btn=document.getElementById('rbtn'); btn.disabled=true; btn.textContent='✨ ¡Girando!...';
-        setTimeout(function(){
-          var p=PREMIOS[winner]; registrarPremio(p);
-          document.querySelector('.card').parentElement.scrollTo&&0;
-          document.getElementById('rtit').textContent='¡Ganaste!';
-          document.getElementById('rtit').style.color=p.color;
-          document.getElementById('rsub').textContent=p.desc;
-          document.getElementById('rprize').innerHTML=prizeCardHTML(p);
-          btn.disabled=false; btn.textContent='🎉 ¡Genial! Cerrar'; btn.style.background='linear-gradient(135deg,'+p.color+','+p.color+'cc)';
-          btn.onclick=function(){ view='fin'; render(); };
-          confetti();
-        },7200);
-      };
+      var rotO=0, rotI=0, spinning=false, AO=360/REDIMIR.length, AI=360/PREMIOS.length;
+      function girar(){
+        if(spinning) return; spinning=true;
+        var btn=document.getElementById('drbtn'); btn.disabled=true; btn.textContent='✨ Girando...';
+        document.getElementById('drprize').innerHTML='';
+        var idxO=weightedPick(REDIMIR), idxI=weightedPick(PREMIOS);
+        var targetO=idxO*AO+AO/2, landO=((360-targetO)%360+360)%360;
+        rotO+=6*360; rotO+=((landO-((rotO%360)+360)%360)%360+360)%360;
+        var targetI=idxI*AI+AI/2, landI=((360-targetI)%360+360)%360;
+        rotI-=7*360; rotI-=((((rotI%360)+360)%360 - landI)%360+360)%360;
+        document.getElementById('ringO').style.transform='rotate('+rotO+'deg)';
+        document.getElementById('ringI').style.transform='translate(-50%,-50%) rotate('+rotI+'deg)';
+        setTimeout(function(){ revelar(idxO,idxI); }, 5300);
+      }
+      function revelar(idxO,idxI){
+        var r=REDIMIR[idxO], p=PREMIOS[idxI];
+        if(p.type==='respin'){
+          spinning=false;
+          document.getElementById('drtit').textContent='🔁 ¡Sigue intentando!';
+          document.getElementById('drprize').innerHTML='<div class="drres">Esta vez no — gira de nuevo 🍀</div>';
+          var b0=document.getElementById('drbtn'); b0.disabled=false; b0.textContent='🎰 Girar de nuevo'; return;
+        }
+        registrarPremio(p, r);
+        document.getElementById('drtit').textContent='🎉 ¡Felicitaciones!';
+        document.getElementById('drtit').style.color=p.color;
+        document.getElementById('drsub').textContent=p.emoji+' '+p.nombre+' · '+r.emo+' '+r.nombre;
+        document.getElementById('drprize').innerHTML=prizeCardHTML(p, r);
+        var b=document.getElementById('drbtn'); b.disabled=false; b.textContent='🎉 ¡Genial! Cerrar';
+        b.style.background='linear-gradient(135deg,'+p.color+','+p.color+'cc)';
+        b.onclick=function(){ view='fin'; render(); };
+        confetti();
+      }
+      document.getElementById('drbtn').onclick=girar;
     }
 
-    // ── CARTAS (6, barajado, flip) ────────────────────────────────────────────
+    // ── Cartas: mismos premios; al picar se asigna el restaurante de redención ─
     function renderCartas(){
-      var cartas=barajar(PREMIOS).slice(0,6);
+      var pool=PREMIOS.filter(function(p){return p.type==='prize';});
+      var cartas=barajar(pool).slice(0,6);
       var slots=cartas.map(function(_,i){return i;});
       var phase='preview', picked=null;
       function head(){
@@ -319,51 +412,35 @@
         return H[phase];
       }
       function draw(){
-        var h=head();
-        var cards='';
+        var h=head(), cards='';
         for(var pos=0;pos<slots.length;pos++){
           var idx=slots[pos], c=cartas[idx];
-          var showPrize = (phase==='preview') || (phase==='done' && picked===idx);
-          var isOther = (phase==='done' && picked!==idx);
-          var face = (phase==='done' && picked===idx && st.premio) ? st.premio : c;
-          cards+='<div class="cw" data-idx="'+idx+'" style="opacity:'+(isOther?0.2:1)+';'
-            + (phase==='pick'?'cursor:pointer;animation:floaty 3s ease-in-out '+(pos*0.2)+'s infinite;':'')+'">'
+          var showPrize=(phase==='preview')||(phase==='done'&&picked===idx);
+          var isOther=(phase==='done'&&picked!==idx);
+          cards+='<div class="cw" data-idx="'+idx+'" style="opacity:'+(isOther?0.2:1)+';'+(phase==='pick'?'cursor:pointer;animation:floaty 3s ease-in-out '+(pos*0.2)+'s infinite;':'')+'">'
             + '<div class="ci '+(showPrize?'flip':'')+'">'
             +   '<div class="cf cback">✦</div>'
-            +   '<div class="cf cfront" style="background:linear-gradient(135deg,'+face.color+'40,'+face.color+'15);border:2px solid '+face.color+';box-shadow:0 6px 24px '+face.color+'50">'
-            +     '<div style="font-size:40px;filter:drop-shadow(0 0 12px '+face.color+')">'+face.emoji+'</div>'
-            +     '<div style="font-family:\'Syne\',sans-serif;font-size:12px;font-weight:900;color:'+face.color+';text-align:center;line-height:1.1;margin-top:4px">'+face.label+'</div>'
-            +   '</div>'
-            + '</div></div>';
+            +   '<div class="cf cfront" style="background:linear-gradient(135deg,'+c.color+'40,'+c.color+'15);border:2px solid '+c.color+';box-shadow:0 6px 24px '+c.color+'50">'
+            +     '<div style="font-size:34px;filter:drop-shadow(0 0 12px '+c.color+')">'+c.emoji+'</div>'
+            +     '<div style="font-family:\'Syne\',sans-serif;font-size:11px;font-weight:900;color:'+c.color+';text-align:center;line-height:1.1;margin-top:4px">'+c.nombre+'</div>'
+            +   '</div></div></div>';
         }
         app.innerHTML =
           '<div class="step center">'
-          + '<div class="kicker">✦ OMM Rewards</div>'
-          + '<h1 id="ctit" style="'+(st.premio?'color:'+st.premio.color:'')+'">'+(phase==='done'?(st.premio&&st.premio.special?(st.premio.special==='pierde'?'¡Oh no!':'¡Casi!'):'¡Ganaste!'):h[0])+'</h1>'
-          + '<div class="sub">'+(phase==='done'?(st.premio?st.premio.desc:''):h[1])+'</div>'
+          + '<div class="kicker">✦ Premio Seratta</div>'
+          + '<h1 id="ctit" style="'+(st.premio?'color:'+st.premio.color:'')+'">'+(phase==='done'?'¡Ganaste!':h[0])+'</h1>'
+          + '<div class="sub">'+(phase==='done'?(st.premio?st.premio.nombre:''):h[1])+'</div>'
           + '<div class="cards">'+cards+'</div>'
-          + (phase==='done'? '<div>'+prizeCardHTML(st.premio)+'</div>'
-                + (st.premio&&st.premio.special==='reintento'
-                    ? '<button class="btn" id="cretry" style="max-width:240px;margin:0 auto">🔄 Intentar otra vez</button>'
-                    : '<button class="btn" id="cclose" style="max-width:240px;margin:0 auto;'+(st.premio?'background:linear-gradient(135deg,'+st.premio.color+','+st.premio.color+'cc)':'')+'">🎉 ¡Genial! Cerrar</button>')
-             : '')
+          + (phase==='done'? '<div>'+prizeCardHTML(st.premio, st.premioRest)+'</div><button class="btn" id="cclose" style="max-width:240px;margin:0 auto;'+(st.premio?'background:linear-gradient(135deg,'+st.premio.color+','+st.premio.color+'cc)':'')+'">🎉 ¡Genial! Cerrar</button>':'')
           + '</div>';
-        if(phase==='pick'){
-          Array.prototype.forEach.call(app.querySelectorAll('.cw'), function(el){
-            el.onclick=function(){ pick(parseInt(el.getAttribute('data-idx'),10)); };
-          });
-        }
-        if(phase==='done'){
-          var cc=document.getElementById('cclose'); if(cc) cc.onclick=function(){ view='fin'; render(); };
-          var cr=document.getElementById('cretry'); if(cr) cr.onclick=function(){ st.premio=null; picked=null; phase='pick'; draw(); };
-        }
+        if(phase==='pick'){ Array.prototype.forEach.call(app.querySelectorAll('.cw'), function(el){ el.onclick=function(){ pick(parseInt(el.getAttribute('data-idx'),10)); }; }); }
+        if(phase==='done'){ var cc=document.getElementById('cclose'); if(cc) cc.onclick=function(){ view='fin'; render(); }; }
       }
       function pick(idx){
         if(phase!=='pick') return;
-        var r=Math.random(), out;
-        if(r<PROB_PIERDE) out=PIERDE; else if(r<PROB_PIERDE+PROB_REINTENTO) out=REINTENTO; else out=cartas[idx];
-        picked=idx; phase='done'; registrarPremio(out); draw();
-        if(!out.special) setTimeout(confetti,650);
+        var rest=REDIMIR[weightedPick(REDIMIR)];
+        picked=idx; phase='done'; registrarPremio(cartas[idx], rest); draw();
+        setTimeout(confetti,650);
       }
       draw();
       setTimeout(function(){phase='flip';draw();},2600);
@@ -372,7 +449,6 @@
       setTimeout(function(){phase='pick';draw();},3700+5*430);
     }
 
-    // ── Render principal (datos / rating / tags / micro / picker / fin) ───────
     function ribbon(){ var s=''; for(var i=0;i<CARAS.length;i++){ s+='<span class="'+(CARAS[i].n<=st.cara?'on':'')+'">'+(CARAS[i].n<=st.cara?CARAS[i].emo:'·')+'</span>'; } return '<div class="ribbon">'+s+'</div>'; }
     function header(t,s,back){ return (back?'<button class="back" data-act="back" data-to="'+back+'">← Volver</button>':'')+ribbon()+'<div class="smallhead">'+t+'</div><div class="sub">'+s+'</div>'; }
     function tagsGrid(list,sel,cls){ return list.map(function(t){ var on=sel.indexOf(t[1])>=0; return '<button class="opt '+(on?cls:'')+'" data-act="tag" data-v="'+t[1]+'"><div class="ic">'+t[0]+'</div><div class="lb">'+t[1]+'</div></button>'; }).join(''); }
@@ -390,12 +466,15 @@
           +   (BLOQUEAR_REST?'<div class="sub" style="font-size:10px;margin-top:4px">Detectado por el código QR</div>':'')
           + '</div>'
           + '<div class="field"><label>Nombre</label><input class="inp" data-f="nombre" value="'+(data.nombre)+'" placeholder="Tu nombre"></div>'
-          + '<div class="row"><div class="field"><label>Celular</label><input class="inp" data-f="celular" inputmode="tel" value="'+(data.celular)+'" placeholder="+57 3..."></div>'
-          +   '<div class="field"><label>Cumpleaños</label><input class="inp" data-f="cumple" type="date" value="'+(data.cumple)+'"></div></div>'
+          + '<div class="field"><label>Celular</label><input class="inp" data-f="celular" inputmode="tel" value="'+(data.celular)+'" placeholder="+57 3..."></div>'
           + '<div class="field"><label>Correo</label><input class="inp" data-f="correo" inputmode="email" value="'+(data.correo)+'" placeholder="tu@correo.com"></div>'
-          + '<div class="field"><label>Ciudad <span style="color:var(--t3)">(opcional)</span></label><input class="inp" data-f="ciudad" value="'+(data.ciudad)+'" placeholder="Bogotá"></div>'
+          + '<div class="field"><label>Cumpleaños</label><div class="dmy">'
+          +   '<select class="inp" data-f="cd"><option value="">Día</option>'+optsDia()+'</select>'
+          +   '<select class="inp" data-f="cm"><option value="">Mes</option>'+optsMes()+'</select>'
+          +   '<select class="inp" data-f="ca"><option value="">Año</option>'+optsAnio()+'</select>'
+          + '</div></div>'
           + '<button class="btn" data-act="go" data-to="rating" '+((data.nombre.trim()&&(data.celular.trim()||data.correo.trim()))?'':'disabled')+'>Empezar →</button>'
-          + '<div class="sub center" style="margin-top:10px;font-size:11px">Tus datos son solo para mejorar tu experiencia en OMM.</div>'
+          + '<div class="terms-line">Al continuar aceptas los <a onclick="abrirTerminos()">términos y condiciones</a> y el tratamiento de tus datos.</div>'
           + '</div>';
       }
       else if(view==='rating'){
@@ -437,13 +516,13 @@
           + '<h1>¡Gracias! Tienes premio</h1>'
           + '<div class="sub" style="margin-bottom:18px">Elige cómo quieres ganar tu sorpresa de OMM</div>'
           + '<div style="display:flex;gap:12px">'
-          +   '<button class="pickbtn" data-act="juego" data-j="ruleta"><div class="pic">🎰</div><div class="pl">Ruleta</div><div class="ps">Gira y gana</div></button>'
+          +   '<button class="pickbtn" data-act="juego" data-j="ruleta"><div class="pic">🎰</div><div class="pl">Doble Ruleta</div><div class="ps">Premio + restaurante</div></button>'
           +   '<button class="pickbtn" data-act="juego" data-j="cartas"><div class="pic">🃏</div><div class="pl">Cartas</div><div class="ps">Pica tu suerte</div></button>'
           + '</div>'
           + '<button class="muted" data-act="go" data-to="fin" style="margin-top:16px">Omitir premio</button>'
           + '</div>';
       }
-      else if(view==='ruleta'){ renderRuleta(); }
+      else if(view==='ruleta'){ renderDobleRuleta(); }
       else if(view==='cartas'){ renderCartas(); }
       else if(view==='fin'){
         var pos = st.cara>=4;
@@ -452,7 +531,7 @@
           + '<div style="font-size:70px;margin-bottom:12px;animation:bounceIn .6s ease">'+(pos?'🎉':st.cara===3?'🙏':'💎')+'</div>'
           + '<h1>'+(pos?'¡Hasta pronto!':'Gracias por contarnos')+'</h1>'
           + '<div class="sub" style="max-width:300px;margin:8px auto 0;line-height:1.6">'+(pos?'Fue un placer tenerte. Vuelve pronto.':'Tu voz genera cambios reales en nuestro equipo.')+'</div>'
-          + (st.premio&&!st.premio.special?'<div class="sub" style="margin-top:14px;color:var(--gold)">🎁 No olvides tu premio: <b>'+st.premio.label+'</b> — muéstralo a tu mesero.</div>':'')
+          + (st.premio&&st.premio.type!=='respin'?'<div class="sub" style="margin-top:14px;color:var(--gold)">🎁 No olvides tu premio: <b>'+st.premio.nombre+'</b>'+(st.premioRest?(' en '+st.premioRest.nombre):'')+' — redímelo por WhatsApp.</div>':'')
           + (pos?'<div style="margin-top:20px"><a class="linkbtn" style="background:linear-gradient(135deg,#4285F4,#0F9D58)" href="https://g.page/r/review" target="_blank" rel="noopener">⭐ Opinar en Google</a>'
                 + '<a class="linkbtn" style="background:linear-gradient(135deg,#00AA6C,#007A4D)" href="https://tripadvisor.com" target="_blank" rel="noopener">🦉 Opinar en TripAdvisor</a></div>':'')
           + '</div>';
@@ -470,10 +549,10 @@
       else if(act==='save'){ guardar(); }
       else if(act==='juego'){ view = el.getAttribute('data-j'); render(); }
     });
-    // El selector de restaurante actualiza REST (lo que se guarda en la encuesta → Care)
+    // Cambios en selects (restaurante y día/mes/año del cumpleaños)
     app.addEventListener('change', function(ev){
-      var sel=ev.target.closest('[data-rest]'); if(!sel) return;
-      REST = parseInt(sel.value,10) || REST;
+      var r=ev.target.closest('[data-rest]'); if(r){ REST = parseInt(r.value,10) || REST; return; }
+      var s=ev.target.closest('[data-f]'); if(s && (s.tagName==='SELECT')){ data[s.getAttribute('data-f')]=s.value; componerCumple(); }
     });
     app.addEventListener('input', function(ev){
       var el=ev.target.closest('[data-f],[data-act="coment"]'); if(!el) return;
