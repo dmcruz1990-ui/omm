@@ -1284,29 +1284,49 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // Mapa: nombre_plato (sin sufijos de modificadores) → 'verde'|'amarillo'|'rojo'
   // + conteo de pedidos activos para mostrar chip.
   const [platosActivosColor, setPlatosActivosColor] = useState<Record<string, { sem:'verde'|'amarillo'|'rojo'; n:number }>>({});
+  // Conteo por MESA → nombre_plato → cantidad activa en Flow.
+  // Sirve para purgar items "fantasma" del panel "En producción" del POS
+  // cuando Flow ya los marcó como entregados/cancelados. Antes quedaban
+  // colgando con tiempos de 17.000+ min.
+  const [flowActivosPorMesa, setFlowActivosPorMesa] = useState<Record<number, Record<string, number>>>({});
+  const [flowActivosLoaded, setFlowActivosLoaded] = useState(false);
   useEffect(() => {
     let alive = true;
     const fetchActivos = async () => {
       const { data } = await supabase.from('flow_order_items')
-        .select('nombre_plato,created_at,estacion')
+        .select('nombre_plato,created_at,estacion,table_id,status')
         .eq('restaurante_id', restauranteId)
-        .in('status', ['pending','preparing','almost']);
+        .in('status', ['pending','preparing','almost','ready']);
       if (!alive || !data) return;
       const priority: Record<string, number> = { rojo: 3, amarillo: 2, verde: 1 };
       const map: Record<string, { sem:'verde'|'amarillo'|'rojo'; n:number }> = {};
+      const perMesa: Record<number, Record<string, number>> = {};
       data.forEach((item:any) => {
         if (!item.nombre_plato) return;
         // Normalizar: "Bao de Pato (Bien cocido)" → "Bao de Pato"
         const base = String(item.nombre_plato).split('(')[0].trim();
-        const sem = getSemaforo(item.created_at, item.estacion);
-        const cur = map[base];
-        if (!cur) { map[base] = { sem, n: 1 }; }
-        else {
-          map[base].n += 1;
-          if (priority[sem] > priority[cur.sem]) map[base].sem = sem;
+        // Para platosActivosColor sólo cuento los que están realmente en
+        // cocina (pending/preparing/almost) — los 'ready' los muestro pero
+        // no cuentan como "demorado" porque ya están afuera para entregar.
+        if (item.status !== 'ready') {
+          const sem = getSemaforo(item.created_at, item.estacion);
+          const cur = map[base];
+          if (!cur) { map[base] = { sem, n: 1 }; }
+          else {
+            map[base].n += 1;
+            if (priority[sem] > priority[cur.sem]) map[base].sem = sem;
+          }
+        }
+        // Para el panel "En producción" del POS cuento TODOS los activos
+        // (incluyendo ready) por mesa — así sé qué seguir mostrando.
+        if (item.table_id != null) {
+          if (!perMesa[item.table_id]) perMesa[item.table_id] = {};
+          perMesa[item.table_id][base] = (perMesa[item.table_id][base] || 0) + 1;
         }
       });
       setPlatosActivosColor(map);
+      setFlowActivosPorMesa(perMesa);
+      setFlowActivosLoaded(true);
     };
     fetchActivos();
     const t = setInterval(fetchActivos, 30000); // re-evaluar cada 30s para que cambie color al pasar el tiempo
@@ -1315,6 +1335,31 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       .subscribe();
     return () => { alive = false; clearInterval(t); supabase.removeChannel(ch); };
   }, [restauranteId]);
+
+  // Cleanup del state `order` (que vive en localStorage) — purga items
+  // fantasma > 60 min que ya no aparecen como activos en Flow. Esto evita
+  // que aparezcan tarjetas con tiempos absurdos (17.412 min) tras reload.
+  useEffect(() => {
+    if (!flowActivosLoaded) return;
+    setOrder(prev => {
+      const consumedPorMesa: Record<number, Record<string, number>> = {};
+      const limpio = prev.filter((item:any) => {
+        const ms = item.created_at ? (Date.now() - new Date(item.created_at).getTime()) : 0;
+        // Item reciente (<60 min) lo dejamos siempre — todavía puede no haber
+        // sido sincronizado por el realtime
+        if (ms < 60 * 60 * 1000) return true;
+        const mesa = item.mesa;
+        if (mesa == null) return ms < 24 * 60 * 60 * 1000; // sin mesa: 24h max
+        const base = String(item.nombre||'').split('(')[0].trim();
+        const flowMesa = flowActivosPorMesa[mesa] || {};
+        const max = flowMesa[base] || 0;
+        if (!consumedPorMesa[mesa]) consumedPorMesa[mesa] = {};
+        consumedPorMesa[mesa][base] = (consumedPorMesa[mesa][base] || 0) + 1;
+        return consumedPorMesa[mesa][base] <= max;
+      });
+      return limpio.length === prev.length ? prev : limpio;
+    });
+  }, [flowActivosLoaded, flowActivosPorMesa]);
 
   // Esto conecta la lista de 86 con el toggle "disponible" del menú.
   useEffect(() => {
@@ -5797,16 +5842,32 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 })()}
 
                 {/* EN PRODUCCIÓN — semáforo de tiempos por plato (verde/amarillo/rojo)
-                    Igual lógica que Flow: verde<70%, amarillo<obj, rojo≥obj
-                    Colapsable como 'Compartir mesa' · sin botones de leyenda */}
-                {order.filter(o => o.mesa === selectedTable.num).length > 0 && (
+                    Igual lógica que Flow: verde<70%, amarillo<obj, rojo≥obj.
+                    SE FILTRA contra flowActivosPorMesa: si Flow ya marcó el
+                    item como entregado/cancelado, desaparece automáticamente
+                    del panel — antes quedaban fantasmas con 17.000+ min. */}
+                {(() => {
+                  // Items locales de esta mesa
+                  const itemsMesa = order.filter(o => o.mesa === selectedTable.num);
+                  // Si Flow ya cargó datos, filtramos contra los activos REALES.
+                  // Mientras no cargue, mostramos todos para no flashear vacío.
+                  const flowMesa = flowActivosPorMesa[selectedTable.num as any] || {};
+                  const consumed: Record<string, number> = {};
+                  const visibles = !flowActivosLoaded ? itemsMesa : itemsMesa.filter((item:any) => {
+                    const base = String(item.nombre||'').split('(')[0].trim();
+                    const max = flowMesa[base] || 0;
+                    consumed[base] = (consumed[base] || 0) + 1;
+                    return consumed[base] <= max;
+                  });
+                  if (visibles.length === 0) return null;
+                  return (
                   <div className="mt-3 pt-3 border-t border-[#3dba6f]/30">
                     <button onClick={() => setMostrarEnProduccion(p => !p)}
                       className="w-full flex items-center justify-between text-[10px] font-bold text-[#3dba6f] uppercase tracking-wider hover:text-[#5dd88f] transition-all">
                       <span className="flex items-center gap-1.5">
                         🔥 En producción · M{selectedTable.num}
                         <span className="text-[9px] bg-[#3dba6f] text-black font-black px-1.5 py-0.5 rounded-full">
-                          {order.filter(o => o.mesa === selectedTable.num).length}
+                          {visibles.length}
                         </span>
                         <span className="text-[8px] text-[#606060] font-normal normal-case ml-1">↔ Flow</span>
                       </span>
@@ -5814,7 +5875,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                     </button>
                     {mostrarEnProduccion && (
                       <div className="flex flex-col gap-1 mt-2 max-h-[160px] overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-                        {order.filter(o => o.mesa === selectedTable.num).map((item, i) => {
+                        {visibles.map((item:any, i:number) => {
                           const semaforo = getSemaforo(item.created_at, item.estacion);
                           const sc = SEMAFORO_COLORS[semaforo];
                           const sColor = sc.fg;
@@ -5843,7 +5904,8 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                       </div>
                     )}
                   </div>
-                )}
+                  );
+                })()}
 
                 {/* ORDEN PENDIENTE — confirmación prominente */}
                 {pendingOrder.filter(o => o.mesa === selectedTable.num).length > 0 && (
