@@ -13,55 +13,90 @@
       --t1:#fff; --t2:#A0A0C0; --t3:#50507A; --border:rgba(255,255,255,.08);
     }
     *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
-    html,body{margin:0; min-height:100%; background:var(--bg); color:var(--t1);
-      font-family:'DM Sans',system-ui,sans-serif}
-    body{display:flex; align-items:center; justify-content:center; padding:18px;
-      background:radial-gradient(circle at 50% 25%, rgba(255,45,120,.12) 0%, transparent 60%), var(--bg)}
-    .card{background:var(--bg2); border:1px solid rgba(255,45,120,.2); border-radius:26px;
-      padding:26px 22px; width:100%; max-width:460px;
+    html,body{margin:0; min-height:100%; background:var(--bg); color:var(--t1); font-family:'DM Sans',system-ui,sans-serif}
+    body{display:flex; align-items:center; justify-content:center; padding:16px;
+      background:radial-gradient(circle at 50% 22%, rgba(255,45,120,.12) 0%, transparent 60%), var(--bg)}
+    .card{background:var(--bg2); border:1px solid rgba(255,45,120,.2); border-radius:26px; padding:24px 20px;
+      width:100%; max-width:470px; position:relative; overflow:hidden;
       box-shadow:0 0 70px rgba(255,45,120,.14), inset 0 0 40px rgba(255,45,120,.03)}
-    .brand{display:flex; align-items:center; gap:8px; margin-bottom:18px}
-    .brand .logo{width:30px; height:30px; border-radius:9px;
-      background:linear-gradient(135deg,var(--pink),var(--purple));
+    .brand{display:flex; align-items:center; gap:8px; margin-bottom:16px}
+    .brand .logo{width:30px; height:30px; border-radius:9px; background:linear-gradient(135deg,var(--pink),var(--purple));
       display:flex; align-items:center; justify-content:center; font-size:15px}
     .brand .tag{font-size:11px; font-weight:900; color:var(--pink); letter-spacing:.15em; text-transform:uppercase}
     .center{text-align:center}
     .kicker{font-size:12px; color:var(--pink); font-weight:700; text-transform:uppercase; letter-spacing:.15em; margin-bottom:10px}
-    h1{font-family:'Syne',sans-serif; font-size:24px; font-weight:900; line-height:1.2; margin:0 0 6px}
+    h1{font-family:'Syne',sans-serif; font-size:23px; font-weight:900; line-height:1.2; margin:0 0 6px}
     .sub{font-size:13px; color:var(--t3)}
-    .stars{display:flex; justify-content:center; gap:12px; margin:26px 0 8px}
-    .star{cursor:pointer; font-size:46px; transition:transform .25s cubic-bezier(.34,1.56,.64,1), filter .25s;
-      filter:grayscale(1) opacity(.3)}
-    .star.on{filter:drop-shadow(0 0 12px var(--gold)); transform:scale(1.12)}
-    .starlabel{height:30px; display:flex; align-items:center; justify-content:center;
-      font-family:'Syne',sans-serif; font-size:16px; font-weight:900; color:var(--t3)}
-    .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:20px 0}
+    /* CARAS */
+    .faces{display:flex; justify-content:space-between; gap:6px; margin:24px 0 6px}
+    .face{flex:1; cursor:pointer; text-align:center; transition:transform .25s cubic-bezier(.34,1.56,.64,1)}
+    .face .emo{font-size:38px; filter:grayscale(1) opacity(.4); transition:all .25s}
+    .face .lb{font-size:9px; color:var(--t3); margin-top:3px; font-weight:700}
+    .face.on .emo{filter:none; transform:scale(1.18)}
+    .face.on .lb{color:var(--t1)}
+    .facelabel{height:28px; display:flex; align-items:center; justify-content:center; font-family:'Syne',sans-serif; font-size:16px; font-weight:900}
+    /* FORM */
+    .field{margin-bottom:12px}
+    .field label{display:block; font-size:11px; color:var(--t2); font-weight:700; margin-bottom:5px}
+    .inp{width:100%; background:rgba(255,255,255,.05); border:1px solid var(--border); border-radius:11px;
+      padding:12px 14px; color:var(--t1); font-size:14px; outline:none; font-family:'DM Sans',sans-serif}
+    .inp:focus{border-color:var(--pink)}
+    .row{display:flex; gap:10px}
+    .row .field{flex:1}
+    /* OPCIONES tags */
+    .grid{display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:18px 0}
     .grid2{grid-template-columns:repeat(2,1fr)}
-    .opt{padding:14px 6px; border-radius:14px; border:2px solid var(--border); background:var(--bg4);
-      color:var(--t2); cursor:pointer; text-align:center; transition:all .2s; font-family:'DM Sans',sans-serif}
-    .opt .ic{font-size:26px; margin-bottom:4px}
+    .opt{padding:13px 6px; border-radius:14px; border:2px solid var(--border); background:var(--bg4);
+      color:var(--t2); cursor:pointer; text-align:center; transition:all .2s}
+    .opt .ic{font-size:24px; margin-bottom:4px}
     .opt .lb{font-size:11px; font-weight:700}
     .opt.sel{border-color:var(--pink); background:rgba(255,45,120,.13); color:var(--pink)}
     .opt.selred{border-color:var(--red); background:rgba(255,82,82,.13); color:var(--red)}
-    textarea{width:100%; min-height:70px; resize:none; background:rgba(255,255,255,.05);
-      border:1px solid var(--border); border-radius:12px; padding:12px 14px; color:var(--t1);
-      font-size:13px; outline:none; font-family:'DM Sans',sans-serif; margin-bottom:14px}
-    .btn{width:100%; padding:14px; border-radius:14px; border:none; color:#fff; font-size:15px;
-      font-weight:900; cursor:pointer; font-family:'Syne',sans-serif;
-      background:linear-gradient(135deg,var(--pink),var(--pinkD)); box-shadow:0 6px 26px rgba(255,45,120,.25)}
+    textarea{width:100%; min-height:66px; resize:none; background:rgba(255,255,255,.05); border:1px solid var(--border);
+      border-radius:12px; padding:12px 14px; color:var(--t1); font-size:13px; outline:none; font-family:'DM Sans',sans-serif; margin-bottom:14px}
+    .btn{width:100%; padding:14px; border-radius:14px; border:none; color:#fff; font-size:15px; font-weight:900; cursor:pointer;
+      font-family:'Syne',sans-serif; background:linear-gradient(135deg,var(--pink),var(--pinkD)); box-shadow:0 6px 26px rgba(255,45,120,.25)}
     .btn[disabled]{opacity:.4; cursor:not-allowed; box-shadow:none}
     .back{background:none; border:none; color:var(--t3); cursor:pointer; font-size:12px; padding:0; margin-bottom:12px}
-    .linkbtn{display:block; padding:14px; border-radius:14px; color:#fff; font-size:14px; font-weight:800;
-      text-decoration:none; text-align:center; font-family:'Syne',sans-serif; margin-bottom:10px}
+    .linkbtn{display:block; padding:13px; border-radius:14px; color:#fff; font-size:14px; font-weight:800; text-decoration:none;
+      text-align:center; font-family:'Syne',sans-serif; margin-bottom:10px}
     .muted{background:none; border:none; color:var(--t3); cursor:pointer; font-size:13px; text-decoration:underline}
-    .hidden{display:none !important}
-    .smallhead{font-family:'Syne',sans-serif; font-size:18px; font-weight:900; line-height:1.3; margin:0 0 4px}
     .ribbon{display:flex; gap:6px; margin-bottom:10px}
-    .ribbon span{font-size:18px; filter:grayscale(1) opacity(.3)}
-    .ribbon span.on{filter:drop-shadow(0 0 6px var(--gold))}
+    .ribbon span{font-size:20px; filter:grayscale(1) opacity(.3)}
+    .ribbon span.on{filter:none}
+    .smallhead{font-family:'Syne',sans-serif; font-size:18px; font-weight:900; line-height:1.3; margin:0 0 4px}
+    .pickbtn{display:flex; flex-direction:column; align-items:center; gap:6px; padding:22px 10px; border-radius:18px;
+      border:2px solid var(--border); background:var(--bg4); color:var(--t1); cursor:pointer; flex:1; transition:all .2s}
+    .pickbtn:hover{border-color:var(--pink)}
+    .pickbtn .pic{font-size:40px}
+    .pickbtn .pl{font-family:'Syne',sans-serif; font-weight:900; font-size:15px}
+    .pickbtn .ps{font-size:11px; color:var(--t3)}
+    /* RULETA */
+    .wheelwrap{position:relative; width:300px; height:300px; margin:8px auto 18px}
+    .ticker{position:absolute; top:-14px; left:50%; transform:translateX(-50%); z-index:15}
+    .hub{position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); width:42px; height:42px; border-radius:50%;
+      background:linear-gradient(135deg,var(--pink),var(--purple)); border:3px solid #fff; z-index:14; display:flex;
+      align-items:center; justify-content:center; font-size:19px; box-shadow:0 0 20px rgba(255,45,120,.8)}
+    /* CARTAS */
+    .cards{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; max-width:330px; margin:8px auto 18px}
+    .cw{aspect-ratio:2/3; perspective:1000px}
+    .ci{position:relative; width:100%; height:100%; transform-style:preserve-3d; transition:transform .7s cubic-bezier(.34,1.56,.64,1)}
+    .ci.flip{transform:rotateY(180deg)}
+    .cf{position:absolute; inset:0; border-radius:14px; backface-visibility:hidden; display:flex; flex-direction:column;
+      align-items:center; justify-content:center; padding:6px}
+    .cback{background:linear-gradient(135deg,#FF2D78,#B388FF); border:2px solid rgba(255,255,255,.2); font-size:30px; color:#fff;
+      box-shadow:0 6px 24px rgba(255,45,120,.35)}
+    .cfront{transform:rotateY(180deg)}
+    .prizebox{border-radius:22px; padding:22px 24px; text-align:center; margin:6px 0 16px}
+    .mesero{border-radius:14px; padding:12px 14px; margin-top:10px; text-align:center}
+    .confetti{position:absolute; width:9px; height:9px; pointer-events:none; z-index:30}
+    .hidden{display:none!important}
+    .step{animation:fadeUp .3s ease}
     @keyframes fadeUp{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:translateY(0)}}
     @keyframes bounceIn{0%{transform:scale(0)} 60%{transform:scale(1.2)} 100%{transform:scale(1)}}
-    .step{animation:fadeUp .3s ease}
+    @keyframes spinDeco{from{transform:rotate(0)} to{transform:rotate(360deg)}}
+    @keyframes confettiFall{to{transform:translate(var(--tx),var(--ty)) rotate(var(--r)); opacity:0}}
+    @keyframes floaty{0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)}}
   </style>
 </head>
 <body>
@@ -73,177 +108,361 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
   <script>
   (function(){
-    // ── Config: la encuesta corre con la llave anónima (pública) ──────────────
+    // ── Config (llave anónima pública; policy allow_all_xcare permite insert) ──
     var SUPABASE_URL = 'https://kxaxjttvkaeewsjbpert.supabase.co';
     var SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YXhqdHR2a2FlZXdzamJwZXJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkxMTc0MjgsImV4cCI6MjA4NDY5MzQyOH0.fMINxNqrLT6f8lNPrpRZYPpm6IjTlKg6wAH7aAlfz_o';
     var db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON);
 
-    // ── Parámetros por QR: ?mesa=12&nombre=Juan&r=6 (todos opcionales) ────────
     var qp = new URLSearchParams(location.search);
     var _mesa = qp.get('mesa');
-    var MESA = (_mesa && /^\d+$/.test(_mesa)) ? parseInt(_mesa,10) : null; // mesa_numero es entero
-    var NOMBRE = qp.get('nombre') || '';
+    var MESA = (_mesa && /^\d+$/.test(_mesa)) ? parseInt(_mesa,10) : null;
     var REST = parseInt(qp.get('r') || '6', 10);
 
-    // ── Datos del cuestionario (sin platos) ───────────────────────────────────
-    var TAGS_5 = [['🍽️','Comida'],['🍸','Cócteles'],['🤵','Servicio'],['👨‍🍳','Chef'],['🎶','Ambiente'],['🕯️','Experiencia']];
-    var TAGS_4 = [['⏱️','Tiempo'],['🌡️','Temperatura'],['🍽️','Sabor'],['🍸','Balance'],['🤵','Atención'],['🎶','Ambiente']];
-    var TAGS_NEG = [['🌡️','Frío'],['⏱️','Demora'],['🧂','Sabor'],['🍸','Muy dulce'],['🍸','Muy fuerte'],['🤵','Atención'],['🎶','Ruido'],['💬','Otro']];
-    var MSG = {
-      5:['🔥 Nos encanta saberlo.','¿Qué fue lo que más destacarías?'],
-      4:['✨ Gracias.','¿Qué faltó para que fuera perfecta?'],
-      3:['🙏 Queremos hacerlo mejor.','Ayúdanos a entender qué pasó.'],
-      2:['🙏 Queremos hacerlo mejor.','Ayúdanos a entender qué pasó.'],
-      1:['🙏 Queremos hacerlo mejor.','Ayúdanos a entender qué pasó.']
-    };
-    var RESPUESTAS_IA = {
-      5:'', 4:'',
-      3:'Hola {n},\n\nGracias por confiar en nosotros hoy. Hemos revisado tu experiencia y ya estamos ajustando los detalles que nos compartiste. Tu próxima visita será atendida con especial cuidado.',
-      2:'Hola {n},\n\nTu experiencia es importante para nosotros. Nuestro equipo ya está trabajando para que lo ocurrido no vuelva a suceder. Será un honor recibirte nuevamente.',
-      1:'Hola {n},\n\nLo que nos compartiste merece toda nuestra atención. Ya tomamos acciones concretas con nuestro equipo. Nos gustaría recibirte para ofrecerte una experiencia completamente distinta.'
-    };
-    var LABELS = ['','Muy mala','Mala','Regular','Muy buena','Increíble'];
-    var COLORS = ['','#FF5252','#FF7043','#FFB547','#69F0AE','#00E676'];
+    // ── Caras (de triste a feliz) ─────────────────────────────────────────────
+    var CARAS = [
+      {n:1, emo:'😡', lb:'Muy mala',  color:'#FF5252'},
+      {n:2, emo:'😞', lb:'Mala',      color:'#FF7043'},
+      {n:3, emo:'😐', lb:'Regular',   color:'#FFB547'},
+      {n:4, emo:'🙂', lb:'Muy buena', color:'#69F0AE'},
+      {n:5, emo:'😄', lb:'Increíble', color:'#00E676'}
+    ];
+    var TAGS_5  = [['🍽️','Comida'],['🍸','Cócteles'],['🤵','Servicio'],['👨‍🍳','Chef'],['🎶','Ambiente'],['🕯️','Experiencia']];
+    var TAGS_4  = [['⏱️','Tiempo'],['🌡️','Temperatura'],['🍽️','Sabor'],['🍸','Balance'],['🤵','Atención'],['🎶','Ambiente']];
+    var TAGS_NEG= [['🌡️','Frío'],['⏱️','Demora'],['🧂','Sabor'],['🍸','Muy dulce'],['🍸','Muy fuerte'],['🤵','Atención'],['🎶','Ruido'],['💬','Otro']];
+    var MSG = {5:['🔥 Nos encanta saberlo.','¿Qué fue lo que más destacarías?'],4:['✨ Gracias.','¿Qué faltó para que fuera perfecta?'],
+      3:['🙏 Queremos hacerlo mejor.','Ayúdanos a entender qué pasó.'],2:['🙏 Queremos hacerlo mejor.','Ayúdanos a entender qué pasó.'],1:['🙏 Queremos hacerlo mejor.','Ayúdanos a entender qué pasó.']};
+    var IA = {5:'',4:'',
+      3:'Hola {n},\n\nGracias por confiar en nosotros. Ya estamos ajustando los detalles que nos compartiste. Tu próxima visita será atendida con especial cuidado.',
+      2:'Hola {n},\n\nTu experiencia es importante. Nuestro equipo ya trabaja para que lo ocurrido no vuelva a pasar. Será un honor recibirte de nuevo.',
+      1:'Hola {n},\n\nLo que nos compartiste merece toda nuestra atención. Ya tomamos acciones con el equipo. Nos gustaría recibirte para una experiencia completamente distinta.'};
+
+    // ── Premios (ruleta + cartas) ─────────────────────────────────────────────
+    var PREMIOS = [
+      {emoji:'☕', label:'Café gratis',   color:'#cd853f', bg:'#3d2a1a', desc:'Un espresso en tu próxima visita'},
+      {emoji:'🍷', label:'Copa de vino',  color:'#e91e8c', bg:'#3d0d25', desc:'Una copa de la casa en tu próxima visita'},
+      {emoji:'💸', label:'10% OFF',       color:'#d4943a', bg:'#3d2a00', desc:'10% de descuento en tu próxima cuenta'},
+      {emoji:'🍮', label:'Postre gratis', color:'#f0b45a', bg:'#3d2d00', desc:'El postre del chef — cortesía de OMM'},
+      {emoji:'🥂', label:'2x1 Coctel',    color:'#9b72ff', bg:'#1e1040', desc:'Dos cócteles por el precio de uno'},
+      {emoji:'🎁', label:'20% OFF',       color:'#3dba6f', bg:'#0d3020', desc:'Descuento especial OMM · válido 30 días'},
+      {emoji:'🥧', label:'Pie Central',   color:'#e07830', bg:'#3d1a00', desc:'Pie Central de cortesía — postre insignia'},
+      {emoji:'🍸', label:'Cóctel Firma',  color:'#448AFF', bg:'#001440', desc:'Cóctel insignia OMM de cortesía'}
+    ];
+    var PIERDE    = {emoji:'💀', label:'Pierde todo',      color:'#ff5252', desc:'Esta vez no hubo suerte — ¡vuelve pronto!', special:'pierde'};
+    var REINTENTO = {emoji:'🔄', label:'Intenta otra vez', color:'#FFB547', desc:'¡Casi! Pica de nuevo', special:'reintento'};
+    var PROB_PIERDE=0.0001, PROB_REINTENTO=0.005;
+    function barajar(a){a=a.slice();for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t;}return a;}
 
     // ── Estado ────────────────────────────────────────────────────────────────
-    var st = { estrellas:0, tags:[], micro:[], comentario:'', guardando:false };
+    var data = {nombre:'', celular:'', correo:'', cumple:'', ciudad:''};
+    var st = {cara:0, tags:[], micro:[], comentario:'', guardando:false, encuestaId:null, premio:null};
     var app = document.getElementById('app');
-    var firstName = (NOMBRE||'').split(' ')[0];
-    function esNeg(){ return st.estrellas>0 && st.estrellas<=3; }
+    var view = 'datos';
+    function firstName(){ return (data.nombre||'').trim().split(' ')[0]; }
+    function esNeg(){ return st.cara>0 && st.cara<=3; }
     function toggle(arr,v){ var i=arr.indexOf(v); if(i>=0)arr.splice(i,1); else arr.push(v); }
 
-    // ── Guardar en Supabase ─────────────────────────────────────────────────
+    // ── Guardar lead (al pasar la lista de datos) ─────────────────────────────
+    async function guardarLead(){
+      if(!data.celular && !data.correo) return;
+      try{
+        var payload={ name:data.nombre||null, phone:data.celular||null, email:data.correo||null,
+          fecha_nacimiento:data.cumple||null, ciudad:data.ciudad||null, origen_captacion:'encuesta_qr', activo:true };
+        if(data.celular){
+          var ex=await db.from('customers').select('id').eq('phone',data.celular).maybeSingle();
+          if(ex.data) await db.from('customers').update(payload).eq('id',ex.data.id);
+          else await db.from('customers').insert(payload);
+        } else {
+          await db.from('customers').insert(payload);
+        }
+      }catch(e){ /* no bloquea la encuesta */ }
+    }
+
+    // ── Guardar encuesta ──────────────────────────────────────────────────────
     function npsDe(e){ return e===5?10:e===4?8:e===3?6:e===2?3:1; }
     async function guardar(){
       if(st.guardando) return; st.guardando=true; render();
-      var ia = (RESPUESTAS_IA[st.estrellas]||'').replace('{n}', firstName||'cliente');
-      var pos = (st.estrellas>=4) ? st.tags : null;
-      var neg = esNeg() ? st.tags.concat(st.micro) : null;
-      try {
-        var ins = await db.from('xcare_encuestas').insert({
-          restaurante_id: REST,
-          mesa_numero: MESA,
-          nombre_cliente: NOMBRE || null,
-          estrellas: st.estrellas,
-          tags_positivos: pos,
-          tags_negativos: neg,
-          comentario: st.comentario || null,
-          nps_score: npsDe(st.estrellas),
-          alerta_gerente: st.estrellas<=3,
-          respuesta_ia: ia || null
-        });
+      var ia=(IA[st.cara]||'').replace('{n}', firstName()||'cliente');
+      try{
+        var ins=await db.from('xcare_encuestas').insert({
+          restaurante_id:REST, mesa_numero:MESA,
+          nombre_cliente:data.nombre||null, cliente_telefono:data.celular||null, cliente_email:data.correo||null,
+          estrellas:st.cara,
+          tags_positivos: st.cara>=4 ? st.tags : null,
+          tags_negativos: esNeg() ? st.tags.concat(st.micro) : null,
+          comentario:st.comentario||null, nps_score:npsDe(st.cara),
+          alerta_gerente:st.cara<=3, respuesta_ia:ia||null
+        }).select('id').single();
         if(ins.error) throw ins.error;
-        if(st.estrellas<=3){
-          await db.from('xcare_alertas').insert({
-            restaurante_id: REST, mesa_numero: MESA, tipo:'encuesta_negativa',
-            descripcion:(NOMBRE||'Cliente')+' — '+st.estrellas+'★ — '+(st.tags.join(', ')||'Sin tags'),
-            activa:true
-          });
+        st.encuestaId = ins.data && ins.data.id;
+        if(st.cara<=3){
+          await db.from('xcare_alertas').insert({ restaurante_id:REST, mesa_numero:MESA, tipo:'encuesta_negativa',
+            descripcion:(data.nombre||'Cliente')+' — '+st.cara+'★ — '+(st.tags.join(', ')||'Sin tags'), activa:true });
         }
-        st.guardando=false;
-        view = (st.estrellas===5) ? 'redes' : 'done';
-        render();
-      } catch(e){
-        st.guardando=false;
-        alert('No pudimos enviar tu opinión: '+(e.message||e)+'. Intenta de nuevo.');
-        render();
+        st.guardando=false; view='picker'; render();
+      }catch(e){
+        st.guardando=false; alert('No pudimos enviar tu opinión: '+(e.message||e)); render();
       }
     }
 
-    // ── Vistas ────────────────────────────────────────────────────────────────
-    var view = 'rating';
+    async function registrarPremio(p){
+      st.premio=p;
+      if(st.encuestaId && p && !p.special){
+        try{ await db.from('xcare_encuestas').update({ respuesta_ia:'PREMIO:'+p.label+(data.correo?('|EMAIL:'+data.correo):'') }).eq('id',st.encuestaId); }catch(e){}
+      }
+    }
 
-    function ribbon(){
-      var s=''; for(var n=1;n<=5;n++){ s+='<span class="'+(n<=st.estrellas?'on':'')+'">'+(n<=st.estrellas?'⭐':'☆')+'</span>'; }
-      return '<div class="ribbon">'+s+'</div>';
+    // ── Confetti ──────────────────────────────────────────────────────────────
+    function confetti(){
+      var cols=['#FFB547','#FF2D78','#00E676','#448AFF','#B388FF','#FF5252','#FFD700','#fff'];
+      for(var i=0;i<46;i++){
+        (function(){
+          var d=document.createElement('div'); d.className='confetti';
+          var ang=Math.random()*360, dist=80+Math.random()*140;
+          d.style.left=(45+Math.random()*10)+'%'; d.style.top='40%';
+          d.style.background=cols[i%cols.length]; d.style.borderRadius=(i%3===0?'50%':'2px');
+          d.style.setProperty('--tx',(Math.cos(ang*Math.PI/180)*dist)+'px');
+          d.style.setProperty('--ty',(Math.sin(ang*Math.PI/180)*dist)+'px');
+          d.style.setProperty('--r',(ang*3)+'deg');
+          d.style.animation='confettiFall 1.8s ease-out forwards';
+          app.appendChild(d); setTimeout(function(){d.remove();},1900);
+        })();
+      }
     }
-    function header(titulo,sub,back){
-      return (back?'<button class="back" data-act="back" data-to="'+back+'">← Volver</button>':'')
-        + ribbon()
-        + '<div class="smallhead">'+titulo+'</div><div class="sub">'+sub+'</div>';
+
+    // ── Tarjeta de premio ganado (se muestra al mesero) ───────────────────────
+    function prizeCardHTML(p){
+      if(!p) return '';
+      var esp = !!p.special;
+      return '<div class="prizebox" style="background:linear-gradient(135deg,'+p.color+'20,'+p.color+'08);border:2px solid '+p.color+'60;box-shadow:0 8px 40px '+p.color+'30">'
+        + '<div style="font-size:66px;filter:drop-shadow(0 0 20px '+p.color+')">'+p.emoji+'</div>'
+        + '<div style="font-family:\'Syne\',sans-serif;font-size:23px;font-weight:900;color:'+p.color+';margin:6px 0">'+p.label+'</div>'
+        + '<div class="sub" style="color:rgba(255,255,255,.7)">'+p.desc+'</div>'
+        + (esp ? '' :
+            '<div style="font-size:11px;color:rgba(255,255,255,.35);background:rgba(255,255,255,.05);border-radius:8px;padding:6px 12px;margin:10px 0">Muéstrale esta pantalla a tu mesero · Válido 30 días</div>'
+            + '<div class="mesero" style="background:linear-gradient(135deg,'+p.color+'30,'+p.color+'10);border:2px dashed '+p.color+'60">'
+            + '<div style="font-size:10px;color:rgba(255,255,255,.5);font-weight:700;text-transform:uppercase;letter-spacing:.1em;margin-bottom:6px">📲 Premio para el mesero</div>'
+            + '<div style="font-size:15px;font-weight:900;color:'+p.color+'">'+p.emoji+' '+p.label+'</div></div>')
+        + '</div>';
     }
-    function tagsGrid(list, selArr, cls){
-      return list.map(function(t){
-        var on = selArr.indexOf(t[1])>=0;
-        return '<button class="opt '+(on?cls:'')+'" data-act="tag" data-v="'+t[1]+'">'
-          + '<div class="ic">'+t[0]+'</div><div class="lb">'+t[1]+'</div></button>';
-      }).join('');
+
+    // ── RULETA (SVG giratorio) ────────────────────────────────────────────────
+    function ruletaSVG(){
+      var seg=360/PREMIOS.length, paths='';
+      for(var i=0;i<PREMIOS.length;i++){
+        var p=PREMIOS[i], sa=i*seg-90, ea=sa+seg, r=160,cx=160,cy=160;
+        var x1=cx+r*Math.cos(sa*Math.PI/180), y1=cy+r*Math.sin(sa*Math.PI/180);
+        var x2=cx+r*Math.cos(ea*Math.PI/180), y2=cy+r*Math.sin(ea*Math.PI/180);
+        var ma=sa+seg/2;
+        var tx=cx+r*0.58*Math.cos(ma*Math.PI/180), ty=cy+r*0.58*Math.sin(ma*Math.PI/180);
+        var ex=cx+r*0.80*Math.cos(ma*Math.PI/180), ey=cy+r*0.80*Math.sin(ma*Math.PI/180);
+        paths+='<path d="M '+cx+' '+cy+' L '+x1+' '+y1+' A '+r+' '+r+' 0 0 1 '+x2+' '+y2+' Z" fill="'+p.color+'" stroke="rgba(255,255,255,.15)" stroke-width="1.5"/>';
+        paths+='<text x="'+tx+'" y="'+(ty+4)+'" text-anchor="middle" font-size="11" font-weight="900" fill="rgba(255,255,255,.92)">'+p.label+'</text>';
+        paths+='<text x="'+ex+'" y="'+(ey+8)+'" text-anchor="middle" font-size="20">'+p.emoji+'</text>';
+      }
+      return '<svg id="wheel" viewBox="0 0 320 320" width="300" height="300" style="border-radius:50%;display:block;box-shadow:0 12px 60px rgba(0,0,0,.6)">'+paths+'</svg>';
     }
+    function renderRuleta(){
+      app.innerHTML =
+        '<div class="step center">'
+        + '<div class="kicker">✦ OMM Rewards</div>'
+        + '<h1 id="rtit">¡Gira y gana!</h1>'
+        + '<div class="sub" id="rsub">Premio por tu experiencia en OMM</div>'
+        + '<div class="wheelwrap">'
+        +   '<div class="ticker"><svg width="26" height="34" viewBox="0 0 28 36"><polygon points="14,2 26,34 14,26 2,34" fill="#FF2D78" stroke="#fff" stroke-width="1.5"/></svg></div>'
+        +   ruletaSVG() + '<div class="hub">✦</div>'
+        + '</div>'
+        + '<div id="rprize"></div>'
+        + '<button class="btn" id="rbtn" style="border-radius:50px;max-width:240px;margin:0 auto">🎰 ¡GIRAR!</button>'
+        + '</div>';
+      var spun=false;
+      document.getElementById('rbtn').onclick=function(){
+        if(spun) return; spun=true;
+        var seg=360/PREMIOS.length, winner=Math.floor(Math.random()*PREMIOS.length);
+        var target=8*360+(360-winner*seg-seg/2);
+        var wheel=document.getElementById('wheel');
+        wheel.style.transition='transform 7s cubic-bezier(0.08,0.82,0.06,1.0)';
+        wheel.style.transform='rotate('+target+'deg)';
+        document.getElementById('rtit').textContent='✨ ¡Girando!...';
+        var btn=document.getElementById('rbtn'); btn.disabled=true; btn.textContent='✨ ¡Girando!...';
+        setTimeout(function(){
+          var p=PREMIOS[winner]; registrarPremio(p);
+          document.querySelector('.card').parentElement.scrollTo&&0;
+          document.getElementById('rtit').textContent='¡Ganaste!';
+          document.getElementById('rtit').style.color=p.color;
+          document.getElementById('rsub').textContent=p.desc;
+          document.getElementById('rprize').innerHTML=prizeCardHTML(p);
+          btn.disabled=false; btn.textContent='🎉 ¡Genial! Cerrar'; btn.style.background='linear-gradient(135deg,'+p.color+','+p.color+'cc)';
+          btn.onclick=function(){ view='fin'; render(); };
+          confetti();
+        },7200);
+      };
+    }
+
+    // ── CARTAS (6, barajado, flip) ────────────────────────────────────────────
+    function renderCartas(){
+      var cartas=barajar(PREMIOS).slice(0,6);
+      var slots=cartas.map(function(_,i){return i;});
+      var phase='preview', picked=null;
+      function head(){
+        var H={preview:['Estos son los premios','Míralos bien — en un momento se barajan'],
+               flip:['Memoriza bien...','Volteando las cartas'],
+               shuffle:['🔀 Barajando...','Ya no sabes cuál es cuál...'],
+               pick:['Pica tu carta','Tu intuición elige tu premio'],
+               done:['','']};
+        return H[phase];
+      }
+      function draw(){
+        var h=head();
+        var cards='';
+        for(var pos=0;pos<slots.length;pos++){
+          var idx=slots[pos], c=cartas[idx];
+          var showPrize = (phase==='preview') || (phase==='done' && picked===idx);
+          var isOther = (phase==='done' && picked!==idx);
+          var face = (phase==='done' && picked===idx && st.premio) ? st.premio : c;
+          cards+='<div class="cw" data-idx="'+idx+'" style="opacity:'+(isOther?0.2:1)+';'
+            + (phase==='pick'?'cursor:pointer;animation:floaty 3s ease-in-out '+(pos*0.2)+'s infinite;':'')+'">'
+            + '<div class="ci '+(showPrize?'flip':'')+'">'
+            +   '<div class="cf cback">✦</div>'
+            +   '<div class="cf cfront" style="background:linear-gradient(135deg,'+face.color+'40,'+face.color+'15);border:2px solid '+face.color+';box-shadow:0 6px 24px '+face.color+'50">'
+            +     '<div style="font-size:40px;filter:drop-shadow(0 0 12px '+face.color+')">'+face.emoji+'</div>'
+            +     '<div style="font-family:\'Syne\',sans-serif;font-size:12px;font-weight:900;color:'+face.color+';text-align:center;line-height:1.1;margin-top:4px">'+face.label+'</div>'
+            +   '</div>'
+            + '</div></div>';
+        }
+        app.innerHTML =
+          '<div class="step center">'
+          + '<div class="kicker">✦ OMM Rewards</div>'
+          + '<h1 id="ctit" style="'+(st.premio?'color:'+st.premio.color:'')+'">'+(phase==='done'?(st.premio&&st.premio.special?(st.premio.special==='pierde'?'¡Oh no!':'¡Casi!'):'¡Ganaste!'):h[0])+'</h1>'
+          + '<div class="sub">'+(phase==='done'?(st.premio?st.premio.desc:''):h[1])+'</div>'
+          + '<div class="cards">'+cards+'</div>'
+          + (phase==='done'? '<div>'+prizeCardHTML(st.premio)+'</div>'
+                + (st.premio&&st.premio.special==='reintento'
+                    ? '<button class="btn" id="cretry" style="max-width:240px;margin:0 auto">🔄 Intentar otra vez</button>'
+                    : '<button class="btn" id="cclose" style="max-width:240px;margin:0 auto;'+(st.premio?'background:linear-gradient(135deg,'+st.premio.color+','+st.premio.color+'cc)':'')+'">🎉 ¡Genial! Cerrar</button>')
+             : '')
+          + '</div>';
+        if(phase==='pick'){
+          Array.prototype.forEach.call(app.querySelectorAll('.cw'), function(el){
+            el.onclick=function(){ pick(parseInt(el.getAttribute('data-idx'),10)); };
+          });
+        }
+        if(phase==='done'){
+          var cc=document.getElementById('cclose'); if(cc) cc.onclick=function(){ view='fin'; render(); };
+          var cr=document.getElementById('cretry'); if(cr) cr.onclick=function(){ st.premio=null; picked=null; phase='pick'; draw(); };
+        }
+      }
+      function pick(idx){
+        if(phase!=='pick') return;
+        var r=Math.random(), out;
+        if(r<PROB_PIERDE) out=PIERDE; else if(r<PROB_PIERDE+PROB_REINTENTO) out=REINTENTO; else out=cartas[idx];
+        picked=idx; phase='done'; registrarPremio(out); draw();
+        if(!out.special) setTimeout(confetti,650);
+      }
+      draw();
+      setTimeout(function(){phase='flip';draw();},2600);
+      setTimeout(function(){phase='shuffle';draw();},3400);
+      [0,1,2,3,4].forEach(function(k){ setTimeout(function(){ slots=barajar(slots); draw(); }, 3700+k*430); });
+      setTimeout(function(){phase='pick';draw();},3700+5*430);
+    }
+
+    // ── Render principal (datos / rating / tags / micro / picker / fin) ───────
+    function ribbon(){ var s=''; for(var i=0;i<CARAS.length;i++){ s+='<span class="'+(CARAS[i].n<=st.cara?'on':'')+'">'+(CARAS[i].n<=st.cara?CARAS[i].emo:'·')+'</span>'; } return '<div class="ribbon">'+s+'</div>'; }
+    function header(t,s,back){ return (back?'<button class="back" data-act="back" data-to="'+back+'">← Volver</button>':'')+ribbon()+'<div class="smallhead">'+t+'</div><div class="sub">'+s+'</div>'; }
+    function tagsGrid(list,sel,cls){ return list.map(function(t){ var on=sel.indexOf(t[1])>=0; return '<button class="opt '+(on?cls:'')+'" data-act="tag" data-v="'+t[1]+'"><div class="ic">'+t[0]+'</div><div class="lb">'+t[1]+'</div></button>'; }).join(''); }
 
     function render(){
-      if(view==='rating'){
-        var act=st.estrellas;
-        var stars=''; for(var n=1;n<=5;n++){ stars+='<div class="star '+(n<=act?'on':'')+'" data-act="star" data-n="'+n+'">⭐</div>'; }
+      if(view==='datos'){
+        app.innerHTML =
+          '<div class="step">'
+          + '<div class="center" style="margin-bottom:16px"><div class="kicker">Antes de empezar</div>'
+          + '<h1>Cuéntanos quién eres 👋</h1><div class="sub">30 segundos · y al final tienes premio 🎁</div></div>'
+          + '<div class="field"><label>Nombre</label><input class="inp" data-f="nombre" value="'+(data.nombre)+'" placeholder="Tu nombre"></div>'
+          + '<div class="row"><div class="field"><label>Celular</label><input class="inp" data-f="celular" inputmode="tel" value="'+(data.celular)+'" placeholder="+57 3..."></div>'
+          +   '<div class="field"><label>Cumpleaños</label><input class="inp" data-f="cumple" type="date" value="'+(data.cumple)+'"></div></div>'
+          + '<div class="field"><label>Correo</label><input class="inp" data-f="correo" inputmode="email" value="'+(data.correo)+'" placeholder="tu@correo.com"></div>'
+          + '<div class="field"><label>Ciudad <span style="color:var(--t3)">(opcional)</span></label><input class="inp" data-f="ciudad" value="'+(data.ciudad)+'" placeholder="Bogotá"></div>'
+          + '<button class="btn" data-act="go" data-to="rating" '+((data.nombre.trim()&&(data.celular.trim()||data.correo.trim()))?'':'disabled')+'>Empezar →</button>'
+          + '<div class="sub center" style="margin-top:10px;font-size:11px">Tus datos son solo para mejorar tu experiencia en OMM.</div>'
+          + '</div>';
+      }
+      else if(view==='rating'){
+        var faces='';
+        for(var i=0;i<CARAS.length;i++){ var c=CARAS[i]; faces+='<div class="face '+(c.n===st.cara?'on':'')+'" data-act="cara" data-n="'+c.n+'"><div class="emo">'+c.emo+'</div><div class="lb">'+c.lb+'</div></div>'; }
+        var sel=CARAS[st.cara-1];
         app.innerHTML =
           '<div class="step center">'
           + '<div class="kicker">Experience Intelligence</div>'
-          + '<h1>'+(NOMBRE?('¿Cómo estuvo tu experiencia '+firstName+'?'):'¿Cómo se sintió tu experiencia hoy?')+'</h1>'
-          + '<div class="sub">Tu opinión transforma nuestro servicio'+(MESA?(' · Mesa '+MESA):'')+'</div>'
-          + '<div class="stars">'+stars+'</div>'
-          + '<div class="starlabel" style="color:'+(act?COLORS[act]:'var(--t3)')+'">'+(act?LABELS[act]:'Toca para calificar')+'</div>'
-          + (act>0 ? '<div style="margin-top:18px"><button class="btn" data-act="go" data-to="tags">Continuar →</button></div>' : '')
+          + '<h1>'+(data.nombre?('¿Cómo estuvo tu experiencia '+firstName()+'?'):'¿Cómo se sintió tu experiencia hoy?')+'</h1>'
+          + '<div class="sub">Toca la cara que mejor lo describa'+(MESA?(' · Mesa '+MESA):'')+'</div>'
+          + '<div class="faces">'+faces+'</div>'
+          + '<div class="facelabel" style="color:'+(sel?sel.color:'var(--t3)')+'">'+(sel?sel.lb:'')+'</div>'
+          + (st.cara>0?'<div style="margin-top:16px"><button class="btn" data-act="go" data-to="tags" style="max-width:240px;margin:0 auto">Continuar →</button></div>':'')
           + '</div>';
       }
       else if(view==='tags'){
-        var m = MSG[st.estrellas];
-        var list = (st.estrellas>=4)?TAGS_5:TAGS_4;
+        var m=MSG[st.cara], list=(st.cara>=4)?TAGS_5:TAGS_4;
         app.innerHTML =
-          '<div class="step">'
-          + header(m[0], m[1], 'rating')
-          + '<div class="grid">'+tagsGrid(list, st.tags, 'sel')+'</div>'
+          '<div class="step">'+header(m[0],m[1],'rating')
+          + '<div class="grid">'+tagsGrid(list,st.tags,'sel')+'</div>'
           + '<textarea data-act="coment" placeholder="Comentario opcional...">'+st.comentario+'</textarea>'
-          + (esNeg()
-              ? '<button class="btn" data-act="go" data-to="micro" '+(st.tags.length?'':'disabled')+'>Siguiente →</button>'
-              : '<button class="btn" data-act="save" '+(st.tags.length&&!st.guardando?'':'disabled')+'>'+(st.guardando?'Enviando...':'Enviar ✓')+'</button>')
+          + (esNeg()? '<button class="btn" data-act="go" data-to="micro" '+(st.tags.length?'':'disabled')+'>Siguiente →</button>'
+                    : '<button class="btn" data-act="save" '+(st.tags.length&&!st.guardando?'':'disabled')+'>'+(st.guardando?'Enviando...':'Enviar ✓')+'</button>')
           + '</div>';
       }
       else if(view==='micro'){
         app.innerHTML =
-          '<div class="step">'
-          + header('¿Qué tipo de problema fue?','Precisión para mejorar más rápido','tags')
-          + '<div class="grid grid2">'+tagsGrid(TAGS_NEG, st.micro, 'selred')+'</div>'
+          '<div class="step">'+header('¿Qué tipo de problema fue?','Precisión para mejorar más rápido','tags')
+          + '<div class="grid grid2">'+tagsGrid(TAGS_NEG,st.micro,'selred')+'</div>'
           + '<textarea data-act="coment" placeholder="Cuéntanos un poco más...">'+st.comentario+'</textarea>'
           + '<button class="btn" data-act="save" '+(st.guardando?'disabled':'')+'>'+(st.guardando?'Enviando...':'Enviar ✓')+'</button>'
           + '</div>';
       }
-      else if(view==='done'){
-        var ia = (st.estrellas<=3) ? (RESPUESTAS_IA[st.estrellas]||'').replace('{n}', firstName||'cliente') : '';
-        app.innerHTML =
-          '<div class="step center" style="padding:10px 0">'
-          + '<div style="font-size:74px;margin-bottom:14px;animation:bounceIn .6s ease">'+(st.estrellas>=4?'🎉':st.estrellas===3?'🙏':'💎')+'</div>'
-          + '<h1>'+(st.estrellas>=4?'¡Hasta pronto!':st.estrellas===3?'Gracias por tu honestidad':'Gracias por contarnos')+'</h1>'
-          + '<div class="sub" style="max-width:300px;margin:8px auto 0;line-height:1.6">'
-          + (st.estrellas>=4?'Fue un placer tenerte. Vuelve pronto.':st.estrellas===3?'Ya estamos trabajando en mejorarlo para tu próxima visita.':'Tu voz genera cambios reales en nuestro equipo.')
-          + '</div>'
-          + (ia? '<div style="background:rgba(179,136,255,.1);border:1px solid rgba(179,136,255,.3);border-radius:16px;padding:14px 18px;max-width:340px;margin:18px auto 0;font-size:13px;color:var(--purple);line-height:1.6;text-align:left;white-space:pre-line">'+ia+'</div>':'')
-          + '</div>';
-      }
-      else if(view==='redes'){
+      else if(view==='picker'){
         app.innerHTML =
           '<div class="step center">'
-          + '<div style="font-size:60px;margin-bottom:10px">🌟</div>'
-          + '<h1>Tu experiencia puede inspirar a otros.</h1>'
-          + '<div class="sub" style="margin:8px 0 22px;line-height:1.6">Ayuda a que más personas vivan momentos memorables en OMM.</div>'
-          + '<a class="linkbtn" style="background:linear-gradient(135deg,#4285F4,#0F9D58)" href="https://g.page/r/review" target="_blank" rel="noopener">⭐ Opinar en Google</a>'
-          + '<a class="linkbtn" style="background:linear-gradient(135deg,#00AA6C,#007A4D)" href="https://tripadvisor.com" target="_blank" rel="noopener">🦉 Opinar en TripAdvisor</a>'
-          + '<button class="muted" data-act="go" data-to="done" style="margin-top:6px">Omitir por ahora</button>'
+          + '<div style="font-size:54px;margin-bottom:6px">🎁</div>'
+          + '<h1>¡Gracias! Tienes premio</h1>'
+          + '<div class="sub" style="margin-bottom:18px">Elige cómo quieres ganar tu sorpresa de OMM</div>'
+          + '<div style="display:flex;gap:12px">'
+          +   '<button class="pickbtn" data-act="juego" data-j="ruleta"><div class="pic">🎰</div><div class="pl">Ruleta</div><div class="ps">Gira y gana</div></button>'
+          +   '<button class="pickbtn" data-act="juego" data-j="cartas"><div class="pic">🃏</div><div class="pl">Cartas</div><div class="ps">Pica tu suerte</div></button>'
+          + '</div>'
+          + '<button class="muted" data-act="go" data-to="fin" style="margin-top:16px">Omitir premio</button>'
+          + '</div>';
+      }
+      else if(view==='ruleta'){ renderRuleta(); }
+      else if(view==='cartas'){ renderCartas(); }
+      else if(view==='fin'){
+        var pos = st.cara>=4;
+        app.innerHTML =
+          '<div class="step center" style="padding:8px 0">'
+          + '<div style="font-size:70px;margin-bottom:12px;animation:bounceIn .6s ease">'+(pos?'🎉':st.cara===3?'🙏':'💎')+'</div>'
+          + '<h1>'+(pos?'¡Hasta pronto!':'Gracias por contarnos')+'</h1>'
+          + '<div class="sub" style="max-width:300px;margin:8px auto 0;line-height:1.6">'+(pos?'Fue un placer tenerte. Vuelve pronto.':'Tu voz genera cambios reales en nuestro equipo.')+'</div>'
+          + (st.premio&&!st.premio.special?'<div class="sub" style="margin-top:14px;color:var(--gold)">🎁 No olvides tu premio: <b>'+st.premio.label+'</b> — muéstralo a tu mesero.</div>':'')
+          + (pos?'<div style="margin-top:20px"><a class="linkbtn" style="background:linear-gradient(135deg,#4285F4,#0F9D58)" href="https://g.page/r/review" target="_blank" rel="noopener">⭐ Opinar en Google</a>'
+                + '<a class="linkbtn" style="background:linear-gradient(135deg,#00AA6C,#007A4D)" href="https://tripadvisor.com" target="_blank" rel="noopener">🦉 Opinar en TripAdvisor</a></div>':'')
           + '</div>';
       }
     }
 
-    // ── Eventos (delegación) ──────────────────────────────────────────────────
+    // ── Eventos ───────────────────────────────────────────────────────────────
     app.addEventListener('click', function(ev){
-      var el = ev.target.closest('[data-act]'); if(!el) return;
-      var act = el.getAttribute('data-act');
-      if(act==='star'){ st.estrellas = parseInt(el.getAttribute('data-n'),10); render(); }
-      else if(act==='go'){ view = el.getAttribute('data-to'); render(); }
-      else if(act==='back'){ var to=el.getAttribute('data-to'); if(to==='rating'){st.tags=[];} if(to==='tags'){st.micro=[];} view=to; render(); }
+      var el=ev.target.closest('[data-act]'); if(!el) return;
+      var act=el.getAttribute('data-act');
+      if(act==='cara'){ st.cara=parseInt(el.getAttribute('data-n'),10); render(); }
+      else if(act==='go'){ var to=el.getAttribute('data-to'); if(view==='datos'&&to==='rating'){ guardarLead(); } view=to; render(); }
+      else if(act==='back'){ var b=el.getAttribute('data-to'); if(b==='rating'){st.tags=[];} if(b==='tags'){st.micro=[];} view=b; render(); }
       else if(act==='tag'){ toggle(view==='micro'?st.micro:st.tags, el.getAttribute('data-v')); render(); }
       else if(act==='save'){ guardar(); }
+      else if(act==='juego'){ view = el.getAttribute('data-j'); render(); }
     });
     app.addEventListener('input', function(ev){
-      var el = ev.target.closest('[data-act="coment"]'); if(!el) return;
-      st.comentario = el.value;
+      var el=ev.target.closest('[data-f],[data-act="coment"]'); if(!el) return;
+      if(el.getAttribute('data-act')==='coment'){ st.comentario=el.value; return; }
+      var f=el.getAttribute('data-f'); data[f]=el.value;
+      // habilitar/deshabilitar el botón "Empezar" sin perder el foco del input
+      if(view==='datos'){ var b=app.querySelector('[data-act="go"][data-to="rating"]'); if(b){ b.disabled = !(data.nombre.trim() && (data.celular.trim()||data.correo.trim())); } }
     });
 
     render();
