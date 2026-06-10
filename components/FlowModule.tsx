@@ -1207,7 +1207,8 @@ function ChatMeseros({ restauranteId }: { restauranteId: number }) {
     const ch = supabase.channel(`flow-chat-${restauranteId}`)
       .on('postgres_changes', { event:'INSERT', schema:'public', table:'flow_chat_meseros' }, (payload:any) => {
         if (payload.new?.restaurante_id !== restauranteId) return;
-        setMensajes(prev => [...prev, payload.new]);
+        // dedup: el propio mensaje ya se agregó localmente al enviar
+        setMensajes(prev => prev.some((m:any)=>m.id===payload.new.id) ? prev : [...prev, payload.new]);
         setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior:'smooth' }), 50);
       })
       .subscribe();
@@ -1220,13 +1221,20 @@ function ChatMeseros({ restauranteId }: { restauranteId: number }) {
     let p: 'normal'|'alta'|'fuego'|'86' = prioridad;
     if (tx.includes('86') || tx.includes('no hay')) p = '86';
     else if (tx.includes('fuego') || tx.includes('urgente')) p = 'fuego';
-    await supabase.from('flow_chat_meseros').insert({
+    // Insert con retorno para pintar el mensaje al instante, sin depender
+    // de que el evento realtime llegue (antes el chat parecía muerto).
+    const { data, error } = await supabase.from('flow_chat_meseros').insert({
       restaurante_id: restauranteId,
       autor: 'Yo',
       autor_color: '#9b72ff',
       mensaje: texto.trim(),
       prioridad: p,
-    });
+    }).select().single();
+    if (error) { alert(`No se pudo enviar: ${error.message}`); return; }
+    if (data) {
+      setMensajes(prev => prev.some((m:any)=>m.id===data.id) ? prev : [...prev, data]);
+      setTimeout(() => scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior:'smooth' }), 50);
+    }
     setTexto('');
     setPrioridad('normal');
   };

@@ -74,6 +74,19 @@ const mismaMesa = (mesaNum:any, mesaName:any): boolean => {
   const digits = nameStr.match(/(\d+)$/)?.[1] || '';
   return digits === numStr;
 };
+// Frase corta del mánager según la ocasión — contexto humano de un vistazo
+// ("ya pronto su celebración…"), pedido del jefe para la lista de confirmaciones.
+const fraseManager = (r:any): string => {
+  const o = String(r.ocasion||'').toLowerCase();
+  if (o.includes('cumple'))     return '🎂 Cumpleaños — alistar postre y detalle';
+  if (o.includes('aniversario'))return '💞 Aniversario — mesa especial y brindis';
+  if (o.includes('negocio'))    return '💼 Cena de negocios — servicio discreto';
+  if (o.includes('despedida'))  return '🥂 Despedida — coordinar brindis del grupo';
+  if (o.includes('pedida') || o.includes('compromiso')) return '💍 Compromiso — máxima coordinación con sala';
+  if (o && !o.includes('sin ocasión')) return `✨ ${r.ocasion} — preparar la experiencia`;
+  return '';
+};
+
 const ESTADOS:any = {
   pendiente:       {c:'#FFB547',l:'⏳ Por confirmar'},
   por_confirmar:   {c:'#FFB547',l:'⏳ Por confirmar'},
@@ -99,8 +112,9 @@ interface Reserva {
 export default function ReserveModule() {
   const { profile } = useAuth();
   const { activeId: restauranteIdActivo, setActiveId, canSwitch, options: restaurantesDisponibles } = useRestaurant();
-  // Dashboard abre por defecto — vista 360° del negocio antes de bajar a operación.
-  const [tab, setTab]           = useState<Tab>('dashboard');
+  // "En vivo" abre por defecto — pedido del jefe: lo primero son las reservas
+  // que están llegando, el Dashboard queda como pestaña de análisis.
+  const [tab, setTab]           = useState<Tab>('home');
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [mesas, setMesas]       = useState<any[]>([]);
   const [loading, setLoading]   = useState(true);
@@ -117,6 +131,8 @@ export default function ReserveModule() {
   const [plantaDB, setPlantaDB] = useState<any[]>([]);
   const [editMesa, setEditMesa] = useState<any|null>(null);
   const [busquedaMesa, setBusquedaMesa] = useState('');
+  // Buscador de la lista de Confirmaciones (por nombre o teléfono)
+  const [busquedaCliente, setBusquedaCliente] = useState('');
   const [meserosLista, setMeserosLista] = useState<any[]>([]);
   const [meseroAsignar, setMeseroAsignar] = useState('');
   const [now, setNow] = useState(Date.now());
@@ -403,12 +419,16 @@ const confirmarOhYeah = async (id:string) => {
 };
 
 const guardar = async () => {
+    if (saving) return; // anti doble-click: un solo submit a la vez
     if (!form.cliente_nombre) { show('⚠️ Nombre requerido'); return; }
     // Más de 16 personas → evento privado, escribir al restaurante
     if ((form.pax||0) > MAX_PAX_RESERVA) {
       show(`🎉 Grupos de +${MAX_PAX_RESERVA} se reservan por evento — el cliente debe escribir al restaurante`);
       return;
     }
+    // Bloquear el botón ANTES de los chequeos remotos (la RPC tarda y cada
+    // click extra creaba una reserva duplicada).
+    setSaving(true);
     // Capacidad: si la franja está llena, NO bloqueamos — Soft Denial™ del PDF NEXUM:
     // sugerimos horarios alternativos cercanos con disponibilidad real.
     if (!selected?.id) {
@@ -431,6 +451,7 @@ const guardar = async () => {
         show(sug.length
           ? `🌟 Recomendamos otra hora — ${sug.length} opciones disponibles`
           : `⚠️ Sin disponibilidad cercana — prueba otra fecha o la lista prioritaria`);
+        setSaving(false);
         return;
       }
     }
@@ -441,54 +462,68 @@ const guardar = async () => {
       form.fecha === fechaFiltro && horaForm >= f.hora_desde.slice(0,5) && horaForm < f.hora_hasta.slice(0,5)
     );
     if (franjaBloqueada) {
-      if (!confirm(`🚫 La hora ${horaForm} está en una franja bloqueada (${franjaBloqueada.hora_desde.slice(0,5)}–${franjaBloqueada.hora_hasta.slice(0,5)}${franjaBloqueada.motivo?' · '+franjaBloqueada.motivo:''}). ¿Crear igual? (las reservas manuales pueden sobreescribir el bloqueo)`)) return;
+      if (!confirm(`🚫 La hora ${horaForm} está en una franja bloqueada (${franjaBloqueada.hora_desde.slice(0,5)}–${franjaBloqueada.hora_hasta.slice(0,5)}${franjaBloqueada.motivo?' · '+franjaBloqueada.motivo:''}). ¿Crear igual? (las reservas manuales pueden sobreescribir el bloqueo)`)) { setSaving(false); return; }
     }
-    setSaving(true);
-    const payload = {...form,restaurante_id: restauranteIdActivo,estado:'confirmada',mesa_num:form.mesa_num||null};
+    // Las nuevas reservas manuales (teléfono/WhatsApp) entran POR CONFIRMAR;
+    // al editar no se pisa el estado actual de la reserva.
+    const payload:any = {...form,restaurante_id: restauranteIdActivo,mesa_num:form.mesa_num||null};
+    delete payload.invitar_ohyeah; // flag de UI — no es columna de reservations
+    let errorBD:any = null;
     if (selected?.id) {
-      await supabase.from('reservations').update(payload).eq('id',selected.id);
-      show('✓ Reserva actualizada');
+      delete payload.estado;
+      ({ error: errorBD } = await supabase.from('reservations').update(payload).eq('id',selected.id));
+      if (!errorBD) show('✓ Reserva actualizada');
     } else {
-      await supabase.from('reservations').insert(payload);
-      show('✓ Reserva creada');
+      payload.estado = 'pendiente';
+      ({ error: errorBD } = await supabase.from('reservations').insert(payload));
+      if (!errorBD) show('✓ Reserva creada — queda Por confirmar');
+    }
+    if (errorBD) {
+      show(`✗ No se pudo guardar: ${errorBD.message}`);
+      setSaving(false);
+      return;
     }
     // Sincronizar el CRM: si el maitre cambia/agrega datos, los persistimos
     // en customers (origen_captacion=reserva). Idempotente — upsert por phone.
-    if (form.cliente_telefono?.trim()) {
-      try {
-        const existe = await supabase.from('customers').select('id,name,email').eq('phone', form.cliente_telefono.trim()).maybeSingle();
-        if (existe.data) {
-          const cambios:any = {};
-          if (form.cliente_nombre && form.cliente_nombre !== existe.data.name) cambios.name = form.cliente_nombre;
-          if (form.cliente_email && form.cliente_email !== existe.data.email) cambios.email = form.cliente_email;
-          if (Object.keys(cambios).length > 0) {
-            await supabase.from('customers').update(cambios).eq('id', existe.data.id);
+    // CRM e invitación corren en segundo plano — la reserva ya quedó guardada
+    // y el maitre no debe esperar estas sincronizaciones para seguir operando.
+    (async () => {
+      if (form.cliente_telefono?.trim()) {
+        try {
+          const existe = await supabase.from('customers').select('id,name,email').eq('phone', form.cliente_telefono.trim()).maybeSingle();
+          if (existe.data) {
+            const cambios:any = {};
+            if (form.cliente_nombre && form.cliente_nombre !== existe.data.name) cambios.name = form.cliente_nombre;
+            if (form.cliente_email && form.cliente_email !== existe.data.email) cambios.email = form.cliente_email;
+            if (Object.keys(cambios).length > 0) {
+              await supabase.from('customers').update(cambios).eq('id', existe.data.id);
+            }
+          } else {
+            await supabase.from('customers').insert({
+              name: form.cliente_nombre,
+              email: form.cliente_email || null,
+              phone: form.cliente_telefono.trim(),
+              origen_captacion: 'reserva_maitre',
+              activo: true,
+            });
           }
-        } else {
-          await supabase.from('customers').insert({
-            name: form.cliente_nombre,
-            email: form.cliente_email || null,
-            phone: form.cliente_telefono.trim(),
-            origen_captacion: 'reserva_maitre',
-            activo: true,
-          });
-        }
-      } catch (e) { console.warn('No se pudo sincronizar customer:', e); }
-    }
-    // Encolar invitación a Oh Yeah si el maitre marcó el opt-in del cliente
-    if (form.invitar_ohyeah && form.cliente_email?.trim()) {
-      try {
-        await supabase.from('ohyeah_invitaciones').upsert({
-          restaurante_id: restauranteIdActivo,
-          cliente_nombre: form.cliente_nombre,
-          cliente_email: form.cliente_email.trim(),
-          cliente_telefono: form.cliente_telefono?.trim() || null,
-          origen: 'reserva_maitre',
-          estado: 'pendiente',
-        }, { onConflict: 'restaurante_id,cliente_email' });
-        show(`🦉 Invitación a Oh Yeah encolada para ${form.cliente_email}`);
-      } catch (e) { console.warn('No se pudo encolar invitación Oh Yeah:', e); }
-    }
+        } catch (e) { console.warn('No se pudo sincronizar customer:', e); }
+      }
+      // Encolar invitación a Oh Yeah si el maitre marcó el opt-in del cliente
+      if (form.invitar_ohyeah && form.cliente_email?.trim()) {
+        try {
+          await supabase.from('ohyeah_invitaciones').upsert({
+            restaurante_id: restauranteIdActivo,
+            cliente_nombre: form.cliente_nombre,
+            cliente_email: form.cliente_email.trim(),
+            cliente_telefono: form.cliente_telefono?.trim() || null,
+            origen: 'reserva_maitre',
+            estado: 'pendiente',
+          }, { onConflict: 'restaurante_id,cliente_email' });
+          show(`🦉 Invitación a Oh Yeah encolada para ${form.cliente_email}`);
+        } catch (e) { console.warn('No se pudo encolar invitación Oh Yeah:', e); }
+      }
+    })();
     setSaving(false); setTab('lista'); fetchData();
   };
 
@@ -557,6 +592,23 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
   const esOhYeah = typeof reservaId === 'string' && reservaId.includes('-');
   const reserva = reservas.find((r:any)=>String(r.id)===String(reservaId));
   const mesero = (meseroNombre||'').trim() || null;
+  // Regla: un cliente no puede estar sentado en dos mesas a la vez.
+  if (reserva?.cliente_telefono) {
+    const yaSentado = reservas.find((r:any) =>
+      String(r.id)!==String(reservaId) && r.estado==='sentada' &&
+      String(r.cliente_telefono||'')===String(reserva.cliente_telefono));
+    if (yaSentado) {
+      show(`⚠️ ${reserva.cliente_nombre} ya está sentado en la mesa ${yaSentado.mesa_num} — libérala primero`);
+      return;
+    }
+  }
+  // Plan B del jefe: si la mesa no da por capacidad, avisar pero permitir
+  // sentarlo "a la fuerza" con confirmación explícita del maître.
+  const mesaDestino:any = mesas.find((m:any)=>String(m.name)===String(mesaNum));
+  const capMax = Number(mesaDestino?.capacity ?? mesaDestino?.capacidad ?? 0);
+  if (capMax > 0 && (reserva?.pax||0) > capMax) {
+    if (!confirm(`⚠️ La mesa ${mesaNum} es para ${capMax} personas y el grupo es de ${reserva?.pax}. ¿Sentarlos igual (modo manual)?`)) return;
+  }
   if (esOhYeah) {
     await supabase.from('ohyeah_reservas')
       .update({ status:'seated', mesa_num:mesaNum, mesa_asignada_at:new Date().toISOString(), mesa_asignada_por: mesero })
@@ -1295,11 +1347,9 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             style={{padding:'8px 14px',borderRadius:10,border:`1px solid ${S.purple}55`,background:`${S.purple}12`,color:S.purple,fontSize:12,fontWeight:700,cursor:'pointer'}}>
             🧠 Cerebro
           </button>
-          <button onClick={()=>setWalkin({nombre:'',pax:2,mesa:0,telefono:'',email:'',vip:false})}
-            style={{padding:'8px 16px',borderRadius:10,border:`1px solid ${S.green}`,background:`${S.green}18`,color:S.green,fontSize:12,fontWeight:700,cursor:'pointer'}}>
-            🚶 Walk-in
-          </button>
-          <button onClick={()=>{setSelected(null);setReservaCRM(null);setForm({cliente_nombre:'',cliente_email:'',cliente_telefono:'',fecha:hoy,hora:'20:00',pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0,canal:''});setTab('nueva');}}
+          {/* Botón Walk-in retirado del header por pedido del jefe — el flujo
+              walk-in sigue disponible desde el plano de mesas. */}
+          <button onClick={()=>{setSelected(null);setReservaCRM(null);setForm({cliente_nombre:'',cliente_email:'',cliente_telefono:'',fecha:hoy,hora:'20:00',pax:2,ocasion:'Sin ocasión especial',notas:'',mesa_num:0,canal:'',invitar_ohyeah:true});setTab('nueva');}}
             style={{padding:'8px 20px',borderRadius:10,border:'none',background:`linear-gradient(135deg,${S.purple},${S.blue})`,color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer'}}>
             + Nueva reserva
           </button>
@@ -1588,13 +1638,29 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
 })()}
 
 {tab==='lista' && (()=>{
-        const activas = reservas.filter((r:any)=>!['completada','cancelada'].includes(r.estado));
-        const anteriores = reservas.filter((r:any)=>['completada','cancelada'].includes(r.estado));
+        const q = busquedaCliente.trim().toLowerCase();
+        const visibles = q
+          ? reservas.filter((r:any) =>
+              String(r.cliente_nombre||'').toLowerCase().includes(q) ||
+              String(r.cliente_telefono||'').includes(q))
+          : reservas;
+        const activas = visibles.filter((r:any)=>!['completada','cancelada'].includes(r.estado));
+        const anteriores = visibles.filter((r:any)=>['completada','cancelada'].includes(r.estado));
         const ordenadas = [...activas, ...anteriores];
         return (
         <div style={{flex:1,overflowY:'auto'}}>
+          {/* Buscador — pedido del jefe: encontrar al cliente al instante */}
+          <div style={{padding:'10px 14px',position:'sticky',top:0,zIndex:6,background:S.bg}}>
+            <input
+              value={busquedaCliente}
+              onChange={e=>setBusquedaCliente(e.target.value)}
+              placeholder="🔍 Buscar cliente por nombre o teléfono…"
+              style={{width:'100%',maxWidth:420,padding:'9px 14px',borderRadius:10,border:`1px solid ${S.border2}`,background:S.bg2,color:S.t1,fontSize:13,outline:'none'}}
+            />
+            {q && <span style={{marginLeft:10,fontSize:11,color:S.t3}}>{visibles.length} resultado{visibles.length===1?'':'s'}</span>}
+          </div>
           {loading&&<div style={{textAlign:'center',padding:40,color:S.t3}}>Cargando...</div>}
-          {!loading&&reservas.length===0&&<div style={{textAlign:'center',padding:60,color:S.t3}}><div style={{fontSize:48,marginBottom:12}}>🗓️</div><div>Sin reservas para esta fecha</div></div>}
+          {!loading&&visibles.length===0&&<div style={{textAlign:'center',padding:60,color:S.t3}}><div style={{fontSize:48,marginBottom:12}}>🗓️</div><div>{q?'Sin resultados para la búsqueda':'Sin reservas para esta fecha'}</div></div>}
           <table style={{width:'100%',borderCollapse:'collapse',fontSize:13}}>
             <thead>
               <tr style={{background:S.bg2,position:'sticky',top:0,zIndex:5}}>
@@ -1614,27 +1680,19 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                     <tr><td colSpan={7} style={{padding:'10px 14px',background:S.bg2,color:S.t3,fontSize:10,fontWeight:800,textTransform:'uppercase',letterSpacing:'.08em',borderTop:`1px solid ${S.border}`,borderBottom:`1px solid ${S.border}`}}>📁 Reservas anteriores ({anteriores.length})</td></tr>
                   )}
                   <tr style={{background:i%2===0?S.bg:S.bg2,borderBottom:'1px solid rgba(255,255,255,0.03)',opacity:['completada','cancelada'].includes(r.estado)?0.6:1}}>
-                    {/* Cliente — sólo nombre + 2 acciones: ver perfil / enviar a Clientes */}
+                    {/* Cliente — nombre + frase del mánager + acción ver ficha CRM */}
                     <td style={{padding:'10px 14px'}}>
-                      <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:6,marginBottom:6}}>
+                      <div style={{fontWeight:700,display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
                         {r.cliente_nombre}
                         {esOhYeah&&<span style={{fontSize:9,background:`${S.gold}20`,color:S.gold,padding:'1px 6px',borderRadius:10}}>🦉</span>}
                       </div>
+                      {fraseManager(r) && (
+                        <div style={{fontSize:10,color:S.gold,marginBottom:5}}>{fraseManager(r)}</div>
+                      )}
                       <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
-                        <button onClick={()=>{ setSelected(r); setReservaCRM(null); buscarClienteReserva(r.cliente_telefono||''); }}
+                        <button onClick={()=>setAsignandoMesa(r)}
                           style={{padding:'3px 9px',borderRadius:7,border:`1px solid ${S.purple}40`,background:`${S.purple}10`,color:S.purple,fontSize:10,fontWeight:700,cursor:'pointer'}}>
                           👁 Ver cliente
-                        </button>
-                        <button onClick={()=>{
-                            window.dispatchEvent(new CustomEvent('nx_open_module', {
-                              detail: {
-                                module: ModuleType.RELATIONSHIP,
-                                payload: { telefono: r.cliente_telefono, email: r.cliente_email, nombre: r.cliente_nombre }
-                              }
-                            }));
-                          }}
-                          style={{padding:'3px 9px',borderRadius:7,border:`1px solid ${S.cyan}40`,background:`${S.cyan}10`,color:S.cyan,fontSize:10,fontWeight:700,cursor:'pointer'}}>
-                          🗂 Enviar a Clientes
                         </button>
                       </div>
                     </td>
@@ -1649,7 +1707,15 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
                       {r.ocasion&&r.ocasion!=='Sin ocasión especial'?<span style={{fontSize:11,background:`${S.purple}15`,color:S.purple,padding:'2px 8px',borderRadius:20}}>{r.ocasion}</span>:<span style={{color:S.t3,fontSize:11}}>—</span>}
                     </td>
                     <td style={{padding:'10px 14px'}}>
-                      <span style={{fontSize:10,background:`${est.c}15`,color:est.c,border:`1px solid ${est.c}30`,padding:'3px 10px',borderRadius:50,fontWeight:700,whiteSpace:'nowrap'}}>{est.l}</span>
+                      {r.estado==='pendiente' ? (
+                        <button onClick={()=>cambiarEstado(r.id,'confirmada',esOhYeah)}
+                          title="Click para confirmar"
+                          style={{fontSize:10,background:`${est.c}15`,color:est.c,border:`1px dashed ${est.c}60`,padding:'3px 10px',borderRadius:50,fontWeight:700,whiteSpace:'nowrap',cursor:'pointer'}}>
+                          ○ Por confirmar — click ✓
+                        </button>
+                      ) : (
+                        <span style={{fontSize:10,background:`${est.c}15`,color:est.c,border:`1px solid ${est.c}30`,padding:'3px 10px',borderRadius:50,fontWeight:700,whiteSpace:'nowrap'}}>{est.l}</span>
+                      )}
                     </td>
                     <td style={{padding:'10px 14px'}}>
                       <span style={{fontSize:10,color:S.t3}}>{esOhYeah?'🦉 Oh Yeah':'Nexum'}</span>
@@ -2042,7 +2108,7 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
             <div style={{display:'flex',gap:10,marginTop:16}}>
               <button onClick={()=>setTab('lista')} style={{flex:1,padding:12,borderRadius:10,border:`1px solid ${S.border2}`,background:'transparent',color:S.t2,cursor:'pointer',fontSize:13}}>Cancelar</button>
               <button onClick={guardar} disabled={saving} style={{flex:2,padding:12,borderRadius:10,border:'none',background:saving?S.bg3:`linear-gradient(135deg,${S.purple},${S.blue})`,color:'#fff',cursor:'pointer',fontSize:13,fontWeight:700}}>
-                {saving?'Guardando...':(selected?'✓ Actualizar':'✓ Crear reserva')}
+                {saving?'⏳ Creando la reserva…':(selected?'✓ Actualizar':'✓ Crear reserva')}
               </button>
             </div>
           </div>
