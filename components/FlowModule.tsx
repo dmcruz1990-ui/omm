@@ -83,7 +83,7 @@ export default function FlowModule() {
       .select('*')
       .eq('restaurante_id', restauranteId)
       .in('status', ['pending','preparing','almost','ready'])
-      .order('created_at');
+      .order('created_at', { ascending: false }); // newest primero, oldest queda "atrás"
     if (data) setItems(data as FlowItem[]);
     setLoading(false);
   }, [restauranteId]);
