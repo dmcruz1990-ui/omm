@@ -7,8 +7,11 @@ import { UserRole } from '../types.ts';
 
 const Login: React.FC = () => {
   const { signInMock } = useAuth();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+  // Credenciales pre-rellenadas para acceso rápido a los meseros de prueba.
+  // Sólo hace falta tocar ACCEDER (o cambiar a mesero.dos@seratta.com si
+  // querés entrar como el otro).
+  const [email, setEmail] = useState('mesero.uno@seratta.com');
+  const [password, setPassword] = useState('Seratta2026');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,7 +40,8 @@ const Login: React.FC = () => {
     { email: 'gerencia.juliana@seratta.com', nombre: 'Juliana',       rol: 'Gerencia', color: 'bg-blue-600' },
     { email: 'maitre.laura@seratta.com',     nombre: 'Laura',         rol: 'Maître',   color: 'bg-amber-600' },
     { email: 'mesero.camilo@seratta.com',    nombre: 'Camilo',        rol: 'Mesero',   color: 'bg-green-600' },
-    { email: 'mesero.uno@seratta.com',       nombre: 'Mesero Uno',    rol: 'Mesero',   color: 'bg-green-600' },
+    { email: 'mesero.uno@seratta.com',       nombre: 'Mesero Uno',    rol: 'Mesero',   color: 'bg-cyan-600' },
+    { email: 'mesero.dos@seratta.com',       nombre: 'Mesero Dos',    rol: 'Mesero',   color: 'bg-pink-600' },
     { email: 'cocina.uno@seratta.com',       nombre: 'Cocina Uno',    rol: 'Cocina',   color: 'bg-orange-600' },
     { email: 'cocina.sommelier@seratta.com', nombre: 'Sommelier Uno', rol: 'Cocina',   color: 'bg-orange-600' },
   ];
