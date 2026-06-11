@@ -4104,8 +4104,13 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
   };
 
   return (
-    <div style={{flex:1,overflow:'auto',padding:18,background:NEON.bgOuter}}>
+    // Outer div + svg con onDragOver para que el cursor SIEMPRE muestre
+    // zona válida al arrastrar — sin esto el browser cancela el drag fuera
+    // de los grupos de mesa y la animación no llega al onDrop.
+    <div style={{flex:1,overflow:'auto',padding:18,background:NEON.bgOuter}}
+         onDragOver={(e)=>{ e.preventDefault(); if(e.dataTransfer) e.dataTransfer.dropEffect='move'; }}>
       <svg viewBox={`0 0 ${VW_PLANO} ${VH_PLANO}`} width="100%"
+        onDragOver={(e)=>{ e.preventDefault(); if(e.dataTransfer) e.dataTransfer.dropEffect='move'; }}
         style={{display:'block',background:`radial-gradient(circle at 50% 30%, #1a1a2a 0%, ${NEON.bgInner} 70%)`,borderRadius:14,boxShadow:'inset 0 0 60px rgba(0,0,0,0.6)'}}>
         <defs>
           {/* glow filter suave para mesas */}
