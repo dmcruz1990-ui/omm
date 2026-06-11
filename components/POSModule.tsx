@@ -7371,36 +7371,37 @@ function PlanoPOSSala({ mesasEstado, restauranteId, miNombre, accesoSalon, profi
           const esMia = (ocupada || asignada) && (!meseroDeMesa || meseroDeMesa===miNombre || compartida);
           const puedeEntrar = esMia || accesoSalon;
           const colorMesero = colorDeMesero(meseroDeMesa || (asignadaMia ? miNombre : ''));
-          // COLORES POS — regla clara para el mesero:
-          // · Admin/Gerencia: TODO en su color (fucsia) — ven todo como suyo
-          // · MÍAS con cliente sentado/ocupada → VERDE (es trabajo activo mío)
-          // · MÍAS asignadas sin sentar → mi color (fucsia/oro)
-          // · POOL libre para tomar → VERDE
-          // · DE OTROS MESEROS → NARANJA
-          // · NO PUEDO TOMAR (libres ajenas, bloqueadas no para mí) → GRIS
+          // COLORES POS — nueva regla del boss (Jun 11):
+          // · MÍAS (ocupada/asignada/compartida) → ROSADAS  #FF2D78
+          // · OTROS MESEROS (ocupada/asignada)   → NARANJAS #FF8C42
+          // · LIBRES (cualquiera puede abrirlas) → BLANCAS  #E8E8F0
+          // · Bloqueadas → gris bloqueado
+          // · Admin/Gerencia ve todo en rosa (todo lo trata como suyo)
           const esAdmin = ['admin','gerencia','desarrollo'].includes(String(profile?.role||'').toLowerCase());
+          const ROSA_MIA      = '#FF2D78';
+          const NARANJA_OTRO  = '#FF8C42';
+          const BLANCO_LIBRE  = '#E8E8F0';
           const GRIS_NO_PUEDO = '#5a6472';
-          const VERDE_PUEDO  = '#3DBE8B';
-          const NARANJA_OTRO = '#FF8C42';
+          const VERDE_PUEDO   = '#3DBE8B';
           const miColor = sanearHex(profile?.color);
           const stroke = bloqueada ? NEON.bloqueadaStroke
-            : esAdmin && (asignada || ocupada) ? miColor                     // ADMIN: todo en fucsia
-            : compartida && (asignada || ocupada) ? VERDE_PUEDO              // COMPARTIDA conmigo (ej: Fabián compartió) → VERDE
-            : ocupada && esMia ? VERDE_PUEDO                                 // mía con cliente sentado → VERDE
-            : ocupada && !puedeEntrar ? NARANJA_OTRO                         // ocupada por otro mesero → NARANJA
-            : ocupada ? colorMesero                                          // accesoSalon ve color del mesero
-            : asignadaMia ? miColor                                          // mía sin sentar aún
-            : asignadaPool ? VERDE_PUEDO                                     // pool libre para tomar
-            : asignadaDeOtro ? (accesoSalon ? colorMesero : NARANJA_OTRO)    // de otro mesero
-            : NEON.libreStroke;                                              // libre: cualquiera puede abrirla
+            : esAdmin && (asignada || ocupada) ? ROSA_MIA                     // ADMIN: todo en rosa
+            : compartida && (asignada || ocupada) ? ROSA_MIA                  // compartida conmigo → rosa (también es mía)
+            : ocupada && esMia ? ROSA_MIA                                     // mía ocupada → rosa
+            : ocupada && !puedeEntrar ? NARANJA_OTRO                          // ocupada por otro → naranja
+            : ocupada ? colorMesero                                           // accesoSalon ve color real del mesero
+            : asignadaMia ? ROSA_MIA                                          // mía asignada → rosa
+            : asignadaPool ? VERDE_PUEDO                                      // pool libre para tomar → verde
+            : asignadaDeOtro ? (accesoSalon ? colorMesero : NARANJA_OTRO)     // de otro mesero → naranja
+            : BLANCO_LIBRE;                                                   // libre → blanco
           const fill = bloqueada ? NEON.bloqueadaFill
             : ocupada ? NEON.ocupadaFill
             : asignada ? NEON.reservadaFill
-            : NEON.libreFill;
+            : '#1a1a22';  // fondo neutro para libres (antes verdoso)
           const text = bloqueada ? NEON.bloqueadaText
             : ocupada ? NEON.ocupadaText
             : asignada ? NEON.reservadaText
-            : NEON.libreText;
+            : '#E8E8F0';  // texto blanco para mesas libres
           const { w, h } = sizeForMesa({ zona:m.zona||'', capacidad:m.capacidad||m.seats||4, name:m.name });
           const isRound = (m.shape||'round')==='round' || (m.zona||'').startsWith('Barra');
           const cx = m.posicion_x, cy = m.posicion_y;
