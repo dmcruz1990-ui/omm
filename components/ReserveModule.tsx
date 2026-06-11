@@ -1742,7 +1742,10 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
                     draggable={!yaSentada}
                     onDragStart={(e) => {
                       if (yaSentada) { e.preventDefault(); return; }
+                      // text/plain como fallback — Safari y algunos Chromium no
+                      // inician el drag si sólo hay un MIME type custom.
                       e.dataTransfer.setData('text/reserva', String(r.id));
+                      e.dataTransfer.setData('text/plain', String(r.id));
                       e.dataTransfer.effectAllowed = 'move';
                     }}
                     onClick={(e)=>{
@@ -4091,6 +4094,85 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
   const zonas = conf?.zonas || {};
   const orden = conf?.orden || [];
   const [hoverMesa, setHoverMesa] = React.useState<number|null>(null);
+  const svgPlanoRef = React.useRef<SVGSVGElement|null>(null);
+  // hoverMesa también en ref para leerlo dentro de handlers sin stale closure
+  const hoverMesaRef = React.useRef<number|null>(null);
+
+  // ── DROP centralizado en el <svg> raíz ─────────────────────────────
+  // Los <g> de mesa como drop-targets son frágiles: cada dragover dispara
+  // setState → re-render → el nodo bajo el cursor se recrea y el browser
+  // cancela el drop. En su lugar: hit-test por coordenadas en el svg root,
+  // que nunca se desmonta durante el drag.
+  const mesaEnPunto = (clientX:number, clientY:number) => {
+    const svg = svgPlanoRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return null;
+    const x = ((clientX - rect.left) / rect.width) * VW_PLANO;
+    const y = ((clientY - rect.top) / rect.height) * VH_PLANO;
+    // Buscar la mesa cuyo cuerpo contiene el punto (con margen de 10 uds)
+    const M = 10;
+    let best: any = null; let bestDist = Infinity;
+    for (const m of mesas) {
+      if (m.posicion_x == null || m.posicion_y == null) continue;
+      const { w, h } = sizeForMesa({ zona:m.zona||'', capacidad:m.capacidad||4, name:m.name });
+      const dx = Math.abs(x - m.posicion_x), dy = Math.abs(y - m.posicion_y);
+      if (dx <= w/2 + M && dy <= h/2 + M) {
+        const d = dx*dx + dy*dy;
+        if (d < bestDist) { bestDist = d; best = m; }
+      }
+    }
+    return best;
+  };
+
+  // Toda la lógica de validación + confirmación + asignación al soltar
+  const ejecutarDropEnMesa = (m:any, reservaId:string) => {
+    const reserva = activas.find((r:any) => mismaMesa(r.mesa_num, m.name));
+    const reservaArrastrada = activas.find((rr:any) => String(rr.id) === reservaId);
+    if (reservaArrastrada && reservaArrastrada.estado === 'sentada') {
+      alert(`🪑 ${reservaArrastrada.cliente_nombre} ya está sentado en M${reservaArrastrada.mesa_num}.\nLevantá la mesa primero para reubicar.`);
+      return;
+    }
+    if (reserva && String(reserva.id)!==reservaId && reserva.estado === 'sentada') {
+      alert(`🚫 ${m.name} ya tiene comensales sentados (${reserva.cliente_nombre}).\nNo se puede asignar otra reserva ahí hasta que se libere.`);
+      return;
+    }
+    const nombre = reservaArrastrada?.cliente_nombre || 'cliente';
+    const horaTxt = reservaArrastrada?.hora ? ` (${String(reservaArrastrada.hora).slice(0,5)})` : '';
+    const paxTxt  = reservaArrastrada?.pax ? ` · ${reservaArrastrada.pax}p` : '';
+    const mesaName = String(m.name);
+    const mesaNumInt = parseInt(mesaName.replace(/\D/g,''),10);
+    if (reserva && String(reserva.id)!==reservaId) {
+      if (!confirm(`⚠️ ${mesaName} ya está asignada a ${reserva.cliente_nombre} (${reserva.hora}).\n\n¿Reemplazar y sentar a ${nombre}${horaTxt}${paxTxt}?\nLa reserva de ${reserva.cliente_nombre} quedará sin mesa.`)) return;
+    } else if (reservaArrastrada?.mesa_num && Number(reservaArrastrada.mesa_num) !== mesaNumInt) {
+      if (!confirm(`Cambiar la mesa de ${nombre}: M${reservaArrastrada.mesa_num} → ${mesaName}?`)) return;
+    } else {
+      if (!confirm(`✓ Sentar a ${nombre}${horaTxt}${paxTxt} en ${mesaName}?\n\nLa mesa quedará ocupada y aparecerá en todos los planos.`)) return;
+    }
+    asignarMesa(reservaId, mesaName);
+  };
+
+  const onSvgDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+    const m = mesaEnPunto(e.clientX, e.clientY);
+    const id = m ? m.id : null;
+    if (hoverMesaRef.current !== id) {
+      hoverMesaRef.current = id;
+      setHoverMesa(id);
+    }
+  };
+
+  const onSvgDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const reservaId = e.dataTransfer.getData('text/reserva') || e.dataTransfer.getData('text/plain');
+    hoverMesaRef.current = null;
+    setHoverMesa(null);
+    if (!reservaId) return;
+    const m = mesaEnPunto(e.clientX, e.clientY);
+    if (!m) return; // soltó fuera de cualquier mesa
+    ejecutarDropEnMesa(m, reservaId);
+  };
 
   // Paleta neon · TONO SUAVE para que el texto sea legible
   const NEON = {
@@ -4104,13 +4186,20 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
   };
 
   return (
-    // Outer div + svg con onDragOver para que el cursor SIEMPRE muestre
-    // zona válida al arrastrar — sin esto el browser cancela el drag fuera
-    // de los grupos de mesa y la animación no llega al onDrop.
+    // Drop centralizado: el <svg> raíz acepta dragover/drop y hace hit-test
+    // por coordenadas → el drop funciona en TODA el área de cada mesa sin
+    // depender de los <g> (que se re-renderizan durante el drag y el
+    // browser cancelaba el drop).
     <div style={{flex:1,overflow:'auto',padding:18,background:NEON.bgOuter}}
-         onDragOver={(e)=>{ e.preventDefault(); if(e.dataTransfer) e.dataTransfer.dropEffect='move'; }}>
-      <svg viewBox={`0 0 ${VW_PLANO} ${VH_PLANO}`} width="100%"
-        onDragOver={(e)=>{ e.preventDefault(); if(e.dataTransfer) e.dataTransfer.dropEffect='move'; }}
+         onDragOver={(e)=>{ e.preventDefault(); if(e.dataTransfer) e.dataTransfer.dropEffect='move'; }}
+         onDrop={onSvgDrop}>
+      <svg ref={svgPlanoRef} viewBox={`0 0 ${VW_PLANO} ${VH_PLANO}`} width="100%"
+        onDragOver={onSvgDragOver}
+        onDrop={onSvgDrop}
+        onDragLeave={(e)=>{
+          // Sólo limpiar hover si realmente salió del svg (no entre hijos)
+          if (e.currentTarget === e.target) { hoverMesaRef.current = null; setHoverMesa(null); }
+        }}
         style={{display:'block',background:`radial-gradient(circle at 50% 30%, #1a1a2a 0%, ${NEON.bgInner} 70%)`,borderRadius:14,boxShadow:'inset 0 0 60px rgba(0,0,0,0.6)'}}>
         <defs>
           {/* glow filter suave para mesas */}
@@ -4171,48 +4260,9 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
           const cx = m.posicion_x, cy = m.posicion_y;
           return (
             <g key={m.id} style={{cursor:'pointer'}}
-               onDragOver={(e)=>{ e.preventDefault(); setHoverMesa(m.id); }}
-               onDragLeave={()=>setHoverMesa(null)}
-               onDrop={(e)=>{
-                 e.preventDefault();
-                 const id = e.dataTransfer.getData('text/reserva');
-                 setHoverMesa(null);
-                 if (!id) return;
-                 const reservaArrastrada = activas.find((rr:any) => String(rr.id) === id);
-                 if (reservaArrastrada && reservaArrastrada.estado === 'sentada') {
-                   alert(`🪑 ${reservaArrastrada.cliente_nombre} ya está sentado en M${reservaArrastrada.mesa_num}.\nLevantá la mesa primero para reubicar.`);
-                   return;
-                 }
-                 if (reserva && String(reserva.id)!==id && reserva.estado === 'sentada') {
-                   alert(`🚫 M${m.name} ya tiene comensales sentados (${reserva.cliente_nombre}).\nNo se puede asignar otra reserva ahí hasta que se libere.`);
-                   return;
-                 }
-                 // CONFIRMACIÓN PRINCIPAL — siempre pedir confirmación al soltar.
-                 // Antes se asignaba directo y a veces el host arrastraba por error.
-                 const nombre = reservaArrastrada?.cliente_nombre || 'cliente';
-                 const horaTxt = reservaArrastrada?.hora ? ` (${reservaArrastrada.hora})` : '';
-                 const paxTxt  = reservaArrastrada?.pax ? ` · ${reservaArrastrada.pax}p` : '';
-                 // Mesa destino — usamos el NOMBRE de la BD, no Number()
-                 // (las mesas se llaman "A10", "S3" etc., Number() daba NaN).
-                 const mesaName = String(m.name);
-                 const mesaNumInt = parseInt(mesaName.replace(/\D/g,''),10);
-                 // Caso reemplazo: la mesa destino tiene otra reserva confirmada
-                 if (reserva && String(reserva.id)!==id) {
-                   if (!confirm(`⚠️ ${mesaName} ya está asignada a ${reserva.cliente_nombre} (${reserva.hora}).\n\n¿Reemplazar y sentar a ${nombre}${horaTxt}${paxTxt}?\nLa reserva de ${reserva.cliente_nombre} quedará sin mesa.`)) return;
-                 }
-                 // Caso cambio de mesa
-                 else if (reservaArrastrada?.mesa_num && Number(reservaArrastrada.mesa_num) !== mesaNumInt) {
-                   if (!confirm(`Cambiar la mesa de ${nombre}: M${reservaArrastrada.mesa_num} → ${mesaName}?`)) return;
-                 }
-                 // Caso asignación normal
-                 else {
-                   if (!confirm(`✓ Sentar a ${nombre}${horaTxt}${paxTxt} en ${mesaName}?\n\nLa mesa quedará ocupada y aparecerá en todos los planos.`)) return;
-                 }
-                 asignarMesa(id, mesaName);
-               }}
                onClick={()=>{
                  if (reserva) setAsignandoMesa(reserva);
-                 else if (onNuevaConMesa) onNuevaConMesa(Number(m.name));
+                 else if (onNuevaConMesa) onNuevaConMesa(parseInt(String(m.name).replace(/\D/g,''),10) || 0);
                }}>
               {/* Halo de hover */}
               {isHover && (
