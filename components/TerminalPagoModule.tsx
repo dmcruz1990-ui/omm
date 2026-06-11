@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase.ts';
 import { useAuth } from '../contexts/AuthContext';
 import { useRestaurant } from '../contexts/RestaurantContext';
 import { CreditCard, Banknote, Smartphone, X, Search } from 'lucide-react';
+import { PremioPicker, RuletaPremios, CartasPremios } from './POSModule';
 
 const S = {
   bg:'#08080f', bg2:'#0f0f1a', bg3:'#161624', bg4:'#1e1e2e',
@@ -383,12 +384,13 @@ function EncuestaXCareCompleta({ mesa, items, cliente, telefono, restauranteId, 
   mesa:number; items:any[]; cliente?:string; telefono?:string;
   restauranteId:number; restaurant:any; S:any; onDone:()=>void;
 }) {
-  const [step, setStep] = React.useState<'sentiment'|'cat'|'sub'|'comentario'|'done'>('sentiment');
+  const [step, setStep] = React.useState<'sentiment'|'cat'|'sub'|'comentario'|'premio'|'done'>('sentiment');
   const [rating, setRating] = React.useState(0);
   const [tags, setTags] = React.useState<string[]>([]);
   const [subIdx, setSubIdx] = React.useState(0);
   const [sel, setSel] = React.useState<Record<string,string[]>>({});
   const [comentario, setComentario] = React.useState('');
+  const [juegoPremio, setJuegoPremio] = React.useState<'ruleta'|'cartas'|null>(null);
 
   // ── Mismas caritas del POS ──
   const CARITAS = [
@@ -483,8 +485,10 @@ function EncuestaXCareCompleta({ mesa, items, cliente, telefono, restauranteId, 
   };
 
   // ── Navegación (idéntica al POS) ──
+  // Tras guardar, positivas y negativas pasan al PremioPicker (en POS:
+  // positivas "¡Gracias por tu visita!", negativas "Un detalle por tu honestidad").
   const finalizar = () => {
-    if (rating>=4) { guardar(); setStep('done'); setTimeout(onDone, 1600); }
+    if (rating>=4) { guardar(); setStep('premio'); }
     else setStep('comentario');
   };
   const irADetalle = (tg:string[]) => {
@@ -510,6 +514,24 @@ function EncuestaXCareCompleta({ mesa, items, cliente, telefono, restauranteId, 
     display:'flex', alignItems:'center', gap:10, width:'100%',
     transition:'all .15s', textAlign:'left',
   });
+
+  // PASO 5 · PREMIO — réplica exacta del flujo del POS modo cliente:
+  // PremioPicker → ruleta o 6 cartas → onClose cierra la encuesta.
+  if (step==='premio') {
+    return (
+      <div style={{position:'fixed', inset:0, background:'#080810', zIndex:8000, display:'flex', flexDirection:'column'}}>
+        {juegoPremio === null && (
+          <PremioPicker rating={rating} onPick={setJuegoPremio} onSkip={onDone} />
+        )}
+        {juegoPremio === 'ruleta' && (
+          <RuletaPremios onClose={onDone} mesaNum={mesa} rating={rating} />
+        )}
+        {juegoPremio === 'cartas' && (
+          <CartasPremios onClose={onDone} mesaNum={mesa} rating={rating} />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div style={{position:'fixed', inset:0, background:'linear-gradient(180deg, #0a0a10 0%, #000 100%)', zIndex:8000, display:'flex', flexDirection:'column', alignItems:'center', padding:'70px 24px 60px', overflowY:'auto'}}>
@@ -608,7 +630,7 @@ function EncuestaXCareCompleta({ mesa, items, cliente, telefono, restauranteId, 
             <textarea value={comentario} onChange={e=>setComentario(e.target.value)} rows={4}
               placeholder="Escribí acá (opcional)…"
               style={{width:'100%',background:'rgba(255,255,255,0.05)',border:`1px solid rgba(255,255,255,0.15)`,borderRadius:14,padding:'14px 16px',color:'#fff',fontSize:14,outline:'none',resize:'none'}}/>
-            <button onClick={async()=>{ await guardar(comentario); setStep('done'); setTimeout(onDone, 1600); }}
+            <button onClick={async()=>{ await guardar(comentario); setStep('premio'); }}
               style={{marginTop:18,width:'100%',padding:'14px',borderRadius:14,border:'none',background:accent,color:'#000',fontSize:14,fontWeight:900,cursor:'pointer'}}>
               Enviar ✓
             </button>

@@ -491,7 +491,7 @@ const barajar = <T,>(a: T[]): T[] => {
   return b;
 };
 
-const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: number }> = ({ onClose, mesaNum, rating }) => {
+export const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: number }> = ({ onClose, mesaNum, rating }) => {
   const [spinning, setSpinning] = useState(false);
   const [selected, setSelected] = useState<number|null>(null);
   const [rotation, setRotation] = useState(0);
@@ -669,7 +669,7 @@ const RuletaPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
 };
 
 // ── 6 CARTAS — mira los premios, se barajan, picas el tuyo ──
-const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: number }> = ({ onClose, mesaNum, rating }) => {
+export const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: number }> = ({ onClose, mesaNum, rating }) => {
   const [cartas] = useState(() => [...PREMIOS_RULETA].sort(() => Math.random() - 0.5).slice(0, 6));
   // slots[posiciónEnGrid] = índice de carta — se baraja para que cambien de lugar
   const [slots, setSlots] = useState<number[]>(() => cartas.map((_, i) => i));
@@ -928,7 +928,7 @@ const CartasPremios: React.FC<{ onClose: () => void; mesaNum: number; rating: nu
 };
 
 // ── PICKER — elige entre ruleta o cartas ────────────────────
-const PremioPicker: React.FC<{ onPick: (juego:'ruleta'|'cartas')=>void; onSkip: ()=>void; rating: number }> = ({ onPick, onSkip, rating }) => (
+export const PremioPicker: React.FC<{ onPick: (juego:'ruleta'|'cartas')=>void; onSkip: ()=>void; rating: number }> = ({ onPick, onSkip, rating }) => (
   <div style={{ flex:1, overflowY:'auto', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'60px 24px 32px', background:'#080810', position:'relative' }}>
     <style>{`
       @keyframes pulseGlow{0%,100%{box-shadow:0 0 30px rgba(255,45,120,0.4)}50%{box-shadow:0 0 60px rgba(255,45,120,0.7)}}
