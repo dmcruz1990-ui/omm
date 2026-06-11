@@ -657,11 +657,35 @@ const sentarWalkin = async () => {
   fetchData();
 };
 
-const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) => {
+// asignarMesa ahora acepta el NOMBRE de la mesa (string "A10") o el número
+// directo. Resuelve internamente:
+//   · mesaName (string) para .eq('name', ...) en tables
+//   · mesaNum (int)     para reservations.mesa_num
+// Bug previo: Number("A10") = NaN → mesa_num quedaba NULL y tables no
+// actualizaba ninguna fila porque eq('name','NaN') no matchea.
+const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?:string) => {
   const esOhYeah = typeof reservaId === 'string' && reservaId.includes('-');
   const reserva = reservas.find((r:any)=>String(r.id)===String(reservaId));
   const mesero = (meseroNombre||'').trim() || null;
-  // Regla: un cliente no puede estar sentado en dos mesas a la vez.
+
+  // 1) Resolver mesa: buscar en mesas[] por name o num exactos
+  const inputStr = String(mesaInput);
+  const mesaDestino:any = mesas.find((m:any) =>
+    String(m.name) === inputStr || String(m.num) === inputStr
+  ) || mesas.find((m:any) => {
+    // Fallback: comparar la parte numérica
+    const mNum = parseInt(String(m.name||'').replace(/\D/g,''),10);
+    return !isNaN(mNum) && mNum === parseInt(inputStr.replace(/\D/g,''),10);
+  });
+  if (!mesaDestino) {
+    show(`⚠️ Mesa "${inputStr}" no encontrada en el plano`);
+    console.error('asignarMesa: mesa no encontrada', { mesaInput, namesDisponibles: mesas.map((m:any)=>m.name) });
+    return;
+  }
+  const mesaName = String(mesaDestino.name);
+  const mesaNumInt = parseInt(mesaName.replace(/\D/g,''), 10) || Number(mesaDestino.num) || 0;
+
+  // 2) Regla: un cliente no puede estar sentado en dos mesas a la vez.
   if (reserva?.cliente_telefono) {
     const yaSentado = reservas.find((r:any) =>
       String(r.id)!==String(reservaId) && r.estado==='sentada' &&
@@ -671,34 +695,48 @@ const asignarMesa = async (reservaId:any, mesaNum:number, meseroNombre?:string) 
       return;
     }
   }
-  // Plan B del jefe: si la mesa no da por capacidad, avisar pero permitir
-  // sentarlo "a la fuerza" con confirmación explícita del maître.
-  const mesaDestino:any = mesas.find((m:any)=>String(m.name)===String(mesaNum));
-  const capMax = Number(mesaDestino?.capacity ?? mesaDestino?.capacidad ?? 0);
+  // 3) Capacidad — confirmación si excede
+  const capMax = Number(mesaDestino?.capacidad ?? mesaDestino?.capacity ?? 0);
   if (capMax > 0 && (reserva?.pax||0) > capMax) {
-    if (!confirm(`⚠️ La mesa ${mesaNum} es para ${capMax} personas y el grupo es de ${reserva?.pax}. ¿Sentarlos igual (modo manual)?`)) return;
+    if (!confirm(`⚠️ La mesa ${mesaName} es para ${capMax} personas y el grupo es de ${reserva?.pax}. ¿Sentarlos igual (modo manual)?`)) return;
   }
+
+  // 4) Update reservas — usando el ENTERO real (mesa_num es int en BD)
+  let upErr: any = null;
   if (esOhYeah) {
-    await supabase.from('ohyeah_reservas')
-      .update({ status:'seated', mesa_num:mesaNum, mesa_asignada_at:new Date().toISOString(), mesa_asignada_por: mesero })
-      .eq('id',reservaId);
+    const r = await supabase.from('ohyeah_reservas')
+      .update({ status:'seated', mesa_num: mesaNumInt, mesa_asignada_at:new Date().toISOString(), mesa_asignada_por: mesero })
+      .eq('id', reservaId);
+    upErr = r.error;
   } else {
-    await supabase.from('reservations').update({ mesa_num:mesaNum, estado:'sentada', sentado_at:new Date().toISOString() }).eq('id',reservaId);
+    const r = await supabase.from('reservations').update({
+      mesa_num: mesaNumInt,
+      estado:'sentada',
+      sentado_at: new Date().toISOString(),
+    }).eq('id', reservaId);
+    upErr = r.error;
   }
-  // Sentar al cliente: la mesa queda OCUPADA en TODOS los planos
-  // (Reserve, POS y PlanoOMM). Antes quedaba como 'asignada' lo que
-  // hacía que POS la mostrara como "reservada/libre para tomar" aunque
-  // el cliente ya estuviera comiendo — ahora todos los planos coinciden.
-  // Si el Maître eligió mesero, queda dirigida a él; si no, queda en
-  // pool para que cualquier mesero la tome desde el POS.
-  await supabase.from('tables').update({
+  if (upErr) {
+    console.error('asignarMesa · update reserva falló:', upErr);
+    show(`✗ No se pudo actualizar la reserva: ${upErr.message||'error'}`);
+    return;
+  }
+
+  // 5) Update tables — usando el NOMBRE EXACTO ("A10", "S3", etc.)
+  const { error: tblErr } = await supabase.from('tables').update({
     estado:'ocupada',
     cliente_nombre: reserva?.cliente_nombre || null,
     pax_actual: reserva?.pax || 0,
     mesero_nombre: mesero,
     abierta_en: new Date().toISOString(),
-  }).eq('name', String(mesaNum));
-  show(mesero ? `✓ Mesa ${mesaNum} asignada a ${mesero}` : `✓ Mesa ${mesaNum} asignada — libre para tomar`);
+  }).eq('name', mesaName);
+  if (tblErr) {
+    console.error('asignarMesa · update tables falló:', tblErr);
+    show(`⚠ Reserva actualizada pero la mesa no se marcó ocupada: ${tblErr.message||'error'}`);
+    return;
+  }
+
+  show(mesero ? `✓ Mesa ${mesaName} asignada a ${mesero}` : `✓ Mesa ${mesaName} asignada — libre para tomar`);
   fetchData();
 };
 
@@ -4149,19 +4187,23 @@ function PlanoSalaSVG({ mesas, activas, restauranteId, asignarMesa, setAsignando
                  const nombre = reservaArrastrada?.cliente_nombre || 'cliente';
                  const horaTxt = reservaArrastrada?.hora ? ` (${reservaArrastrada.hora})` : '';
                  const paxTxt  = reservaArrastrada?.pax ? ` · ${reservaArrastrada.pax}p` : '';
+                 // Mesa destino — usamos el NOMBRE de la BD, no Number()
+                 // (las mesas se llaman "A10", "S3" etc., Number() daba NaN).
+                 const mesaName = String(m.name);
+                 const mesaNumInt = parseInt(mesaName.replace(/\D/g,''),10);
                  // Caso reemplazo: la mesa destino tiene otra reserva confirmada
                  if (reserva && String(reserva.id)!==id) {
-                   if (!confirm(`⚠️ M${m.name} ya está asignada a ${reserva.cliente_nombre} (${reserva.hora}).\n\n¿Reemplazar y sentar a ${nombre}${horaTxt}${paxTxt}?\nLa reserva de ${reserva.cliente_nombre} quedará sin mesa.`)) return;
+                   if (!confirm(`⚠️ ${mesaName} ya está asignada a ${reserva.cliente_nombre} (${reserva.hora}).\n\n¿Reemplazar y sentar a ${nombre}${horaTxt}${paxTxt}?\nLa reserva de ${reserva.cliente_nombre} quedará sin mesa.`)) return;
                  }
                  // Caso cambio de mesa
-                 else if (reservaArrastrada?.mesa_num && Number(reservaArrastrada.mesa_num) !== Number(m.name)) {
-                   if (!confirm(`Cambiar la mesa de ${nombre}: M${reservaArrastrada.mesa_num} → M${m.name}?`)) return;
+                 else if (reservaArrastrada?.mesa_num && Number(reservaArrastrada.mesa_num) !== mesaNumInt) {
+                   if (!confirm(`Cambiar la mesa de ${nombre}: M${reservaArrastrada.mesa_num} → ${mesaName}?`)) return;
                  }
                  // Caso asignación normal
                  else {
-                   if (!confirm(`✓ Sentar a ${nombre}${horaTxt}${paxTxt} en M${m.name}?\n\nLa mesa quedará ocupada y aparecerá en todos los planos.`)) return;
+                   if (!confirm(`✓ Sentar a ${nombre}${horaTxt}${paxTxt} en ${mesaName}?\n\nLa mesa quedará ocupada y aparecerá en todos los planos.`)) return;
                  }
-                 asignarMesa(id, Number(m.name));
+                 asignarMesa(id, mesaName);
                }}
                onClick={()=>{
                  if (reserva) setAsignandoMesa(reserva);
