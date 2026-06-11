@@ -171,15 +171,27 @@ const TERMINOS_COCCION = ['3/4', 'Término Medio', 'Bien Cocido', 'Poco Cocido',
 // Tags rápidos para observaciones del plato (alergias y preferencias)
 const TAGS_OBSERVACIONES = ['sin sal','sin leche','sin gluten','sin maní','sin cebolla','sin cilantro','sin azúcar','sin picante','extra picante','sin lácteos','vegano','vegetariano','sin mariscos','sin huevo','sin trigo','alergia'];
 
-// Modal de término + observaciones · tags + texto libre
-function TerminoObservModal({ producto, modo, onClose, onConfirm }:{
+// Modal de término + observaciones · tags + texto libre.
+// Cada botón mantiene SU función (pedido del boss Jun-11):
+//  · Marchar / +Orden en plato con carne → término OBLIGATORIO + obs opcional
+//  · Botón 🗒 Obs → SOLO observaciones (soloObs=true esconde el término)
+function TerminoObservModal({ producto, modo, onClose, onConfirm, soloObs }:{
   producto:any; modo:'orden'|'marchar'; onClose:()=>void;
   onConfirm:(termino:string|undefined, observ:string, tags:string[])=>void;
+  soloObs?:boolean;
 }) {
   const [termino, setTermino] = React.useState<string|undefined>(undefined);
   const [tags, setTags] = React.useState<string[]>([]);
   const [observ, setObserv] = React.useState('');
-  const requiereTermino = String(producto?.nombre||'').toLowerCase().match(/wagy|res|carne|pulpo|salm|atun|atún|filete|lomo|steak|tarta|chuleta|chuletón/);
+  // BUG FIX: antes solo el regex del nombre decidía si pedía término —
+  // platos marcados carne:true cuyo nombre no matchea (Tori Surai,
+  // Ton Katsu, Yakitori, Kanki Ribs, Bao de Pato…) abrían el modal SIN
+  // la sección de término y parecía "ventana de observaciones".
+  // Ahora: carne===true SIEMPRE pide término (salvo modo soloObs).
+  const requiereTermino = !soloObs && (
+    producto?.carne === true ||
+    !!String(producto?.nombre||'').toLowerCase().match(/wagy|res|carne|pulpo|salm|atun|atún|filete|lomo|steak|chuleta|chuletón/)
+  );
   const toggleTag = (t:string) => setTags(p => p.includes(t) ? p.filter(x=>x!==t) : [...p, t]);
   const confirmar = () => {
     if (requiereTermino && !termino) { alert('Seleccioná un término de cocción'); return; }
@@ -1407,10 +1419,34 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // ── Flow Store — sincronización con Book Flow ────────────
   const agregarPlatoFlow = (_data: any) => {}; // stub hasta que flowStore esté en el repo
   const flowMensaje = (_data: any) => {};
-  const [chatHistory, setChatHistory] = useState([
-    { sender: 'Cocina', msg: 'Mesa 4, marchando principales.', time: '19:45' },
-    { sender: 'Host', msg: 'Mesa 2 VIP acaba de llegar.', time: '19:30' },
-  ]);
+  // CHAT REAL · flow_chat_meseros — persiste y sincroniza entre dispositivos.
+  // Antes era un array hardcodeado en memoria ("Chat continúa sin funcionar").
+  const [chatHistory, setChatHistory] = useState<{ sender:string; autor?:string; msg:string; time:string }[]>([]);
+  useEffect(() => {
+    let alive = true;
+    const mapMsg = (m:any) => ({
+      sender: m.rol || 'Mesero',
+      autor: m.autor || '',
+      msg: m.mensaje || '',
+      time: m.created_at ? new Date(m.created_at).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : '',
+    });
+    // Cargar últimos 50 mensajes del restaurante
+    supabase.from('flow_chat_meseros')
+      .select('autor,rol,mensaje,created_at')
+      .eq('restaurante_id', restauranteId)
+      .order('created_at', { ascending: false })
+      .limit(50)
+      .then(({ data }) => { if (alive && data) setChatHistory(data.reverse().map(mapMsg)); });
+    // Realtime: mensajes nuevos de CUALQUIER dispositivo aparecen al instante
+    const ch = supabase.channel(`pos-chat-${restauranteId}`)
+      .on('postgres_changes', { event:'INSERT', schema:'public', table:'flow_chat_meseros' }, (payload) => {
+        const m = payload.new as any;
+        if (m.restaurante_id !== restauranteId) return;
+        setChatHistory(prev => [...prev, mapMsg(m)]);
+      })
+      .subscribe();
+    return () => { alive = false; supabase.removeChannel(ch); };
+  }, [restauranteId]);
   const [posDescuento, setPosDescuento] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [barraColapsada, setBarraColapsada] = useState(false);
@@ -1506,7 +1542,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   }>({ activa: false, monto: 0, metodo: '', facMsg: '', tableId: 0 });
 
   // ── Modal término de cocción ─────────────────────────────
-  const [terminoModal, setTerminoModal] = useState<{ open: boolean; producto: any | null; modo: 'orden' | 'marchar' }>({ open: false, producto: null, modo: 'orden' });
+  const [terminoModal, setTerminoModal] = useState<{ open: boolean; producto: any | null; modo: 'orden' | 'marchar'; soloObs?: boolean }>({ open: false, producto: null, modo: 'orden' });
 
   // ── Modal nivel de picante (solo Gallo Colorado, categorías saladas) ──
   const [picanteModal, setPicanteModal] = useState<{ open: boolean; producto: any | null; modo: 'orden' | 'marchar' }>({ open: false, producto: null, modo: 'orden' });
@@ -3295,6 +3331,9 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   }, []);
 
   // Mesero envía la cuenta a caja: toma una foto de la cuenta y la comparte.
+  // mesasEnviadasACaja: feedback visual — el botón queda VERDE "✓ Enviado"
+  // hasta que la caja cobre (cobros_pendientes deja de estar 'pendiente').
+  const [mesasEnviadasACaja, setMesasEnviadasACaja] = useState<Set<number>>(new Set());
   const enviarACaja = async () => {
     const num = selectedTable?.num;
     if (num == null) { showToast('Selecciona una mesa'); return; }
@@ -3311,9 +3350,19 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         propina: Math.round(mesaSubtotal*0.10),
         items, mesero: miNombre, estado:'pendiente', solicitado_at: new Date().toISOString(),
       });
+      setMesasEnviadasACaja(prev => new Set(prev).add(num));
       showToast(`📤 Cuenta de Mesa ${num} enviada a caja`);
     } catch(e){ console.error('enviar a caja', e); showToast('Error al enviar a caja'); }
   };
+  // Sincronizar el "enviado" con la realidad de cobros_pendientes:
+  // si la caja ya cobró (o canceló), el botón vuelve a su estado normal.
+  useEffect(() => {
+    setMesasEnviadasACaja(prev => {
+      const pendientesNums = new Set((cobrosPendientes||[]).map((c:any) => c.mesa_num));
+      const next = new Set([...prev].filter(n => pendientesNums.has(n)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [cobrosPendientes]);
 
   // Caja cobra una cuenta pendiente desde otra tablet.
   const cobrarPendiente = async (p:any, metodo:string) => {
@@ -5392,6 +5441,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
         <TerminoObservModal
           producto={terminoModal.producto}
           modo={terminoModal.modo}
+          soloObs={terminoModal.soloObs}
           onClose={() => setTerminoModal({ open: false, producto: null, modo: 'orden' })}
           onConfirm={(termino, observ, tags) => {
             const p = { ...terminoModal.producto, _observ: observ, _tags: tags };
@@ -6155,7 +6205,7 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                           + Orden
                         </button>
                         <button
-                          onClick={(e) => { e.stopPropagation(); setTerminoModal({ open: true, producto: p, modo: 'orden' }); }}
+                          onClick={(e) => { e.stopPropagation(); setTerminoModal({ open: true, producto: p, modo: 'orden', soloObs: true }); }}
                           title="Observación (sin sal · sin leche · alergia · …)"
                           className="px-2.5 py-2 rounded-xl text-[12px] font-bold bg-[#9b72ff]/10 border border-[#9b72ff]/30 text-[#b388ff] hover:bg-[#9b72ff]/25 hover:text-white transition-all">
                           🗒
@@ -6692,11 +6742,20 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                   className="w-full py-2 rounded-xl text-[11px] font-bold transition-all bg-transparent border border-[#9b72ff]/40 text-[#b388ff] hover:bg-[#9b72ff]/10 flex items-center justify-center gap-2">
                   ✨ Modo Cliente (con encuesta)
                 </button>
-                {/* Pasar la cuenta a otra tablet / caja */}
-                <button onClick={enviarACaja}
-                  className="w-full py-2.5 rounded-xl text-[12px] font-black transition-all bg-[#4a8fd4]/15 border border-[#4a8fd4]/40 text-[#4a8fd4] hover:bg-[#4a8fd4]/25 active:scale-95 flex items-center justify-center gap-2">
-                  📤 Enviar a caja (otra tablet)
-                </button>
+                {/* Pasar la cuenta a otra tablet / caja — verde cuando ya enviada */}
+                {(() => {
+                  const yaEnviada = selectedTable?.num != null && mesasEnviadasACaja.has(selectedTable.num);
+                  return (
+                    <button onClick={enviarACaja}
+                      className={`w-full py-2.5 rounded-xl text-[12px] font-black transition-all active:scale-95 flex items-center justify-center gap-2 ${
+                        yaEnviada
+                          ? 'bg-[#3dba6f] text-black border border-[#3dba6f] shadow-[0_0_14px_rgba(61,186,111,0.45)]'
+                          : 'bg-[#4a8fd4]/15 border border-[#4a8fd4]/40 text-[#4a8fd4] hover:bg-[#4a8fd4]/25'
+                      }`}>
+                      {yaEnviada ? '✓ Enviado a caja · esperando cobro' : '📤 Enviar a caja (otra tablet)'}
+                    </button>
+                  );
+                })()}
               </div>
               {/* Traspaso de mesa y Cerrar mesa salieron del panel derecho de
                   "Cuenta". El traspaso vive en el panel izquierdo (colapsable
@@ -6863,13 +6922,18 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 })}
               </div>
               <div className="flex-1 overflow-y-auto flex flex-col gap-2 mb-2 pr-1 min-h-0">
-                {chatHistory.map((msg, idx) => {
+                {chatHistory.length === 0 && (
+                  <div className="text-center text-[11px] text-[#606060] py-8">Sin mensajes todavía — escribí el primero 💬</div>
+                )}
+                {chatHistory.map((msg:any, idx) => {
                   const colorMap: Record<string,string> = { Cocina:'#e05050', Host:'#3dba6f', Maître:'#9b72ff', Mesero:'#4a8fd4', Tú:'#4a8fd4' };
                   const c = colorMap[msg.sender] ?? '#a0a0a0';
-                  const isMine = msg.sender === 'Tú' || msg.sender === 'Mesero';
+                  // Mío = lo escribí YO (autor real), no por rol — antes todos
+                  // los mensajes de rol Mesero salían a la derecha para todos.
+                  const isMine = msg.autor === miNombre;
                   return (
                     <div key={idx} className={`flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
-                      <span className="text-[10px] mb-0.5" style={{ color: c+'99' }}>{msg.sender} • {msg.time}</span>
+                      <span className="text-[10px] mb-0.5" style={{ color: c+'99' }}>{msg.autor ? `${msg.autor.split(' ')[0]} · ` : ''}{msg.sender} • {msg.time}</span>
                       <div className="p-2 px-3 rounded-xl text-[12px] max-w-[90%]"
                         style={{ background: c+'12', border: `1px solid ${c}30`, color: '#f0f0f0', borderBottomRightRadius: isMine ? 4 : 12, borderBottomLeftRadius: isMine ? 12 : 4 }}>
                         {msg.msg}
@@ -6879,27 +6943,36 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
                 })}
               </div>
               <div className="flex gap-2 shrink-0">
+                {(() => {
+                  // Envío REAL: inserta en flow_chat_meseros → el realtime lo
+                  // reparte a todos los dispositivos (incluido este).
+                  const enviarChat = async () => {
+                    const msg = chatMessage.trim();
+                    if (!msg) return;
+                    setChatMessage(''); playAlert();
+                    const { error } = await supabase.from('flow_chat_meseros').insert({
+                      restaurante_id: restauranteId,
+                      autor: miNombre,
+                      autor_color: sanearHex(profile?.color),
+                      rol: chatRol,
+                      mensaje: msg,
+                      prioridad: ['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k)) ? 'alta' : 'normal',
+                    });
+                    if (error) { showToast('✗ No se envió el mensaje'); setChatMessage(msg); return; }
+                    // Notificación broadcast (campanita) — igual que antes
+                    supabase.from('nexum_notificaciones').insert({ restaurante_id: restauranteId, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, prioridad:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k))?'alta':'normal', leida:false }).then(()=>{});
+                  };
+                  return (<>
                 <input type="text" value={chatMessage} onChange={e => setChatMessage(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && chatMessage.trim()) {
-                      const msg = chatMessage.trim();
-                      setChatHistory(prev => [...prev, { sender: chatRol, msg, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
-                      setChatMessage(''); playAlert();
-                      supabase.from('nexum_notificaciones').insert({ restaurante_id: restauranteId, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, prioridad:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k))?'alta':'normal', leida:false }).then(()=>{});
-                    }
-                  }}
+                  onKeyDown={e => { if (e.key === 'Enter') enviarChat(); }}
                   placeholder={`Mensaje como ${chatRol}...`}
                   className="flex-1 bg-[#1c1c1c] border border-[#2a2a2a] rounded-lg px-3 py-2 text-[12px] text-[#f0f0f0] outline-none focus:border-[#4a8fd4]" />
-                <button onClick={() => {
-                  if (chatMessage.trim()) {
-                    const msg = chatMessage.trim();
-                    setChatHistory(prev => [...prev, { sender: chatRol, msg, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
-                    setChatMessage(''); playAlert();
-                    supabase.from('nexum_notificaciones').insert({ restaurante_id: restauranteId, tipo:'chat_mensaje', titulo:`💬 ${chatRol}:`, mensaje:msg.length>80?msg.substring(0,80)+'...':msg, prioridad:['fuego','urgente','86'].some(k=>msg.toLowerCase().includes(k))?'alta':'normal', leida:false }).then(()=>{});
-                  }}}
+                <button onClick={enviarChat}
                   className="w-9 h-9 rounded-lg bg-[#4a8fd4] text-white flex items-center justify-center hover:bg-[#3d7fc4] transition-all active:scale-95">
                   <MessageSquare size={14} />
                 </button>
+                  </>);
+                })()}
               </div>
             </div>
           )}
