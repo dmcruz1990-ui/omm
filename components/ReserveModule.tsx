@@ -343,6 +343,8 @@ export default function ReserveModule() {
   });
   const [cerebroOpen, setCerebroOpen] = useState(false);
   const [fechasEspecialesOpen, setFechasEspecialesOpen] = useState(false);
+  // Dropdown de ocasiones especiales del día (al lado del KPI Oh Yeah)
+  const [ocasionesOpen, setOcasionesOpen] = useState(false);
   const [fechasEspeciales, setFechasEspeciales] = useState<any[]>([]);
   // PDF NEXUM § Roadmap 1 — Modos dinámicos (Base / Smart Peak / Evento Especial)
   const [modoDinamico, setModoDinamico] = useState<'base'|'smart_peak'|'evento'>(() => {
@@ -1570,6 +1572,80 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
             <div style={{fontSize:14,fontWeight:700,color:k.c}}>{k.v}</div>
           </div>
         ))}
+
+        {/* 🎉 OCASIONES ESPECIALES · ventana desplegable al lado de Oh Yeah */}
+        {(() => {
+          const ocasionesHoy: Record<string, {n:number; reservas:any[]}> = {};
+          reservasReales
+            .filter((r:any) => !['cancelada','no_show'].includes(r.estado) && r.ocasion && r.ocasion !== 'Sin ocasión especial' && r.ocasion !== 'Walk-in')
+            .forEach((r:any) => {
+              if (!ocasionesHoy[r.ocasion]) ocasionesHoy[r.ocasion] = { n:0, reservas:[] };
+              ocasionesHoy[r.ocasion].n++;
+              ocasionesHoy[r.ocasion].reservas.push(r);
+            });
+          const entries = Object.entries(ocasionesHoy).sort((a,b)=>b[1].n-a[1].n);
+          const totalOcas = entries.reduce((s,[,v])=>s+v.n, 0);
+          const emojiMap: Record<string,string> = { 'Cumpleaños':'🎂', 'Aniversario':'💍', 'Negocio':'💼', 'Primera cita':'💕', 'Graduación':'🎓', 'Despedida':'👋', 'Celebración':'🎉' };
+          return (
+            <div style={{position:'relative'}}>
+              <button onClick={()=>setOcasionesOpen(o=>!o)}
+                disabled={totalOcas===0}
+                title={totalOcas>0 ? 'Ver ocasiones especiales del día' : 'Sin ocasiones especiales hoy'}
+                style={{
+                  display:'flex',alignItems:'center',gap:6,padding:'8px 14px',borderRadius:10,
+                  border:`1px solid ${totalOcas>0 ? S.purple+'88' : S.border}`,
+                  background: ocasionesOpen ? `${S.purple}25` : totalOcas>0 ? `${S.purple}12` : 'rgba(255,255,255,0.03)',
+                  color: totalOcas>0 ? S.purple : S.t3,
+                  fontSize:12,fontWeight:800,cursor:totalOcas>0?'pointer':'default',
+                  transition:'all .15s',
+                }}>
+                🎉 Ocasiones
+                {totalOcas>0 && <span style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900}}>{totalOcas}</span>}
+                {totalOcas>0 && <span style={{fontSize:9,transform:ocasionesOpen?'rotate(180deg)':'none',transition:'transform .15s'}}>▼</span>}
+              </button>
+              {ocasionesOpen && totalOcas>0 && (
+                <>
+                {/* Backdrop para cerrar al click afuera */}
+                <div onClick={()=>setOcasionesOpen(false)} style={{position:'fixed',inset:0,zIndex:998}}/>
+                <div style={{
+                  position:'absolute',top:'calc(100% + 8px)',left:0,zIndex:999,
+                  width:320,maxHeight:420,overflowY:'auto',
+                  background:S.bg2,border:`1px solid ${S.purple}55`,borderRadius:14,
+                  boxShadow:`0 18px 50px rgba(0,0,0,0.7), 0 0 24px ${S.purple}22`,
+                  padding:12,
+                }}>
+                  <div style={{fontSize:10,color:S.purple,fontWeight:800,letterSpacing:'.14em',textTransform:'uppercase',marginBottom:10,padding:'0 4px'}}>
+                    🎉 Ocasiones especiales · hoy
+                  </div>
+                  {entries.map(([ocasion, info]) => (
+                    <div key={ocasion} style={{marginBottom:10}}>
+                      <div style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',background:`${S.purple}10`,borderRadius:8,marginBottom:4}}>
+                        <span style={{fontSize:16}}>{emojiMap[ocasion]||'🎉'}</span>
+                        <span style={{fontSize:12,fontWeight:800,color:S.purple,flex:1}}>{ocasion}</span>
+                        <span style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:900,color:S.purple}}>{info.n}</span>
+                      </div>
+                      {info.reservas.map((r:any) => (
+                        <div key={r.id}
+                          onClick={()=>{ setOcasionesOpen(false); setTab('lista'); }}
+                          style={{display:'flex',alignItems:'center',gap:8,padding:'6px 10px',borderRadius:8,cursor:'pointer',marginLeft:6}}
+                          onMouseEnter={e=>(e.currentTarget.style.background='rgba(255,255,255,0.05)')}
+                          onMouseLeave={e=>(e.currentTarget.style.background='transparent')}>
+                          <span style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,color:S.gold,minWidth:42}}>{String(r.hora||'').slice(0,5)}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:11,fontWeight:700,color:S.t1,whiteSpace:'nowrap',overflow:'hidden',textOverflow:'ellipsis'}}>{r.cliente_nombre}</div>
+                            <div style={{fontSize:9,color:S.t3}}>{r.pax}p{r.mesa_num?` · M${r.mesa_num}`:' · sin mesa'}</div>
+                          </div>
+                          <span style={{fontSize:9,color:(ESTADOS[r.estado]?.c)||S.t3,fontWeight:700}}>{(ESTADOS[r.estado]?.l)||r.estado}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
         <div style={{marginLeft:'auto',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
           {/* Demand Score™ (PDF NEXUM Roadmap 2) */}
           <div title={`Demand Score — ${demandLabel} (${demandScore}/100). Combina ocupación, día premium, velocidad de reservas y modo dinámico.`}
@@ -1588,26 +1664,6 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
               <span style={{fontSize:12,color:S.gold,fontWeight:900}}>{liberacionesProximas}</span>
             </div>
           )}
-
-          {/* Chips informativos por OCASIÓN del día activo · click pre-filtra */}
-          {(() => {
-            const ocasionesHoy: Record<string, number> = {};
-            reservasReales
-              .filter((r:any) => !['cancelada','no_show'].includes(r.estado) && r.ocasion && r.ocasion !== 'Sin ocasión especial')
-              .forEach((r:any) => { ocasionesHoy[r.ocasion] = (ocasionesHoy[r.ocasion]||0) + 1; });
-            const entries = Object.entries(ocasionesHoy).sort((a,b)=>b[1]-a[1]).slice(0,4);
-            if (entries.length === 0) return null;
-            const emojiMap: Record<string,string> = { 'Cumpleaños':'🎂', 'Aniversario':'💍', 'Negocio':'💼', 'Primera cita':'💕', 'Graduación':'🎓', 'Despedida':'👋', 'Celebración':'🎉' };
-            return entries.map(([o,n]) => (
-              <div key={o} title={`${n} ${o.toLowerCase()} · click para ver en lista`}
-                onClick={()=>setTab('lista')}
-                style={{display:'flex',alignItems:'center',gap:5,background:`${S.purple}12`,border:`1px solid ${S.purple}55`,borderRadius:10,padding:'4px 10px',cursor:'pointer'}}>
-                <span style={{fontSize:13}}>{emojiMap[o]||'🎉'}</span>
-                <span style={{fontSize:10,color:S.purple,fontWeight:800,textTransform:'uppercase'}}>{o}</span>
-                <span style={{fontSize:12,color:S.purple,fontWeight:900}}>{n}</span>
-              </div>
-            ));
-          })()}
 
           {/* Modo dinámico, Sobreventa VIP y Shift Pacing se gestionan desde el Cerebro. */}
           <button onClick={()=>setFranjaModalOpen(true)}
