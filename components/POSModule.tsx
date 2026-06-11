@@ -2552,10 +2552,12 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   // cocina no haya comenzado a prepararlo (status='pending' en
   // flow_order_items). Si ya está 'preparing'/'almost'/'ready'/'served',
   // se bloquea con un toast explicando.
-  // Reglas:
-  // · 'pending' (sólo marchado, cocina no empezó) → se puede cancelar con motivo
-  // · 'preparing'/'almost'/'ready' (cocina YA cocinó o cocinando) → BLOQUEADO,
-  //   sólo gerencia puede anular vía Cobro Gerencia para no perder traza
+  // Reglas estrictas:
+  // · 'pending' (sólo marchado, cocina NO empezó) → se puede cancelar con motivo
+  //   → se borra del estado local Y se marca cancelled en order_items (Flow)
+  // · 'preparing'/'almost'/'ready' (cocina YA tocó el plato) → BLOQUEADO TOTAL
+  //   nadie puede borrarlo, ni gerencia. La cuenta sí o sí asume el costo.
+  //   (sólo notifica al mesero que el plato está en cocina y no se borra)
   const removeOrder = async (i: number) => {
     const item = order[i];
     if (!item) return;
@@ -2571,22 +2573,46 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
       .order('created_at', { ascending: false })
       .limit(1);
     const flowItem = matches?.[0];
-    // Estado "en preparación" — bloquear eliminación
+    // Estado "en preparación" — BLOQUEAR para todos los roles, sin excepción
     if (flowItem && ['preparing','almost','ready'].includes(flowItem.status)) {
       const label = flowItem.status === 'ready' ? 'listo para entregar'
                   : flowItem.status === 'almost' ? 'casi listo'
                   : 'en preparación';
-      showToast(`🔒 ${item.nombre} está ${label} — sólo Gerencia puede anularlo (Cobro Gerencia)`);
+      // Alerta visible + notificación a cocina para que sepan que se intentó borrar
+      showToast(`🔒 ${item.nombre} está ${label} — no se puede borrar de la cuenta`);
+      // Notif a Flow para auditoría del intento de cancelación de un plato ya en marcha
+      await supabase.from('flow_alertas').insert({
+        restaurante_id: restauranteId,
+        mesa_num: item.mesa,
+        plato: item.nombre,
+        mesero: miNombre,
+        tipo: 'intento_cancelacion_bloqueado',
+        motivo: `Intento de borrar plato en estado ${flowItem.status}`,
+        severidad: 'media',
+        leida: false,
+      }).then(()=>{}, ()=>{});
       return;
     }
     // 2) Estado pending o sin entrada en Flow → pedir motivo y eliminar
     const motivo = prompt(`¿Por qué cancelas "${item.nombre}"?\n(error, cliente cambió de opinión, 86, etc.)`);
     if (motivo === null) return; // canceló el prompt
     if (flowItem) {
+      // SYNC: al borrar en cuenta también se cancela en Flow → cocina lo ve desaparecer
       await supabase.from('flow_order_items').update({
         status: 'cancelled', cancelled_at: new Date().toISOString(), cancel_reason: motivo,
       }).eq('id', flowItem.id);
-      showToast(`🗑️ ${item.nombre} eliminado · motivo: ${motivo}`);
+      // Notif a Flow para que cocina sepa por qué desapareció el item
+      await supabase.from('flow_alertas').insert({
+        restaurante_id: restauranteId,
+        mesa_num: item.mesa,
+        plato: item.nombre,
+        mesero: miNombre,
+        tipo: 'cancelacion',
+        motivo,
+        severidad: 'alta',
+        leida: false,
+      }).then(()=>{}, ()=>{});
+      showToast(`🗑️ ${item.nombre} eliminado · cocina notificada · ${motivo}`);
     } else {
       showToast(`🗑️ ${item.nombre} eliminado`);
     }

@@ -275,6 +275,22 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
     talentoAlerta: [] as { n:string; s:number; m:string }[],
     topPlatos: [] as { n:string; v:string }[],
     topBebidas: [] as { n:string; v:string }[],
+    // Datos reales adicionales — antes hardcoded
+    ventasHora: [] as { h:string; v:number }[],
+    metodosPago: [] as { l:string; p:number; c:string }[],
+    ventasCat: [] as { l:string; v:string; pct:number }[],
+    segmentos: [] as { l:string; n:number; pct:number; c:string }[],
+    topVIP: [] as { n:string; v:string; visitas:number; badge:string }[],
+    cumplesHoy: [] as { n:string; d:string }[],
+    enRiesgoClientes: [] as { n:string; u:string; t:string }[],
+    estacionesData: [] as { l:string; ok:number; tot:number; sla:number; color:string }[],
+    lista86: [] as { l:string; motivo:string }[],
+    reservasHoyLista: [] as { h:string; n:string; pax:number; mesa:string; vip:boolean; estado:string }[],
+    equipoHoy: [] as { n:string; r:string; turno:string; estado:string; score:number }[],
+    ventaAyerTotal: 0,
+    metaDiaria: 0,
+    cuelloBotella: '—',
+    mejorEmpleado: '—',
   });
   useEffect(() => {
     let alive = true;
@@ -284,9 +300,12 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
       // Cobros del día y mes (cuentas cerradas — fuente más confiable que facturacion)
       // Egresos: solo los aprobados que impactan P&G (excluye anticipos,
       // propinas por pagar, impuestos recaudados, CAPEX).
+      const ayerStr = new Date(today.getTime() - 86400000).toISOString().split('T')[0];
       const [cobHoy, cobMes, egHoy, egMes,
-             tables, encHoy, encMes, reservasH, flowHoy] = await Promise.all([
-        supabase.from('cobros_trazabilidad').select('total,platos_servidos,mesero,items')
+             tables, encHoy, encMes, reservasH, flowHoy,
+             cobAyer, customersAll, menu86, reservasListaHoy,
+             empleadosHoy, turnosHoy] = await Promise.all([
+        supabase.from('cobros_trazabilidad').select('total,platos_servidos,mesero,items,metodo_pago,created_at')
           .eq('restaurante_id', restauranteId).gte('created_at', todayStr+'T00:00:00'),
         supabase.from('cobros_trazabilidad').select('total,platos_servidos')
           .eq('restaurante_id', restauranteId).gte('created_at', mesStart+'T00:00:00'),
@@ -304,6 +323,24 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
           .eq('restaurante_id', restauranteId).eq('fecha', todayStr).in('estado', ['pendiente','confirmada']),
         supabase.from('flow_order_items').select('status,estacion,categoria,nombre_plato,created_at,tiempo_inicio,duracion_seg')
           .eq('restaurante_id', restauranteId).gte('created_at', todayStr+'T00:00:00'),
+        // Ventas de ayer para comparativo
+        supabase.from('cobros_trazabilidad').select('total')
+          .eq('restaurante_id', restauranteId)
+          .gte('created_at', ayerStr+'T00:00:00').lt('created_at', todayStr+'T00:00:00'),
+        // Clientes para segmentación, VIPs y cumples
+        supabase.from('customers').select('id,name,apellido,vip_status,total_visits,total_spent,fecha_nacimiento,ultima_visita,score').limit(1000),
+        // 86 en vivo desde menu_platos
+        supabase.from('menu_platos').select('nombre,categoria,disponible')
+          .eq('restaurante_id', restauranteId).eq('disponible', false).limit(20),
+        // Lista de reservas del día con detalle
+        supabase.from('reservations').select('hora,cliente_nombre,pax,mesa_num,vip,estado')
+          .eq('restaurante_id', restauranteId).eq('fecha', todayStr)
+          .in('estado',['pendiente','confirmada','sentada']).order('hora').limit(20),
+        // Empleados activos del restaurante
+        supabase.from('empleados').select('id,nombre_completo,rol,cargo_display,activo,score')
+          .eq('restaurante_id', restauranteId).eq('activo', true).limit(100),
+        // Turnos de hoy para saber quién está
+        supabase.from('turnos').select('empleado_id,hora_inicio,hora_fin,estado').eq('fecha', todayStr).limit(100),
       ]);
       if (!alive) return;
       const sumarH = (rows:any[]|null) => (rows||[]).reduce((s,r)=>s+Number(r.total||0),0);
@@ -405,6 +442,130 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
       const colorCat: Record<string,string> = { 'Comida':'#3dba6f', 'Bebidas':'#448AFF', 'Postres':'#f0a050', 'Cócteles':'#c66de8' };
       const mixVentas = Object.entries(mixCat).map(([l,v]:any) => ({ l, p: mixTotal>0?Math.round((v/mixTotal)*100):0, c: colorCat[l] || '#A0A0B8' }));
 
+      // ── Ventas por hora (HH:00 → suma) ──
+      const horaMap: Record<string, number> = {};
+      (cobHoy.data || []).forEach((c:any) => {
+        if (!c.created_at) return;
+        const h = String(new Date(c.created_at).getHours()).padStart(2,'0') + ':00';
+        horaMap[h] = (horaMap[h]||0) + Number(c.total||0)/1_000_000; // a millones
+      });
+      const ventasHora = Object.entries(horaMap).sort(([a],[b])=>a.localeCompare(b))
+        .map(([h,v]:any) => ({ h, v: Math.round(v*10)/10 }));
+
+      // ── Métodos de pago (% del total) ──
+      const metMap: Record<string, number> = {};
+      (cobHoy.data || []).forEach((c:any) => {
+        const k = c.metodo_pago || 'Otros';
+        metMap[k] = (metMap[k]||0) + Number(c.total||0);
+      });
+      const metTotal = Object.values(metMap).reduce((s,v)=>s+v,0);
+      const metColors: Record<string,string> = { 'Datafono':'#4a8fd4','Efectivo':'#f0a050','Tarjeta':'#c66de8','Transferencia':'#3dba6f','Bono':'#9b72ff','Otros':'#7a8499' };
+      const metodosPago = Object.entries(metMap).sort(([,a],[,b])=>b-a)
+        .map(([l,v]:any) => ({ l, p: metTotal>0?Math.round((v/metTotal)*100):0, c: metColors[l] || '#A0A0B8' }));
+
+      // ── Ventas por categoría con monto absoluto ──
+      const ventasCat = Object.entries(mixCat).sort(([,a],[,b])=>(b as number)-(a as number))
+        .map(([l,v]:any) => ({ l, v: `$${Math.round(v).toLocaleString('es-CO')}`, pct: mixTotal>0?Math.round((v/mixTotal)*100):0 }));
+
+      // ── Segmentos de clientes (de customers) ──
+      const cs = customersAll.data || [];
+      const segCount = { Champion:0, Loyal:0, Potential:0, New:0, AtRisk:0, AboutToSleep:0 };
+      const ahora = Date.now();
+      cs.forEach((c:any) => {
+        const dias = c.ultima_visita ? (ahora - new Date(c.ultima_visita).getTime())/86400000 : 999;
+        if (c.vip_status || (c.total_spent||0) > 2_000_000) segCount.Champion++;
+        else if ((c.total_visits||0) >= 5 && dias < 30) segCount.Loyal++;
+        else if ((c.total_visits||0) >= 3 && dias < 60) segCount.Potential++;
+        else if ((c.total_visits||0) <= 2 && dias < 30) segCount.New++;
+        else if (dias >= 60 && dias < 90) segCount.AtRisk++;
+        else segCount.AboutToSleep++;
+      });
+      const csTot = cs.length || 1;
+      const segmentos = [
+        { l:'Champion',      n:segCount.Champion,    pct:Math.round(segCount.Champion/csTot*100),    c:'#d4943a' },
+        { l:'Loyal',         n:segCount.Loyal,       pct:Math.round(segCount.Loyal/csTot*100),       c:'#3dba6f' },
+        { l:'Potential',     n:segCount.Potential,   pct:Math.round(segCount.Potential/csTot*100),   c:'#4a8fd4' },
+        { l:'New',           n:segCount.New,         pct:Math.round(segCount.New/csTot*100),         c:'#c66de8' },
+        { l:'At risk',       n:segCount.AtRisk,      pct:Math.round(segCount.AtRisk/csTot*100),      c:'#f0a050' },
+        { l:'About to sleep',n:segCount.AboutToSleep,pct:Math.round(segCount.AboutToSleep/csTot*100),c:'#e05050' },
+      ];
+
+      // ── Top VIP por gasto total ──
+      const topVIP = [...cs].sort((a:any,b:any)=>(b.total_spent||0)-(a.total_spent||0)).slice(0,5).map((c:any) => ({
+        n: `${c.name||''} ${c.apellido||''}`.trim() || '—',
+        v: `$${((c.total_spent||0)/1_000_000).toFixed(1)}M`,
+        visitas: c.total_visits||0,
+        badge: c.vip_status ? 'Champion' : (c.total_visits||0)>=5 ? 'Loyal' : 'Potential',
+      }));
+
+      // ── Cumpleaños del día / próximos 7 días ──
+      const mes = today.getMonth()+1; const dia = today.getDate();
+      const cumplesHoy = cs.filter((c:any) => {
+        if (!c.fecha_nacimiento) return false;
+        const d = new Date(c.fecha_nacimiento+'T12:00:00');
+        return d.getMonth()+1 === mes && Math.abs(d.getDate() - dia) <= 7;
+      }).slice(0,6).map((c:any) => ({
+        n: `${c.name||''} ${c.apellido||''}`.trim(),
+        d: new Date(c.fecha_nacimiento+'T12:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'short'}),
+      }));
+
+      // ── Clientes en riesgo (60+ días sin visita) ──
+      const enRiesgoClientes = cs.filter((c:any) => {
+        if (!c.ultima_visita || !c.total_visits) return false;
+        return (ahora - new Date(c.ultima_visita).getTime())/86400000 >= 45;
+      }).sort((a:any,b:any)=>(b.total_spent||0)-(a.total_spent||0)).slice(0,5).map((c:any) => {
+        const dias = Math.floor((ahora - new Date(c.ultima_visita).getTime())/86400000);
+        return {
+          n: `${c.name||''} ${c.apellido||''}`.trim(),
+          u: `${dias} días sin visitar`,
+          t: `-$${Math.round((c.total_spent||0)/(c.total_visits||1)/1000)}K`,
+        };
+      });
+
+      // ── Estaciones con SLA ──
+      const META_OBJ: Record<string,number> = { cocina_caliente:480, cocina_fria:360, robata:600, postres:300, bar:180, cava:120 };
+      const estacionesData = Object.entries(estaciones).map(([k,v]:any) => {
+        const items = flowItems.filter((i:any) => i.estacion === k && i.duracion_seg > 0);
+        const meta = META_OBJ[k] || 480;
+        const enSla = items.filter((i:any) => i.duracion_seg <= meta).length;
+        const sla = items.length > 0 ? Math.round((enSla/items.length)*100) : 0;
+        return { l: labelEst[k] || k, ok: v.on, tot: v.tot, sla, color: colorEst[k] || '#A0A0B8' };
+      });
+
+      // ── 86 en vivo ──
+      const lista86 = (menu86.data || []).map((p:any) => ({ l: p.nombre, motivo: 'agotado' }));
+
+      // ── Reservas del día con detalle ──
+      const reservasHoyLista = (reservasListaHoy.data || []).map((r:any) => ({
+        h: String(r.hora||'').slice(0,5), n: r.cliente_nombre||'—', pax: r.pax||1,
+        mesa: r.mesa_num ? `M${r.mesa_num}` : '—',
+        vip: !!r.vip, estado: r.estado||'',
+      }));
+
+      // ── Equipo de hoy con turno ──
+      const turnosEmp: Record<number, any> = {};
+      (turnosHoy.data || []).forEach((t:any) => { turnosEmp[t.empleado_id] = t; });
+      const equipoHoy = (empleadosHoy.data || []).map((e:any) => {
+        const t = turnosEmp[e.id];
+        return {
+          n: e.nombre_completo||'—',
+          r: e.cargo_display||e.rol||'—',
+          turno: t ? `${String(t.hora_inicio||'').slice(0,5)}–${String(t.hora_fin||'').slice(0,5)}` : 'libre',
+          estado: t ? (t.estado||'programado') : 'libre',
+          score: e.score||0,
+        };
+      }).filter((e:any)=>e.turno!=='libre').sort((a:any,b:any)=>b.score-a.score).slice(0,15);
+
+      // ── Comparativo ayer + meta diaria + cuello de botella + mejor ──
+      const ventaAyerTotal = sumarH(cobAyer.data);
+      // Meta diaria: 105% del promedio últimos 7 días (calculado del mes)
+      const metaDiaria = sumarH(cobMes.data) > 0
+        ? Math.round((sumarH(cobMes.data) / Math.max(today.getDate(),1)) * 1.05)
+        : 0;
+      const peorEst = estacionesData.sort((a,b)=>a.sla-b.sla)[0];
+      const cuelloBotella = peorEst ? peorEst.l : '—';
+      const mejorEmpleado = topEmpleados[0]?.n || '—';
+
       setKpisReales({
         ventaHoy: sumarH(cobHoy.data),
         ventaMes: sumarH(cobMes.data),
@@ -424,6 +585,11 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
         mixVentas,
         topEmpleados, talentoAlerta,
         topPlatos, topBebidas,
+        // Reales nuevos
+        ventasHora, metodosPago, ventasCat,
+        segmentos, topVIP, cumplesHoy, enRiesgoClientes,
+        estacionesData, lista86, reservasHoyLista, equipoHoy,
+        ventaAyerTotal, metaDiaria, cuelloBotella, mejorEmpleado,
       });
     })();
     return () => { alive = false; };
@@ -643,7 +809,17 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
             </Card>
             <Card>
               <div className="text-[10px] font-black tracking-[0.15em] text-[#7a8499] mb-2">QUÉ PASÓ AYER</div>
-              <ul className="space-y-1">{ayer.map((a,i)=>(<li key={i} className="flex justify-between text-[11px]"><span className="text-[#a0a9bd]">{a.l}</span><span className="text-white font-bold">{a.v}{a.sub?<span className="text-[#3dba6f] ml-1 font-normal">{a.sub}</span>:null}</span></li>))}</ul>
+              <ul className="space-y-1">{[
+                { l:'Venta de hoy',       v: fmtCOP(kpisReales.ventaHoy),  sub: kpisReales.metaDiaria>0 ? `${Math.round((kpisReales.ventaHoy/kpisReales.metaDiaria)*100)}% de meta` : undefined },
+                { l:'Venta ayer',         v: fmtCOP(kpisReales.ventaAyerTotal) },
+                { l:'Ticket promedio',    v: kpisReales.ticketsHoy>0 ? fmtCOP(Math.round(kpisReales.ventaHoy/kpisReales.ticketsHoy)) : '$0' },
+                { l:'Personas atendidas', v: String(kpisReales.comensalesHoy) },
+                { l:'Ocupación',          v: `${kpisReales.ocupacionPct}%` },
+                { l:'Satisfacción',       v: `${kpisReales.satisfaccionPct}%` },
+                { l:'Quejas',             v: String(kpisReales.quejas.reduce((s,q)=>s+q.n,0)) },
+                { l:'Cuello de botella',  v: kpisReales.cuelloBotella },
+                { l:'Mejor empleado',     v: kpisReales.mejorEmpleado },
+              ].map((a:any,i)=>(<li key={i} className="flex justify-between text-[11px]"><span className="text-[#a0a9bd]">{a.l}</span><span className="text-white font-bold">{a.v}{a.sub?<span className="text-[#3dba6f] ml-1 font-normal">{a.sub}</span>:null}</span></li>))}</ul>
               <div className="mt-2 pt-2 border-t border-[#1a2030] text-[10px] text-[#f0a050]">⚑ Recomendación hoy: <span className="italic">reforzar cocina caliente 8:00–9:30 p.m.</span></div>
             </Card>
           </div>
@@ -710,8 +886,8 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
           <div className="grid grid-cols-3 gap-3 mb-3">
             <Section title="VENTAS POR HORA · HOY" color="#4a9fff" icon={Clock} className="col-span-2">
               <div className="flex items-end gap-2 h-32 mt-2">
-                {ventasHora.map(v=>{
-                  const maxV = Math.max(...ventasHora.map(x=>x.v));
+                {kpisReales.ventasHora.map(v=>{
+                  const maxV = Math.max(...kpisReales.ventasHora.map(x=>x.v));
                   const h = (v.v/maxV)*100;
                   return (
                     <div key={v.h} className="flex-1 flex flex-col items-center gap-1">
@@ -724,7 +900,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
               </div>
             </Section>
             <Section title="MÉTODOS DE PAGO" color="#7a8499" icon={DollarSign}>
-              <ul className="space-y-2">{metodosPago.map(m=>(
+              <ul className="space-y-2">{kpisReales.metodosPago.map(m=>(
                 <li key={m.l}>
                   <div className="flex justify-between text-[10px] mb-0.5"><span className="text-[#a0a9bd]">{m.l}</span><span className="text-white font-bold">{m.p}%</span></div>
                   <Bar pct={m.p*2} color={m.c}/>
@@ -734,7 +910,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
           </div>
           <div className="grid grid-cols-2 gap-3 mb-3">
             <Section title="VENTAS POR CATEGORÍA · MES" color="#7a8499">
-              <ul className="space-y-2">{ventasCat.map(c=>(
+              <ul className="space-y-2">{kpisReales.ventasCat.map(c=>(
                 <li key={c.l}>
                   <div className="flex justify-between text-[11px] mb-0.5"><span>{c.l}</span><span className="text-white font-bold">{c.v} <span className="text-[#7a8499] text-[10px]">· {c.pct}%</span></span></div>
                   <Bar pct={c.pct*2.5} color="#4a9fff"/>
@@ -779,7 +955,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
           </div>
           <div className="grid grid-cols-3 gap-3 mb-3">
             <Section title="SEGMENTACIÓN RFM" color="#4a9fff" icon={Users} className="col-span-1">
-              <ul className="space-y-2">{segmentos.map(s=>(
+              <ul className="space-y-2">{kpisReales.segmentos.map(s=>(
                 <li key={s.l}>
                   <div className="flex justify-between text-[11px] mb-0.5"><span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full" style={{background:s.c}}/>{s.l}</span><span className="text-white font-bold">{s.n} · {s.pct}%</span></div>
                   <Bar pct={s.pct*3} color={s.c}/>
@@ -790,7 +966,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
             <Section title="TOP VIP · MES" color="#d4943a" icon={Crown} className="col-span-2">
               <table className="w-full text-[11px]">
                 <thead><tr className="text-[9px] text-[#7a8499]"><th className="text-left pb-1">#</th><th className="text-left pb-1">Cliente</th><th className="text-right pb-1">Gasto</th><th className="text-right pb-1">Visitas</th><th className="text-right pb-1">Segmento</th></tr></thead>
-                <tbody>{topVIP.map((c,i)=>(
+                <tbody>{kpisReales.topVIP.map((c,i)=>(
                   <tr key={c.n} className="border-t border-[#1a2030]"><td className="py-1.5 text-[#7a8499]">{i+1}</td><td className="py-1.5">{c.n}</td><td className="py-1.5 text-right font-bold">{c.v}</td><td className="py-1.5 text-right text-[#a0a9bd]">{c.visitas}</td><td className="py-1.5 text-right"><span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{background:c.badge==='Champion'?'#d4943a26':'#3dba6f26', color:c.badge==='Champion'?'#d4943a':'#3dba6f'}}>{c.badge}</span></td></tr>
                 ))}</tbody>
               </table>
@@ -798,13 +974,13 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Section title="CUMPLEAÑOS ESTA SEMANA" color="#c66de8" icon={Cake}>
-              <ul className="space-y-1.5">{cumples.map(c=>(
+              <ul className="space-y-1.5">{kpisReales.cumplesHoy.map(c=>(
                 <li key={c.n} className="flex items-center justify-between text-[12px]"><span className="flex items-center gap-2"><Cake size={14} className="text-[#c66de8]"/>{c.n}</span><span className="text-[#a0a9bd] text-[10px]">{c.d}</span></li>
               ))}</ul>
               <div className="mt-2 pt-2 border-t border-[#1a2030] text-[10px] text-[#7a8499]">Acción sugerida: <span className="text-white">enviar mensaje WhatsApp con cortesía</span></div>
             </Section>
             <Section title="CLIENTES EN RIESGO" color="#e05050" icon={UserX}>
-              <ul className="space-y-1.5">{enRiesgo.map(c=>(
+              <ul className="space-y-1.5">{kpisReales.enRiesgoClientes.map(c=>(
                 <li key={c.n} className="flex items-center justify-between text-[12px]"><span><div>{c.n}</div><div className="text-[10px] text-[#7a8499]">{c.u}</div></span><span className="font-bold text-[#e05050]">{c.t}</span></li>
               ))}</ul>
               <div className="mt-2 pt-2 border-t border-[#1a2030] text-[10px] text-[#f0a050]">Acción: campaña reactivación · ofrecer mesa preferencial</div>
@@ -824,13 +1000,13 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
             <Section title="EFICIENCIA POR ESTACIÓN" color="#4a9fff" icon={Flame}>
               <table className="w-full text-[11px]">
                 <thead><tr className="text-[9px] text-[#7a8499]"><th className="text-left pb-1">Estación</th><th className="text-right pb-1">T. prom</th><th className="text-right pb-1">Target</th><th className="text-right pb-1">Estado</th></tr></thead>
-                <tbody>{estaciones.map(e=>(
+                <tbody>{kpisReales.estacionesData.map(e=>(
                   <tr key={e.l} className="border-t border-[#1a2030]"><td className="py-1.5">{e.l}</td><td className="py-1.5 text-right font-bold">{e.tprom} min</td><td className="py-1.5 text-right text-[#7a8499]">{e.target} min</td><td className="py-1.5 text-right"><span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{background:e.status==='ok'?'#3dba6f26':'#e0505026', color:e.status==='ok'?'#3dba6f':'#e05050'}}>{e.status==='ok'?'OK':'Alerta'}</span></td></tr>
                 ))}</tbody>
               </table>
             </Section>
             <Section title="TIEMPOS POR MOMENTO" color="#4a9fff" icon={Clock}>
-              <ul className="space-y-1.5">{tiemposMomento.map(t=>(
+              <ul className="space-y-1.5">{([] as any[]).map(t=>(
                 <li key={t.l} className="flex items-center justify-between text-[11px]">
                   <span className="flex items-center gap-2">{t.ok?<CheckCircle2 size={13} className="text-[#3dba6f]"/>:<XCircle size={13} className="text-[#e05050]"/>}{t.l}</span>
                   <span><span className="font-bold">{t.t}</span> <span className="text-[10px] text-[#7a8499]">· {t.target}</span></span>
@@ -840,7 +1016,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Section title="LISTA 86 · NO OFRECER" color="#e05050" icon={Ban86}>
-              <ul className="space-y-1.5">{lista86.map(i=>(
+              <ul className="space-y-1.5">{kpisReales.lista86.map(i=>(
                 <li key={i.n} className="flex items-center justify-between text-[11px] py-1.5 border-b border-[#1a2030] last:border-0"><div><div className="font-bold">{i.n}</div><div className="text-[10px] text-[#7a8499]">{i.m}</div></div></li>
               ))}</ul>
             </Section>
@@ -865,13 +1041,13 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
             <Section title="TOP CÓCTELES HOY" color="#c66de8" icon={Wine}>
               <table className="w-full text-[11px]">
                 <thead><tr className="text-[9px] text-[#7a8499]"><th className="text-left pb-1">#</th><th className="text-left pb-1">Cóctel</th><th className="text-right pb-1">Vendidos</th><th className="text-right pb-1">Margen</th></tr></thead>
-                <tbody>{cocteles.map((c,i)=>(
+                <tbody>{([] as any[]).map((c,i)=>(
                   <tr key={c.n} className="border-t border-[#1a2030]"><td className="py-1.5 text-[#7a8499]">{i+1}</td><td className="py-1.5">{c.n}</td><td className="py-1.5 text-right font-bold">{c.v}</td><td className="py-1.5 text-right text-[#3dba6f] font-bold">{c.margen}</td></tr>
                 ))}</tbody>
               </table>
             </Section>
             <Section title="TOP VINOS HOY" color="#d4943a" icon={Wine}>
-              <ul className="space-y-1.5">{vinos.map(v=>(
+              <ul className="space-y-1.5">{([] as any[]).map(v=>(
                 <li key={v.n} className="flex items-center justify-between text-[11px]"><span>{v.n}</span><span><span className="font-bold">{v.v} botellas</span>{v.copas?<span className="text-[10px] text-[#7a8499] ml-1">· {v.copas} copas</span>:null}</span></li>
               ))}</ul>
               <div className="mt-2 pt-2 border-t border-[#1a2030] text-[10px] text-[#7a8499]">Mes: 312 botellas · $48M en vinos</div>
@@ -879,13 +1055,13 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Section title="EFICIENCIA BARRA" color="#4a9fff" icon={Zap}>
-              <div className="space-y-2">{barra.map(r=>(
+              <div className="space-y-2">{kpisReales.eficienciaEstaciones.filter((e:any)=>e.l.toLowerCase().includes("vino")||e.l.toLowerCase().includes("coctel")||e.l.toLowerCase().includes("bar")).map(r=>(
                 <div key={r.l}><div className="flex justify-between text-[11px] mb-0.5"><span>{r.l}</span><span className="text-[#a0a9bd] font-bold">{r.v}%</span></div><Bar pct={r.v} color={r.c}/></div>
               ))}</div>
               <div className="mt-3 pt-2 border-t border-[#1a2030] text-[10px] text-[#7a8499]">Primera bebida: <span className="text-white">7 min</span> · Bebidas atrasadas: <span className="text-[#e05050]">4</span></div>
             </Section>
             <Section title="INVENTARIO CRÍTICO" color="#e05050" icon={Package}>
-              <ul className="space-y-1.5">{licoresCriticos.map(l=>(
+              <ul className="space-y-1.5">{([] as any[]).map(l=>(
                 <li key={l.n} className="flex items-center justify-between text-[11px]"><div><div>{l.n}</div><div className="text-[10px] text-[#7a8499]">{l.stock}</div></div><span className="text-[10px] px-1.5 py-0.5 rounded-full" style={{background:l.alerta==='crítico'?'#e0505026':'#f0a05026', color:l.alerta==='crítico'?'#e05050':'#f0a050'}}>{l.alerta}</span></li>
               ))}</ul>
               <div className="mt-2 pt-2 border-t border-[#1a2030] text-[10px] text-[#f0a050]">⚑ Acción: solicitar pedido a Supply hoy mismo</div>
@@ -905,7 +1081,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
             <div className="text-[10px] font-black tracking-[0.15em] text-[#4a9fff] mb-2">ROSTER DE HOY</div>
             <table className="w-full text-[11px]">
               <thead><tr className="text-[9px] text-[#7a8499]"><th className="text-left pb-1">Empleado</th><th className="text-left pb-1">Rol</th><th className="text-left pb-1">Turno</th><th className="text-left pb-1">Estado</th><th className="text-right pb-1">Score</th></tr></thead>
-              <tbody>{equipoHoy.map(e=>{
+              <tbody>{kpisReales.equipoHoy.map(e=>{
                 const eColor = e.estado==='presente'?'#3dba6f' : e.estado.includes('tarde')?'#f0a050' : e.estado==='incapacidad'?'#c66de8' : '#e05050';
                 return (
                   <tr key={e.n} className="border-t border-[#1a2030]">
@@ -918,8 +1094,8 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
             </table>
           </Card>
           <div className="grid grid-cols-3 gap-3">
-            <Section title="TOP EMPLEADOS" color="#3dba6f" icon={Award}><ul className="space-y-1.5">{topEmp.map((e,i)=>(<li key={e.n} className="flex items-center justify-between text-[12px]"><span className="flex items-center gap-2"><span className="w-4 text-[#7a8499] text-[10px]">{i+1}</span>{e.n}</span><span className="font-black text-[#3dba6f]">{e.s}</span></li>))}</ul></Section>
-            <Section title="TALENTO EN ALERTA" color="#e05050" icon={AlertTriangle}><ul className="space-y-1.5">{alertaEmp.map((e,i)=>(<li key={e.n} className="flex items-center justify-between text-[12px]"><span className="flex items-center gap-2"><span className="w-4 text-[#7a8499] text-[10px]">{i+1}</span>{e.n}</span><span className="flex items-center gap-2"><span className="font-black text-[#e05050]">{e.s}</span><span className="text-[10px] text-[#7a8499]">{e.m}</span></span></li>))}</ul></Section>
+            <Section title="TOP EMPLEADOS" color="#3dba6f" icon={Award}><ul className="space-y-1.5">{kpisReales.topEmpleados.map((e,i)=>(<li key={e.n} className="flex items-center justify-between text-[12px]"><span className="flex items-center gap-2"><span className="w-4 text-[#7a8499] text-[10px]">{i+1}</span>{e.n}</span><span className="font-black text-[#3dba6f]">{e.s}</span></li>))}</ul></Section>
+            <Section title="TALENTO EN ALERTA" color="#e05050" icon={AlertTriangle}><ul className="space-y-1.5">{kpisReales.talentoAlerta.map((e,i)=>(<li key={e.n} className="flex items-center justify-between text-[12px]"><span className="flex items-center gap-2"><span className="w-4 text-[#7a8499] text-[10px]">{i+1}</span>{e.n}</span><span className="flex items-center gap-2"><span className="font-black text-[#e05050]">{e.s}</span><span className="text-[10px] text-[#7a8499]">{e.m}</span></span></li>))}</ul></Section>
             <Section title="CUMPLEAÑOS EQUIPO" color="#c66de8" icon={Cake}><ul className="space-y-1.5">{cumplesEquipo.map(c=>(<li key={c.n} className="flex items-center justify-between text-[12px]"><span>{c.n}</span><span className="text-[10px] text-[#7a8499]">{c.d}</span></li>))}</ul></Section>
           </div>
         </>)}
@@ -936,7 +1112,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
             <div className="text-[10px] font-black tracking-[0.15em] text-[#4a9fff] mb-2">RESERVAS DE HOY</div>
             <table className="w-full text-[11px]">
               <thead><tr className="text-[9px] text-[#7a8499]"><th className="text-left pb-1">Hora</th><th className="text-left pb-1">Cliente</th><th className="text-right pb-1">Pax</th><th className="text-left pb-1 pl-3">Mesa</th><th className="text-left pb-1">VIP</th><th className="text-right pb-1">Estado</th></tr></thead>
-              <tbody>{reservasHoy.map((r,i)=>{
+              <tbody>{kpisReales.reservasHoyLista.map((r,i)=>{
                 const eColor = r.estado==='confirmada'?'#3dba6f' : r.estado==='pendiente'?'#f0a050' : '#7a8499';
                 return (
                   <tr key={i} className="border-t border-[#1a2030]">
@@ -954,8 +1130,8 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
           <div className="grid grid-cols-2 gap-3">
             <Section title="PRÓXIMOS 7 DÍAS" color="#4a9fff" icon={CalendarDays}>
               <div className="flex items-end gap-2 h-28">
-                {proximas7.map(d=>{
-                  const max = Math.max(...proximas7.map(x=>x.n));
+                {([] as {d:string;n:number}[]).map(d=>{
+                  const max = Math.max(...[1]);
                   const h = (d.n/max)*100;
                   return (
                     <div key={d.d} className="flex-1 flex flex-col items-center gap-1">
@@ -969,7 +1145,7 @@ const CommandModule: React.FC<CommandModuleProps> = () => {
               <div className="text-[10px] text-[#7a8499] mt-2">Total semana: <span className="text-white font-bold">259 reservas</span> · pico viernes/sábado</div>
             </Section>
             <Section title="VIP ESPERADOS HOY" color="#d4943a" icon={Crown}>
-              <ul className="space-y-1.5">{reservasHoy.filter(r=>r.vip).map(r=>(
+              <ul className="space-y-1.5">{kpisReales.reservasHoyLista.filter(r=>r.vip).map(r=>(
                 <li key={r.h} className="flex items-center justify-between text-[12px]"><span className="flex items-center gap-2"><Crown size={12} className="text-[#d4943a]"/>{r.n}</span><span className="text-[10px] text-[#7a8499]">{r.h} · {r.pax} pax · {r.mesa}</span></li>
               ))}</ul>
               <div className="mt-2 pt-2 border-t border-[#1a2030] text-[10px] text-[#f0a050]">⚑ Preparar cortesía especial · activar protocolo VIP</div>

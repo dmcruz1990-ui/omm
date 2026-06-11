@@ -54,8 +54,19 @@ export const sizeForMesa = (m: { zona:string; capacidad:number; name:string }) =
 const ST = {
   libre:     { bg:'#162621', border:'#3DBE8B', text:'#D8F4E5', chip:'#3DBE8B', label:'LIBRE' },
   ocupada:   { bg:'#241218', border:'#C04464', text:'#F4D0DC', chip:'#C04464', label:'OCUPADA' },
+  asignada:  { bg:'#1c1a28', border:'#9b72ff', text:'#D9CDFF', chip:'#9b72ff', label:'ASIGNADA' },
+  sentada:   { bg:'#241218', border:'#C04464', text:'#F4D0DC', chip:'#C04464', label:'SENTADA' },
   reservada: { bg:'#241B10', border:'#C99245', text:'#F4E2C5', chip:'#C99245', label:'RESERVADA' },
   bloqueada: { bg:'#1d1d28', border:'#6B7280', text:'#A8A8B8', chip:'#9CA3AF', label:'BLOQUEADA' },
+};
+// Normaliza estados de BD a ST. Importante: 'sentada' y 'asignada' son
+// estados intermedios que ANTES caían a 'libre' por default en PlanoOMM
+// — por eso el mapa no coincidía con el plano del SmartPOS.
+const NORM: Record<string,string> = {
+  libre:'libre', open:'ocupada', ocupada:'ocupada',
+  asignada:'asignada', sentada:'sentada',
+  reservada:'reservada', reserved:'reservada', pendiente:'reservada',
+  bloqueada:'bloqueada', blocked:'bloqueada',
 };
 
 interface MesaRow {
@@ -191,7 +202,7 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
 
   // ── Mesas aptas para la reserva arrastrada ───────────────────
   const aptaParaReserva = (m: MesaRow, r: ReservaRow) => {
-    if ((m.estado||'libre').toLowerCase() !== 'libre') return false;
+    if ((NORM[(m.estado||'libre').toLowerCase()] || 'libre') !== 'libre') return false;
     if (m.zona.startsWith('Barra')) return r.pax === 1;
     const maxComb = m.name === 'A11' || m.name === 'A12' || m.name === 'M7' || m.name === 'M8' ? 10 : m.capacidad;
     return r.pax >= 1 && r.pax <= maxComb;
@@ -207,7 +218,7 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
         || (zonaFiltro==='Salón Principal' && m.zona==='Barra Gallo');
       if (!matches) return false;
     }
-    const e = (m.estado||'libre').toLowerCase();
+    const e = NORM[(m.estado||'libre').toLowerCase()] || 'libre';
     if (filter==='libres' && e!=='libre') return false;
     if (filter==='ocupadas' && !['ocupada','open'].includes(e)) return false;
     if (filter==='reservadas' && !['reservada','pendiente'].includes(e)) return false;
@@ -220,9 +231,9 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
 
   // ── KPIs ──────────────────────────────────────────────────────
   const kpi = useMemo(() => {
-    const ocupadas = mesas.filter(m => ['ocupada','open'].includes((m.estado||'').toLowerCase()));
-    const reservadasZ = mesas.filter(m => ['reservada','pendiente'].includes((m.estado||'').toLowerCase()));
-    const libres = mesas.filter(m => (m.estado||'libre').toLowerCase()==='libre');
+    const ocupadas = mesas.filter(m => ['ocupada','asignada','sentada'].includes(NORM[(m.estado||'').toLowerCase()] || ''));
+    const reservadasZ = mesas.filter(m => ['reservada','pendiente'].includes(NORM[(m.estado||'').toLowerCase()] || ''));
+    const libres = mesas.filter(m => (NORM[(m.estado||'libre').toLowerCase()] || 'libre')==='libre');
     const pct = mesas.length ? Math.round((ocupadas.length/mesas.length)*100) : 0;
     const criticas = ocupadas.filter(m => minutesSince(m.abierta_en) >= 90).length;
     const totalCap = mesas.reduce((a,m)=>a+(m.capacidad||0),0);
@@ -457,7 +468,7 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
 
             {/* Mesas */}
             {visibles.map(m => {
-              const estado = (m.estado||'libre').toLowerCase();
+              const estado = NORM[(m.estado||'libre').toLowerCase()] || 'libre';
               const c = ST[estado as keyof typeof ST] || ST.libre;
               const { w, h } = sizeFor(m);
               const isVIP = m.name==='M5' || m.vip;
@@ -660,7 +671,7 @@ export default function PlanoOMM({ onOpenPOS }: Props) {
                 <div style={{fontSize:10,color:'#A0A0B8',letterSpacing:'.1em',fontWeight:700,marginBottom:4}}>
                   ALERTAS · mesas que requieren atención
                 </div>
-                {mesas.filter(m=>['ocupada','open'].includes((m.estado||'').toLowerCase()) && minutesSince(m.abierta_en)>=90).map(m=>(
+                {mesas.filter(m=>['ocupada','open'].includes(NORM[(m.estado||'').toLowerCase()] || '') && minutesSince(m.abierta_en)>=90).map(m=>(
                   <div key={m.id} onClick={()=>setSel(m)} style={{cursor:'pointer',padding:'10px 12px',
                     background:'rgba(220,38,38,0.08)',border:'1px solid rgba(220,38,38,0.3)',borderRadius:10}}>
                     <div style={{fontSize:13,fontWeight:800,color:'#DC2626'}}>⚠ Mesa {m.name}</div>
