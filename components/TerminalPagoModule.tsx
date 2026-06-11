@@ -107,8 +107,27 @@ export default function TerminalPagoModule() {
     setProcesando(false);
     setSelected(null);
     setMetodoElegido(null);
-    setPantallaFinal({ activa:true, mesa: cobro.mesa_num, total: cobro.total + (cobro.propina||0), metodo });
+    // PANTALLA 3 · ENCUESTA EXPRESS antes de la final — como el modo
+    // cliente del POS: el comensal califica con estrellas en la misma
+    // tablet de la cajera, sin fricción.
+    setEncuesta({ activa:true, mesa: cobro.mesa_num, total: cobro.total + (cobro.propina||0), metodo, telefono: cobro.cliente_telefono || '' });
     showToast(`✓ Mesa ${cobro.mesa_num} cobrada · ${fmt(cobro.total + (cobro.propina||0))}`);
+  };
+
+  // Encuesta express post-cobro (estrellas 1-5) → xcare_encuestas
+  const [encuesta, setEncuesta] = useState<{ activa:boolean; mesa:number; total:number; metodo:string; telefono?:string } | null>(null);
+  const enviarEncuesta = async (estrellas: number) => {
+    if (!encuesta) return;
+    if (estrellas > 0) {
+      await supabase.from('xcare_encuestas').insert({
+        restaurante_id: restauranteId,
+        mesa_numero: encuesta.mesa,
+        estrellas,
+        cliente_telefono: encuesta.telefono || null,
+      }).then(()=>{}, ()=>{});
+    }
+    setPantallaFinal({ activa:true, mesa: encuesta.mesa, total: encuesta.total, metodo: encuesta.metodo });
+    setEncuesta(null);
   };
 
   const rechazar = async (cobro: CobroPendiente) => {
@@ -122,6 +141,42 @@ export default function TerminalPagoModule() {
   return (
     <div style={{height:'100%', display:'flex', flexDirection:'column', background:S.bg, color:S.t1, fontFamily:"'DM Sans',sans-serif", overflow:'hidden'}}>
       {toast && <div style={{position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:S.bg4, border:`1px solid ${S.pink}`, color:S.t1, padding:'10px 28px', borderRadius:50, fontSize:13, fontWeight:700, zIndex:9999}}>{toast}</div>}
+
+      {/* PANTALLA 3 · ENCUESTA EXPRESS — estrellas del cliente post-cobro */}
+      {encuesta?.activa && (
+        <div style={{position:'fixed', inset:0, background:'linear-gradient(180deg, #0a0a10 0%, #000 100%)', zIndex:8000, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:24}}>
+          {/* Logo arriba */}
+          <div style={{position:'absolute',top:32,left:'50%',transform:'translateX(-50%)',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+            <div style={{width:54,height:54,borderRadius:'50%',background:`linear-gradient(135deg, ${S.gold}, #B07820)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,boxShadow:`0 6px 24px ${S.gold}55`}}>
+              {(activeRestaurant as any)?.emoji || '🏨'}
+            </div>
+            <div style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:900,letterSpacing:'.06em'}}>{(activeRestaurant as any)?.nombre || 'NEXUM'}</div>
+          </div>
+          <div style={{fontFamily:"'Syne',serif", fontSize:30, fontWeight:900, marginBottom:8, letterSpacing:'-0.02em', textAlign:'center'}}>¿Cómo estuvo tu experiencia?</div>
+          <div style={{fontSize:13, color:S.t2, marginBottom:36}}>Tu opinión nos ayuda a mejorar ✨</div>
+          {/* Estrellas gigantes */}
+          <div style={{display:'flex', gap:14, marginBottom:40}}>
+            {[1,2,3,4,5].map(n => (
+              <button key={n} onClick={() => enviarEncuesta(n)}
+                style={{background:'none', border:'none', cursor:'pointer', fontSize:54, lineHeight:1, transition:'transform .15s', filter:'grayscale(0.4)', padding:6}}
+                onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.transform='scale(1.25)'; (e.currentTarget as HTMLButtonElement).style.filter='none'; }}
+                onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.transform='scale(1)'; (e.currentTarget as HTMLButtonElement).style.filter='grayscale(0.4)'; }}>
+                ⭐
+              </button>
+            ))}
+          </div>
+          <div style={{display:'flex', gap:8, fontSize:10, color:S.t3, marginBottom:30, letterSpacing:'.08em'}}>
+            <span>1 = Mal</span><span>·</span><span>5 = Excelente</span>
+          </div>
+          <button onClick={() => enviarEncuesta(0)}
+            style={{background:'none', border:`1px solid ${S.border2}`, borderRadius:50, padding:'10px 28px', color:S.t3, fontSize:12, cursor:'pointer'}}>
+            Omitir
+          </button>
+          <div style={{position:'absolute',bottom:24,left:0,right:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+            <span style={{fontSize:10,color:S.t3,letterSpacing:'.22em',fontWeight:700,fontFamily:"'IBM Plex Mono', monospace",textTransform:'uppercase'}}>by NEXUM v4</span>
+          </div>
+        </div>
+      )}
 
       {/* PANTALLA 4 · Confirmación final (con logo del restaurante + by NEXUM v4) */}
       {pantallaFinal?.activa && (
@@ -249,9 +304,15 @@ export default function TerminalPagoModule() {
           </div>
         </div>
 
-        {/* Panel derecho de proceso (PANTALLA 2) — rediseñado con logo + footer */}
+        {/* PANTALLA 2 · COBRO INMEDIATO — overlay fullscreen al darle click a la
+            cuenta ("que aparezca de una el cobro" · pedido boss Jun-11).
+            Misma UX que el modo cliente del POS: pantalla dedicada, métodos
+            grandes, sin distracciones. */}
         {selected && (
-          <div style={{width:420, borderLeft:`1px solid ${S.border}`, background:'linear-gradient(180deg, #0f0f15 0%, #0a0a10 100%)', display:'flex', flexDirection:'column', flexShrink:0}}>
+          <div onClick={()=>{ setSelected(null); setMetodoElegido(null); }}
+            style={{position:'fixed', inset:0, zIndex:7000, background:'rgba(0,0,0,0.82)', display:'flex', alignItems:'center', justifyContent:'center', padding:18}}>
+          <div onClick={e=>e.stopPropagation()}
+            style={{width:'100%', maxWidth:520, maxHeight:'94vh', borderRadius:22, overflow:'hidden', border:`1px solid ${S.gold}33`, boxShadow:`0 24px 80px rgba(0,0,0,0.8), 0 0 40px ${S.gold}15`, background:'linear-gradient(180deg, #0f0f15 0%, #0a0a10 100%)', display:'flex', flexDirection:'column'}}>
             {/* HEADER con logo del restaurante */}
             <div style={{padding:'20px 24px 16px', borderBottom:`1px solid ${S.border}`, display:'flex', flexDirection:'column', alignItems:'center', gap:6, position:'relative'}}>
               <button onClick={()=>setSelected(null)} style={{position:'absolute',top:14,right:14,width:30, height:30, borderRadius:8, border:`1px solid ${S.border2}`, background:'transparent', color:S.t3, cursor:'pointer'}}><X size={14}/></button>
@@ -334,6 +395,7 @@ export default function TerminalPagoModule() {
               </button>
               <span style={{fontSize:9,color:S.t3,letterSpacing:'.18em',fontWeight:600,fontFamily:"'IBM Plex Mono', monospace"}}>by NEXUM v4</span>
             </div>
+          </div>
           </div>
         )}
       </div>
