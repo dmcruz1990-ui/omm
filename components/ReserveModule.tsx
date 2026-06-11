@@ -1658,6 +1658,15 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
   const paxTotal = activas.reduce((s:number, r:any) => s + (r.pax || 0), 0);
   const ohYeahCnt = activas.filter((r:any) => r.origen === 'ohyeah').length;
 
+  // ── INTELIGENCIA DE PRÓXIMA ACCIÓN ──
+  // Detecta la reserva más urgente: la próxima en llegar SIN MESA asignada.
+  const ahoraMin = new Date().getHours()*60 + new Date().getMinutes();
+  const aMin = (h:string) => { const [hh,mm] = String(h||'0:0').split(':').map(Number); return hh*60+(mm||0); };
+  const proxAccion = activas
+    .filter((r:any) => !r.mesa_num && r.estado !== 'sentada' && aMin(r.hora) >= ahoraMin - 15)
+    .sort((a:any,b:any) => aMin(a.hora) - aMin(b.hora))[0];
+  const proxMinutos = proxAccion ? aMin(proxAccion.hora) - ahoraMin : 0;
+
   // Mesas del plano para el drop-area
   const fuente = plantaDB.length > 0 ? plantaDB : Object.values(PLANTA).map((p:any) => ({ num:p.num, capacidad:p.cap, zona:p.zona, shape:p.shape, x:p.x, y:p.y, w:p.w, h:p.h }));
   const mesasPlano = fuente.map((p:any) => {
@@ -1676,8 +1685,99 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
     };
   }).filter((m:any) => !isNaN(m.num));
 
+  // ── IA · MEJOR MESA por reserva ──
+  // Para cada reserva sin mesa, encontrar la mesa libre con mejor score:
+  // · capacidad cercana a pax (eficiencia)
+  // · VIP si cliente es VIP
+  // · sin conflicto en la franja
+  const mejorMesaPara = (r:any) => {
+    const candidatas = mesas
+      .filter((m:any) => !String(m.zona||'').toLowerCase().startsWith('barra'))
+      .filter((m:any) => (m.estado||'libre') === 'libre')
+      .map((m:any) => {
+        const cap = Number(m.capacidad || m.capacity || 4);
+        const pax = r.pax || 1;
+        if (cap < pax) return null;
+        const esVip = !!r.gourmand_level && ['VIP','CONSAGRADO','ÉLITE','ELITE'].includes(String(r.gourmand_level).toUpperCase());
+        const eficiencia = pax / cap; // 1.0 = ajuste perfecto, <1 = sobra capacidad
+        let score = 100 + eficiencia * 50;
+        if (esVip && m.vip) score += 40;
+        if (!esVip && m.vip) score -= 20;
+        if (r.ocasion && r.ocasion !== 'Sin ocasión especial' && !String(m.zona||'').toLowerCase().startsWith('barra')) score += 8;
+        // Penalizar si hay otra reserva confirmada en la misma franja
+        const otraEnFranja = (reservas||[]).find((rr:any) =>
+          rr.id !== r.id && rr.fecha === r.fecha && mismaMesa(rr.mesa_num, m.name) &&
+          Math.abs(aMin(rr.hora) - aMin(r.hora)) < 120
+        );
+        if (otraEnFranja) return null;
+        return { mesa: m, score };
+      })
+      .filter(Boolean) as {mesa:any;score:number}[];
+    return candidatas.sort((a,b) => b.score - a.score)[0]?.mesa || null;
+  };
+
+  // Sentar en mejor mesa (1 click)
+  const sentarEnMejor = async (r:any) => {
+    if (!puedeAsignarMesa) { show('🔒 Sólo Host, Admin o Gerencia pueden asignar mesa'); return; }
+    const mejor = mejorMesaPara(r);
+    if (!mejor) { show('🚫 Sin mesas libres para este grupo'); return; }
+    if (!confirm(`✓ Sentar a ${r.cliente_nombre} (${r.pax}p) en ${mejor.name}?\nLa IA elige por capacidad y zona.`)) return;
+    await asignarMesa(r.id, String(mejor.name));
+  };
+
   return (
     <div style={{flex:1,display:'flex',flexDirection:'column',overflow:'hidden',background:S.bg}}>
+
+      {/* ─── BANNER · próxima acción urgente ─── */}
+      {proxAccion && (
+        <div style={{
+          padding:'10px 20px',
+          background: proxMinutos < 10
+            ? `linear-gradient(90deg, ${S.red}18, ${S.bg2})`
+            : proxMinutos < 30 ? `linear-gradient(90deg, ${S.gold}18, ${S.bg2})` : `linear-gradient(90deg, ${S.purple}12, ${S.bg2})`,
+          borderBottom:`1px solid ${proxMinutos < 10 ? S.red : proxMinutos < 30 ? S.gold : S.purple}33`,
+          display:'flex',alignItems:'center',gap:12,flexWrap:'wrap',
+        }}>
+          <div style={{
+            width:36,height:36,borderRadius:10,
+            background: proxMinutos < 10 ? `${S.red}25` : proxMinutos < 30 ? `${S.gold}25` : `${S.purple}25`,
+            border:`1px solid ${proxMinutos < 10 ? S.red : proxMinutos < 30 ? S.gold : S.purple}`,
+            display:'flex',alignItems:'center',justifyContent:'center',
+            fontSize:18, fontFamily:"'Syne',sans-serif",fontWeight:900,
+            color: proxMinutos < 10 ? S.red : proxMinutos < 30 ? S.gold : S.purple,
+            animation: proxMinutos < 10 ? 'nx-pulse 1.2s infinite' : undefined,
+          }}>{proxMinutos < 0 ? '⚠' : '✦'}</div>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontSize:10,color: proxMinutos < 10 ? S.red : proxMinutos < 30 ? S.gold : S.purple,fontWeight:800,letterSpacing:'.12em',textTransform:'uppercase'}}>
+              {proxMinutos < 0 ? `⚡ HACE ${Math.abs(proxMinutos)} MIN · YA DEBERÍA ESTAR SENTADO` :
+               proxMinutos < 10 ? `🔥 EN ${proxMinutos} MIN · PRÓXIMA ACCIÓN URGENTE` :
+               `Próxima reserva en ${proxMinutos} min`}
+            </div>
+            <div style={{fontSize:13,fontWeight:800,color:S.t1,marginTop:2}}>
+              {proxAccion.cliente_nombre} · {proxAccion.pax}p · {(proxAccion.hora||'').slice(0,5)}
+              {proxAccion.ocasion && proxAccion.ocasion !== 'Sin ocasión especial' && <span style={{color:S.purple,marginLeft:6,fontWeight:700}}>· 🎉 {proxAccion.ocasion}</span>}
+              {proxAccion.gourmand_level && <span style={{color:S.gold,marginLeft:6,fontWeight:700}}>· ⭐ {proxAccion.gourmand_level}</span>}
+            </div>
+          </div>
+          {(() => {
+            const sugerida = mejorMesaPara(proxAccion);
+            return sugerida ? (
+              <button onClick={()=>sentarEnMejor(proxAccion)}
+                style={{padding:'10px 18px',borderRadius:10,border:'none',
+                  background:`linear-gradient(135deg,${S.green},#2a9d5a)`,
+                  color:'#fff',fontSize:12,fontWeight:900,cursor:'pointer',
+                  boxShadow:`0 4px 14px ${S.green}55`,whiteSpace:'nowrap'}}>
+                ✦ Sentar en {sugerida.name} →
+              </button>
+            ) : (
+              <span style={{fontSize:11,color:S.red,fontWeight:700,padding:'10px 14px',background:`${S.red}10`,borderRadius:10,border:`1px solid ${S.red}40`}}>
+                🚫 Sin mesas libres para {proxAccion.pax}p
+              </span>
+            );
+          })()}
+        </div>
+      )}
+      <style>{`@keyframes nx-pulse { 0%,100% { opacity:1 } 50% { opacity:.55 } }`}</style>
 
       {/* ─── Cuerpo principal: split timeline + plano ─── */}
       <div style={{flex:1,display:'grid',gridTemplateColumns:'minmax(360px, 1fr) 1.4fr',gap:0,overflow:'hidden',background:S.bg}}>
@@ -1832,18 +1932,43 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
                       )}
                     </div>
 
-                    {/* Mesa asignada o "Arrastra" */}
-                    <div style={{textAlign:'right',minWidth:64}}>
+                    {/* Mesa asignada o Quick action IA */}
+                    <div style={{textAlign:'right',minWidth:72,display:'flex',flexDirection:'column',alignItems:'flex-end',gap:4}}>
                       {r.mesa_num ? (
                         <>
-                          <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:S.blue,lineHeight:1}}>M{r.mesa_num}</div>
+                          <div style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:r.estado==='sentada'?S.green:S.blue,lineHeight:1}}>M{r.mesa_num}</div>
                           {r.estado === 'sentada' && r.sentado_at
                             ? <div style={{fontSize:9,color:S.green,fontWeight:700,marginTop:2}}>🪑 {fmtElapsed(r.sentado_at)}</div>
                             : <div style={{fontSize:9,color:S.t3,marginTop:2}}>asignada</div>}
                         </>
-                      ) : (
-                        <div style={{fontSize:9,color:S.gold,fontWeight:700,letterSpacing:'.05em'}}>✦ SUGERIR<br/>MESA</div>
-                      )}
+                      ) : (() => {
+                        // Reserva sin mesa: botón quick "Sentar IA" + hint drag
+                        const sugerida = mejorMesaPara(r);
+                        return (
+                          <>
+                            {sugerida ? (
+                              <button data-stop onClick={(e)=>{e.stopPropagation(); sentarEnMejor(r);}}
+                                title={`IA sugiere ${sugerida.name} (cap ${sugerida.capacidad}) por mejor ajuste a ${r.pax}p`}
+                                style={{
+                                  padding:'4px 9px',borderRadius:7,border:'none',
+                                  background:`linear-gradient(135deg,${S.green},#2a9d5a)`,
+                                  color:'#fff',fontSize:10,fontWeight:900,cursor:'pointer',
+                                  boxShadow:`0 2px 8px ${S.green}40`,
+                                  whiteSpace:'nowrap',letterSpacing:'.02em',
+                                }}>
+                                ✦ Sentar {sugerida.name}
+                              </button>
+                            ) : (
+                              <span style={{fontSize:9,color:S.red,fontWeight:700,padding:'3px 7px',background:`${S.red}10`,borderRadius:6,border:`1px solid ${S.red}30`}}>
+                                🚫 sin mesas {r.pax}p
+                              </span>
+                            )}
+                            <div style={{fontSize:8,color:S.t3,letterSpacing:'.05em',textAlign:'right' as const}}>
+                              o arrastrá al plano →
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </div>
                 );
@@ -1856,16 +1981,55 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
 
         {/* ═══ DERECHA · Plano interactivo con drop-receivers ═══ */}
         <section style={{display:'flex',flexDirection:'column',overflow:'hidden',background:S.bg2}}>
-          <div style={{padding:'16px 20px 12px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'baseline',gap:10,flexWrap:'wrap'}}>
-            <span style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:10,color:S.blue,letterSpacing:'0.22em',textTransform:'uppercase'}}>Plano del salón</span>
-            <span style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,letterSpacing:'-0.02em'}}>{mesasPlano.length}<span style={{fontSize:12,fontWeight:400,color:S.t3,marginLeft:6}}>mesas</span></span>
-            <div style={{marginLeft:'auto',display:'flex',gap:8,fontSize:10,color:S.t3,letterSpacing:'.05em',flexWrap:'wrap'}}>
-              <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:S.green,marginRight:4,verticalAlign:'middle'}}/>libre</span>
-              <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#FFB547',marginRight:4,verticalAlign:'middle'}}/>reservada</span>
-              <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:S.red,marginRight:4,verticalAlign:'middle'}}/>ocupada</span>
-              <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:S.gold,marginRight:4,verticalAlign:'middle'}}/>VIP</span>
-            </div>
-          </div>
+          {/* Header con KPIs de capacidad disponible */}
+          {(() => {
+            const libres = mesas.filter((m:any) => (m.estado||'libre')==='libre' && !String(m.zona||'').toLowerCase().startsWith('barra'));
+            const libresPorCap = { '1-2':0, '3-4':0, '5-6':0, '7+':0 };
+            libres.forEach((m:any) => {
+              const c = Number(m.capacidad||m.capacity||4);
+              if (c <= 2) libresPorCap['1-2']++;
+              else if (c <= 4) libresPorCap['3-4']++;
+              else if (c <= 6) libresPorCap['5-6']++;
+              else libresPorCap['7+']++;
+            });
+            const ocupadasCnt = mesas.filter((m:any) => ['ocupada','asignada','sentada'].includes(m.estado)).length;
+            const totalActivas = mesas.filter((m:any) => !String(m.zona||'').toLowerCase().startsWith('barra')).length;
+            const ocupacionPct = totalActivas ? Math.round((ocupadasCnt/totalActivas)*100) : 0;
+            return (
+              <div style={{padding:'14px 20px 10px',borderBottom:`1px solid ${S.border}`,display:'flex',alignItems:'center',gap:14,flexWrap:'wrap'}}>
+                <div>
+                  <div style={{fontFamily:"'IBM Plex Mono', monospace",fontSize:9,color:S.blue,letterSpacing:'0.22em',textTransform:'uppercase'}}>Plano del salón · arrastrá aquí</div>
+                  <div style={{display:'flex',alignItems:'baseline',gap:6,marginTop:2}}>
+                    <span style={{fontFamily:"'Syne',sans-serif",fontSize:22,fontWeight:900,letterSpacing:'-0.02em',color:S.green}}>{libres.length}</span>
+                    <span style={{fontSize:11,color:S.t3,fontWeight:700}}>libres</span>
+                    <span style={{fontSize:11,color:S.t3,margin:'0 4px'}}>·</span>
+                    <span style={{fontSize:13,fontWeight:800,color:ocupacionPct>=80?S.red:ocupacionPct>=50?S.gold:S.t1}}>{ocupacionPct}% ocupación</span>
+                  </div>
+                </div>
+                {/* Mini-KPIs por capacidad */}
+                <div style={{display:'flex',gap:6,marginLeft:8}}>
+                  {Object.entries(libresPorCap).map(([rng, n]) => (
+                    <div key={rng} title={`${n} mesas libres para ${rng} pax`}
+                      style={{
+                        padding:'5px 9px',borderRadius:8,
+                        background: n>0 ? `${S.green}12` : S.bg3,
+                        border:`1px solid ${n>0 ? `${S.green}40` : S.border}`,
+                        textAlign:'center' as const,
+                      }}>
+                      <div style={{fontFamily:"'Syne',sans-serif",fontSize:14,fontWeight:900,color:n>0?S.green:S.t3,lineHeight:1}}>{n}</div>
+                      <div style={{fontSize:8,color:S.t3,fontWeight:700,letterSpacing:'.04em',marginTop:1}}>{rng}p</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{marginLeft:'auto',display:'flex',gap:8,fontSize:10,color:S.t3,letterSpacing:'.04em',flexWrap:'wrap'}}>
+                  <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:S.green,marginRight:4,verticalAlign:'middle'}}/>libre</span>
+                  <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:'#FFB547',marginRight:4,verticalAlign:'middle'}}/>reservada</span>
+                  <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:S.red,marginRight:4,verticalAlign:'middle'}}/>ocupada</span>
+                  <span><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:S.gold,marginRight:4,verticalAlign:'middle'}}/>VIP</span>
+                </div>
+              </div>
+            );
+          })()}
 
           <PlanoSalaSVG
             mesas={mesas}
