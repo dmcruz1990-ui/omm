@@ -142,62 +142,55 @@ const Dashboard: React.FC = () => {
   const { isCameraReady, lastResultsRef } = useMediaPipe(videoRef, visionAIActivo);
 
   const getVisibleModules = (role: UserRole = 'mesero'): ModuleType[] => {
+    // Lista completa de TODOS los módulos disponibles
+    const TODOS = Object.values(ModuleType);
+
     switch (role) {
+      // admin · desarrollo · gerencia → acceso TOTAL
       case 'admin':
       case 'desarrollo':
-        return Object.values(ModuleType);
       case 'gerencia':
-        return [
-          ModuleType.RESERVE,
-          ModuleType.PLANO,
-          ModuleType.RELATIONSHIP,
-          ModuleType.SERVICE_OS,
-          ModuleType.CARE,
-          ModuleType.FINANCE_HUB,
-          ModuleType.COMMAND,
-          ModuleType.STAFF_HUB,
-          ModuleType.WORKFORCE,
-          ModuleType.PAYROLL,
-          ModuleType.SUPPLY,
-          ModuleType.MENU,
-          ModuleType.MARKETPLACE,
-          ModuleType.FOOD_INTELLIGENCE,
-          ModuleType.FLOW,
-          ModuleType.TERMINAL_PAGO,
-          ModuleType.VISION_AI,
-          ModuleType.PUNTOS_NX,
-          ModuleType.CREW_ADMIN,
-          ModuleType.MOBILE_MGR,
-          ModuleType.OH_YEAH
-        ];
+        return TODOS;
+
+      // maître → todo lo operativo + reservas + clientes + finanzas + crew
       case 'maitre':
         return [
-          ModuleType.SERVICE_OS,
-          ModuleType.RESERVE,
-          ModuleType.PLANO,
-          ModuleType.RELATIONSHIP,
-          ModuleType.CARE,
+          ModuleType.SERVICE_OS, ModuleType.RESERVE, ModuleType.PLANO,
+          ModuleType.RELATIONSHIP, ModuleType.CARE, ModuleType.COMMAND,
+          ModuleType.FLOW, ModuleType.CHAT_FLOW,
+          ModuleType.STAFF_HUB, ModuleType.WORKFORCE, ModuleType.PROPINAS,
+          ModuleType.MENU, ModuleType.SUPPLY, ModuleType.MARKETPLACE,
+          ModuleType.FOOD_INTELLIGENCE, ModuleType.METRICAS,
+          ModuleType.TERMINAL_PAGO, ModuleType.PAYROLL,
+          ModuleType.VISION_AI, ModuleType.PUNTOS_NX,
+          ModuleType.OH_YEAH, ModuleType.OH_YEAH_RESTAURANTE,
+          ModuleType.MOBILE_MGR, ModuleType.CONFIG,
         ];
+
+      // mesero → POS + reservas + clientes + menú + propinas + chat + flow vista
       case 'mesero':
         return [
-          ModuleType.SERVICE_OS,
-          ModuleType.RESERVE,
-          ModuleType.RELATIONSHIP,
-          ModuleType.MENU,
-          ModuleType.MARKETPLACE,
-          ModuleType.FOOD_INTELLIGENCE,
-          ModuleType.STAFF_HUB,
-          ModuleType.PUNTOS_NX,
-          ModuleType.OH_YEAH
+          ModuleType.SERVICE_OS, ModuleType.RESERVE, ModuleType.PLANO,
+          ModuleType.RELATIONSHIP, ModuleType.CARE,
+          ModuleType.MENU, ModuleType.MARKETPLACE,
+          ModuleType.FOOD_INTELLIGENCE, ModuleType.FLOW, ModuleType.CHAT_FLOW,
+          ModuleType.STAFF_HUB, ModuleType.PROPINAS,
+          ModuleType.PUNTOS_NX, ModuleType.OH_YEAH,
+          ModuleType.MOBILE_MGR,
         ];
+
+      // cocina → KDS + flow + supply + menú + chat + métricas + team
       case 'cocina':
         return [
-          ModuleType.FLOW, 
-          ModuleType.SUPPLY,
-          ModuleType.STAFF_HUB
+          ModuleType.FLOW, ModuleType.KITCHEN_KDS, ModuleType.CHAT_FLOW,
+          ModuleType.MENU, ModuleType.SUPPLY, ModuleType.MARKETPLACE,
+          ModuleType.FOOD_INTELLIGENCE, ModuleType.METRICAS,
+          ModuleType.STAFF_HUB, ModuleType.CARE,
+          ModuleType.MOBILE_MGR,
         ];
+
       default:
-        return [ModuleType.SERVICE_OS];
+        return [ModuleType.SERVICE_OS, ModuleType.RESERVE, ModuleType.FLOW];
     }
   };
 
