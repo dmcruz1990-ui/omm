@@ -107,25 +107,17 @@ export default function TerminalPagoModule() {
     setProcesando(false);
     setSelected(null);
     setMetodoElegido(null);
-    // PANTALLA 3 · ENCUESTA EXPRESS antes de la final — como el modo
-    // cliente del POS: el comensal califica con estrellas en la misma
-    // tablet de la cajera, sin fricción.
-    setEncuesta({ activa:true, mesa: cobro.mesa_num, total: cobro.total + (cobro.propina||0), metodo, telefono: cobro.cliente_telefono || '' });
+    // PANTALLA 3 · ENCUESTA X-CARE COMPLETA — misma del modo cliente del
+    // POS (caritas + ruta + platos de la cuenta + comentario).
+    setEncuesta({ activa:true, mesa: cobro.mesa_num, total: cobro.total + (cobro.propina||0), metodo, telefono: cobro.cliente_telefono || '', items: cobro.items || [], cliente: cobro.cliente_nombre || '' });
     showToast(`✓ Mesa ${cobro.mesa_num} cobrada · ${fmt(cobro.total + (cobro.propina||0))}`);
   };
 
-  // Encuesta express post-cobro (estrellas 1-5) → xcare_encuestas
-  const [encuesta, setEncuesta] = useState<{ activa:boolean; mesa:number; total:number; metodo:string; telefono?:string } | null>(null);
-  const enviarEncuesta = async (estrellas: number) => {
+  // Encuesta X-CARE COMPLETA post-cobro — misma lógica que el modo cliente
+  // del POS: caritas → categorías → platos de la cuenta → comentario.
+  const [encuesta, setEncuesta] = useState<{ activa:boolean; mesa:number; total:number; metodo:string; telefono?:string; items:any[]; cliente?:string } | null>(null);
+  const cerrarEncuesta = () => {
     if (!encuesta) return;
-    if (estrellas > 0) {
-      await supabase.from('xcare_encuestas').insert({
-        restaurante_id: restauranteId,
-        mesa_numero: encuesta.mesa,
-        estrellas,
-        cliente_telefono: encuesta.telefono || null,
-      }).then(()=>{}, ()=>{});
-    }
     setPantallaFinal({ activa:true, mesa: encuesta.mesa, total: encuesta.total, metodo: encuesta.metodo });
     setEncuesta(null);
   };
@@ -142,40 +134,18 @@ export default function TerminalPagoModule() {
     <div style={{height:'100%', display:'flex', flexDirection:'column', background:S.bg, color:S.t1, fontFamily:"'DM Sans',sans-serif", overflow:'hidden'}}>
       {toast && <div style={{position:'fixed', bottom:24, left:'50%', transform:'translateX(-50%)', background:S.bg4, border:`1px solid ${S.pink}`, color:S.t1, padding:'10px 28px', borderRadius:50, fontSize:13, fontWeight:700, zIndex:9999}}>{toast}</div>}
 
-      {/* PANTALLA 3 · ENCUESTA EXPRESS — estrellas del cliente post-cobro */}
+      {/* PANTALLA 3 · ENCUESTA X-CARE COMPLETA — caritas + ruta + platos */}
       {encuesta?.activa && (
-        <div style={{position:'fixed', inset:0, background:'linear-gradient(180deg, #0a0a10 0%, #000 100%)', zIndex:8000, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:24}}>
-          {/* Logo arriba */}
-          <div style={{position:'absolute',top:32,left:'50%',transform:'translateX(-50%)',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
-            <div style={{width:54,height:54,borderRadius:'50%',background:`linear-gradient(135deg, ${S.gold}, #B07820)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,boxShadow:`0 6px 24px ${S.gold}55`}}>
-              {(activeRestaurant as any)?.emoji || '🏨'}
-            </div>
-            <div style={{fontFamily:"'Syne',serif",fontSize:14,fontWeight:900,letterSpacing:'.06em'}}>{(activeRestaurant as any)?.nombre || 'NEXUM'}</div>
-          </div>
-          <div style={{fontFamily:"'Syne',serif", fontSize:30, fontWeight:900, marginBottom:8, letterSpacing:'-0.02em', textAlign:'center'}}>¿Cómo estuvo tu experiencia?</div>
-          <div style={{fontSize:13, color:S.t2, marginBottom:36}}>Tu opinión nos ayuda a mejorar ✨</div>
-          {/* Estrellas gigantes */}
-          <div style={{display:'flex', gap:14, marginBottom:40}}>
-            {[1,2,3,4,5].map(n => (
-              <button key={n} onClick={() => enviarEncuesta(n)}
-                style={{background:'none', border:'none', cursor:'pointer', fontSize:54, lineHeight:1, transition:'transform .15s', filter:'grayscale(0.4)', padding:6}}
-                onMouseEnter={e=>{ (e.currentTarget as HTMLButtonElement).style.transform='scale(1.25)'; (e.currentTarget as HTMLButtonElement).style.filter='none'; }}
-                onMouseLeave={e=>{ (e.currentTarget as HTMLButtonElement).style.transform='scale(1)'; (e.currentTarget as HTMLButtonElement).style.filter='grayscale(0.4)'; }}>
-                ⭐
-              </button>
-            ))}
-          </div>
-          <div style={{display:'flex', gap:8, fontSize:10, color:S.t3, marginBottom:30, letterSpacing:'.08em'}}>
-            <span>1 = Mal</span><span>·</span><span>5 = Excelente</span>
-          </div>
-          <button onClick={() => enviarEncuesta(0)}
-            style={{background:'none', border:`1px solid ${S.border2}`, borderRadius:50, padding:'10px 28px', color:S.t3, fontSize:12, cursor:'pointer'}}>
-            Omitir
-          </button>
-          <div style={{position:'absolute',bottom:24,left:0,right:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-            <span style={{fontSize:10,color:S.t3,letterSpacing:'.22em',fontWeight:700,fontFamily:"'IBM Plex Mono', monospace",textTransform:'uppercase'}}>by NEXUM v4</span>
-          </div>
-        </div>
+        <EncuestaXCareCompleta
+          mesa={encuesta.mesa}
+          items={encuesta.items}
+          cliente={encuesta.cliente}
+          telefono={encuesta.telefono}
+          restauranteId={restauranteId}
+          restaurant={activeRestaurant as any}
+          S={S}
+          onDone={cerrarEncuesta}
+        />
       )}
 
       {/* PANTALLA 4 · Confirmación final (con logo del restaurante + by NEXUM v4) */}
@@ -398,6 +368,265 @@ export default function TerminalPagoModule() {
           </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// ENCUESTA X-CARE COMPLETA · misma lógica del modo cliente del POS:
+// caritas (sentimiento) → categorías → sub-pantallas por categoría
+// (incluye los PLATOS de la cuenta) → comentario si fue negativa.
+// Guarda en xcare_encuestas + xcare_alertas igual que el POS.
+// ═════════════════════════════════════════════════════════════════════
+function EncuestaXCareCompleta({ mesa, items, cliente, telefono, restauranteId, restaurant, S, onDone }:{
+  mesa:number; items:any[]; cliente?:string; telefono?:string;
+  restauranteId:number; restaurant:any; S:any; onDone:()=>void;
+}) {
+  const [step, setStep] = React.useState<'sentiment'|'cat'|'sub'|'comentario'|'done'>('sentiment');
+  const [rating, setRating] = React.useState(0);
+  const [tags, setTags] = React.useState<string[]>([]);
+  const [subIdx, setSubIdx] = React.useState(0);
+  const [sel, setSel] = React.useState<Record<string,string[]>>({});
+  const [comentario, setComentario] = React.useState('');
+
+  // ── Mismas caritas del POS ──
+  const CARITAS = [
+    {n:1, emoji:'😡', label:'Muy mala',   color:'#FF5252'},
+    {n:2, emoji:'😕', label:'Mala',       color:'#FF7043'},
+    {n:3, emoji:'😐', label:'Regular',    color:'#FFB547'},
+    {n:4, emoji:'😊', label:'Muy buena',  color:'#69F0AE'},
+    {n:5, emoji:'🤩', label:'Increíble',  color:'#00E676'},
+  ];
+  const isPositive = rating >= 4;
+  const accent = rating>=4 ? '#00E676' : rating>0 ? '#FF5252' : S.pink;
+
+  // ── Mismas categorías del POS ──
+  const POS_CATS = [
+    {e:'🍽️',l:'Comida'},{e:'🍸',l:'Bebidas'},{e:'💁',l:'Servicio'},
+    {e:'🎵',l:'Ambiente'},{e:'⚡',l:'Rapidez'},
+  ];
+  const NEG_CATS = [
+    {e:'🍽️',l:'Comida'},{e:'🍸',l:'Bebidas'},{e:'💁',l:'Servicio'},{e:'⏳',l:'Tiempo'},
+  ];
+  const cats = isPositive ? POS_CATS : NEG_CATS;
+  const maxSel = isPositive ? 2 : 4;
+
+  // ── Platos/bebidas de la cuenta cobrada ──
+  const clasificar = (nombre:string):'comida'|'bebida' =>
+    /coctel|cóctel|vino|cerveza|copa|gin|whisky|vodka|sake|tequila|mezcal|margarita|jugo|limonada|café|agua|jarra|soda|refresco/i.test(nombre) ? 'bebida' : 'comida';
+  const nombres = (items||[]).map((it:any)=>String(it.nombre||'')).filter(Boolean);
+  const platosOrden  = Array.from(new Set(nombres.filter(n=>clasificar(n)==='comida'))).slice(0,6);
+  const bebidasOrden = Array.from(new Set(nombres.filter(n=>clasificar(n)==='bebida'))).slice(0,6);
+
+  // ── Cola de sub-pantallas según categorías (idéntica al POS) ──
+  const buildQueue = (tg:string[]):string[] => {
+    const q:string[] = [];
+    tg.forEach(c=>{
+      if (isPositive) {
+        if (c==='Comida' && platosOrden.length>0)  q.push('pos-comida');
+        else if (c==='Bebidas' && bebidasOrden.length>0) q.push('pos-bebida');
+        else if (c==='Ambiente') q.push('pos-ambiente');
+        else if (c==='Rapidez')  q.push('pos-rapidez');
+      } else {
+        if (c==='Comida')  { q.push('neg-comida-que'); if(platosOrden.length>0) q.push('neg-comida-item'); }
+        else if (c==='Bebidas') { q.push('neg-bebida-que'); if(bebidasOrden.length>0) q.push('neg-bebida-item'); }
+        else if (c==='Servicio') q.push('neg-servicio-que');
+        else if (c==='Tiempo')   q.push('neg-tiempo');
+      }
+    });
+    return q;
+  };
+  const queue = buildQueue(tags);
+  const subScreen = queue[subIdx];
+
+  const SUBS: Record<string,{titulo:string;sub:string;opciones:{e?:string;l:string}[]}> = {
+    'pos-comida':   {titulo:'¿Qué plato te encantó?', sub:'Toca tu favorito', opciones:platosOrden.map(p=>({e:'🍽️',l:p}))},
+    'pos-bebida':   {titulo:'¿Qué bebida te gustó más?', sub:'Toca tu favorita', opciones:bebidasOrden.map(b=>({e:'🍸',l:b}))},
+    'pos-ambiente': {titulo:'¿Qué fue lo que más te gustó?', sub:'Del ambiente', opciones:[{e:'🎵',l:'Música'},{e:'🛋️',l:'Decoración'},{e:'✨',l:'Energía'},{e:'🎭',l:'Shows'},{e:'💡',l:'Iluminación'}]},
+    'pos-rapidez':  {titulo:'¿Qué estuvo más ágil?', sub:'Lo que más te sorprendió', opciones:[{e:'🤝',l:'Atención inicial'},{e:'🍸',l:'Bebidas'},{e:'🍽️',l:'Cocina'},{e:'💳',l:'La cuenta'}]},
+    'neg-comida-que':  {titulo:'¿Qué pasó con la comida?', sub:'Toca los que apliquen', opciones:[{e:'🥩',l:'Sabor'},{e:'🔥',l:'Temperatura'},{e:'🍽️',l:'Calidad'},{e:'❌',l:'Otro'}]},
+    'neg-comida-item': {titulo:'¿Con cuál plato?', sub:'Toca los que apliquen', opciones:platosOrden.map(p=>({e:'🍽️',l:p}))},
+    'neg-bebida-que':  {titulo:'¿Qué pasó con la bebida?', sub:'Toca los que apliquen', opciones:[{e:'🍬',l:'Muy dulce'},{e:'🥃',l:'Muy fuerte'},{e:'❄️',l:'Temperatura'},{e:'❌',l:'Otro'}]},
+    'neg-bebida-item': {titulo:'¿Cuál bebida fue?', sub:'Toca las que apliquen', opciones:bebidasOrden.map(b=>({e:'🍸',l:b}))},
+    'neg-servicio-que':{titulo:'¿Qué pasó con el servicio?', sub:'Tu respuesta es confidencial', opciones:[{e:'😐',l:'Empatía'},{e:'🧠',l:'Capacitación'},{e:'⏳',l:'Demoras'},{e:'❌',l:'Otro'}]},
+    'neg-tiempo':      {titulo:'¿Dónde hubo demora?', sub:'Lo que más te hizo esperar', opciones:[{e:'🍽️',l:'Cocina'},{e:'🍸',l:'Bebidas'},{e:'🪑',l:'En la mesa'},{e:'💳',l:'La cuenta'}]},
+  };
+
+  // ── Guardado idéntico al POS ──
+  const guardar = async (coment?:string) => {
+    const itemsSel:string[] = [];
+    const detalles:string[] = [];
+    Object.entries(sel).forEach(([sid,vals])=>{
+      if (/item|pos-comida|pos-bebida/.test(sid)) itemsSel.push(...vals);
+      else detalles.push(...vals);
+    });
+    await supabase.from('xcare_encuestas').insert({
+      restaurante_id: restauranteId, mesa_numero: mesa,
+      nombre_cliente: cliente || null,
+      cliente_telefono: telefono || null,
+      estrellas: rating,
+      tags_positivos: isPositive ? tags : null,
+      tags_negativos: !isPositive ? [...tags, ...detalles] : null,
+      platos_problema: itemsSel.length ? itemsSel : null,
+      comentario: (coment ?? comentario) || null,
+      nps_score: rating===5?10:rating===4?8:rating===3?6:rating===2?3:1,
+      alerta_gerente: !isPositive,
+    }).then(()=>{}, ()=>{});
+    if (!isPositive) {
+      await supabase.from('xcare_alertas').insert({
+        restaurante_id: restauranteId, mesa_numero: mesa, tipo:'experiencia_negativa',
+        descripcion:`${cliente||'Cliente'} — ${CARITAS[rating-1]?.label||''} — ${tags.join(', ')||'Sin categoría'}${detalles.length?` · ${detalles.join(', ')}`:''}${itemsSel.length?` · ${itemsSel.join(', ')}`:''}${(coment??comentario)?` — "${coment??comentario}"`:''}`,
+        activa:true,
+      }).then(()=>{}, ()=>{});
+    }
+  };
+
+  // ── Navegación (idéntica al POS) ──
+  const finalizar = () => {
+    if (rating>=4) { guardar(); setStep('done'); setTimeout(onDone, 1600); }
+    else setStep('comentario');
+  };
+  const irADetalle = (tg:string[]) => {
+    const q = buildQueue(tg);
+    if (q.length===0) { setTags(tg); finalizar(); return; }
+    setTags(tg); setSubIdx(0); setStep('sub');
+  };
+  const siguienteSub = () => {
+    if (subIdx + 1 < queue.length) setSubIdx(i=>i+1);
+    else finalizar();
+  };
+  const toggleSel = (sid:string, val:string) =>
+    setSel(prev => {
+      const cur = prev[sid]||[];
+      return { ...prev, [sid]: cur.includes(val) ? cur.filter(v=>v!==val) : [...cur, val] };
+    });
+
+  const btnStyle = (active:boolean, color:string):React.CSSProperties => ({
+    padding:'13px 16px', borderRadius:14, cursor:'pointer',
+    border:`1.5px solid ${active?color:'rgba(255,255,255,0.12)'}`,
+    background: active?`${color}1f`:'rgba(255,255,255,0.04)',
+    color: active?color:'#d0d0d8', fontSize:14, fontWeight:700,
+    display:'flex', alignItems:'center', gap:10, width:'100%',
+    transition:'all .15s', textAlign:'left',
+  });
+
+  return (
+    <div style={{position:'fixed', inset:0, background:'linear-gradient(180deg, #0a0a10 0%, #000 100%)', zIndex:8000, display:'flex', flexDirection:'column', alignItems:'center', padding:'70px 24px 60px', overflowY:'auto'}}>
+      {/* Logo */}
+      <div style={{position:'absolute',top:22,left:'50%',transform:'translateX(-50%)',display:'flex',flexDirection:'column',alignItems:'center',gap:5}}>
+        <div style={{width:48,height:48,borderRadius:'50%',background:`linear-gradient(135deg, ${S.gold}, #B07820)`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,boxShadow:`0 6px 24px ${S.gold}55`}}>
+          {restaurant?.emoji || '🏨'}
+        </div>
+        <div style={{fontFamily:"'Syne',serif",fontSize:13,fontWeight:900,letterSpacing:'.06em'}}>{restaurant?.nombre || 'NEXUM'}</div>
+      </div>
+
+      <div style={{width:'100%',maxWidth:460,flex:1,display:'flex',flexDirection:'column',justifyContent:'center'}}>
+
+        {/* PASO 1 · CARITAS */}
+        {step==='sentiment' && (
+          <div style={{textAlign:'center'}}>
+            <div style={{fontFamily:"'Syne',serif",fontSize:26,fontWeight:900,lineHeight:1.2,marginBottom:8}}>
+              {cliente ? `${String(cliente).split(' ')[0]}, ¿cómo estuvo tu experiencia?` : '¿Cómo estuvo tu experiencia hoy?'}
+            </div>
+            <div style={{fontSize:13,color:S.t2,marginBottom:42}}>Tu opinión mejora la experiencia ✨</div>
+            <div style={{display:'flex',justifyContent:'center',gap:8}}>
+              {CARITAS.map(c=>(
+                <button key={c.n} onClick={()=>{ setRating(c.n); setStep('cat'); }}
+                  style={{flex:1,background:'none',border:'none',cursor:'pointer',display:'flex',flexDirection:'column',alignItems:'center',gap:8,padding:'8px 2px'}}>
+                  <span style={{fontSize:44,lineHeight:1}}>{c.emoji}</span>
+                  <span style={{fontSize:10.5,fontWeight:700,color:S.t3}}>{c.label}</span>
+                </button>
+              ))}
+            </div>
+            <button onClick={onDone} style={{marginTop:48,background:'none',border:'none',fontSize:11.5,color:S.t3,cursor:'pointer'}}>Omitir</button>
+          </div>
+        )}
+
+        {/* PASO 2 · CATEGORÍAS */}
+        {step==='cat' && (
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:38,marginBottom:8}}>{CARITAS[rating-1]?.emoji}</div>
+            <div style={{fontFamily:"'Syne',serif",fontSize:22,fontWeight:900,marginBottom:6}}>
+              {isPositive ? '¿Qué fue lo mejor?' : '¿Qué podemos mejorar?'}
+            </div>
+            <div style={{fontSize:12,color:S.t2,marginBottom:26}}>
+              {isPositive ? `Elegí hasta ${maxSel}` : 'Toca todo lo que aplique'}
+            </div>
+            <div style={{display:'flex',flexDirection:'column',gap:8}}>
+              {cats.map(c=>{
+                const active = tags.includes(c.l);
+                return (
+                  <button key={c.l}
+                    onClick={()=>setTags(p=> active ? p.filter(x=>x!==c.l) : (p.length<maxSel ? [...p,c.l] : p))}
+                    style={btnStyle(active, accent)}>
+                    <span style={{fontSize:20}}>{c.e}</span><span>{c.l}</span>
+                    {active && <span style={{marginLeft:'auto',color:accent}}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={()=>irADetalle(tags)} disabled={tags.length===0}
+              style={{marginTop:22,width:'100%',padding:'14px',borderRadius:14,border:'none',background:tags.length?accent:'rgba(255,255,255,0.08)',color:tags.length?'#000':'#606060',fontSize:14,fontWeight:900,cursor:tags.length?'pointer':'not-allowed'}}>
+              Continuar →
+            </button>
+            <button onClick={finalizar} style={{marginTop:12,background:'none',border:'none',fontSize:11,color:S.t3,cursor:'pointer'}}>Omitir detalle</button>
+          </div>
+        )}
+
+        {/* PASO 3 · SUB-PANTALLAS (ruta + platos de la cuenta) */}
+        {step==='sub' && subScreen && SUBS[subScreen] && (
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:10,color:S.t3,letterSpacing:'.18em',textTransform:'uppercase',marginBottom:10}}>
+              {subIdx+1} de {queue.length}
+            </div>
+            <div style={{fontFamily:"'Syne',serif",fontSize:22,fontWeight:900,marginBottom:4}}>{SUBS[subScreen].titulo}</div>
+            <div style={{fontSize:12,color:S.t2,marginBottom:24}}>{SUBS[subScreen].sub}</div>
+            <div style={{display:'flex',flexDirection:'column',gap:8,maxHeight:'46vh',overflowY:'auto'}}>
+              {SUBS[subScreen].opciones.map(op=>{
+                const active = (sel[subScreen]||[]).includes(op.l);
+                return (
+                  <button key={op.l} onClick={()=>toggleSel(subScreen, op.l)} style={btnStyle(active, accent)}>
+                    {op.e && <span style={{fontSize:20}}>{op.e}</span>}<span style={{flex:1,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{op.l}</span>
+                    {active && <span style={{color:accent}}>✓</span>}
+                  </button>
+                );
+              })}
+            </div>
+            <button onClick={siguienteSub}
+              style={{marginTop:22,width:'100%',padding:'14px',borderRadius:14,border:'none',background:accent,color:'#000',fontSize:14,fontWeight:900,cursor:'pointer'}}>
+              {subIdx+1 < queue.length ? 'Siguiente →' : 'Continuar →'}
+            </button>
+          </div>
+        )}
+
+        {/* PASO 4 · COMENTARIO (solo experiencias negativas) */}
+        {step==='comentario' && (
+          <div style={{textAlign:'center'}}>
+            <div style={{fontFamily:"'Syne',serif",fontSize:22,fontWeight:900,marginBottom:6}}>¿Algo más que contarnos?</div>
+            <div style={{fontSize:12,color:S.t2,marginBottom:22}}>Tu mensaje llega directo a gerencia 🤝</div>
+            <textarea value={comentario} onChange={e=>setComentario(e.target.value)} rows={4}
+              placeholder="Escribí acá (opcional)…"
+              style={{width:'100%',background:'rgba(255,255,255,0.05)',border:`1px solid rgba(255,255,255,0.15)`,borderRadius:14,padding:'14px 16px',color:'#fff',fontSize:14,outline:'none',resize:'none'}}/>
+            <button onClick={async()=>{ await guardar(comentario); setStep('done'); setTimeout(onDone, 1600); }}
+              style={{marginTop:18,width:'100%',padding:'14px',borderRadius:14,border:'none',background:accent,color:'#000',fontSize:14,fontWeight:900,cursor:'pointer'}}>
+              Enviar ✓
+            </button>
+          </div>
+        )}
+
+        {/* PASO 5 · GRACIAS */}
+        {step==='done' && (
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:64,marginBottom:14}}>{isPositive?'🙌':'🤝'}</div>
+            <div style={{fontFamily:"'Syne',serif",fontSize:26,fontWeight:900,marginBottom:8}}>¡Gracias por tu opinión!</div>
+            <div style={{fontSize:13,color:S.t2}}>{isPositive?'Nos vemos pronto ✨':'Vamos a mejorar — gracias por contarnos.'}</div>
+          </div>
+        )}
+      </div>
+
+      <div style={{position:'absolute',bottom:20,left:0,right:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <span style={{fontSize:10,color:S.t3,letterSpacing:'.22em',fontWeight:700,fontFamily:"'IBM Plex Mono', monospace",textTransform:'uppercase'}}>by NEXUM v4</span>
       </div>
     </div>
   );
