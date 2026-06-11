@@ -1121,12 +1121,17 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
 
             <div style={{fontSize:10,color:S.t3,fontWeight:700,marginBottom:6,textTransform:'uppercase'}}>Mesa libre</div>
             <div style={{display:'flex',flexWrap:'wrap',gap:6,marginBottom:18,maxHeight:120,overflowY:'auto'}}>
-              {mesas.filter((m:any)=>!m.estado||m.estado==='libre').sort((a:any,b:any)=>Number(a.name)-Number(b.name)).map((m:any)=>(
-                <button key={m.id} onClick={()=>setWalkin(w=>w?{...w,mesa:Number(m.name)}:w)}
-                  style={{padding:'7px 12px',borderRadius:8,border:`1px solid ${walkin.mesa===Number(m.name)?S.green:S.border2}`,background:walkin.mesa===Number(m.name)?`${S.green}22`:'transparent',color:walkin.mesa===Number(m.name)?S.green:S.t2,fontSize:12,fontWeight:700,cursor:'pointer'}}>
-                  M{m.name}
+              {mesas.filter((m:any)=>!m.estado||m.estado==='libre')
+                .sort((a:any,b:any)=>(parseInt(String(a.name).replace(/\D/g,''),10)||0)-(parseInt(String(b.name).replace(/\D/g,''),10)||0))
+                .map((m:any)=>{
+                const num = parseInt(String(m.name).replace(/\D/g,''),10);
+                return (
+                <button key={m.id} onClick={()=>setWalkin(w=>w?{...w,mesa:num}:w)}
+                  style={{padding:'7px 12px',borderRadius:8,border:`1px solid ${walkin.mesa===num?S.green:S.border2}`,background:walkin.mesa===num?`${S.green}22`:'transparent',color:walkin.mesa===num?S.green:S.t2,fontSize:12,fontWeight:700,cursor:'pointer'}}>
+                  {m.name}
                 </button>
-              ))}
+                );
+              })}
               {mesas.filter((m:any)=>!m.estado||m.estado==='libre').length===0 && (
                 <div style={{fontSize:11,color:S.t3}}>No hay mesas libres</div>
               )}
@@ -1147,40 +1152,39 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
         // Cliente VIP — score alto (VIP / Consagrado / Élite)
         const VIP_TIERS = ['VIP','CONSAGRADO','ÉLITE','ELITE','GRAND GOURMAND','LA CREME'];
         const clienteVip = VIP_TIERS.includes(String(r.gourmand_level||'').toUpperCase());
-        // ── Fuente PRINCIPAL: planta_mesas (la planta real del restaurante).
-        // tables (estado en vivo) es complemento opcional.
+        // ── Fuente ÚNICA: tables — el MISMO plano del POS / Plano Sala.
+        // El mapa de mesas es idéntico en todo lado (pedido boss Jun-11).
         // Cruzamos con reservations del día para detectar conflictos de horario.
         const horaReserva = (r.hora || '00:00').slice(0,5);
         const minutoReserva = Number(horaReserva.split(':')[0]) * 60 + Number(horaReserva.split(':')[1]);
         const VENTANA_CONFLICTO_MIN = 120; // 2 horas de buffer
-        const fuente = plantaDB.length > 0
-          ? plantaDB
-          : Object.values(PLANTA).map((p:any) => ({ num:p.num, capacidad:p.cap, zona:p.zona, shape:p.shape, x:p.x, y:p.y, w:p.w, h:p.h }));
-        const tablesList = fuente.map((p:any) => {
-          const num = Number(p.num);
-          // Estado en vivo desde tables (si existe). mismaMesa normaliza prefijos como "M4"/"A10"
-          const tEnVivo = mesas.find((m:any) => mismaMesa(num, m.name));
+        const tablesList = (mesas || [])
+          // Las barras NO entran en reservas — van en el POS
+          .filter((m:any) => !String(m.zona||'').toLowerCase().startsWith('barra') && (Number(m.capacidad)||0) >= 2)
+          .map((m:any) => {
+          const num = parseInt(String(m.name||'').replace(/\D/g,''), 10);
           // Conflictos con OTRAS reservas del día asignadas a esta mesa
           const conflicto = (reservas || []).find((res:any) => {
             if (res.id === r.id) return false;
             if (Number(res.mesa_num) !== num) return false;
             const h = (res.hora || '00:00').slice(0,5);
-            const m = Number(h.split(':')[0]) * 60 + Number(h.split(':')[1]);
-            return Math.abs(m - minutoReserva) <= VENTANA_CONFLICTO_MIN;
+            const mm = Number(h.split(':')[0]) * 60 + Number(h.split(':')[1]);
+            return Math.abs(mm - minutoReserva) <= VENTANA_CONFLICTO_MIN;
           });
           return {
             num,
-            estado: tEnVivo?.estado || (conflicto ? 'reservada' : 'libre'),
-            cap: p.capacidad || p.cap || tEnVivo?.capacidad || 4,
-            zona: p.zona || tEnVivo?.zona || 'Salón',
-            cliente: tEnVivo?.cliente_nombre || (conflicto?.cliente_nombre || ''),
-            vip: tEnVivo?.vip === true || p.vip === true,
+            name: String(m.name),
+            estado: (m.estado && m.estado !== 'libre') ? m.estado : (conflicto ? 'reservada' : 'libre'),
+            cap: Number(m.capacidad) || 4,
+            zona: m.zona || 'Salón',
+            cliente: m.cliente_nombre || (conflicto?.cliente_nombre || ''),
+            vip: m.vip === true,
             conflicto,
-            x: p.x, y: p.y, w: p.w || 10, h: p.h || 10, shape: p.shape || 'round',
+            x: m.posicion_x != null ? Number(m.posicion_x) : undefined,
+            y: m.posicion_y != null ? Number(m.posicion_y) : undefined,
+            shape: m.shape || 'round',
           };
         }).filter((t:any) => !isNaN(t.num))
-          // Las barras NO entran en reservas — van en el POS
-          .filter((t:any) => !String(t.zona||'').toLowerCase().startsWith('barra'))
           .sort((a:any,b:any) => a.num - b.num);
         const zonas = Array.from(new Set(tablesList.map((t:any) => t.zona)));
         const libres = tablesList.filter((t:any) => t.estado === 'libre' || !t.estado);
@@ -1376,7 +1380,7 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
                           </div>
                           <div style={{fontSize:10,color:top.vip?S.gold:S.green,fontWeight:800,textTransform:'uppercase',letterSpacing:'.16em',marginBottom:6}}>Mejor mesa sugerida</div>
                           <div style={{display:'flex',alignItems:'baseline',gap:10,flexWrap:'wrap'}}>
-                            <span style={{fontFamily:"'Syne',serif",fontSize:30,fontWeight:900,color:top.vip?S.gold:S.green,letterSpacing:'-0.02em'}}>M{top.num}</span>
+                            <span style={{fontFamily:"'Syne',serif",fontSize:30,fontWeight:900,color:top.vip?S.gold:S.green,letterSpacing:'-0.02em'}}>{top.name}</span>
                             <span style={{fontSize:12,color:S.t2,fontWeight:700}}>{top.cap}p · {top.zona}{top.vip?' · ⭐ VIP':''}</span>
                             <span style={{marginLeft:'auto',fontSize:10,color:S.t3}}>score IA: <strong style={{color:S.t1}}>{Math.round(top.ia_score)}</strong></span>
                           </div>
@@ -1386,9 +1390,9 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
                             {r.ocasion && r.ocasion !== 'Sin ocasión especial' && '🎉 Zona apta para la ocasión. '}
                             La IA priorizó por VIP, eficiencia y ambiente.
                           </div>
-                          <button onClick={()=>{ asignarMesa(r.id, top.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
+                          <button onClick={()=>{ asignarMesa(r.id, top.name, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
                             style={{marginTop:10,width:'100%',padding:'10px',borderRadius:10,border:'none',background:top.vip?`linear-gradient(135deg, ${S.gold}, ${S.gold}aa)`:`linear-gradient(135deg, ${S.green}, ${S.green}aa)`,color:'#000',fontSize:12,fontWeight:900,cursor:'pointer'}}>
-                            ✓ Asignar a M{top.num} (sugerencia IA)
+                            ✓ Asignar a {top.name} (sugerencia IA)
                           </button>
                           {/* Mesa sugerida SOLO 1 — el host decide rápido sin distracción.
                               Si quiere ver alternativas, abajo está el zona-por-zona completo. */}
@@ -1399,11 +1403,11 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
                           <div style={{fontSize:11,color:S.t2,marginBottom:8}}>No hay mesa de {pax}p libre. Sugerencia: combinar dos mesas en la misma zona.</div>
                           {combinaciones.slice(0,2).map((c:any,i:number)=>(
                             <div key={i} style={{padding:'10px 12px',background:S.bg3,border:`1px solid ${S.border}`,borderRadius:10,marginBottom:6,display:'flex',alignItems:'center',gap:10}}>
-                              <span style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900,color:S.purple}}>M{c.m1.num} + M{c.m2.num}</span>
+                              <span style={{fontFamily:"'Syne',serif",fontSize:18,fontWeight:900,color:S.purple}}>{c.m1.name} + {c.m2.name}</span>
                               <span style={{fontSize:10,color:S.t3,flex:1}}>{c.cap}p · {c.m1.zona}</span>
                               <button onClick={async ()=>{
                                   // Registrar la unión en mesas_combinadas (para que POS y plano
-                                  // sepan que M{m1} y M{m2} están físicamente juntas hoy)
+                                  // sepan que las dos mesas están físicamente juntas hoy)
                                   await supabase.from('mesas_combinadas').insert({
                                     restaurante_id: restauranteIdActivo,
                                     fecha: r.fecha || hoy,
@@ -1412,10 +1416,10 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
                                     pax_total: pax,
                                     unida_por: profile?.nombre_completo || profile?.full_name || 'Sistema',
                                   });
-                                  await asignarMesa(r.id, c.m1.num, meseroAsignar);
+                                  await asignarMesa(r.id, c.m1.name, meseroAsignar);
                                   setAsignandoMesa(null);
                                   setMeseroAsignar('');
-                                  show(`✓ M${c.m1.num} + M${c.m2.num} unidas · ${pax}p sentados en M${c.m1.num}. M${c.m2.num} queda bloqueada para esta franja.`);
+                                  show(`✓ ${c.m1.name} + ${c.m2.name} unidas · ${pax}p sentados en ${c.m1.name}. ${c.m2.name} queda bloqueada para esta franja.`);
                                 }}
                                 style={{padding:'5px 10px',borderRadius:7,border:'none',background:S.purple,color:'#fff',fontSize:10,fontWeight:700,cursor:'pointer'}}>
                                 🔗 Unir
@@ -1439,46 +1443,62 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
                   );
                 })()}
 
-                {/* Mini-mapa visual del salón — sólo mesas disponibles */}
-                {tieneCoordsXY && (
+                {/* Mini-mapa del salón — MISMO plano que POS / Plano Sala.
+                    Mesas disponibles para el grupo resaltadas y clicables,
+                    el resto atenuado para conservar el contexto espacial. */}
+                {tieneCoordsXY && (() => {
+                  const conf = ZONAS_POR_RESTAURANTE[restauranteIdActivo];
+                  const esDisponible = (t:any) => {
+                    const libre = t.estado === 'libre' || !t.estado;
+                    const rg = rangoMesa(t.cap);
+                    return libre && pax >= rg.min && pax <= rg.max;
+                  };
+                  return (
                   <div style={{marginBottom:18, padding:12, background:S.bg3, borderRadius:12, border:`1px solid ${S.border}`}}>
-                    <div style={{fontSize:10,color:S.t2,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>🗺️ Plano · solo mesas disponibles</div>
-                    <div style={{position:'relative',width:'100%',paddingBottom:'52%',background:S.bg,borderRadius:10,border:`1px solid ${S.border}`,overflow:'hidden'}}>
-                      {tablesList.filter((t:any)=>{
-                        const libre = t.estado === 'libre' || !t.estado;
-                        const rg = rangoMesa(t.cap);
-                        return libre && pax >= rg.min && pax <= rg.max;
-                      }).map((t:any) => {
-                        const col = t.vip ? S.gold : S.green;
-                        const xPos = typeof t.x === 'number' ? t.x : 50;
-                        const yPos = typeof t.y === 'number' ? t.y : 50;
-                        const wSize = typeof t.w === 'number' && t.w > 0 ? t.w : 9;
-                        const hSize = typeof t.h === 'number' && t.h > 0 ? t.h : 9;
+                    <div style={{fontSize:10,color:S.t2,fontWeight:700,textTransform:'uppercase',letterSpacing:'.08em',marginBottom:8}}>🗺️ Plano · tocá una mesa disponible</div>
+                    <svg viewBox={`0 0 ${VW_PLANO} ${VH_PLANO}`} width="100%"
+                      style={{display:'block',background:`radial-gradient(circle at 50% 30%, #1a1a2a 0%, #13131f 70%)`,borderRadius:10,boxShadow:'inset 0 0 40px rgba(0,0,0,0.6)'}}>
+                      {/* Zonas — mismas del plano canónico */}
+                      {(conf?.orden||[]).map((z:string) => {
+                        const zona = conf?.zonas[z]; if (!zona) return null;
                         return (
-                          <button key={t.num}
-                            onClick={() => { asignarMesa(r.id, t.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
-                            title={`M${t.num} · ${t.cap}p · ${t.zona}`}
-                            style={{
-                              position:'absolute',
-                              left: `${xPos}%`, top: `${yPos}%`,
-                              width: `${wSize}%`, height: `${hSize}%`,
-                              borderRadius: t.shape === 'round' ? '50%' : 8,
-                              border: `2px solid ${col}`,
-                              background: `${col}22`,
-                              cursor: 'pointer',
-                              display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:1,
-                              transition:'all .15s',padding: 0,
-                              boxShadow: t.vip ? `0 0 10px ${S.gold}55` : 'none',
-                            }}>
-                            {t.vip && <span style={{position:'absolute',top:0,right:1,fontSize:8}}>⭐</span>}
-                            <span style={{fontFamily:"'Syne',sans-serif",fontSize:'clamp(8px,1.1vw,12px)',fontWeight:900,color:col,lineHeight:1}}>{t.num}</span>
-                            <span style={{fontSize:'clamp(5px,0.7vw,8px)',color:S.t2,fontWeight:600,lineHeight:1}}>{t.cap}p</span>
-                          </button>
+                          <g key={z}>
+                            <rect x={zona.area.x} y={zona.area.y} width={zona.area.w} height={zona.area.h}
+                              rx={14} fill={zona.chipBg} fillOpacity={0.04}
+                              stroke={zona.chipBg} strokeWidth={1.2} strokeDasharray="8 6" strokeOpacity={0.4}/>
+                            <text x={zona.area.x+14} y={zona.area.y+26} fill={zona.chipBg} fontSize={13}
+                              fontWeight={800} fontFamily="'IBM Plex Mono', monospace" letterSpacing="0.18em" opacity={0.8}>
+                              {zona.label}
+                            </text>
+                          </g>
                         );
                       })}
-                    </div>
+                      {/* Mesas — todas, disponibles resaltadas */}
+                      {tablesList.filter((t:any)=>typeof t.x==='number' && typeof t.y==='number').map((t:any) => {
+                        const disp = esDisponible(t);
+                        const col = !disp ? '#50506A' : t.vip ? S.gold : S.green;
+                        const { w, h } = sizeForMesa({ zona:t.zona||'', capacidad:t.cap||4, name:t.name });
+                        const isRound = (t.shape||'round') === 'round';
+                        return (
+                          <g key={t.name} style={{cursor: disp ? 'pointer' : 'default'}} opacity={disp ? 1 : 0.32}
+                            onClick={() => { if (!disp) return; asignarMesa(r.id, t.name, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}>
+                            {isRound
+                              ? <circle cx={t.x} cy={t.y} r={w/2} fill={disp?`${col}22`:'#161620'}
+                                  stroke={col} strokeWidth={t.vip&&disp?3:2}/>
+                              : <rect x={t.x-w/2} y={t.y-h/2} width={w} height={h} rx={8} fill={disp?`${col}22`:'#161620'}
+                                  stroke={col} strokeWidth={t.vip&&disp?3:2}/>}
+                            {t.vip && disp && <text x={t.x+w/2-8} y={t.y-h/2+14} fontSize={14} textAnchor="middle">⭐</text>}
+                            <text x={t.x} y={t.y-1} textAnchor="middle" fill={disp?col:'#70708a'} fontSize={15} fontWeight={900}
+                              fontFamily="'Syne', serif">{t.name}</text>
+                            <text x={t.x} y={t.y+15} textAnchor="middle" fill={disp?S.t2:'#50506A'} fontSize={10} fontWeight={700}
+                              fontFamily="'IBM Plex Mono', monospace">{t.cap}p</text>
+                          </g>
+                        );
+                      })}
+                    </svg>
                   </div>
-                )}
+                  );
+                })()}
                 {zonas.map((zona:any)=>{
                   const delZona = tablesList.filter((t:any)=>{
                     if (t.zona !== zona) return false;
@@ -1497,8 +1517,8 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
                           const rg = rangoMesa(t.cap);
                           const col = t.vip ? S.gold : S.green;
                           return (
-                            <button key={t.num}
-                              onClick={()=>{ asignarMesa(r.id, t.num, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
+                            <button key={t.name}
+                              onClick={()=>{ asignarMesa(r.id, t.name, meseroAsignar); setAsignandoMesa(null); setMeseroAsignar(''); }}
                               style={{
                                 padding:'12px 6px',borderRadius:12,position:'relative',
                                 border:`2px solid ${col}`,
@@ -1508,7 +1528,7 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
                                 boxShadow: t.vip ? `0 0 10px ${S.gold}55` : 'none',
                               }}>
                               {t.vip && <span style={{position:'absolute',top:3,right:5,fontSize:11}}>⭐</span>}
-                              <span style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:col}}>M{t.num}</span>
+                              <span style={{fontFamily:"'Syne',sans-serif",fontSize:18,fontWeight:900,color:col}}>{t.name}</span>
                               <span style={{fontSize:9,color:S.t2,fontWeight:600}}>{rg.min}-{rg.max} pers.</span>
                               <span style={{fontSize:8,color:col,fontWeight:700,textTransform:'uppercase'}}>
                                 {t.vip ? (clienteVip ? 'VIP ⭐ ideal' : 'VIP') : 'Disponible'}

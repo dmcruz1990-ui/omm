@@ -296,16 +296,22 @@ function RetosTab({ restauranteId, isGerencia, showToast }: any) {
   const guardar = async () => {
     if (!editing.producto_nombre) { showToast('⚠ Producto requerido'); return; }
     setSubiendo(true);
-    const payload = { ...editing, updated_at: new Date().toISOString() };
-    if (payload.id) {
-      await supabase.from('nx_retos').update(payload).eq('id', payload.id);
-    } else {
-      await supabase.from('nx_retos').insert(payload);
-    }
+    // Fechas vacías ('') rompen el tipo date en Postgres → null
+    const payload = {
+      ...editing,
+      desde: editing.desde || null,
+      hasta: editing.hasta || null,
+      menu_plato_id: editing.menu_plato_id || null,
+      updated_at: new Date().toISOString(),
+    };
+    const { error } = payload.id
+      ? await supabase.from('nx_retos').update(payload).eq('id', payload.id)
+      : await supabase.from('nx_retos').insert(payload);
     setSubiendo(false);
+    if (error) { showToast(`✗ No se pudo guardar: ${error.message}`); return; }
     setEditing(null);
     cargar();
-    showToast('✓ Reto guardado');
+    showToast('✓ Reto guardado — ya sale en el POS');
   };
   const eliminar = async () => {
     if (!editing?.id) { setEditing(null); return; }

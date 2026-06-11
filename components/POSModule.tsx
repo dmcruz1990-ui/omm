@@ -1004,88 +1004,83 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const { activeId: restauranteId, activeRestaurant, canSwitch, setActiveId, options: restaurantesDisponibles } = useRestaurant();
   const isGerencia = ['admin','gerencia','desarrollo'].includes(profile?.role || '');
 
-  // ── Carta dinámica multi-restaurante.
-  // OMM (id 6) usa la carta hardcoded como base, pero respeta overrides
-  // de Mi Menú: activo=false → oculto del POS, disponible=false → 86 sombreado.
-  // Gallo (id 23) y futuros restaurantes leen 100% de menu_platos.
+  // ── Carta dinámica multi-restaurante · TIEMPO REAL.
+  // OMM (id 6) usa la carta hardcoded como base, respeta overrides de
+  // Mi Menú (activo/disponible) Y suma los platos NUEVOS creados en
+  // Mi Menú. Gallo (id 23) y futuros restaurantes leen 100% de menu_platos.
+  // Cualquier cambio en menu_platos se refleja al toque vía realtime.
   const [productos, setProductos] = useState<Record<string, any[]>>(
     restauranteId === 6 ? PRODUCTOS_OMM_FALLBACK : {}
   );
-  const [menuOverrides, setMenuOverrides] = useState<Record<string,{activo:boolean;disponible:boolean}>>({});
   const categorias = React.useMemo(() => Object.keys(productos), [productos]);
 
-  // Cargar overrides de Mi Menú (activo / disponible) por nombre — aplica para OMM.
   useEffect(() => {
-    if (restauranteId !== 6) return;
     let alive = true;
+    const toCard = (p:any) => ({
+      nombre: p.nombre,
+      precio: `$${Number(p.precio_venta || 0).toLocaleString('es-CO')}`,
+      emoji: p.emoji || '🍽️',
+      badge: p.featured ? 'gold' : 'recomendado',
+      descripcion: p.descripcion,
+      estacion: p.estacion,
+      categoria: p.categoria || 'Otros',
+      modificadores: Array.isArray(p.modificadores) ? p.modificadores : [],
+      tag: p.tag || null,
+      _en86: p.disponible === false, // sombreado si está en 86
+    });
     const load = async () => {
       const { data } = await supabase.from('menu_platos')
-        .select('nombre,activo,disponible')
-        .eq('restaurante_id', restauranteId);
-      if (!alive) return;
-      const map: Record<string,{activo:boolean;disponible:boolean}> = {};
-      (data||[]).forEach((p:any) => {
-        map[String(p.nombre||'').trim().toLowerCase()] = { activo: p.activo !== false, disponible: p.disponible !== false };
-      });
-      setMenuOverrides(map);
-    };
-    load();
-    // Realtime: si en Mi Menú alguien cambia el ojo/86, se refleja en el POS al toque.
-    const ch = supabase.channel('menu-overrides-pos')
-      .on('postgres_changes', { event:'*', schema:'public', table:'menu_platos' }, load)
-      .subscribe();
-    return () => { alive=false; supabase.removeChannel(ch); };
-  }, [restauranteId]);
-
-  useEffect(() => {
-    if (restauranteId === 6) {
-      // OMM: aplicar overrides de Mi Menú sobre la carta base
-      const filtrado: Record<string,any[]> = {};
-      Object.entries(PRODUCTOS_OMM_FALLBACK).forEach(([cat, items]) => {
-        const visibles = items
-          .map((p:any) => {
-            const ov = menuOverrides[String(p.nombre||'').trim().toLowerCase()];
-            if (!ov) return p; // sin override → visible normal
-            if (!ov.activo) return null; // oculto desde Mi Menú
-            return { ...p, _en86: !ov.disponible }; // marcado como 86
-          })
-          .filter(Boolean) as any[];
-        if (visibles.length > 0) filtrado[cat] = visibles;
-      });
-      setProductos(filtrado);
-      return;
-    }
-    let alive = true;
-    (async () => {
-      const { data } = await supabase.from('menu_platos')
-        .select('nombre,descripcion,categoria,estacion,emoji,precio_venta,disponible,featured,modificadores,tag')
-        .eq('restaurante_id', restauranteId).eq('activo', true)
+        .select('nombre,descripcion,categoria,estacion,emoji,precio_venta,disponible,activo,featured,modificadores,tag')
+        .eq('restaurante_id', restauranteId)
         .order('categoria').order('nombre');
       if (!alive) return;
-      if (!data || data.length === 0) {
-        setProductos({});
+      const rows = data || [];
+      if (restauranteId === 6) {
+        // OMM: carta base + overrides + platos nuevos de Mi Menú
+        const porNombre: Record<string, any> = {};
+        rows.forEach((p:any) => { porNombre[String(p.nombre||'').trim().toLowerCase()] = p; });
+        const enBase = new Set<string>();
+        const filtrado: Record<string, any[]> = {};
+        Object.entries(PRODUCTOS_OMM_FALLBACK).forEach(([cat, items]) => {
+          const visibles = items
+            .map((p:any) => {
+              const key = String(p.nombre||'').trim().toLowerCase();
+              enBase.add(key);
+              const ov = porNombre[key];
+              if (!ov) return p; // sin override → visible normal
+              if (ov.activo === false) return null; // oculto desde Mi Menú
+              return { ...p, _en86: ov.disponible === false, tag: ov.tag || (p as any).tag || null };
+            })
+            .filter(Boolean) as any[];
+          if (visibles.length > 0) filtrado[cat] = visibles;
+        });
+        // Platos creados en Mi Menú que NO están en la carta base → entran
+        // a su categoría (se crea si no existe). Menú 100% parametrizado.
+        rows
+          .filter((p:any) => p.activo !== false && !enBase.has(String(p.nombre||'').trim().toLowerCase()))
+          .forEach((p:any) => {
+            const cat = p.categoria || 'Otros';
+            if (!filtrado[cat]) filtrado[cat] = [];
+            filtrado[cat].push(toCard(p));
+          });
+        setProductos(filtrado);
         return;
       }
+      if (rows.length === 0) { setProductos({}); return; }
       const grouped: Record<string, any[]> = {};
-      data.forEach((p: any) => {
+      rows.filter((p:any) => p.activo !== false).forEach((p:any) => {
         const cat = p.categoria || 'Otros';
         if (!grouped[cat]) grouped[cat] = [];
-        grouped[cat].push({
-          nombre: p.nombre,
-          precio: `$${Number(p.precio_venta || 0).toLocaleString('es-CO')}`,
-          emoji: p.emoji || '🍽️',
-          badge: p.featured ? 'gold' : 'recomendado',
-          descripcion: p.descripcion,
-          estacion: p.estacion,
-          categoria: cat,
-          modificadores: Array.isArray(p.modificadores) ? p.modificadores : [],
-          tag: p.tag || null,
-          _en86: p.disponible === false, // sombreado si está en 86
-        });
+        grouped[cat].push(toCard(p));
       });
       setProductos(grouped);
-    })();
-    return () => { alive = false; };
+    };
+    load();
+    // Realtime: crear/editar/86 en Mi Menú se refleja en el POS al toque.
+    const ch = supabase.channel(`menu-pos-rt-${restauranteId}`)
+      .on('postgres_changes', { event:'*', schema:'public', table:'menu_platos' }, load)
+      .subscribe();
+    return () => { alive = false; supabase.removeChannel(ch); };
   }, [restauranteId]);
 
   // Los useEffect que tocan order/currentCat/stockFlow se declaran más
@@ -1096,13 +1091,22 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
   const miNombre = profile?.nombre_completo || profile?.full_name || 'Mesero';
 
   // ── Retos NX activos (badges x2/x3/x4 en productos del POS) ──
+  // Realtime: un reto creado en Puntos NX aparece en el POS al toque.
   const [retosNXActivos, setRetosNXActivos] = useState<any[]>([]);
   useEffect(() => {
-    const hoy = new Date().toISOString().split('T')[0];
-    supabase.from('nx_retos').select('producto_nombre,multiplicador,emoji,motivacion_mesero')
-      .eq('restaurante_id', restauranteId).eq('activo', true)
-      .or(`hasta.is.null,hasta.gte.${hoy}`)
-      .then(({ data }) => setRetosNXActivos(data || []));
+    let alive = true;
+    const load = () => {
+      const hoy = new Date().toISOString().split('T')[0];
+      supabase.from('nx_retos').select('producto_nombre,multiplicador,emoji,motivacion_mesero')
+        .eq('restaurante_id', restauranteId).eq('activo', true)
+        .or(`hasta.is.null,hasta.gte.${hoy}`)
+        .then(({ data }) => { if (alive) setRetosNXActivos(data || []); });
+    };
+    load();
+    const ch = supabase.channel(`nx-retos-pos-${restauranteId}`)
+      .on('postgres_changes', { event:'*', schema:'public', table:'nx_retos' }, load)
+      .subscribe();
+    return () => { alive = false; supabase.removeChannel(ch); };
   }, [restauranteId]);
 
   // ── Colores de los meseros (mapa visual: cada mesa toma el color de su mesero) ──

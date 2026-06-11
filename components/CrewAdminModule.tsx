@@ -622,8 +622,10 @@ function AcademiaTab({ restauranteId, isGerencia, showToast }: any) {
   const guardar = async () => {
     if (!editing.titulo) { showToast('⚠ Título requerido'); return; }
     const payload = { ...editing, updated_at: new Date().toISOString() };
-    if (payload.id) await supabase.from('academia_cursos').update(payload).eq('id', payload.id);
-    else await supabase.from('academia_cursos').insert(payload);
+    const { error } = payload.id
+      ? await supabase.from('academia_cursos').update(payload).eq('id', payload.id)
+      : await supabase.from('academia_cursos').insert(payload);
+    if (error) { showToast(`✗ No se pudo guardar: ${error.message}`); return; }
     setEditing(null); cargar();
     showToast('✓ Curso guardado');
   };
