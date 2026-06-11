@@ -723,8 +723,11 @@ const asignarMesa = async (reservaId:any, mesaInput:number|string, meseroNombre?
   }
 
   // 5) Update tables — usando el NOMBRE EXACTO ("A10", "S3", etc.)
+  // status (col legacy inglés) también se actualiza: el POS la lee primero
+  // en su map (m.status || m.estado) — sin esto la mesa quedaba 'free' allá.
   const { error: tblErr } = await supabase.from('tables').update({
     estado:'ocupada',
+    status:'occupied',
     cliente_nombre: reserva?.cliente_nombre || null,
     pax_actual: reserva?.pax || 0,
     mesero_nombre: mesero,
