@@ -1344,7 +1344,10 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     setOrder(prev => {
       const consumedPorMesa: Record<number, Record<string, number>> = {};
       const limpio = prev.filter((item:any) => {
-        const ms = item.created_at ? (Date.now() - new Date(item.created_at).getTime()) : 0;
+        // SIN created_at = item viejo de versiones anteriores → tratarlo como
+        // antiguo (Infinity) para que se valide contra Flow. Antes ms=0 lo
+        // marcaba "reciente" y los fantasmas (ej. M36) vivían para siempre.
+        const ms = item.created_at ? (Date.now() - new Date(item.created_at).getTime()) : Infinity;
         // Item reciente (<60 min) lo dejamos siempre — todavía puede no haber
         // sido sincronizado por el realtime
         if (ms < 60 * 60 * 1000) return true;
@@ -1648,21 +1651,36 @@ const ServiceOSModule: React.FC<POSProps> = ({ tables, onUpdateTable, onOpenVisi
     };
   });
 
-  // El mesero solo ve SUS mesas: asignadas a él, compartidas, o abiertas por él
-  // (tiene pedido local). Gerencia / Maître / capitanes ven todas (accesoSalon).
-  const displayTables = accesoSalon ? displayTablesAll : displayTablesAll.filter((m:any) => {
-    const mia = m.mesero_nombre === miNombre || (Array.isArray(m.meseros_compartidos) && m.meseros_compartidos.includes(miNombre));
-    const tengoPedido = [...pendingOrder, ...order].some((o:any) => o.mesa === m.num);
-    return mia || tengoPedido;
-  });
+  // Helpers de visibilidad:
+  // · esMia      → asignada a mí, compartida conmigo, o con pedido local mío
+  // · esPool     → OCUPADA/SENTADA sin mesero (recién sentada desde Reserve)
+  //                → visible para TODOS los meseros para poder tomarla
+  // · esActiva   → cualquier mesa con cliente sentado (para roles salón)
+  // OJO: usar m.estado (español) ANTES que m.status (col legacy inglés) —
+  // Reserve sienta con estado='ocupada' y status podía quedar 'free'.
+  const estadoDe = (m:any) => String(m.estado || m.status || '').toLowerCase();
+  const esMiaFn = (m:any) =>
+    m.mesero_nombre === miNombre ||
+    (Array.isArray(m.meseros_compartidos) && m.meseros_compartidos.includes(miNombre)) ||
+    [...pendingOrder, ...order].some((o:any) => o.mesa === m.num);
+  const esPoolFn = (m:any) =>
+    ['ocupada','sentada','asignada','occupied'].includes(estadoDe(m)) && !m.mesero_nombre;
+  const esActivaFn = (m:any) =>
+    ['ocupada','sentada','asignada','occupied'].includes(estadoDe(m));
 
-  // Para el panel izquierdo: SIEMPRE solo las mesas que YO tengo abiertas,
-  // sin importar el rol. Si no tengo ninguna, mostramos un CTA al Mapa.
-  const misMesasAbiertas = displayTablesAll.filter((m:any) => {
-    const mia = m.mesero_nombre === miNombre || (Array.isArray(m.meseros_compartidos) && m.meseros_compartidos.includes(miNombre));
-    const tengoPedido = [...pendingOrder, ...order].some((o:any) => o.mesa === m.num);
-    return mia || tengoPedido;
-  });
+  // El mesero ve: SUS mesas + las del POOL (sentadas desde Reserve sin mesero,
+  // listas para que cualquiera las tome). Gerencia/Maître/Admin ven todas.
+  const displayTables = accesoSalon ? displayTablesAll : displayTablesAll.filter((m:any) =>
+    esMiaFn(m) || esPoolFn(m)
+  );
+
+  // Panel izquierdo "mis mesas":
+  // · Mesero  → las mías + pool para tomar
+  // · Salón (maître/gerencia/admin) → las mías + pool + TODAS las ocupadas
+  //   (así el admin puede ver y operar cualquier mesa recién sentada)
+  const misMesasAbiertas = displayTablesAll.filter((m:any) =>
+    esMiaFn(m) || esPoolFn(m) || (accesoSalon && esActivaFn(m))
+  );
 
   const selectedTable = displayTables.find((t: any) => t.id === selectedTableId) ?? displayTables[0];
   const recs = iaRecsByCat[currentCat] || iaRecsByCat['Compartir'];
