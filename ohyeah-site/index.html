@@ -1,0 +1,3212 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<meta name="theme-color" content="#0a0806"/>
+<title>OH YEAH! — Gastronomía Premium Bogotá</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,500;0,9..144,700;1,9..144,300;1,9..144,500;1,9..144,600&family=Manrope:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<style>
+/* ════════════════════════════════════════════════════════
+   OH YEAH! — PREMIUM LIFESTYLE WEB
+   Cinematic · Editorial · Luxury Nightlife
+════════════════════════════════════════════════════════ */
+:root {
+  --bg:    #09080b;
+  --bg2:   #111019;
+  --bg3:   #17141f;
+  --card:  #141019;
+  --card2: #1b1726;
+  --line:  rgba(255,255,255,.07);
+  --line2: rgba(255,255,255,.14);
+  --pk:    #ff2d7e;
+  --yw:    #d6ff3a;
+  --mut:   #9d99a8;
+  --dim:   #6a6675;
+  --gold:  #ecd989;
+  --wh:    #f0ede8;
+  --px:    clamp(16px,3vw,48px);
+  --nav-h: 64px;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--wh);
+  font-family:'Manrope',system-ui,sans-serif;
+  overflow-x:hidden;min-height:100vh;
+  background-image:
+    radial-gradient(ellipse 120% 60% at 0% 0%,rgba(255,45,126,.08),transparent 50%),
+    radial-gradient(ellipse 80% 60% at 100% 100%,rgba(214,255,58,.05),transparent 50%);
+}
+a{color:inherit;text-decoration:none}
+img{display:block;max-width:100%}
+button,input,select,textarea{font-family:inherit}
+
+/* ── SCROLLBARS ── */
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:var(--line2);border-radius:4px}
+
+/* ══════════════ NAV ══════════════ */
+.nav{
+  position:sticky;top:0;z-index:900;
+  height:var(--nav-h);
+  background:rgba(9,8,11,.88);
+  backdrop-filter:blur(24px) saturate(160%);
+  border-bottom:1px solid var(--line);
+  display:flex;align-items:center;
+  padding:0 var(--px);gap:12px;
+}
+.nav-logo{
+  font-family:'Fraunces',serif;
+  font-size:20px;font-weight:700;font-style:italic;
+  letter-spacing:-.04em;cursor:pointer;flex-shrink:0;
+  transform:skewX(-5deg);
+  text-shadow:0 0 32px rgba(255,45,126,.4);
+}
+.nav-logo .o{color:var(--pk)}.nav-logo .y{color:var(--yw)}
+.nav-tabs{display:flex;align-items:center;gap:2px;flex:1;justify-content:center}
+.nav-tab{
+  padding:8px 16px;font-size:11.5px;font-weight:700;
+  letter-spacing:.06em;text-transform:uppercase;
+  color:var(--dim);cursor:pointer;border-radius:10px;
+  transition:color .18s,background .18s;white-space:nowrap;
+  display:flex;align-items:center;gap:6px;
+}
+.nav-tab:hover{color:var(--mut);background:rgba(255,255,255,.04)}
+.nav-tab.on{color:var(--wh);background:rgba(255,255,255,.07)}
+.nav-tab.on.home{color:var(--yw)}
+.nav-actions{display:flex;align-items:center;gap:10px;margin-left:auto;flex-shrink:0}
+.nav-bell{
+  position:relative;width:36px;height:36px;
+  border-radius:50%;background:rgba(255,255,255,.06);
+  border:1px solid var(--line);
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:.18s;
+}
+.nav-bell:hover{background:rgba(255,255,255,.1)}
+.nav-bell svg{width:16px;height:16px;color:var(--mut)}
+.nav-bell .dot{
+  position:absolute;top:4px;right:4px;
+  width:8px;height:8px;border-radius:50%;
+  background:var(--pk);border:2px solid var(--bg);
+}
+.nav-av{
+  width:36px;height:36px;border-radius:50%;
+  background:linear-gradient(135deg,var(--pk),#8b0057);
+  border:1.5px solid rgba(255,255,255,.15);
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;font-weight:800;cursor:pointer;flex-shrink:0;
+}
+.btn-login-nav{
+  background:var(--pk);color:#fff;border:none;
+  border-radius:20px;padding:8px 20px;
+  font-size:12px;font-weight:800;cursor:pointer;
+  letter-spacing:.04em;white-space:nowrap;
+  transition:opacity .18s;
+}
+.btn-login-nav:hover{opacity:.88}
+.btn-gs-nav{
+  background:transparent;color:var(--yw);
+  border:1.3px solid rgba(214,255,58,.4);
+  border-radius:20px;padding:7px 16px;
+  font-size:11px;font-weight:800;cursor:pointer;
+  letter-spacing:.04em;white-space:nowrap;
+  transition:all .18s;
+}
+.btn-gs-nav:hover{background:rgba(214,255,58,.08);border-color:var(--yw)}
+
+/* Mobile nav */
+.nav-mob-toggle{display:none;flex-direction:column;gap:4px;cursor:pointer;padding:6px}
+.nav-mob-toggle span{width:20px;height:1.5px;background:var(--wh);border-radius:2px;transition:.2s}
+@media(max-width:768px){
+  .nav-tabs{display:none}
+  .nav-mob-toggle{display:flex}
+}
+
+/* ══════════════ SCREEN / SECTIONS ══════════════ */
+.screen{min-height:calc(100vh - var(--nav-h))}
+section{display:none}
+section.on{display:block}
+
+/* ══════════════ RAIL / ROWS ══════════════ */
+.row{
+  display:flex;gap:12px;overflow-x:auto;
+  padding:2px var(--px) 12px;
+  scrollbar-width:none;
+}
+.row::-webkit-scrollbar{display:none}
+.sec{margin-bottom:40px}
+.sec-hd{
+  display:flex;align-items:baseline;justify-content:space-between;
+  padding:0 var(--px);margin-bottom:16px;
+}
+.sec-title{
+  font-family:'Fraunces',serif;
+  font-size:20px;font-weight:500;font-style:italic;
+  letter-spacing:-.02em;
+}
+.sec-sub{font-size:11px;color:var(--mut);font-weight:600;margin-top:3px}
+.sec-link{font-size:11.5px;font-weight:700;color:var(--pk);cursor:pointer;
+  display:flex;align-items:center;gap:3px;letter-spacing:.02em}
+.sec-link:hover{opacity:.8}
+
+/* ══════════════ HOME HERO ══════════════ */
+.hero{
+  position:relative;overflow:hidden;
+  min-height:min(90vh,720px);
+  display:flex;align-items:flex-end;
+}
+.hero-bg{
+  position:absolute;inset:0;
+  background-size:cover;background-position:center;
+  background-image:url('https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1800&q=90');
+  transform:scale(1.04);
+  transition:transform 8s ease;
+}
+.hero:hover .hero-bg{transform:scale(1.0)}
+.hero-overlay{
+  position:absolute;inset:0;
+  background:linear-gradient(
+    180deg,
+    rgba(9,8,11,.1) 0%,
+    rgba(9,8,11,.3) 40%,
+    rgba(9,8,11,.85) 80%,
+    var(--bg) 100%
+  );
+}
+.hero-inner{
+  position:relative;z-index:2;
+  max-width:1200px;width:100%;margin:0 auto;
+  padding:0 var(--px) 56px;
+  display:grid;grid-template-columns:1fr auto;gap:40px;align-items:end;
+}
+.hero-copy{}
+.hero-tag{
+  display:inline-flex;align-items:center;gap:7px;
+  background:rgba(255,45,126,.12);border:1px solid rgba(255,45,126,.25);
+  border-radius:20px;padding:5px 12px;
+  font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--pk);margin-bottom:18px;
+}
+.hero-tag::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--pk);animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.hero-h1{
+  font-family:'Fraunces',serif;
+  font-size:clamp(48px,8vw,100px);
+  font-weight:600;font-style:italic;
+  line-height:.9;letter-spacing:-.04em;
+  margin-bottom:20px;
+}
+.hero-h1 em{
+  color:var(--pk);font-style:italic;position:relative;
+}
+.hero-h1 em::after{
+  content:'';position:absolute;
+  left:0;right:6px;bottom:-2px;height:4px;
+  background:var(--yw);border-radius:2px;opacity:.7;
+}
+.hero-sub{
+  font-size:clamp(14px,1.5vw,18px);color:var(--mut);
+  font-weight:500;line-height:1.6;max-width:480px;
+  margin-bottom:28px;
+}
+.hero-ctas{display:flex;gap:12px;flex-wrap:wrap}
+@media(max-width:768px){
+  .hero-inner{grid-template-columns:1fr}
+  .hero-h1{font-size:clamp(42px,12vw,72px)}
+}
+
+/* ══════════════ BOOKING CARD ══════════════ */
+.book-card{
+  background:rgba(17,16,25,.88);
+  backdrop-filter:blur(20px);
+  border:1px solid var(--line2);
+  border-radius:24px;padding:22px;
+  min-width:320px;max-width:380px;
+  box-shadow:0 32px 80px rgba(0,0,0,.6);
+}
+.book-card-title{
+  font-size:14px;font-weight:800;
+  color:var(--wh);margin-bottom:16px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.book-pills{display:flex;gap:8px;margin-bottom:14px}
+.book-pill{
+  flex:1;background:#221b2b;border:1px solid var(--line);
+  border-radius:12px;padding:10px 8px;
+  display:flex;flex-direction:column;align-items:center;gap:2px;
+  cursor:pointer;transition:border-color .18s;min-width:0;
+}
+.book-pill:hover{border-color:var(--line2)}
+.book-pill.open{border-color:var(--yw)}
+.book-pill-lbl{font-size:9px;font-weight:700;color:var(--dim);letter-spacing:.07em;text-transform:uppercase}
+.book-pill-val{font-size:13px;font-weight:900;color:var(--pk)}
+.book-mood{
+  background:#221b2b;border:1px solid var(--line);
+  border-radius:12px;padding:10px 14px;
+  display:flex;align-items:center;gap:8px;
+  cursor:pointer;margin-bottom:14px;
+  transition:border-color .18s;
+}
+.book-mood:hover{border-color:var(--line2)}
+.book-mood-txt{flex:1;font-size:11.5px;font-weight:700;color:var(--mut)}
+.btn-book{
+  width:100%;
+  background:linear-gradient(180deg,var(--yw),#b9e22a);
+  color:#0a0a05;border:none;border-radius:14px;
+  padding:15px;font-size:14px;font-weight:900;
+  letter-spacing:.05em;cursor:pointer;
+  box-shadow:0 8px 28px rgba(214,255,58,.22);
+  transition:.2s;display:flex;align-items:center;justify-content:center;gap:8px;
+}
+.btn-book:hover{transform:translateY(-2px);box-shadow:0 12px 36px rgba(214,255,58,.3)}
+@media(max-width:768px){.book-card{max-width:100%;min-width:0}}
+
+/* ══════════════ CTA BUTTONS ══════════════ */
+.btn-primary{
+  background:linear-gradient(180deg,var(--yw),#b9e22a);
+  color:#0a0a05;border:none;border-radius:14px;
+  padding:14px 28px;font-size:14px;font-weight:900;
+  letter-spacing:.04em;cursor:pointer;
+  box-shadow:0 8px 24px rgba(214,255,58,.2);
+  transition:.2s;display:inline-flex;align-items:center;gap:8px;
+}
+.btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 32px rgba(214,255,58,.3)}
+.btn-outline{
+  background:transparent;color:var(--wh);
+  border:1.3px solid rgba(255,255,255,.2);
+  border-radius:14px;padding:13px 24px;
+  font-size:14px;font-weight:700;cursor:pointer;
+  transition:.18s;display:inline-flex;align-items:center;gap:8px;
+}
+.btn-outline:hover{border-color:rgba(255,255,255,.4);background:rgba(255,255,255,.04)}
+.btn-pink{
+  background:var(--pk);color:#fff;border:none;
+  border-radius:14px;padding:13px 24px;
+  font-size:14px;font-weight:800;cursor:pointer;
+  transition:.18s;display:inline-flex;align-items:center;gap:8px;
+}
+.btn-pink:hover{opacity:.9}
+
+/* ══════════════ VIBE PILLS ══════════════ */
+.vibes{display:flex;gap:8px;overflow-x:auto;padding:2px var(--px) 8px;scrollbar-width:none}
+.vibes::-webkit-scrollbar{display:none}
+.vibe-pill{
+  flex-shrink:0;
+  background:var(--card2);border:1.3px solid var(--line);
+  border-radius:20px;padding:8px 16px;
+  display:flex;align-items:center;gap:7px;
+  cursor:pointer;transition:.18s;white-space:nowrap;
+}
+.vibe-pill:hover{border-color:var(--line2)}
+.vibe-pill.on{border-color:var(--yw);background:rgba(214,255,58,.06)}
+.vibe-pill-ico{font-size:15px}
+.vibe-pill-txt{font-size:12px;font-weight:700;color:var(--mut)}
+.vibe-pill.on .vibe-pill-txt{color:var(--yw)}
+
+/* ══════════════ TREND CARDS ══════════════ */
+.trend-card{
+  flex-shrink:0;width:280px;border-radius:18px;
+  overflow:hidden;cursor:pointer;position:relative;
+  border:1px solid var(--line);
+  transition:transform .22s,border-color .22s;
+}
+.trend-card:hover{transform:scale(1.02);border-color:var(--line2)}
+.trend-card-img{
+  height:200px;background-size:cover;background-position:center;
+  position:relative;
+}
+.trend-card-overlay{
+  position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent 40%,rgba(9,8,11,.95));
+}
+.trend-card-num{
+  position:absolute;top:14px;left:14px;
+  font-family:'Fraunces',serif;font-size:42px;font-weight:700;
+  line-height:1;color:rgba(255,255,255,.12);
+  letter-spacing:-.04em;
+}
+.trend-card-badge{
+  position:absolute;top:12px;right:12px;
+  background:rgba(9,8,11,.7);backdrop-filter:blur(8px);
+  border:1px solid var(--line2);border-radius:7px;
+  padding:4px 8px;font-size:9px;font-weight:800;
+  letter-spacing:.06em;text-transform:uppercase;
+}
+.trend-card-info{
+  position:absolute;bottom:0;left:0;right:0;
+  padding:20px 16px 16px;
+}
+.trend-card-name{font-size:16px;font-weight:800;margin-bottom:3px}
+.trend-card-cat{font-size:11px;color:var(--mut);font-weight:600}
+.trend-card-footer{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:12px 16px;background:var(--card);
+}
+.trend-card-rating{font-size:11px;font-weight:800;color:var(--yw);display:flex;align-items:center;gap:4px}
+.trend-card-avail{font-size:10px;color:var(--pk);font-weight:700}
+
+/* ══════════════ TOP 10 ══════════════ */
+.top10-card{
+  flex-shrink:0;width:120px;cursor:pointer;
+  transition:opacity .18s;
+}
+.top10-card:hover{opacity:.85}
+.top10-img{
+  width:100%;aspect-ratio:1;border-radius:14px;
+  background-size:cover;background-position:center;
+  position:relative;overflow:hidden;
+  border:1px solid var(--line);
+}
+.top10-n{
+  position:absolute;bottom:0;left:0;
+  font-family:'Fraunces',serif;font-size:48px;font-weight:700;
+  line-height:1;color:rgba(255,255,255,.08);padding:0 0 2px 6px;
+}
+.top10-name{font-size:11.5px;font-weight:800;margin-top:8px}
+.top10-cat{font-size:9.5px;color:var(--mut);font-weight:600;margin-top:2px}
+.top10-r{font-size:10px;font-weight:800;color:var(--yw);margin-top:3px}
+
+/* ══════════════ PERK CARDS ══════════════ */
+.perk-card{
+  flex-shrink:0;width:140px;
+  background:var(--card2);border:1px solid var(--line);
+  border-radius:16px;padding:14px 12px;
+  display:flex;flex-direction:column;gap:8px;
+  cursor:pointer;transition:.18s;
+}
+.perk-card:hover{border-color:var(--line2);transform:translateY(-2px)}
+.perk-icon{
+  width:32px;height:32px;border-radius:10px;
+  background:rgba(255,45,126,.12);
+  display:flex;align-items:center;justify-content:center;
+}
+.perk-icon svg{width:16px;height:16px;color:var(--pk)}
+.perk-title{font-size:11.5px;font-weight:800;line-height:1.3}
+.perk-sub{font-size:9.5px;color:var(--mut);font-weight:600;line-height:1.4}
+
+/* ══════════════ PRICELESS ══════════════ */
+.priceless{
+  margin:0 var(--px) 40px;border-radius:20px;
+  overflow:hidden;position:relative;
+  min-height:160px;cursor:pointer;
+  border:1px solid var(--line);
+  transition:border-color .2s;
+}
+.priceless:hover{border-color:var(--line2)}
+.priceless-bg{
+  position:absolute;inset:0;
+  background-size:cover;background-position:center;
+  background-image:url('https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=1200&q=85');
+}
+.priceless-ov{
+  position:absolute;inset:0;
+  background:linear-gradient(90deg,rgba(9,8,11,.92) 0%,rgba(9,8,11,.6) 60%,rgba(9,8,11,.2) 100%);
+}
+.priceless-inner{
+  position:relative;z-index:2;
+  padding:28px 28px;display:flex;
+  align-items:center;justify-content:space-between;gap:20px;
+}
+.priceless-tag{
+  font-size:9px;font-weight:800;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--mut);margin-bottom:8px;
+}
+.priceless-h2{
+  font-family:'Fraunces',serif;
+  font-size:clamp(22px,4vw,36px);
+  font-weight:500;font-style:italic;
+  line-height:1.1;margin-bottom:8px;
+}
+.priceless-h2 em{font-style:italic;color:var(--pk)}
+.priceless-sub{font-size:12px;color:var(--mut);font-weight:600;max-width:340px}
+.mc-logo{display:flex;align-items:center;gap:10px}
+.mc-rings{display:flex}
+.mc-rings i{width:32px;height:32px;border-radius:50%}
+.mc-rings i:first-child{background:rgba(235,59,36,.85)}
+.mc-rings i:last-child{background:rgba(247,158,27,.85);margin-left:-12px}
+.mc-word{font-size:13px;font-weight:800;letter-spacing:.04em;color:rgba(255,255,255,.4)}
+
+/* ══════════════ DISCOVER ══════════════ */
+.discover-hero{
+  padding:56px var(--px) 32px;
+  background:radial-gradient(ellipse 100% 80% at 50% -20%,rgba(255,45,126,.1),transparent 60%);
+}
+.discover-h1{
+  font-family:'Fraunces',serif;
+  font-size:clamp(36px,6vw,72px);
+  font-weight:600;font-style:italic;
+  letter-spacing:-.03em;margin-bottom:8px;
+}
+.discover-sub{font-size:14px;color:var(--mut);font-weight:500;max-width:540px}
+
+.search-bar{
+  display:flex;align-items:center;gap:12px;
+  background:var(--card2);border:1px solid var(--line2);
+  border-radius:18px;padding:14px 18px;
+  margin:20px var(--px) 28px;max-width:680px;
+}
+.search-bar svg{width:18px;height:18px;color:var(--dim);flex-shrink:0}
+.search-bar input{
+  flex:1;background:transparent;border:none;
+  color:var(--wh);font-size:14px;font-weight:500;
+  outline:none;font-family:inherit;
+}
+.search-bar input::placeholder{color:var(--dim)}
+.search-bar .search-ai{
+  font-size:10px;font-weight:800;letter-spacing:.06em;
+  color:var(--pk);background:rgba(255,45,126,.1);
+  border:1px solid rgba(255,45,126,.2);border-radius:6px;
+  padding:4px 8px;flex-shrink:0;
+}
+
+.filter-row{
+  display:flex;gap:8px;overflow-x:auto;
+  padding:2px var(--px) 8px;scrollbar-width:none;
+  margin-bottom:8px;
+}
+.filter-row::-webkit-scrollbar{display:none}
+.filter-chip{
+  flex-shrink:0;background:var(--card2);
+  border:1.3px solid var(--line);border-radius:20px;
+  padding:7px 16px;font-size:11.5px;font-weight:700;
+  color:var(--mut);cursor:pointer;transition:.18s;white-space:nowrap;
+}
+.filter-chip:hover{border-color:var(--line2);color:var(--wh)}
+.filter-chip.on{border-color:var(--pk);color:var(--pk);background:rgba(255,45,126,.06)}
+
+.live-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(255,45,126,.1);border:1px solid rgba(255,45,126,.2);
+  border-radius:20px;padding:5px 12px;
+  font-size:10px;font-weight:800;color:var(--pk);
+  margin:0 var(--px) 14px;letter-spacing:.06em;
+}
+.live-badge::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--pk);animation:pulse 1.5s infinite}
+
+.event-card{
+  flex-shrink:0;width:200px;border-radius:16px;
+  overflow:hidden;cursor:pointer;position:relative;
+  border:1px solid var(--line);
+}
+.event-card-img{
+  height:150px;background-size:cover;background-position:center;
+  position:relative;
+}
+.event-card-ov{position:absolute;inset:0;background:linear-gradient(180deg,transparent 40%,rgba(9,8,11,.9))}
+.event-card-date{
+  position:absolute;top:10px;left:10px;
+  background:rgba(9,8,11,.7);backdrop-filter:blur(8px);
+  border:1px solid var(--line2);border-radius:8px;
+  padding:4px 8px;text-align:center;
+}
+.event-date-d{font-size:16px;font-weight:900;line-height:1}
+.event-date-m{font-size:8px;font-weight:800;letter-spacing:.1em;color:var(--mut)}
+.event-card-info{padding:12px 14px;background:var(--card)}
+.event-card-name{font-size:13px;font-weight:800;margin-bottom:3px}
+.event-card-meta{font-size:10px;color:var(--mut);font-weight:600}
+
+.table-card{
+  flex-shrink:0;width:180px;border-radius:16px;
+  overflow:hidden;cursor:pointer;position:relative;
+  border:1px solid var(--line);transition:.2s;
+}
+.table-card:hover{border-color:var(--pk)}
+.table-card-img{height:120px;background-size:cover;background-position:center}
+.table-card-body{padding:10px 12px;background:var(--card)}
+.table-card-name{font-size:12.5px;font-weight:800}
+.table-card-avail{
+  display:inline-flex;align-items:center;gap:4px;
+  font-size:9.5px;font-weight:800;color:#4ade80;
+  margin-top:5px;
+}
+.table-card-avail::before{content:'';width:5px;height:5px;border-radius:50%;background:#4ade80}
+
+/* ══════════════ SOCIETY ══════════════ */
+.society-hero{
+  position:relative;overflow:hidden;
+  min-height:min(70vh,600px);
+  display:flex;align-items:flex-end;
+  cursor:pointer;
+}
+.society-hero-bg{
+  position:absolute;inset:0;
+  background-size:cover;background-position:center;
+  background-image:url('https://images.unsplash.com/photo-1600891964092-4316c288032e?w=1400&q=90');
+}
+.society-hero-ov{
+  position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(9,8,11,.1),rgba(9,8,11,.85) 80%,var(--bg));
+}
+.society-hero-inner{
+  position:relative;z-index:2;
+  padding:0 var(--px) 40px;
+  max-width:700px;
+}
+.society-tag{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(214,255,58,.1);border:1px solid rgba(214,255,58,.25);
+  border-radius:20px;padding:5px 12px;
+  font-size:9.5px;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--yw);
+  margin-bottom:16px;
+}
+.society-h1{
+  font-family:'Fraunces',serif;
+  font-size:clamp(32px,5vw,60px);
+  font-weight:500;font-style:italic;
+  line-height:1.05;letter-spacing:-.03em;
+  margin-bottom:12px;
+}
+.society-sub{font-size:14px;color:rgba(240,237,232,.7);font-weight:500;line-height:1.6}
+
+.society-grid{
+  display:grid;grid-template-columns:2fr 1fr;
+  gap:16px;padding:0 var(--px);margin-bottom:40px;
+}
+@media(max-width:768px){.society-grid{grid-template-columns:1fr}}
+.story-card{
+  position:relative;border-radius:18px;overflow:hidden;
+  cursor:pointer;aspect-ratio:4/3;border:1px solid var(--line);
+}
+.story-card-img{
+  position:absolute;inset:0;
+  background-size:cover;background-position:center;
+}
+.story-card-ov{
+  position:absolute;inset:0;
+  background:linear-gradient(180deg,transparent 40%,rgba(9,8,11,.88));
+}
+.story-card-info{
+  position:absolute;bottom:0;left:0;right:0;
+  padding:20px 18px 18px;
+}
+.story-tag{
+  font-size:9px;font-weight:800;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--yw);margin-bottom:8px;
+}
+.story-title{font-size:16px;font-weight:800;line-height:1.3;margin-bottom:4px}
+.story-meta{font-size:11px;color:var(--mut);font-weight:600}
+
+.the-list{
+  margin:0 var(--px);padding:24px;
+  background:var(--card2);border:1px solid var(--line2);
+  border-radius:20px;margin-bottom:40px;
+}
+.the-list-title{
+  font-family:'Fraunces',serif;
+  font-size:18px;font-weight:500;font-style:italic;
+  color:var(--yw);margin-bottom:4px;
+}
+.the-list-sub{font-size:11px;color:var(--mut);font-weight:600;margin-bottom:18px}
+.list-item{
+  display:flex;align-items:center;gap:14px;
+  padding:12px 0;border-bottom:1px solid var(--line);
+  cursor:pointer;transition:.15s;
+}
+.list-item:last-child{border-bottom:none}
+.list-item:hover{opacity:.8}
+.list-n{
+  font-family:'Fraunces',serif;font-size:22px;
+  font-weight:700;color:var(--line2);
+  min-width:32px;text-align:center;
+}
+.list-img{
+  width:44px;height:44px;border-radius:10px;
+  background-size:cover;background-position:center;
+  flex-shrink:0;border:1px solid var(--line);
+}
+.list-info{flex:1}
+.list-name{font-size:13px;font-weight:800}
+.list-desc{font-size:10.5px;color:var(--mut);font-weight:600;margin-top:2px}
+.list-badge{
+  font-size:9px;font-weight:800;letter-spacing:.05em;
+  background:rgba(214,255,58,.1);color:var(--yw);
+  border:1px solid rgba(214,255,58,.2);
+  border-radius:6px;padding:3px 8px;flex-shrink:0;
+}
+
+/* ══════════════ ACCESS ══════════════ */
+.access-hero{
+  padding:56px var(--px) 40px;
+  background:radial-gradient(ellipse 80% 60% at 50% 0%,rgba(236,217,137,.07),transparent 60%);
+  text-align:center;
+}
+.access-h1{
+  font-family:'Fraunces',serif;
+  font-size:clamp(36px,6vw,72px);
+  font-weight:600;font-style:italic;
+  letter-spacing:-.03em;margin-bottom:8px;
+}
+.access-h1 span{color:var(--gold)}
+.access-sub{font-size:14px;color:var(--mut);font-weight:500;max-width:520px;margin:0 auto 32px}
+
+.level-cards{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));
+  gap:14px;padding:0 var(--px);margin-bottom:40px;
+}
+.level-card{
+  background:var(--card2);border:1px solid var(--line);
+  border-radius:20px;padding:22px;cursor:pointer;
+  transition:.2s;position:relative;overflow:hidden;
+}
+.level-card:hover{border-color:var(--line2);transform:translateY(-3px)}
+.level-card.active{border-color:rgba(236,217,137,.4);background:linear-gradient(135deg,rgba(236,217,137,.07),var(--card2))}
+.level-card::before{
+  content:'';position:absolute;top:0;right:0;
+  width:60%;height:60%;border-radius:50%;
+  filter:blur(40px);pointer-events:none;
+  opacity:.12;
+}
+.level-card.initiado::before{background:var(--pk)}
+.level-card.consagrado::before{background:#ff7a00}
+.level-card.lacreme::before{background:var(--blue, #5aa8ff)}
+.level-card.grand::before{background:var(--gold)}
+.level-ico{font-size:28px;margin-bottom:14px}
+.level-name{
+  font-family:'Fraunces',serif;
+  font-size:18px;font-weight:600;font-style:italic;
+  margin-bottom:6px;
+}
+.level-since{font-size:10px;color:var(--mut);font-weight:700;letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px}
+.level-perks{display:flex;flex-direction:column;gap:6px}
+.level-perk{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--mut);font-weight:600}
+.level-perk svg{width:11px;height:11px;color:var(--yw);flex-shrink:0}
+.level-progress{
+  margin:0 var(--px) 32px;
+  background:var(--card2);border:1px solid var(--line2);
+  border-radius:18px;padding:20px;
+}
+.lp-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+.lp-name{font-size:14px;font-weight:800;display:flex;align-items:center;gap:8px}
+.lp-lvl{font-size:11px;font-weight:800;color:var(--mut)}
+.lp-bar{background:rgba(255,255,255,.08);border-radius:4px;height:6px;overflow:hidden;margin-bottom:7px}
+.lp-fill{height:100%;border-radius:4px;transition:width .8s ease}
+.lp-hint{font-size:11px;color:var(--mut);font-weight:600}
+
+.bono-rail{display:flex;gap:10px;overflow-x:auto;padding:2px var(--px) 12px;scrollbar-width:none}
+.bono-rail::-webkit-scrollbar{display:none}
+.bono-card{
+  flex-shrink:0;width:160px;border-radius:16px;
+  padding:16px 14px;border:1px solid;
+  display:flex;flex-direction:column;gap:6px;
+}
+.bono-icon{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center}
+.bono-icon svg{width:16px;height:16px}
+.bono-val{font-size:18px;font-weight:900;margin-top:4px}
+.bono-sub{font-size:9.5px;font-weight:600;opacity:.8}
+.bono-div{height:1px;background:rgba(255,255,255,.1);margin:4px 0}
+.bono-exp{font-size:8.5px;font-weight:600;opacity:.6}
+.bono-pk{background:linear-gradient(135deg,rgba(255,45,126,.15),rgba(255,45,126,.03));border-color:rgba(255,45,126,.3)}
+.bono-pk .bono-val,.bono-pk .bono-icon svg{color:var(--pk)}
+.bono-pk .bono-icon{background:rgba(255,45,126,.14)}
+.bono-gold{background:linear-gradient(135deg,rgba(236,217,137,.14),rgba(236,217,137,.02));border-color:rgba(236,217,137,.28)}
+.bono-gold .bono-val,.bono-gold .bono-icon svg{color:var(--gold)}
+.bono-gold .bono-icon{background:rgba(236,217,137,.12)}
+.bono-lime{background:linear-gradient(135deg,rgba(214,255,58,.14),rgba(214,255,58,.02));border-color:rgba(214,255,58,.25)}
+.bono-lime .bono-val,.bono-lime .bono-icon svg{color:var(--yw)}
+.bono-lime .bono-icon{background:rgba(214,255,58,.1)}
+.bono-blue{background:linear-gradient(135deg,rgba(90,168,255,.14),rgba(90,168,255,.02));border-color:rgba(90,168,255,.25)}
+.bono-blue .bono-val,.bono-blue .bono-icon svg{color:#5aa8ff}
+.bono-blue .bono-icon{background:rgba(90,168,255,.12)}
+
+/* ══════════════ PROFILE (TÚ) ══════════════ */
+.profile-hero{
+  position:relative;overflow:hidden;
+  min-height:240px;display:flex;align-items:flex-end;
+}
+.profile-hero-bg{
+  position:absolute;inset:0;
+  background-size:cover;background-position:center;
+  background-image:url('https://images.unsplash.com/photo-1566073771259-6a8506099945?w=1400&q=90');
+}
+.profile-hero-ov{
+  position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(9,8,11,.3),rgba(9,8,11,.9));
+}
+.profile-hero-inner{
+  position:relative;z-index:2;
+  padding:0 var(--px) 28px;width:100%;
+  display:flex;align-items:flex-end;gap:18px;
+}
+.profile-av{
+  width:72px;height:72px;border-radius:16px;
+  background:linear-gradient(135deg,var(--pk),#8b0057);
+  display:flex;align-items:center;justify-content:center;
+  font-size:24px;font-weight:900;flex-shrink:0;
+  border:2px solid rgba(255,255,255,.15);
+}
+.profile-name{font-size:22px;font-weight:800;margin-bottom:4px}
+.profile-since{font-size:11px;color:var(--mut);font-weight:600;margin-bottom:8px}
+.profile-level-badge{
+  display:inline-flex;align-items:center;gap:6px;
+  background:rgba(255,45,126,.12);border:1px solid rgba(255,45,126,.25);
+  border-radius:20px;padding:5px 12px;
+  font-size:10.5px;font-weight:800;color:var(--pk);
+}
+.profile-progress{
+  margin:16px var(--px) 0;
+  background:var(--card2);border:1px solid var(--line);
+  border-radius:14px;padding:14px 16px;
+}
+.pp-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;font-size:11px}
+.pp-left{font-weight:700;color:var(--mut)}
+.pp-right{font-weight:800;color:var(--yw)}
+.pp-bar{background:rgba(255,255,255,.08);border-radius:3px;height:4px;overflow:hidden}
+.pp-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--pk),var(--yw));transition:width .8s}
+
+.resv-card{
+  display:flex;align-items:center;gap:14px;
+  background:var(--card2);border:1px solid var(--line);
+  border-radius:16px;padding:14px;
+  margin:0 var(--px) 10px;cursor:pointer;transition:.18s;
+}
+.resv-card:hover{border-color:var(--line2)}
+.resv-img{
+  width:72px;height:72px;border-radius:12px;
+  background-size:cover;background-position:center;
+  flex-shrink:0;background-color:var(--card);
+  display:flex;align-items:center;justify-content:center;
+  font-size:28px;
+}
+.resv-name{font-size:15px;font-weight:800;margin-bottom:3px}
+.resv-chip{
+  display:inline-flex;font-size:8.5px;font-weight:800;
+  color:var(--pk);border:1px solid rgba(255,45,126,.35);
+  border-radius:6px;padding:3px 7px;margin-left:8px;
+}
+.resv-line{
+  display:flex;align-items:center;gap:5px;
+  font-size:10.5px;color:var(--mut);font-weight:600;margin-top:5px;
+}
+.resv-line svg{width:11px;height:11px;color:var(--dim)}
+.resv-btns{display:flex;gap:7px;margin-top:10px}
+.resv-btn{
+  flex:1;padding:7px;border-radius:8px;
+  font-size:10.5px;font-weight:800;cursor:pointer;
+  font-family:inherit;border:1px solid;text-align:center;
+}
+.resv-btn-mod{background:rgba(255,255,255,.04);color:var(--mut);border-color:var(--line)}
+.resv-btn-mod:hover{color:var(--wh);border-color:var(--line2)}
+.resv-btn-cancel{background:rgba(255,68,68,.06);color:#ff6b6b;border-color:rgba(255,68,68,.2)}
+
+.saved-circle{
+  flex-shrink:0;width:80px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+  cursor:pointer;transition:.15s;
+}
+.saved-circle:hover{opacity:.8}
+.saved-img{
+  width:68px;height:68px;border-radius:50%;
+  background-size:cover;background-position:center;
+  border:1.5px solid var(--line2);
+  background-color:var(--card2);
+}
+.saved-name{font-size:10.5px;font-weight:800;text-align:center}
+.saved-cat{font-size:8.5px;color:var(--mut);font-weight:600;text-align:center}
+.saved-r{font-size:9px;font-weight:800;color:var(--yw)}
+
+.rec-card{
+  flex-shrink:0;width:160px;cursor:pointer;
+}
+.rec-img{
+  height:100px;border-radius:13px;
+  background-size:cover;background-position:center;
+  position:relative;overflow:hidden;
+  border:1px solid var(--line);
+}
+.rec-off{
+  position:absolute;bottom:7px;right:7px;
+  background:rgba(9,8,11,.8);color:var(--yw);
+  font-size:8.5px;font-weight:800;
+  border:1px solid rgba(214,255,58,.35);
+  border-radius:6px;padding:3px 6px;
+}
+.rec-name{font-size:12.5px;font-weight:800;margin-top:8px}
+.rec-cat{font-size:9.5px;color:var(--mut);font-weight:600}
+.rec-r{font-size:9.5px;font-weight:800;color:var(--yw);margin-top:3px}
+
+/* ══════════════ POPUPS ══════════════ */
+.popup-wrap{
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  z-index:9000;display:none;
+  align-items:flex-start;justify-content:flex-end;
+  padding:calc(var(--nav-h) + 8px) var(--px) 0;
+}
+.popup-wrap.open{display:flex}
+.popup-scrim{position:fixed;inset:0;z-index:-1}
+.popup{
+  width:320px;max-height:80vh;overflow-y:auto;
+  background:rgba(20,16,25,.92);
+  backdrop-filter:blur(24px) saturate(160%);
+  border:1px solid var(--line2);border-radius:20px;
+  box-shadow:0 32px 80px rgba(0,0,0,.7);
+  scrollbar-width:none;
+}
+.popup::-webkit-scrollbar{display:none}
+.popup-hd{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:16px 18px;border-bottom:1px solid var(--line);
+  position:sticky;top:0;
+  background:rgba(20,16,25,.92);backdrop-filter:blur(20px);
+}
+.popup-hd-title{font-size:12px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+.popup-close{
+  width:26px;height:26px;border-radius:50%;
+  background:rgba(255,255,255,.08);border:none;
+  color:var(--mut);cursor:pointer;font-size:12px;
+  display:flex;align-items:center;justify-content:center;
+}
+.popup-item{
+  padding:14px 18px;border-bottom:1px solid var(--line);
+  cursor:pointer;transition:.15s;
+}
+.popup-item:hover{background:rgba(255,255,255,.03)}
+.popup-item:last-child{border-bottom:none}
+.notif-tag{
+  display:inline-flex;font-size:8.5px;font-weight:800;
+  letter-spacing:.06em;text-transform:uppercase;
+  border-radius:5px;padding:2px 6px;margin-bottom:6px;
+}
+.notif-tag.reserva{background:rgba(255,45,126,.1);color:var(--pk);border:1px solid rgba(255,45,126,.2)}
+.notif-tag.bono{background:rgba(214,255,58,.1);color:var(--yw);border:1px solid rgba(214,255,58,.2)}
+.notif-tag.evento{background:rgba(90,168,255,.1);color:#5aa8ff;border:1px solid rgba(90,168,255,.2)}
+.notif-title{font-size:12.5px;font-weight:800;margin-bottom:3px}
+.notif-sub{font-size:10.5px;color:var(--mut);font-weight:600;line-height:1.5}
+.notif-time{font-size:9.5px;color:var(--dim);font-weight:600;margin-top:5px}
+
+.profile-popup{right:var(--px);width:200px}
+.profile-popup .popup-hd{padding:14px 16px}
+.pp-user{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--line)}
+.pp-av-sm{
+  width:36px;height:36px;border-radius:9px;
+  background:linear-gradient(135deg,var(--pk),#8b0057);
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:900;flex-shrink:0;
+}
+.pp-name{font-size:13px;font-weight:800}
+.pp-level{font-size:9.5px;font-weight:800;color:var(--pk)}
+.pp-menu-item{
+  display:flex;align-items:center;gap:10px;
+  padding:12px 16px;cursor:pointer;transition:.15s;
+  border-bottom:1px solid var(--line);font-size:12.5px;font-weight:700;
+}
+.pp-menu-item:hover{background:rgba(255,255,255,.04)}
+.pp-menu-item:last-child{border-bottom:none}
+.pp-menu-item svg{width:15px;height:15px;color:var(--dim)}
+.pp-menu-item.danger{color:#ff6b6b}
+.pp-menu-item.danger svg{color:#ff6b6b}
+
+/* ══════════════ OVERLAYS / MODALS ══════════════ */
+.ov{
+  position:fixed;inset:0;z-index:9500;
+  background:rgba(0,0,0,.7);
+  backdrop-filter:blur(10px);
+  display:none;align-items:center;justify-content:center;
+  padding:20px;
+}
+.ov.open{display:flex}
+.modal{position:relative;border-radius:24px;overflow:hidden;max-width:90vw}
+.mbox{
+  background:#100e17;border:1px solid var(--line2);
+  border-radius:24px;padding:28px;
+  max-height:90vh;overflow-y:auto;
+}
+.m-close{
+  position:absolute;top:14px;right:14px;
+  background:rgba(255,255,255,.08);border:none;
+  color:var(--wh);width:30px;height:30px;
+  border-radius:50%;cursor:pointer;font-size:14px;z-index:10;
+}
+.fi{
+  background:#1d1726;border:1px solid var(--line);
+  border-radius:12px;padding:12px 14px;
+  font-size:13px;color:var(--wh);outline:none;
+  transition:border-color .2s;width:100%;
+}
+.fi:focus{border-color:var(--pk)}
+.fi-sel{appearance:none;cursor:pointer}
+.btn-modal{
+  width:100%;background:linear-gradient(180deg,var(--yw),#b9e22a);
+  color:#0a0a05;border:none;border-radius:13px;
+  padding:15px;font-size:14px;font-weight:900;
+  cursor:pointer;font-family:inherit;letter-spacing:.04em;
+  transition:.18s;
+}
+.btn-modal:hover{transform:translateY(-1px);box-shadow:0 8px 24px rgba(214,255,58,.2)}
+.btn-modal-pink{
+  width:100%;background:var(--pk);color:#fff;
+  border:none;border-radius:13px;padding:14px;
+  font-size:14px;font-weight:800;cursor:pointer;font-family:inherit;
+}
+
+/* ══════════════ TOAST ══════════════ */
+.toast{
+  position:fixed;bottom:28px;left:50%;
+  transform:translateX(-50%) translateY(20px);
+  background:rgba(20,16,25,.9);
+  backdrop-filter:blur(20px);
+  border:1px solid var(--line2);
+  color:var(--wh);padding:11px 22px;
+  border-radius:24px;font-size:13px;font-weight:600;
+  white-space:nowrap;opacity:0;transition:all .3s;
+  z-index:9999;pointer-events:none;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ══════════════ SEARCH / RESERVE OVERLAY ══════════════ */
+.search-sbar{
+  background:linear-gradient(180deg,#16121d,#100d15);
+  border:1px solid var(--line2);border-radius:20px;
+  padding:16px 18px;margin:8px var(--px);
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+}
+.sp-pill{
+  flex:1;min-width:90px;background:#221b2b;
+  border:1px solid var(--line);border-radius:12px;
+  padding:9px 10px;display:flex;align-items:center;
+  gap:7px;cursor:pointer;transition:.18s;position:relative;
+}
+.sp-pill:hover{border-color:var(--line2)}
+.sp-pill.open{border-color:var(--yw)}
+.sp-pill svg{width:14px;height:14px;color:var(--dim);flex-shrink:0}
+.sp-pill-lbl{font-size:9px;font-weight:700;color:var(--dim);letter-spacing:.07em;text-transform:uppercase;line-height:1}
+.sp-pill-val{font-size:12px;font-weight:900;color:var(--pk)}
+.sp-pill-caret{margin-left:auto;width:11px;height:11px;color:var(--dim)}
+.mood-sp{
+  flex:0.8;min-width:120px;background:#221b2b;
+  border:1px solid var(--line);border-radius:12px;
+  padding:9px 10px;display:flex;align-items:center;
+  gap:7px;cursor:pointer;transition:.18s;
+}
+.mood-sp:hover,.mood-sp.open{border-color:var(--yw)}
+.mood-sp-txt{flex:1;font-size:11px;font-weight:700;color:var(--mut)}
+.btn-reservar-main{
+  background:linear-gradient(180deg,var(--yw),#b9e22a);
+  color:#0a0a05;border:none;border-radius:12px;
+  padding:11px 20px;font-size:13px;font-weight:900;
+  cursor:pointer;white-space:nowrap;flex-shrink:0;
+  box-shadow:0 6px 20px rgba(214,255,58,.2);transition:.18s;
+}
+.btn-reservar-main:hover{box-shadow:0 10px 28px rgba(214,255,58,.3);transform:translateY(-1px)}
+.drop{
+  position:fixed;background:#0f0c16;
+  border:1px solid var(--line2);border-radius:18px;
+  box-shadow:0 24px 64px rgba(0,0,0,.8);
+  z-index:8000;display:none;overflow:hidden;
+}
+.drop.open{display:block}
+.mood-drop{
+  position:fixed;background:#0f0c16;
+  border:1px solid var(--line2);border-radius:18px;
+  box-shadow:0 24px 64px rgba(0,0,0,.8);
+  z-index:8000;display:none;overflow-y:auto;
+  max-height:70vh;padding:8px;
+}
+.mood-drop.open{display:block}
+.mood-item{
+  display:flex;align-items:flex-start;gap:12px;
+  padding:12px 10px;border-radius:12px;
+  cursor:pointer;transition:.15s;
+  border:1.3px solid transparent;margin-bottom:3px;
+}
+.mood-item:hover{background:rgba(255,255,255,.04)}
+.mood-item.sel{background:rgba(214,255,58,.04);border-color:rgba(214,255,58,.2)}
+.mood-ico{font-size:22px;flex-shrink:0;margin-top:2px}
+.mood-item h4{font-size:12.5px;font-weight:800;margin-bottom:3px}
+.mood-item p{font-size:10.5px;color:var(--mut);font-weight:500;line-height:1.5}
+.drop-hd{padding:14px 16px 6px;font-size:10px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:var(--mut)}
+.cal-nav{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 4px;font-size:13px;font-weight:800}
+.cal-nav button{background:none;border:none;color:var(--mut);cursor:pointer;font-size:16px;padding:4px 8px;border-radius:7px}
+.cal-nav button:hover{background:var(--card2)}
+.cal-week-labels{display:grid;grid-template-columns:repeat(7,1fr);padding:0 14px 4px;gap:2px}
+.cal-week-labels span{text-align:center;font-size:9px;font-weight:700;color:var(--dim);letter-spacing:.06em}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:2px;padding:0 14px 14px}
+.cal-day{aspect-ratio:1;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;border-radius:8px;cursor:pointer;transition:.15s}
+.cal-day:hover{background:var(--card2)}
+.cal-day.sel{background:var(--pk);color:#fff}
+.cal-day.today{color:var(--yw)}
+.cal-day.past{opacity:.25;pointer-events:none}
+.time-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;padding:8px 14px 14px}
+.time-btn{background:#221b2b;border:1px solid var(--line);border-radius:9px;color:var(--mut);font-size:11px;font-weight:800;padding:10px 4px;cursor:pointer;text-align:center;font-family:inherit;transition:.15s}
+.time-btn:hover:not(:disabled){border-color:var(--line2);color:var(--wh)}
+.time-btn.sel{background:var(--pk);border-color:var(--pk);color:#fff}
+.time-btn.unavail{opacity:.25;cursor:not-allowed;text-decoration:line-through}
+.pax-control{display:flex;align-items:center;gap:12px;padding:12px 16px;justify-content:center}
+.pax-btn{background:#221b2b;border:1px solid var(--line2);border-radius:50%;width:36px;height:36px;font-size:18px;font-weight:800;color:var(--wh);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:.15s}
+.pax-btn:hover{background:var(--card2)}
+.pax-num{font-size:22px;font-weight:900;min-width:40px;text-align:center}
+.pax-presets{display:flex;gap:7px;flex-wrap:wrap;padding:4px 14px 14px}
+.pax-preset{background:#221b2b;border:1px solid var(--line);border-radius:9px;color:var(--mut);font-size:12px;font-weight:800;padding:8px 14px;cursor:pointer;font-family:inherit;transition:.15s}
+.pax-preset.sel{background:var(--pk);border-color:var(--pk);color:#fff}
+
+/* ══════════════ FOOTER ══════════════ */
+.footer{
+  background:var(--pk);margin-top:40px;padding:32px var(--px) 20px;
+}
+.footer-grid{
+  display:grid;grid-template-columns:1fr repeat(3,auto);
+  gap:32px;margin-bottom:24px;
+  max-width:1200px;margin-left:auto;margin-right:auto;
+}
+@media(max-width:768px){.footer-grid{grid-template-columns:1fr 1fr}}
+.footer-logo{
+  font-family:'Fraunces',serif;font-size:26px;
+  font-weight:700;font-style:italic;
+  letter-spacing:-.03em;margin-bottom:8px;
+}
+.footer-logo .o{color:#fff}.footer-logo .y{color:#0a0a05}
+.footer-tag{font-size:11px;color:rgba(255,255,255,.7);font-weight:600}
+.footer-col h4{font-size:10px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:rgba(0,0,0,.6);margin-bottom:12px}
+.footer-col a{display:block;font-size:12.5px;font-weight:700;color:#0a0a05;margin-bottom:8px;cursor:pointer}
+.footer-col a:hover{opacity:.7}
+.footer-bottom{
+  display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;
+  padding-top:16px;border-top:1px solid rgba(0,0,0,.12);
+  font-size:11px;color:rgba(0,0,0,.6);font-weight:600;
+  max-width:1200px;margin:0 auto;
+}
+
+/* ══════════════ RESPONSIVE ══════════════ */
+@media(min-width:1200px){
+  .row{padding:2px calc((100vw - 1200px)/2 + var(--px)) 12px}
+  .sec-hd,.vibes,.filter-row,.bono-rail{padding-left:calc((100vw - 1200px)/2 + var(--px));padding-right:calc((100vw - 1200px)/2 + var(--px))}
+  .trend-card{width:320px}
+  .event-card{width:240px}
+}
+
+/* ══ AVAILABILITY VISUAL ══ */
+.avail-legend { display:flex; gap:10px; padding:8px 0 12px; flex-wrap:wrap }
+.avail-dot { display:flex; align-items:center; gap:5px; font-size:10px; font-weight:700; color:var(--mut) }
+.avail-dot::before { content:''; width:8px; height:8px; border-radius:50%; flex-shrink:0 }
+.avail-dot.libre::before  { background:#4ade80 }
+.avail-dot.poco::before   { background:#ecd989 }
+.avail-dot.lleno::before  { background:#ff6b6b }
+
+.time-btn { position:relative; overflow:hidden }
+.time-btn .avail-bar {
+  position:absolute; bottom:0; left:0; right:0;
+  height:3px; border-radius:0 0 9px 9px;
+}
+.time-btn.libre  .avail-bar { background:#4ade80 }
+.time-btn.poco   .avail-bar { background:#ecd989 }
+.time-btn.lleno  .avail-bar { background:#ff6b6b }
+.time-btn.libre  { border-color:rgba(74,222,128,.25) }
+.time-btn.poco   { border-color:rgba(236,217,137,.35) }
+.time-btn.lleno  { border-color:rgba(255,107,107,.2); opacity:.45; cursor:not-allowed; text-decoration:line-through }
+
+.avail-summary {
+  display:flex; align-items:center; justify-content:space-between;
+  background:rgba(255,255,255,.04); border-radius:10px;
+  padding:10px 14px; margin-bottom:14px; font-size:11.5px;
+}
+.avail-pct { font-weight:800 }
+.avail-pct.alta  { color:#4ade80 }
+.avail-pct.media { color:#ecd989 }
+.avail-pct.baja  { color:#ff6b6b }
+
+/* ══ SIMILAR RESTAURANTS ══ */
+.similar-section {
+  margin-top:18px;
+  border-top:1px solid var(--line);
+  padding-top:16px;
+  display:none;
+}
+.similar-section.show { display:block }
+.similar-title {
+  font-size:11px; font-weight:800; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--mut); margin-bottom:12px;
+  display:flex; align-items:center; gap:7px;
+}
+.similar-title::before { content:'✨' }
+.similar-card {
+  display:flex; align-items:center; gap:12px;
+  background:var(--card2); border:1px solid var(--line);
+  border-radius:14px; padding:12px; margin-bottom:8px;
+  cursor:pointer; transition:.18s;
+}
+.similar-card:hover { border-color:var(--line2); transform:translateX(3px) }
+.similar-img {
+  width:52px; height:52px; border-radius:10px;
+  background-size:cover; background-position:center;
+  flex-shrink:0; background-color:var(--card);
+}
+.similar-info { flex:1; min-width:0 }
+.similar-name { font-size:13px; font-weight:800; margin-bottom:2px }
+.similar-meta { font-size:10.5px; color:var(--mut); font-weight:600 }
+.similar-avail {
+  font-size:10px; font-weight:800; padding:4px 8px;
+  border-radius:6px; flex-shrink:0; white-space:nowrap;
+}
+.similar-avail.ok   { background:rgba(74,222,128,.1);  color:#4ade80; border:1px solid rgba(74,222,128,.2) }
+.similar-avail.poco { background:rgba(236,217,137,.1); color:#ecd989; border:1px solid rgba(236,217,137,.2) }
+
+
+/* ════ OPENTABLE CARDS ════ */
+.ot-card {
+  display:flex;gap:0;background:var(--card2);
+  border:1px solid var(--line);border-radius:18px;
+  overflow:hidden;transition:border-color .2s,transform .15s;
+}
+.ot-card:hover{border-color:var(--line2);transform:translateY(-2px)}
+.ot-img {
+  width:180px;flex-shrink:0;
+  background-size:cover;background-position:center;
+  position:relative;
+}
+@media(max-width:600px){.ot-img{width:110px}}
+.ot-body{flex:1;padding:18px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.ot-top{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.ot-name{font-size:16px;font-weight:800;margin-bottom:3px}
+.ot-rating{font-size:11px;font-weight:800;color:var(--yw);margin-left:6px}
+.ot-meta{font-size:11.5px;color:var(--mut);font-weight:600;margin-bottom:6px}
+.ot-tags{display:flex;gap:5px;flex-wrap:wrap}
+.ot-tag{
+  font-size:9.5px;font-weight:700;color:var(--mut);
+  border:1px solid var(--line);border-radius:5px;
+  padding:2px 7px;
+}
+.ot-booked{text-align:right;flex-shrink:0}
+.ot-booked-num{font-size:13px;font-weight:800;white-space:nowrap}
+.ot-booked-lbl{font-size:9px;color:var(--dim);font-weight:600;white-space:nowrap}
+.ot-slots-label{
+  font-size:9.5px;font-weight:800;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--mut);
+}
+.ot-slots{display:flex;gap:7px;flex-wrap:wrap}
+.ot-slot{
+  background:rgba(255,45,126,.08);
+  border:1.3px solid rgba(255,45,126,.25);
+  border-radius:9px;padding:8px 12px;
+  font-size:11.5px;font-weight:800;color:#ff2d7e;
+  cursor:pointer;font-family:inherit;transition:.18s;white-space:nowrap;
+}
+.ot-slot:hover{background:var(--pk);color:#fff;border-color:var(--pk)}
+.ot-slot-hot{
+  background:rgba(214,255,58,.08);
+  border-color:rgba(214,255,58,.3);
+  color:var(--yw) !important;
+}
+.ot-slot-hot:hover{background:var(--yw);color:#0a0a05 !important;border-color:var(--yw)}
+.ot-slot-few{
+  background:rgba(236,217,137,.08);
+  border-color:rgba(236,217,137,.3);
+  color:var(--gold) !important;
+}
+.ot-slot-full{
+  background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);
+  border-radius:9px;padding:8px 12px;font-size:11.5px;font-weight:700;
+  color:rgba(240,237,232,.2);cursor:not-allowed;
+  text-decoration:line-through;white-space:nowrap;
+}
+
+</style>
+</head>
+<body>
+
+<!-- ════ NAV ════ -->
+<nav class="nav" id="main-nav">
+  <div class="nav-logo" onclick="goSec('home')">
+    <span class="o">Oh</span><span class="y">Yeah!</span>
+  </div>
+  <div class="nav-tabs" id="nav-tabs">
+    <div class="nav-tab home on" data-sec="home">OH YEAH!</div>
+    <div class="nav-tab" data-sec="discover">Eventos</div>
+    <div class="nav-tab" data-sec="society">Society</div>
+    <div class="nav-tab" data-sec="access">Access</div>
+    <div class="nav-tab" data-sec="you">Tú</div>
+  </div>
+  <div class="nav-actions">
+    <div class="nav-bell" id="bellBtn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8a6 6 0 10-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 01-3.4 0" stroke-linecap="round"/></svg>
+      <span class="dot"></span>
+    </div>
+    <div id="nav-guest-area">
+      <button class="btn-gs-nav" onclick="openOv('ov-login')" style="margin-right:8px">GOURMAND SOCIETY</button>
+      <button class="btn-login-nav" id="btn-iniciar" onclick="openOv('ov-login')">INICIAR SESIÓN</button>
+    </div>
+    <div id="nav-user-area" style="display:none">
+      <div class="nav-av" id="navAvatar" onclick="toggleProfilePop()">?</div>
+    </div>
+  </div>
+</nav>
+
+<!-- ════ SCREEN ════ -->
+<div id="app-screen">
+
+<!-- ════════ HOME ════════ -->
+<section id="sec-home" class="on">
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-bg"></div>
+    <div class="hero-overlay"></div>
+    <div class="hero-inner">
+      <div class="hero-copy">
+        <div class="hero-tag">Bogotá · Gastronomía Premium</div>
+        <h1 class="hero-h1">VIVE LO<br>MEJOR<br><em>de Bogotá</em></h1>
+        <p class="hero-sub">Restaurantes premium, eventos exclusivos y experiencias que no se olvidan. Tu guía cultural gastronómica.</p>
+        <div class="hero-ctas">
+          <button class="btn-primary" onclick="openReserveModal()">Reservar ahora 🍽️</button>
+          <button class="btn-outline" onclick="goSec('discover')">Descubrir →</button>
+        </div>
+      </div>
+      <div class="book-card">
+        <div class="book-card-title">
+          ¿A dónde vamos? ✨
+          <span style="font-size:10px;color:var(--mut);font-weight:600">Bogotá</span>
+        </div>
+        <div class="book-pills">
+          <div class="book-pill" id="bp-date" onclick="toggleDrop('drop-date','bp-date')">
+            <span class="book-pill-lbl">Fecha</span>
+            <span class="book-pill-val" id="bp-date-val">HOY</span>
+          </div>
+          <div class="book-pill" id="bp-time" onclick="toggleDrop('drop-time','bp-time')">
+            <span class="book-pill-lbl">Hora</span>
+            <span class="book-pill-val" id="bp-time-val">8PM</span>
+          </div>
+          <div class="book-pill" id="bp-pax" onclick="toggleDrop('drop-pax','bp-pax')">
+            <span class="book-pill-lbl">Personas</span>
+            <span class="book-pill-val" id="bp-pax-val">2</span>
+          </div>
+        </div>
+        <div class="book-mood" id="bp-mood" onclick="toggleMood()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:15px;height:15px;flex-shrink:0;color:var(--dim)"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2" stroke-linecap="round"/><line x1="9" y1="9" x2="9.01" y2="9" stroke-width="2.5" stroke-linecap="round"/><line x1="15" y1="9" x2="15.01" y2="9" stroke-width="2.5" stroke-linecap="round"/></svg>
+          <span class="book-mood-txt" id="book-mood-txt">¿Qué mood tienes hoy?</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:13px;height:13px;color:var(--dim);flex-shrink:0"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <button class="btn-book" onclick="openReserveModal()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="width:16px;height:16px"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>
+          RESERVAR AHORA
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIBES -->
+  <div class="sec" style="margin-top:32px">
+    <div class="sec-hd">
+      <div><div class="sec-title">¿Cuál es tu mood?</div></div>
+      <div class="sec-link">Ver todos</div>
+    </div>
+    <div class="vibes">
+      <div class="vibe-pill on" data-vibe="primera-cita" onclick="selectVibe(this,'💕','Primera Cita')"><span class="vibe-pill-ico">💕</span><span class="vibe-pill-txt">Primera Cita</span></div>
+      <div class="vibe-pill" data-vibe="celebrar" onclick="selectVibe(this,'🎉','Celebrar')"><span class="vibe-pill-ico">🎉</span><span class="vibe-pill-txt">Celebrar</span></div>
+      <div class="vibe-pill" data-vibe="impresionar" onclick="selectVibe(this,'⭐','Impresionar')"><span class="vibe-pill-ico">⭐</span><span class="vibe-pill-txt">Impresionar</span></div>
+      <div class="vibe-pill" data-vibe="romantico" onclick="selectVibe(this,'🕯️','Romántico')"><span class="vibe-pill-ico">🕯️</span><span class="vibe-pill-txt">Romántico</span></div>
+      <div class="vibe-pill" data-vibe="vibra" onclick="selectVibe(this,'🔥','Buena Vibra')"><span class="vibe-pill-ico">🔥</span><span class="vibe-pill-txt">Buena Vibra</span></div>
+      <div class="vibe-pill" data-vibe="diferente" onclick="selectVibe(this,'✨','Diferente')"><span class="vibe-pill-ico">✨</span><span class="vibe-pill-txt">Diferente</span></div>
+      <div class="vibe-pill" data-vibe="negocios" onclick="selectVibe(this,'💼','Negocios')"><span class="vibe-pill-ico">💼</span><span class="vibe-pill-txt">Negocios</span></div>
+    </div>
+  </div>
+
+  <!-- TRENDING -->
+  <div class="sec">
+    <div class="sec-hd">
+      <div><div class="sec-title">Los que están marcando tendencia</div><div class="sec-sub">Más reservados esta semana</div></div>
+      <div class="sec-link">Ver todos</div>
+    </div>
+    <div class="row">
+      <div class="trend-card" onclick="openReserveModal()">
+        <div class="trend-card-img" style="background-image:url('https://images.unsplash.com/photo-1559339352-11d035aa65de?w=700&q=85')"><div class="trend-card-overlay"></div><div class="trend-card-num">1</div><div class="trend-card-badge" style="color:var(--yw)">🔥 Trending</div></div>
+        <div class="trend-card-info"><div class="trend-card-name">OMM</div><div class="trend-card-cat">Internacional · Bogotá</div></div>
+        <div class="trend-card-footer"><div class="trend-card-rating">★ 4.9 <span style="color:var(--dim);font-weight:500">(230)</span></div><div class="trend-card-avail">Mesas disponibles</div></div>
+      </div>
+      <div class="trend-card" onclick="openReserveModal()">
+        <div class="trend-card-img" style="background-image:url('https://images.unsplash.com/photo-1424847651672-bf20a4b0982b?w=700&q=85')"><div class="trend-card-overlay"></div><div class="trend-card-num">2</div></div>
+        <div class="trend-card-info"><div class="trend-card-name">OMM</div><div class="trend-card-cat">Rooftop · Cocktails</div></div>
+        <div class="trend-card-footer"><div class="trend-card-rating">★ 4.7</div><div class="trend-card-avail">Últimas mesas</div></div>
+      </div>
+      <div class="trend-card" onclick="bookSlotDirect('Gallo Colorado','8:00 PM')">
+        <div class="trend-card-img" style="background-image:url('https://images.unsplash.com/photo-1544025162-d76694265947?w=700&q=85')"><div class="trend-card-overlay"></div><div class="trend-card-num">3</div><div class="trend-card-badge" style="color:#ff2d7e">🐓 Nuevo</div></div>
+        <div class="trend-card-info"><div class="trend-card-name">Gallo Colorado</div><div class="trend-card-cat">Cocina mestiza · Bogotá</div></div>
+        <div class="trend-card-footer"><div class="trend-card-rating">★ 4.8</div><div class="trend-card-avail">Mesas disponibles</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOP 10 -->
+  <div class="sec">
+    <div class="sec-hd">
+      <div><div class="sec-title">Top 10 más reservados</div></div>
+      <div class="sec-link" onclick="goSec('discover')">Ver ranking →</div>
+    </div>
+    <div class="row">
+      <div class="top10-card" onclick="openReserveModal()"><div class="top10-img" style="background-image:url('https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=400&q=85')"><div class="top10-n">1</div></div><div class="top10-name">OMM</div><div class="top10-cat">Creativa</div><div class="top10-r">★ 4.9</div></div>
+      <div class="top10-card" onclick="openReserveModal()"><div class="top10-img" style="background-image:url('https://images.unsplash.com/photo-1544148103-0773bf10d330?w=400&q=85')"><div class="top10-n">2</div></div><div class="top10-name">OMM</div><div class="top10-cat">Internacional</div><div class="top10-r">★ 4.8</div></div>
+      <div class="top10-card" onclick="openReserveModal()"><div class="top10-img" style="background-image:url('https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=400&q=85')"><div class="top10-n">3</div></div><div class="top10-name">OMM</div><div class="top10-cat">Colombiana</div><div class="top10-r">★ 4.8</div></div>
+      <div class="top10-card" onclick="openReserveModal()"><div class="top10-img" style="background-image:url('https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&q=85')"><div class="top10-n">4</div></div><div class="top10-name">OMM</div><div class="top10-cat">Japonesa</div><div class="top10-r">★ 4.7</div></div>
+      <div class="top10-card" onclick="openReserveModal()"><div class="top10-img" style="background-image:url('https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400&q=85')"><div class="top10-n">5</div></div><div class="top10-name">OMM</div><div class="top10-cat">Parrilla</div><div class="top10-r">★ 4.7</div></div>
+    </div>
+  </div>
+
+  <!-- PRICELESS -->
+  <div class="priceless" onclick="showToast('Mastercard Priceless ✨')">
+    <div class="priceless-bg"></div>
+    <div class="priceless-ov"></div>
+    <div class="priceless-inner">
+      <div>
+        <div class="priceless-tag">EXPERIENCIAS PRICELESS®</div>
+        <h2 class="priceless-h2">Vive momentos<br><em>Priceless</em></h2>
+        <p class="priceless-sub">Beneficios exclusivos para miembros Oh Yeah! x Mastercard</p>
+      </div>
+      <div class="mc-logo">
+        <div class="mc-rings"><i></i><i></i></div>
+        <span class="mc-word">priceless</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- PERKS -->
+  <div class="sec">
+    <div class="sec-hd">
+      <div><div class="sec-title">Beneficios activos para ti</div></div>
+      <div class="sec-link" onclick="goSec('access')">Ver todos →</div>
+    </div>
+    <div class="row">
+      <div class="perk-card" onclick="goSec('access')"><div class="perk-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10H3M7 3v4M17 3v4"/><rect x="3" y="4" width="18" height="17" rx="2"/></svg></div><div class="perk-title">Mesa prioritaria</div><div class="perk-sub">En restaurantes Oh Yeah!</div></div>
+      <div class="perk-card" onclick="goSec('access')"><div class="perk-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 22l2-6m4 6l-2-6m-6-4a4 4 0 018 0"/></svg></div><div class="perk-title">2x1 en cócteles</div><div class="perk-sub">Válido esta semana</div></div>
+      <div class="perk-card" onclick="goSec('access')"><div class="perk-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></div><div class="perk-title">Fast Pass</div><div class="perk-sub">Sin fila · Lugares top</div></div>
+      <div class="perk-card" onclick="goSec('access')"><div class="perk-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div><div class="perk-title">Concierge VIP</div><div class="perk-sub">Atención personalizada</div></div>
+      <div class="perk-card" onclick="goSec('access')"><div class="perk-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2" stroke-linecap="round"/></svg></div><div class="perk-title">10% Cashback</div><div class="perk-sub">Próxima reserva</div></div>
+    </div>
+  </div>
+
+
+  <!-- ════ EVENTOS ════ -->
+  <div class="sec">
+    <div class="sec-hd">
+      <div>
+        <div class="sec-title">Eventos &amp; experiencias</div>
+        <div class="sec-sub">Lo que está pasando en Bogotá este mes</div>
+      </div>
+      <div class="sec-link" onclick="goSec('discover')">Ver todos en Eventos →</div>
+    </div>
+
+    <!-- LIVE BADGE -->
+    <div style="padding:0 var(--px);margin-bottom:14px">
+      <span class="live-badge">HAPPENING TONIGHT · BOGOTÁ</span>
+    </div>
+
+    <!-- EVENT CARDS ROW -->
+    <div class="row" id="home-events-row">
+      <div class="event-card" onclick="openReserveModal()" style="width:220px">
+        <div class="event-card-img" style="background-image:url('https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=500&q=85')">
+          <div class="event-card-ov"></div>
+          <div class="event-card-date"><div class="event-date-d">24</div><div class="event-date-m">MAY</div></div>
+          <div style="position:absolute;top:10px;right:10px;background:rgba(255,45,126,.85);color:#fff;font-size:8.5px;font-weight:800;border-radius:5px;padding:3px 7px;letter-spacing:.06em">HOY</div>
+        </div>
+        <div class="event-card-info">
+          <div class="event-card-name">Sunset Rooftop Party</div>
+          <div class="event-card-meta">OMM · Rooftop · 6:00 PM</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+            <span style="font-size:9.5px;font-weight:800;color:#4ade80">Entradas disponibles</span>
+            <span style="font-size:9.5px;color:rgba(240,237,232,.4);font-weight:600">Gratis con cuenta</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="event-card" onclick="openReserveModal()" style="width:220px">
+        <div class="event-card-img" style="background-image:url('https://images.unsplash.com/photo-1611514026316-87aa0e90e9a0?w=500&q=85')">
+          <div class="event-card-ov"></div>
+          <div class="event-card-date"><div class="event-date-d">30</div><div class="event-date-m">MAY</div></div>
+          <div style="position:absolute;top:10px;right:10px;background:rgba(236,217,137,.85);color:#0a0a05;font-size:8.5px;font-weight:800;border-radius:5px;padding:3px 7px;letter-spacing:.06em">EXCLUSIVO</div>
+        </div>
+        <div class="event-card-info">
+          <div class="event-card-name">Chef's Table Experience</div>
+          <div class="event-card-meta">OMM · Solo 12 personas · 9:00 PM</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+            <span style="font-size:9.5px;font-weight:800;color:#ecd989">Últimas 3 mesas</span>
+            <span style="font-size:9.5px;color:rgba(240,237,232,.4);font-weight:600">Members only</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="event-card" onclick="openReserveModal()" style="width:220px">
+        <div class="event-card-img" style="background-image:url('https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=500&q=85')">
+          <div class="event-card-ov"></div>
+          <div class="event-card-date"><div class="event-date-d">07</div><div class="event-date-m">JUN</div></div>
+        </div>
+        <div class="event-card-info">
+          <div class="event-card-name">Wine Dinner · Borgoña</div>
+          <div class="event-card-meta">OMM · Sommelier invitado · 8:00 PM</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+            <span style="font-size:9.5px;font-weight:800;color:#4ade80">Disponible</span>
+            <span style="font-size:9.5px;color:rgba(240,237,232,.4);font-weight:600">$180k/persona</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="event-card" onclick="openReserveModal()" style="width:220px">
+        <div class="event-card-img" style="background-image:url('https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&q=85')">
+          <div class="event-card-ov"></div>
+          <div class="event-card-date"><div class="event-date-d">14</div><div class="event-date-m">JUN</div></div>
+        </div>
+        <div class="event-card-info">
+          <div class="event-card-name">Live Jazz Night</div>
+          <div class="event-card-meta">OMM · Speakeasy · 7:30 PM</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+            <span style="font-size:9.5px;font-weight:800;color:#4ade80">Alta disponibilidad</span>
+            <span style="font-size:9.5px;color:rgba(240,237,232,.4);font-weight:600">Gratis</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="event-card" onclick="openReserveModal()" style="width:220px">
+        <div class="event-card-img" style="background-image:url('https://images.unsplash.com/photo-1556910103-1c02745aae4d?w=500&q=85')">
+          <div class="event-card-ov"></div>
+          <div class="event-card-date"><div class="event-date-d">21</div><div class="event-date-m">JUN</div></div>
+          <div style="position:absolute;top:10px;right:10px;background:rgba(90,168,255,.85);color:#fff;font-size:8.5px;font-weight:800;border-radius:5px;padding:3px 7px;letter-spacing:.06em">NUEVO</div>
+        </div>
+        <div class="event-card-info">
+          <div class="event-card-name">Brunch del Sol</div>
+          <div class="event-card-meta">OMM · DJ set · 11:00 AM</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+            <span style="font-size:9.5px;font-weight:800;color:#4ade80">Disponible</span>
+            <span style="font-size:9.5px;color:rgba(240,237,232,.4);font-weight:600">$95k/persona</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="event-card" onclick="openReserveModal()" style="width:220px">
+        <div class="event-card-img" style="background-image:url('https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=500&q=85')">
+          <div class="event-card-ov"></div>
+          <div class="event-card-date"><div class="event-date-d">28</div><div class="event-date-m">JUN</div></div>
+        </div>
+        <div class="event-card-info">
+          <div class="event-card-name">Noche de DJs · Techno</div>
+          <div class="event-card-meta">OMM · Rooftop · 10:00 PM</div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-top:8px">
+            <span style="font-size:9.5px;font-weight:800;color:#ecd989">Pocas entradas</span>
+            <span style="font-size:9.5px;color:rgba(240,237,232,.4);font-weight:600">$65k entrada</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CTA Banner -->
+    <div style="margin:8px var(--px) 0;background:linear-gradient(135deg,rgba(255,45,126,.07),rgba(214,255,58,.05));border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap">
+      <div>
+        <div style="font-size:14px;font-weight:800;margin-bottom:3px">¿Tu restaurante tiene un evento?</div>
+        <div style="font-size:12px;color:rgba(240,237,232,.5);font-weight:600">Publícalo en Oh Yeah! y llega a miles de gourmands en Bogotá.</div>
+      </div>
+      <button onclick="showToast('Próximamente 🚀')" style="background:var(--pk);color:#fff;border:none;border-radius:12px;padding:11px 20px;font-size:12px;font-weight:800;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0">Publicar evento →</button>
+    </div>
+  </div>
+
+  <footer class="footer">
+    <div class="footer-grid">
+      <div><div class="footer-logo"><span class="o">Oh</span><span class="y">Yeah!</span></div><div class="footer-tag">Los mejores restaurantes, eventos<br>y experiencias de Colombia.</div></div>
+      <div class="footer-col"><h4>Plataforma</h4><a onclick="goSec('discover')">Restaurantes</a><a onclick="goSec('society')">Gourmand Society</a><a onclick="showToast('Próximamente')">Revista</a><a onclick="showToast('Próximamente')">Tengo un restaurante</a></div>
+      <div class="footer-col"><h4>Acceso</h4><a onclick="goSec('access')">Curaduría</a><a onclick="goSec('access')">Estatus</a><a onclick="showToast('Próximamente')">Miembro Society</a><a onclick="showToast('Próximamente')">Memoria viva</a></div>
+      <div class="footer-col"><h4>Legal</h4><a onclick="showToast('Términos')">Términos</a><a onclick="showToast('Privacidad')">Privacidad</a><a onclick="showToast('Contacto')">Contacto</a></div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Oh Yeah! · Bogotá, Colombia</span>
+      <span>Hecho con ❤️ para los amantes del buen comer</span>
+    </div>
+  </footer>
+</section>
+
+<!-- ════════ DISCOVER ════════ -->
+<section id="sec-discover">
+  <div class="discover-hero">
+    <div class="hero-tag">Motor de reservas · OpenTable style</div>
+    <h1 class="discover-h1">Eventos &amp;<br><em style="color:var(--pk);font-style:italic">Reservas</em></h1>
+    <p class="discover-sub">Encuentra mesa ahora mismo. Filtra por fecha, hora, personas y tipo de experiencia.</p>
+  </div>
+  <!-- OpenTable Search Bar -->
+  <div style="background:linear-gradient(180deg,#16121d,#100d15);border:1px solid var(--line2);border-radius:20px;padding:16px 18px;margin:0 var(--px) 20px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <!-- Date -->
+    <div class="sp-pill" id="ev-pill-date" onclick="toggleDrop('drop-date','ev-pill-date')" style="flex:1;min-width:100px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--dim);flex-shrink:0"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/></svg>
+      <div><div class="sp-pill-lbl">FECHA</div><div class="sp-pill-val" id="ev-date-val">Hoy</div></div>
+    </div>
+    <!-- Time -->
+    <div class="sp-pill" id="ev-pill-time" onclick="toggleDrop('drop-time','ev-pill-time')" style="flex:1;min-width:100px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--dim);flex-shrink:0"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <div><div class="sp-pill-lbl">HORA</div><div class="sp-pill-val" id="ev-time-val">8:00 PM</div></div>
+    </div>
+    <!-- Pax -->
+    <div class="sp-pill" id="ev-pill-pax" onclick="toggleDrop('drop-pax','ev-pill-pax')" style="flex:1;min-width:90px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--dim);flex-shrink:0"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      <div><div class="sp-pill-lbl">PERSONAS</div><div class="sp-pill-val" id="ev-pax-val">2</div></div>
+    </div>
+    <!-- Search input -->
+    <div style="flex:2;min-width:160px;display:flex;align-items:center;gap:8px;background:#221b2b;border:1px solid var(--line);border-radius:12px;padding:9px 12px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px;color:var(--dim);flex-shrink:0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      <input id="discover-search" placeholder="Restaurante, barrio, cocina..." style="background:transparent;border:none;color:#fff;font-size:12px;font-weight:600;outline:none;font-family:inherit;flex:1" oninput="filterRestaurants();updateResultsCount()">
+      <span style="font-size:9px;font-weight:800;letter-spacing:.06em;color:var(--pk);background:rgba(255,45,126,.1);border:1px solid rgba(255,45,126,.2);border-radius:5px;padding:3px 6px;flex-shrink:0">IA</span>
+    </div>
+    <!-- Search button -->
+    <button onclick="searchRestaurants()" style="background:linear-gradient(180deg,var(--yw),#b9e22a);color:#0a0a05;border:none;border-radius:12px;padding:11px 20px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;box-shadow:0 6px 20px rgba(214,255,58,.2)">BUSCAR</button>
+  </div>
+  <!-- Filters -->
+  <div class="filter-row">
+    <div class="filter-chip on" onclick="filterClick(this)" data-type="all">Todos</div>
+    <div class="filter-chip" onclick="filterClick(this)" data-type="restaurante">🍽️ Restaurantes</div>
+    <div class="filter-chip" onclick="filterClick(this)" data-type="rooftop">🥂 Rooftops</div>
+    <div class="filter-chip" onclick="filterClick(this)" data-type="evento">🎵 Eventos</div>
+    <div class="filter-chip" onclick="filterClick(this)" data-type="chef">👨‍🍳 Chef's Table</div>
+    <div class="filter-chip" onclick="filterClick(this)" data-type="brunch">☀️ Brunch</div>
+    <div class="filter-chip" onclick="filterClick(this)" data-type="speakeasy">🕯️ Speakeasy</div>
+    <div class="filter-chip" onclick="filterClick(this);showEventosSection()" data-type="evento">🎫 Eventos</div>
+  </div>
+  
+  <!-- EVENTOS SECTION (shown when Eventos filter is active) -->
+  <div id="eventos-full-section" style="display:none;padding:0 var(--px);margin-bottom:24px">
+    <div style="font-family:'Fraunces',serif;font-size:20px;font-weight:500;font-style:italic;margin-bottom:4px">Eventos &amp; experiencias</div>
+    <div style="font-size:12px;color:var(--mut);font-weight:600;margin-bottom:16px">Compra entradas · Lista de invitados · QR de acceso</div>
+    
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">
+      <!-- Event 1 -->
+      <div style="background:var(--card2);border:1px solid var(--line);border-radius:18px;overflow:hidden;cursor:pointer" onclick="buyEventTicket('Sunset Rooftop Party','24 Mayo','6:00 PM','Gratis')">
+        <div style="height:160px;background-image:url('https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=500&q=85');background-size:cover;background-position:center;position:relative">
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent,rgba(9,8,11,.7))"></div>
+          <div style="position:absolute;top:12px;left:12px;background:rgba(255,45,126,.85);color:#fff;font-size:9px;font-weight:800;border-radius:5px;padding:3px 8px">HOY</div>
+          <div style="position:absolute;top:12px;right:12px;background:rgba(74,222,128,.85);color:#0a0a05;font-size:9px;font-weight:800;border-radius:5px;padding:3px 8px">DISPONIBLE</div>
+        </div>
+        <div style="padding:14px">
+          <div style="font-size:14px;font-weight:800;margin-bottom:4px">Sunset Rooftop Party</div>
+          <div style="font-size:11px;color:var(--mut);font-weight:600;margin-bottom:10px">OMM · 24 Mayo · 6:00 PM · Gratis con cuenta</div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:10px;color:var(--mut)">🎫 Sin límite de entradas</div>
+            <button onclick="event.stopPropagation();buyEventTicket('Sunset Rooftop Party','24 Mayo','6:00 PM','Gratis')" style="background:var(--yw);color:#0a0a05;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">Asistir</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Event 2 -->
+      <div style="background:var(--card2);border:1px solid rgba(236,217,137,.25);border-radius:18px;overflow:hidden;cursor:pointer" onclick="buyEventTicket('Chef\'s Table Experience','30 Mayo','9:00 PM','$250k')">
+        <div style="height:160px;background-image:url('https://images.unsplash.com/photo-1611514026316-87aa0e90e9a0?w=500&q=85');background-size:cover;background-position:center;position:relative">
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent,rgba(9,8,11,.7))"></div>
+          <div style="position:absolute;top:12px;left:12px;background:rgba(236,217,137,.9);color:#0a0a05;font-size:9px;font-weight:800;border-radius:5px;padding:3px 8px">EXCLUSIVO</div>
+          <div style="position:absolute;top:12px;right:12px;background:rgba(255,107,107,.85);color:#fff;font-size:9px;font-weight:800;border-radius:5px;padding:3px 8px">3 CUPOS</div>
+        </div>
+        <div style="padding:14px">
+          <div style="font-size:14px;font-weight:800;margin-bottom:4px">Chef's Table Experience</div>
+          <div style="font-size:11px;color:var(--mut);font-weight:600;margin-bottom:10px">OMM · 30 Mayo · 9:00 PM · $250k/persona</div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:10px;color:#ecd989;font-weight:700">⚡ Solo 3 cupos</div>
+            <button onclick="event.stopPropagation();buyEventTicket('Chef\'s Table Experience','30 Mayo','9:00 PM','$250k')" style="background:var(--yw);color:#0a0a05;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">Comprar</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Event 3 -->
+      <div style="background:var(--card2);border:1px solid var(--line);border-radius:18px;overflow:hidden;cursor:pointer" onclick="buyEventTicket('Wine Dinner · Borgoña','7 Jun','8:00 PM','$180k')">
+        <div style="height:160px;background-image:url('https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=500&q=85');background-size:cover;background-position:center;position:relative">
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent,rgba(9,8,11,.7))"></div>
+        </div>
+        <div style="padding:14px">
+          <div style="font-size:14px;font-weight:800;margin-bottom:4px">Wine Dinner · Borgoña</div>
+          <div style="font-size:11px;color:var(--mut);font-weight:600;margin-bottom:10px">OMM · 7 Jun · 8:00 PM · $180k/persona</div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:10px;color:var(--mut)">🎫 15 entradas disponibles</div>
+            <button onclick="event.stopPropagation();buyEventTicket('Wine Dinner · Borgoña','7 Jun','8:00 PM','$180k')" style="background:var(--yw);color:#0a0a05;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">Comprar</button>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Event 4 -->
+      <div style="background:var(--card2);border:1px solid var(--line);border-radius:18px;overflow:hidden;cursor:pointer" onclick="buyEventTicket('Live Jazz Night','14 Jun','7:30 PM','Gratis')">
+        <div style="height:160px;background-image:url('https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=500&q=85');background-size:cover;background-position:center;position:relative">
+          <div style="position:absolute;inset:0;background:linear-gradient(180deg,transparent,rgba(9,8,11,.7))"></div>
+          <div style="position:absolute;top:12px;left:12px;background:rgba(74,222,128,.85);color:#0a0a05;font-size:9px;font-weight:800;border-radius:5px;padding:3px 8px">GRATIS</div>
+        </div>
+        <div style="padding:14px">
+          <div style="font-size:14px;font-weight:800;margin-bottom:4px">Live Jazz Night</div>
+          <div style="font-size:11px;color:var(--mut);font-weight:600;margin-bottom:10px">OMM Speakeasy · 14 Jun · 7:30 PM</div>
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <div style="font-size:10px;color:#4ade80;font-weight:700">✓ Disponible</div>
+            <button onclick="event.stopPropagation();buyEventTicket('Live Jazz Night','14 Jun','7:30 PM','Gratis')" style="background:var(--yw);color:#0a0a05;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:800;cursor:pointer;font-family:inherit">Asistir</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Results count -->
+  <div style="padding:0 var(--px);margin-bottom:16px;display:flex;align-items:center;justify-content:space-between">
+    <div style="font-size:12px;color:var(--mut);font-weight:600"><span id="results-count">1</span> restaurante disponible</div>
+    <div class="live-badge" style="margin:0">● TIEMPO REAL</div>
+  </div>
+
+  <!-- RESTAURANT LISTINGS (OpenTable style) -->
+  <div id="restaurants-grid" style="padding:0 var(--px);display:flex;flex-direction:column;gap:14px;margin-bottom:32px">
+
+    <!-- OMM -->
+    <div class="ot-card" id="rest-omm" data-type="restaurante">
+      <div class="ot-img" style="background-image:url('https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&q=85')"></div>
+      <div class="ot-body">
+        <div class="ot-top">
+          <div>
+            <div class="ot-name">OMM <span class="ot-rating">★ 4.9</span></div>
+            <div class="ot-meta">Internacional · Bogotá · $$$ · Abierto ahora</div>
+            <div class="ot-tags">
+              <span class="ot-tag">Fecha especial</span>
+              <span class="ot-tag">Negocios</span>
+              <span class="ot-tag">Vino</span>
+            </div>
+          </div>
+          <div class="ot-booked">
+            <div class="ot-booked-num" id="omm-booked-num">🔥 23</div>
+            <div class="ot-booked-lbl">reservas hoy</div>
+          </div>
+        </div>
+        <!-- Available slots -->
+        <div class="ot-slots-label">Mesas disponibles para <span id="ot-date-display">hoy</span></div>
+        <div class="ot-slots" id="slots-omm">
+          <button class="ot-slot" onclick="bookSlot('OMM','7:00 PM')">7:00 PM</button>
+          <button class="ot-slot" onclick="bookSlot('OMM','7:30 PM')">7:30 PM</button>
+          <button class="ot-slot ot-slot-hot" onclick="bookSlot('OMM','8:00 PM')">8:00 PM 🔥</button>
+          <button class="ot-slot" onclick="bookSlot('OMM','8:30 PM')">8:30 PM</button>
+          <button class="ot-slot" onclick="bookSlot('OMM','9:00 PM')">9:00 PM</button>
+          <button class="ot-slot ot-slot-few" onclick="bookSlot('OMM','9:30 PM')">9:30 PM ⚡</button>
+          <button class="ot-slot" onclick="bookSlot('OMM','10:00 PM')">10:00 PM</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- OMM ROOFTOP -->
+    <div class="ot-card" id="rest-rooftop" data-type="rooftop">
+      <div class="ot-img" style="background-image:url('https://images.unsplash.com/photo-1551632436-cbf8dd35adfa?w=600&q=85')"></div>
+      <div class="ot-body">
+        <div class="ot-top">
+          <div>
+            <div class="ot-name">OMM Rooftop <span class="ot-rating">★ 4.7</span></div>
+            <div class="ot-meta">Coctelería · Bogotá · $$ · Abierto ahora</div>
+            <div class="ot-tags">
+              <span class="ot-tag">Vistas</span>
+              <span class="ot-tag">Cócteles</span>
+              <span class="ot-tag">Sunset</span>
+            </div>
+          </div>
+          <div class="ot-booked">
+            <div class="ot-booked-num">🔥 18</div>
+            <div class="ot-booked-lbl">reservas hoy</div>
+          </div>
+        </div>
+        <div class="ot-slots-label">Mesas disponibles</div>
+        <div class="ot-slots" id="slots-rooftop">
+          <button class="ot-slot" onclick="bookSlot('OMM Rooftop','6:00 PM')">6:00 PM</button>
+          <button class="ot-slot ot-slot-hot" onclick="bookSlot('OMM Rooftop','7:00 PM')">7:00 PM 🔥</button>
+          <button class="ot-slot ot-slot-few" onclick="bookSlot('OMM Rooftop','7:30 PM')">7:30 PM ⚡</button>
+          <button class="ot-slot-full" disabled>8:00 PM</button>
+          <button class="ot-slot-full" disabled>8:30 PM</button>
+          <button class="ot-slot" onclick="bookSlot('OMM Rooftop','9:00 PM')">9:00 PM</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Chef's Table -->
+    <div class="ot-card" id="rest-chef" data-type="chef">
+      <div class="ot-img" style="background-image:url('https://images.unsplash.com/photo-1611514026316-87aa0e90e9a0?w=600&q=85')">
+        <div style="position:absolute;top:12px;left:12px;background:rgba(236,217,137,.9);color:#0a0a05;font-size:9px;font-weight:900;border-radius:6px;padding:4px 9px;letter-spacing:.06em">EXCLUSIVO</div>
+      </div>
+      <div class="ot-body">
+        <div class="ot-top">
+          <div>
+            <div class="ot-name">OMM Chef's Table <span class="ot-rating" style="color:var(--gold)">★ 5.0</span></div>
+            <div class="ot-meta">Alta cocina · Solo 12 personas · $$$$</div>
+            <div class="ot-tags">
+              <span class="ot-tag" style="border-color:rgba(236,217,137,.35);color:var(--gold)">Experiencia única</span>
+              <span class="ot-tag" style="border-color:rgba(236,217,137,.35);color:var(--gold)">Maridaje incluido</span>
+            </div>
+          </div>
+          <div class="ot-booked">
+            <div class="ot-booked-num">🌟 8</div>
+            <div class="ot-booked-lbl">cupos totales</div>
+          </div>
+        </div>
+        <div class="ot-slots-label">Próximas fechas disponibles</div>
+        <div class="ot-slots" id="slots-chef">
+          <button class="ot-slot ot-slot-few" onclick="bookSlot('OMM Chef\'s Table','9:00 PM')">Hoy 9PM ⚡</button>
+          <button class="ot-slot" onclick="bookSlot('OMM Chef\'s Table','9:00 PM')">Mañana 9PM</button>
+          <button class="ot-slot" onclick="bookSlot('OMM Chef\'s Table','9:00 PM')">Sáb 9PM</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Speakeasy -->
+    <div class="ot-card" id="rest-speak" data-type="speakeasy">
+      <div class="ot-img" style="background-image:url('https://images.unsplash.com/photo-1455853659719-4b521eebc76d?w=600&q=85')"></div>
+      <div class="ot-body">
+        <div class="ot-top">
+          <div>
+            <div class="ot-name">OMM Speakeasy <span class="ot-rating">★ 4.8</span></div>
+            <div class="ot-meta">Bar secreto · Cócteles artesanales · $$</div>
+            <div class="ot-tags">
+              <span class="ot-tag">Jazz en vivo</span>
+              <span class="ot-tag">Cock­tails</span>
+            </div>
+          </div>
+          <div class="ot-booked">
+            <div class="ot-booked-num">🔥 12</div>
+            <div class="ot-booked-lbl">reservas hoy</div>
+          </div>
+        </div>
+        <div class="ot-slots-label">Mesas disponibles esta noche</div>
+        <div class="ot-slots" id="slots-speak">
+          <button class="ot-slot" onclick="bookSlot('OMM Speakeasy','8:00 PM')">8:00 PM</button>
+          <button class="ot-slot ot-slot-hot" onclick="bookSlot('OMM Speakeasy','9:00 PM')">9:00 PM 🔥</button>
+          <button class="ot-slot" onclick="bookSlot('OMM Speakeasy','10:00 PM')">10:00 PM</button>
+          <button class="ot-slot" onclick="bookSlot('OMM Speakeasy','11:00 PM')">11:00 PM</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- GALLO COLORADO -->
+    <div class="ot-card" id="rest-gc" data-type="restaurante" style="border-color:rgba(255,45,126,.2)">
+      <div class="ot-img" style="background-image:url('https://images.unsplash.com/photo-1544025162-d76694265947?w=600&q=85');position:relative">
+        <div style="position:absolute;top:12px;left:12px;background:var(--pk);color:#fff;font-size:9px;font-weight:900;border-radius:6px;padding:4px 9px;letter-spacing:.06em">🐓 NUEVO</div>
+      </div>
+      <div class="ot-body">
+        <div class="ot-top">
+          <div>
+            <div class="ot-name">Gallo Colorado <span class="ot-rating">★ 4.8</span></div>
+            <div class="ot-meta">Cocina mestiza · Bogotá · $$$ · Abierto ahora</div>
+            <div class="ot-tags">
+              <span class="ot-tag">Cocina de autor</span>
+              <span class="ot-tag">Maridaje</span>
+              <span class="ot-tag">Experiencia</span>
+            </div>
+          </div>
+          <div class="ot-booked">
+            <div class="ot-booked-num">🔥 21</div>
+            <div class="ot-booked-lbl">reservas hoy</div>
+          </div>
+        </div>
+        <div class="ot-slots-label">Mesas disponibles</div>
+        <div class="ot-slots" id="slots-gc">
+          <button class="ot-slot" onclick="bookSlot('Gallo Colorado','7:00 PM')">7:00 PM</button>
+          <button class="ot-slot" onclick="bookSlot('Gallo Colorado','7:30 PM')">7:30 PM</button>
+          <button class="ot-slot ot-slot-hot" onclick="bookSlot('Gallo Colorado','8:00 PM')">8:00 PM 🔥</button>
+          <button class="ot-slot" onclick="bookSlot('Gallo Colorado','8:30 PM')">8:30 PM</button>
+          <button class="ot-slot ot-slot-few" onclick="bookSlot('Gallo Colorado','9:00 PM')">9:00 PM ⚡</button>
+          <button class="ot-slot-full" disabled>9:30 PM</button>
+          <button class="ot-slot" onclick="bookSlot('Gallo Colorado','10:00 PM')">10:00 PM</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Brunch -->
+    <div class="ot-card" id="rest-brunch" data-type="brunch">
+      <div class="ot-img" style="background-image:url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&q=85')"></div>
+      <div class="ot-body">
+        <div class="ot-top">
+          <div>
+            <div class="ot-name">OMM Brunch <span class="ot-rating">★ 4.6</span></div>
+            <div class="ot-meta">Desayunos · Brunch · $$ · Fines de semana</div>
+            <div class="ot-tags">
+              <span class="ot-tag">DJ set</span>
+              <span class="ot-tag">Mimosas</span>
+            </div>
+          </div>
+          <div class="ot-booked">
+            <div class="ot-booked-num">☀️ 14</div>
+            <div class="ot-booked-lbl">reservas hoy</div>
+          </div>
+        </div>
+        <div class="ot-slots-label">Próximo brunch disponible</div>
+        <div class="ot-slots" id="slots-brunch">
+          <button class="ot-slot" onclick="bookSlot('OMM Brunch','11:00 AM')">11:00 AM</button>
+          <button class="ot-slot" onclick="bookSlot('OMM Brunch','12:00 PM')">12:00 PM</button>
+          <button class="ot-slot ot-slot-hot" onclick="bookSlot('OMM Brunch','1:00 PM')">1:00 PM 🔥</button>
+          <button class="ot-slot" onclick="bookSlot('OMM Brunch','2:00 PM')">2:00 PM</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <footer class="footer"><div class="footer-bottom" style="max-width:none">© 2026 Oh Yeah!</div></footer>
+</section>
+
+<!-- ════════ SOCIETY ════════ -->
+<section id="sec-society">
+  <div class="society-hero">
+    <div class="society-hero-bg"></div>
+    <div class="society-hero-ov"></div>
+    <div class="society-hero-inner">
+      <div class="society-tag">✦ GOURMAND SOCIETY</div>
+      <h1 class="society-h1">La cultura<br>gastronómica<br>de Bogotá</h1>
+      <p class="society-sub">Historias, tendencias, secretos y lo que está marcando conversación. No es un blog. Es un editorial.</p>
+    </div>
+  </div>
+  <div class="society-grid" style="margin-top:28px">
+    <div class="story-card" style="aspect-ratio:3/2" onclick="showToast('Los platos del año')"><div class="story-card-img" style="background-image:url('https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=900&q=90')"></div><div class="story-card-ov"></div><div class="story-card-info"><div class="story-tag">TREND REPORT</div><div class="story-title">Los 10 platos que están marcando conversación en 2026</div><div class="story-meta">Por curators Oh Yeah! · 5 min</div></div></div>
+    <div style="display:flex;flex-direction:column;gap:14px">
+      <div class="story-card" style="flex:1" onclick="showToast('Speakeasies de Bogotá')"><div class="story-card-img" style="background-image:url('https://images.unsplash.com/photo-1455853659719-4b521eebc76d?w=600&q=85')"></div><div class="story-card-ov"></div><div class="story-card-info"><div class="story-tag">SECRETO</div><div class="story-title">Los speakeasies que no están en Google</div><div class="story-meta">3 min</div></div></div>
+      <div class="story-card" style="flex:1" onclick="showToast('Chef tables')"><div class="story-card-img" style="background-image:url('https://images.unsplash.com/photo-1611514026316-87aa0e90e9a0?w=600&q=85')"></div><div class="story-card-ov"></div><div class="story-card-info"><div class="story-tag">EXPERIENCIA</div><div class="story-title">Chef's Tables: las mesas más difíciles de conseguir</div><div class="story-meta">4 min</div></div></div>
+    </div>
+  </div>
+  <div class="the-list" style="margin-top:28px">
+    <div class="the-list-title">✦ The List</div>
+    <div class="the-list-sub">Los platos que definen Bogotá en este momento</div>
+    <div class="list-item"><div class="list-n">1</div><div class="list-img" style="background-image:url('https://images.unsplash.com/photo-1540189549336-e6e99c3679fe?w=120&q=80')"></div><div class="list-info"><div class="list-name">Ceviche de mariscos con leche de tigre de ají amarillo</div><div class="list-desc">OMM · Insignia de temporada</div></div><div class="list-badge">ICONIC</div></div>
+    <div class="list-item"><div class="list-n">2</div><div class="list-img" style="background-image:url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=120&q=80')"></div><div class="list-info"><div class="list-name">Rib eye con chimichurri negro y papas criollas</div><div class="list-desc">OMM · El más fotografiado</div></div><div class="list-badge">VIRAL</div></div>
+    <div class="list-item"><div class="list-n">3</div><div class="list-img" style="background-image:url('https://images.unsplash.com/photo-1536935338788-846bb9981813?w=120&q=80')"></div><div class="list-info"><div class="list-name">Cóctel de temporada con aguardiente premium</div><div class="list-desc">OMM · Signature cocktail</div></div><div class="list-badge">TOP</div></div>
+    <div class="list-item"><div class="list-n">4</div><div class="list-img" style="background-image:url('https://images.unsplash.com/photo-1506377247377-2a5b3b417ebb?w=120&q=80')"></div><div class="list-info"><div class="list-name">Tiramisú de café colombiano y mora andina</div><div class="list-desc">OMM · Postre del año</div></div><div class="list-badge">MUST</div></div>
+  </div>
+  <footer class="footer"><div class="footer-bottom" style="max-width:none">© 2026 Oh Yeah!</div></footer>
+</section>
+
+<!-- ════════ ACCESS ════════ -->
+<section id="sec-access">
+  <div class="access-hero">
+    <h1 class="access-h1">Gourmand <span>Society</span> 🗝</h1>
+    <p class="access-sub">No es un programa de puntos. Es una cultura. Tu nivel define lo que vives.</p>
+  </div>
+  <div class="level-progress" id="access-progress" style="display:none">
+    <div class="lp-top"><span class="lp-name" id="access-lp-name">🏠 INICIADO</span><span class="lp-lvl" id="access-lp-hint">Comienza tu viaje</span></div>
+    <div class="lp-bar"><div class="lp-fill" id="access-lp-fill" style="width:0%"></div></div>
+    <div class="lp-hint" id="access-lp-sub">Haz tu primera reserva para subir de nivel</div>
+  </div>
+  <div class="level-cards">
+    <div class="level-card initiado" id="lc-iniciado"><div class="level-ico">🏠</div><div class="level-name">Iniciado</div><div class="level-since">DESDE 0 VISITAS</div><div class="level-perks"><div class="level-perk"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6L9 17l-5-5"/></svg>Reservas en todos los restaurantes</div><div class="level-perk"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6L9 17l-5-5"/></svg>Historial de experiencias</div><div class="level-perk"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6L9 17l-5-5"/></svg>Perfil personalizado</div></div></div>
+    <div class="level-card consagrado" id="lc-consagrado"><div class="level-ico">🔥</div><div class="level-name">Consagrado</div><div class="level-since">DESDE 3 VISITAS</div><div class="level-perks"><div class="level-perk"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6L9 17l-5-5"/></svg>Welcome drink en cada visita</div><div class="level-perk"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6L9 17l-5-5"/></svg>Acceso a promociones privadas</div><div class="level-perk"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6L9 17l-5-5"/></svg>Early access a eventos</div></div></div>
+    <div class="level-card lacreme" id="lc-lacreme"><div class="level-ico">🔍</div><div class="level-name">La Crème</div><div class="level-since">DESDE 6 VISITAS</div><div class="level-perks"><div class="level-perk"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6L9 17l-5-5"/></svg>Mesa prioritaria</div><div class="level-perk"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6L9 17l-5-5"/></svg>Atención VIP desde que llegas</div><div class="level-perk"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6L9 17l-5-5"/></svg>Aperturas exclusivas</div></div></div>
+    <div class="level-card grand" id="lc-grand"><div class="level-ico">👑</div><div class="level-name">Gran Gourmand</div><div class="level-since">DESDE 12 VISITAS</div><div class="level-perks"><div class="level-perk"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6L9 17l-5-5"/></svg>White glove service</div><div class="level-perk"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6L9 17l-5-5"/></svg>La gerencia te espera</div><div class="level-perk"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 6L9 17l-5-5"/></svg>Mesa sin aviso previo</div></div></div>
+  </div>
+  <div class="sec" style="margin-top:8px">
+    <div class="sec-hd"><div><div class="sec-title">Mis bonos activos</div></div><div class="sec-link" onclick="openOv('ov-canje')">Canjear código</div></div>
+    <div class="bono-rail">
+      <div class="bono-card bono-pk"><div class="bono-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 22l2-6m4 6l-2-6m-6-4a4 4 0 018 0"/></svg></div><div class="bono-val">2x1</div><div class="bono-sub">En cócteles</div><div class="bono-div"></div><div class="bono-exp">Válido hasta 31 May</div></div>
+      <div class="bono-card bono-gold"><div class="bono-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M9 21h6M12 17v4"/></svg></div><div class="bono-val">10% OFF</div><div class="bono-sub">Próxima cuenta</div><div class="bono-div"></div><div class="bono-exp">Válido hasta 15 Jun</div></div>
+      <div class="bono-card bono-lime"><div class="bono-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 3H5a2 2 0 00-2 2v4m6-6h10a2 2 0 012 2v4M9 3v18"/></svg></div><div class="bono-val">Postre</div><div class="bono-sub">De cortesía</div><div class="bono-div"></div><div class="bono-exp">Válido hasta 10 Jun</div></div>
+      <div class="bono-card bono-blue"><div class="bono-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8" stroke-linecap="round"/></svg></div><div class="bono-val">15% OFF</div><div class="bono-sub">En vinos</div><div class="bono-div"></div><div class="bono-exp">Válido hasta 30 Jun</div></div>
+    </div>
+  </div>
+  <footer class="footer"><div class="footer-bottom" style="max-width:none">© 2026 Oh Yeah!</div></footer>
+</section>
+
+<!-- ════════ TÚ ════════ -->
+<section id="sec-you">
+  <!-- NOT LOGGED IN STATE -->
+  <div id="you-guest" style="padding:80px var(--px);text-align:center;max-width:480px;margin:0 auto">
+    <div style="font-size:64px;margin-bottom:20px">🗝</div>
+    <h2 style="font-family:'Fraunces',serif;font-size:36px;font-weight:500;font-style:italic;margin-bottom:8px">Tu universo<br>gastronómico</h2>
+    <p style="font-size:14px;color:var(--mut);font-weight:500;line-height:1.7;margin-bottom:32px">Reservas, beneficios, historial y experiencias personalizadas. Todo en un solo lugar.</p>
+    <button class="btn-primary" onclick="openOv('ov-login')" style="width:100%;justify-content:center;margin-bottom:12px">INICIAR SESIÓN</button>
+    <button class="btn-outline" onclick="openOv('ov-signup')" style="width:100%;justify-content:center">CREAR CUENTA</button>
+  </div>
+
+  <!-- LOGGED IN STATE -->
+  <div id="you-loggedin" style="display:none">
+    <div class="profile-hero">
+      <div class="profile-hero-bg"></div>
+      <div class="profile-hero-ov"></div>
+      <div class="profile-hero-inner">
+        <div class="profile-av" id="prof-av-you">?</div>
+        <div>
+          <div class="profile-name" id="prof-name-you">Usuario</div>
+          <div class="profile-since" id="prof-since-you">Miembro Oh Yeah!</div>
+          <div class="profile-level-badge" id="prof-badge-you">🏠 INICIADO</div>
+        </div>
+      </div>
+    </div>
+    <div class="profile-progress">
+      <div class="pp-top"><span class="pp-left" id="pp-left-you">Progreso</span><span class="pp-right" id="pp-right-you"></span></div>
+      <div class="pp-bar"><div class="pp-fill" id="pp-fill-you" style="width:0%"></div></div>
+    </div>
+
+    <!-- QUICK ACTIONS -->
+    <div style="display:flex;gap:10px;padding:16px var(--px) 4px">
+      <button onclick="openReserveModal()" style="flex:1;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center;cursor:pointer;font-family:inherit;color:var(--wh);transition:.18s" onmouseover="this.style.borderColor='var(--line2)'" onmouseout="this.style.borderColor='var(--line)'"><div style="font-size:22px;margin-bottom:4px">🍽️</div><div style="font-size:11px;font-weight:800">Reservar</div></button>
+      <button onclick="openOv('ov-canje')" style="flex:1;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center;cursor:pointer;font-family:inherit;color:var(--wh);transition:.18s" onmouseover="this.style.borderColor='var(--line2)'" onmouseout="this.style.borderColor='var(--line)'"><div style="font-size:22px;margin-bottom:4px">🎟</div><div style="font-size:11px;font-weight:800">Canjear</div></button>
+      <button onclick="goSec('access')" style="flex:1;background:var(--card2);border:1px solid var(--line);border-radius:14px;padding:14px;text-align:center;cursor:pointer;font-family:inherit;color:var(--wh);transition:.18s" onmouseover="this.style.borderColor='var(--line2)'" onmouseout="this.style.borderColor='var(--line)'"><div style="font-size:22px;margin-bottom:4px">🗝</div><div style="font-size:11px;font-weight:800">Mi nivel</div></button>
+    </div>
+
+    <!-- PRÓXIMAS RESERVAS -->
+    <div class="sec" style="margin-top:24px">
+      <div class="sec-hd"><div><div class="sec-title">Próximas reservas</div></div><div class="sec-link" onclick="openReserveModal()">+ Nueva</div></div>
+      <div id="you-reservas">
+        <div class="resv-card" onclick="openReserveModal()">
+          <div class="resv-img">🍽️</div>
+          <div><div class="resv-name">Sin reservas próximas</div><div class="resv-line"><span>Haz tu primera reserva ahora</span></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- GUARDADOS -->
+    <div class="sec">
+      <div class="sec-hd"><div><div class="sec-title">Guardados</div></div><div class="sec-link">Ver todos</div></div>
+      <div class="row">
+        <div class="saved-circle"><div class="saved-img" style="background-image:url('https://images.unsplash.com/photo-1559339352-11d035aa65de?w=200&q=85')"></div><div class="saved-name">OMM</div><div class="saved-r">★ 4.9</div></div>
+        <div class="saved-circle"><div class="saved-img" style="background-image:url('https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=200&q=85')"></div><div class="saved-name">OMM</div><div class="saved-r">★ 4.7</div></div>
+        <div class="saved-circle"><div class="saved-img" style="background-image:url('https://images.unsplash.com/photo-1550966871-3ed3cfd1a7c5?w=200&q=85')"></div><div class="saved-name">OMM</div><div class="saved-r">★ 4.8</div></div>
+        <div class="saved-circle"><div class="saved-img" style="background-image:url('https://images.unsplash.com/photo-1455853659719-4b521eebc76d?w=200&q=85')"></div><div class="saved-name">OMM</div><div class="saved-r">★ 4.9</div></div>
+      </div>
+    </div>
+
+    <!-- BONOS -->
+    <div class="sec">
+      <div class="sec-hd"><div><div class="sec-title">Mis bonos</div></div><div class="sec-link" onclick="openOv('ov-canje')">Canjear</div></div>
+      <div class="bono-rail">
+        <div class="bono-card bono-pk"><div class="bono-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 22l2-6m4 6l-2-6m-6-4a4 4 0 018 0"/></svg></div><div class="bono-val">2x1</div><div class="bono-sub">En cócteles</div><div class="bono-div"></div><div class="bono-exp">31 May</div></div>
+        <div class="bono-card bono-gold"><div class="bono-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M9 21h6"/></svg></div><div class="bono-val">10% OFF</div><div class="bono-sub">Próxima cuenta</div><div class="bono-div"></div><div class="bono-exp">15 Jun</div></div>
+        <div class="bono-card bono-lime"><div class="bono-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M16 2l-4 6-4-6"/></svg></div><div class="bono-val">Postre</div><div class="bono-sub">De cortesía</div><div class="bono-div"></div><div class="bono-exp">10 Jun</div></div>
+      </div>
+    </div>
+
+    <!-- RECOMENDADOS -->
+    <div class="sec">
+      <div class="sec-hd"><div><div class="sec-title">Recomendados para ti</div></div><div class="sec-link">Ver todos</div></div>
+      <div class="row">
+        <div class="rec-card"><div class="rec-img" style="background-image:url('https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=400&q=85')"><div class="rec-off">10% OFF</div></div><div class="rec-name">OMM</div><div class="rec-cat">Mediterráneo</div><div class="rec-r">★ 4.9</div></div>
+        <div class="rec-card"><div class="rec-img" style="background-image:url('https://images.unsplash.com/photo-1536935338788-846bb9981813?w=400&q=85')"><div class="rec-off">10% OFF</div></div><div class="rec-name">OMM</div><div class="rec-cat">Coctelería</div><div class="rec-r">★ 4.7</div></div>
+        <div class="rec-card"><div class="rec-img" style="background-image:url('https://images.unsplash.com/photo-1544148103-0773bf10d330?w=400&q=85')"><div class="rec-off">15% OFF</div></div><div class="rec-name">OMM</div><div class="rec-cat">Internacional</div><div class="rec-r">★ 4.8</div></div>
+        <div class="rec-card"><div class="rec-img" style="background-image:url('https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=400&q=85')"><div class="rec-off">10% OFF</div></div><div class="rec-name">OMM</div><div class="rec-cat">Alta cocina</div><div class="rec-r">★ 4.8</div></div>
+      </div>
+    </div>
+  </div>
+  <footer class="footer"><div class="footer-bottom" style="max-width:none">© 2026 Oh Yeah!</div></footer>
+</section>
+
+</div><!-- #app-screen -->
+
+<!-- ════ POPUPS ════ -->
+<!-- NOTIFICATIONS -->
+<div class="popup-wrap" id="notif-popup-wrap">
+  <div class="popup-scrim" onclick="closeAllPopups()"></div>
+  <div class="popup" id="notif-popup" style="width:340px">
+    <div class="popup-hd"><span class="popup-hd-title">Notificaciones</span><button class="popup-close" onclick="closeAllPopups()">✕</button></div>
+    <div class="popup-item"><div class="notif-tag reserva">Reserva</div><div class="notif-title">Tu mesa está confirmada</div><div class="notif-sub">OMM · Sábado 24 May · 8:30 PM · 2 personas</div><div class="notif-time">Hace 2 horas</div></div>
+    <div class="popup-item"><div class="notif-tag bono">Bono</div><div class="notif-title">¡Tu bono 2x1 vence pronto!</div><div class="notif-sub">Válido hasta el 31 de mayo · No lo dejes vencer</div><div class="notif-time">Hace 1 día</div></div>
+    <div class="popup-item"><div class="notif-tag evento">Evento</div><div class="notif-title">Esta noche: Sunset Rooftop Party</div><div class="notif-sub">OMM · 6:00 PM · Últimas entradas</div><div class="notif-time">Hace 3 horas</div></div>
+    <div class="popup-item" onclick="goSec('access');closeAllPopups()"><div class="notif-tag" style="background:rgba(236,217,137,.1);color:var(--gold);border:1px solid rgba(236,217,137,.2)">Nivel</div><div class="notif-title">¡Estás cerca de subir de nivel!</div><div class="notif-sub">Te falta 1 visita para CONSAGRADO</div><div class="notif-time">Ayer</div></div>
+  </div>
+</div>
+
+<!-- PROFILE POPUP -->
+<div class="popup-wrap" id="prof-popup-wrap">
+  <div class="popup-scrim" onclick="closeAllPopups()"></div>
+  <div class="popup profile-popup" id="prof-popup">
+    <div class="pp-user">
+      <div class="pp-av-sm" id="pp-av-sm">?</div>
+      <div><div class="pp-name" id="pp-user-name">Usuario</div><div class="pp-level" id="pp-user-level">🏠 INICIADO</div></div>
+    </div>
+    <div class="pp-menu-item" onclick="goSec('you');closeAllPopups()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M20 21a8 8 0 10-16 0"/></svg><span>Mi perfil</span></div>
+    <div class="pp-menu-item" onclick="openOv('ov-canje');closeAllPopups()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 8a2 2 0 012-2h14a2 2 0 012 2 2 2 0 000 4 2 2 0 000 4 2 2 0 01-2 2H5a2 2 0 01-2-2 2 2 0 000-4 2 2 0 000-4z"/></svg><span>Canjear código</span></div>
+    <div class="pp-menu-item" onclick="showToast('Próximamente');closeAllPopups()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg><span>Mis pagos</span></div>
+    <div class="pp-menu-item danger" onclick="doLogout()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg><span>Cerrar sesión</span></div>
+  </div>
+</div>
+
+<!-- RESERVE OVERLAY -->
+<div class="ov" id="ov-reserve" onclick="ovBg(event,'ov-reserve')">
+<div class="modal">
+<div class="mbox" style="width:480px;max-height:90vh;overflow-y:auto">
+  <button class="m-close" onclick="closeOv('ov-reserve')">✕</button>
+  <div style="margin-bottom:20px">
+    <div style="font-size:10px;font-weight:800;letter-spacing:.1em;color:var(--mut);margin-bottom:6px">RESERVAR EN</div>
+    <div style="font-size:22px;font-weight:800" id="ov-rest-name">OMM</div>
+    <div style="font-size:12px;color:var(--mut);font-weight:600">Internacional · Bogotá</div>
+  </div>
+  <!-- DATE/TIME/PAX pills -->
+  <div style="display:flex;gap:8px;margin-bottom:16px">
+    <div class="sp-pill" id="ov-pill-date" onclick="toggleDrop('drop-date','ov-pill-date')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;color:var(--dim)"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <div><div class="sp-pill-lbl">FECHA</div><div class="sp-pill-val" id="ov-date-val">Hoy</div></div>
+    </div>
+    <div class="sp-pill" id="ov-pill-time" onclick="toggleDrop('drop-time','ov-pill-time')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;color:var(--dim)"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <div><div class="sp-pill-lbl">HORA</div><div class="sp-pill-val" id="ov-time-val">8:00 PM</div></div>
+    </div>
+    <div class="sp-pill" id="ov-pill-pax" onclick="toggleDrop('drop-pax','ov-pill-pax')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:13px;height:13px;flex-shrink:0;color:var(--dim)"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+      <div><div class="sp-pill-lbl">PERSONAS</div><div class="sp-pill-val" id="ov-pax-val">2</div></div>
+    </div>
+  </div>
+  <!-- Availability -->
+  <div style="background:rgba(255,255,255,.04);border-radius:10px;padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:11px;color:var(--mut);font-weight:600">Disponibilidad</span>
+    <span id="ov-avail-txt" style="font-size:11px;font-weight:800;color:#4ade80">Verificando...</span>
+  </div>
+  <!-- Time grid -->
+  <div style="font-size:9.5px;font-weight:800;letter-spacing:.1em;color:var(--mut);margin-bottom:8px;text-transform:uppercase">Elige una hora</div>
+  <div class="time-grid" id="ov-time-grid" style="margin-bottom:16px"></div>
+  <!-- Occasion -->
+  <div style="margin-bottom:18px">
+    <div style="font-size:9.5px;font-weight:800;letter-spacing:.1em;color:var(--mut);margin-bottom:8px;text-transform:uppercase">¿Es una ocasión especial?</div>
+    <select id="occ-select" class="fi fi-sel" style="width:100%">
+      <option value="">Ninguna en particular</option>
+      <option value="cumpleanos">🎂 Cumpleaños</option>
+      <option value="aniversario">💍 Aniversario</option>
+      <option value="primera-cita">💕 Primera cita</option>
+      <option value="negocios">💼 Reunión de negocios</option>
+      <option value="celebracion">🎉 Celebración</option>
+    </select>
+  </div>
+
+  <!-- GUEST FIELDS (shown when not logged in) -->
+  <div id="guest-fields" style="display:none;margin-bottom:18px">
+    <div style="background:rgba(214,255,58,.04);border:1px solid rgba(214,255,58,.15);border-radius:14px;padding:16px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
+        <div style="font-size:16px">👤</div>
+        <div>
+          <div style="font-size:12px;font-weight:800;color:var(--wh)">Continuar como invitado</div>
+          <div style="font-size:10.5px;color:var(--mut);margin-top:1px">Recibirás confirmación por correo</div>
+        </div>
+        <div style="margin-left:auto;font-size:10px;font-weight:700;color:var(--yw);cursor:pointer" onclick="closeOv('ov-reserve');openOv('ov-login')">¿Tienes cuenta? →</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:9px">
+        <div>
+          <div style="font-size:9px;font-weight:800;color:var(--mut);letter-spacing:.08em;margin-bottom:4px">NOMBRE COMPLETO *</div>
+          <input id="guest-name" class="fi" placeholder="Tu nombre y apellido" autocomplete="name">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+          <div>
+            <div style="font-size:9px;font-weight:800;color:var(--mut);letter-spacing:.08em;margin-bottom:4px">CORREO *</div>
+            <input id="guest-email" class="fi" type="email" placeholder="tu@correo.com" autocomplete="email">
+          </div>
+          <div>
+            <div style="font-size:9px;font-weight:800;color:var(--mut);letter-spacing:.08em;margin-bottom:4px">CELULAR *</div>
+            <div style="display:flex;gap:5px">
+              <div style="background:#1d1726;border:1px solid var(--line);border-radius:12px;padding:0 10px;display:flex;align-items:center;font-size:12px;font-weight:800;color:var(--mut);flex-shrink:0">+57</div>
+              <input id="guest-phone" class="fi" type="tel" placeholder="Celular" autocomplete="tel" style="flex:1">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <button id="ov-confirm-btn" onclick="confirmRes()" class="btn-modal">CONFIRMAR RESERVA</button>
+
+  <!-- SIMILAR RESTAURANTS (shown when full) -->
+  <div class="similar-section" id="similar-section">
+    <div class="similar-title">Restaurantes similares disponibles</div>
+    <div id="similar-list"></div>
+    <div style="font-size:10px;color:var(--dim);text-align:center;margin-top:8px">Basado en tu horario y preferencias</div>
+  </div>
+</div>
+</div>
+</div>
+
+<!-- CONFIRM OVERLAY -->
+<div class="ov" id="ov-confirm" onclick="ovBg(event,'ov-confirm')">
+<div class="modal"><div class="mbox" style="width:400px;text-align:center;padding:36px">
+  <div style="font-size:52px;margin-bottom:16px">🎉</div>
+  <div style="font-family:'Fraunces',serif;font-size:24px;font-weight:500;font-style:italic;color:var(--yw);margin-bottom:8px">¡Reserva confirmada!</div>
+  <div id="conf-detail" style="font-size:13px;color:var(--mut);line-height:1.7;margin-bottom:24px"></div>
+  <button onclick="closeOv('ov-confirm');goSec('you')" class="btn-modal">VER MIS RESERVAS</button>
+
+  <!-- GUEST CTA - shown only when not logged in -->
+  <div id="conf-guest-cta" style="display:none;margin-top:14px">
+    <div style="height:1px;background:rgba(255,255,255,.07);margin-bottom:14px"></div>
+    <div style="background:linear-gradient(135deg,rgba(214,255,58,.07),rgba(255,45,126,.07));border:1px solid rgba(214,255,58,.2);border-radius:16px;padding:18px;text-align:center">
+      <div style="font-size:22px;margin-bottom:8px">🎁</div>
+      <div style="font-family:'Fraunces',serif;font-size:17px;font-weight:500;font-style:italic;margin-bottom:6px">¡Crea tu cuenta y gana cupones!</div>
+      <div style="font-size:12px;color:var(--mut);line-height:1.7;margin-bottom:14px">
+        Únete a Gourmand Society — es <strong style="color:var(--yw)">gratis</strong>.<br>
+        Acumula visitas, desbloquea beneficios y recibe<br>
+        <strong style="color:var(--wh)">cupones exclusivos</strong> en cada restaurante.
+      </div>
+      <div style="display:flex;gap:8px">
+        <button onclick="closeOv('ov-confirm');openOv('ov-signup')" style="flex:1;background:linear-gradient(180deg,var(--yw),#b9e22a);color:#0a0a05;border:none;border-radius:12px;padding:13px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;letter-spacing:.04em">CREAR CUENTA GRATIS 🗝</button>
+        <button onclick="closeOv('ov-confirm')" style="background:rgba(255,255,255,.06);color:var(--mut);border:1px solid var(--line);border-radius:12px;padding:13px 16px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit">Ahora no</button>
+      </div>
+    </div>
+  </div>
+
+</div></div>
+</div>
+
+<!-- LOGIN OVERLAY -->
+<div class="ov" id="ov-login" onclick="ovBg(event,'ov-login')">
+<div class="modal"><button class="m-close" onclick="closeOv('ov-login')">✕</button>
+<div class="mbox" style="width:380px">
+  <div style="text-align:center;margin-bottom:24px">
+    <div style="font-family:'Fraunces',serif;font-size:28px;font-weight:600;font-style:italic;margin-bottom:4px"><span style="color:var(--pk)">Oh</span><span style="color:var(--yw)">Yeah!</span></div>
+    <div style="font-size:12.5px;color:var(--mut)">Inicia sesión para continuar</div>
+  </div>
+  <div style="margin-bottom:12px"><div style="font-size:9.5px;font-weight:800;color:var(--mut);letter-spacing:.08em;margin-bottom:5px">CORREO</div><input id="login-email" class="fi" type="email" placeholder="tu@correo.com"></div>
+  <div style="margin-bottom:20px"><div style="font-size:9.5px;font-weight:800;color:var(--mut);letter-spacing:.08em;margin-bottom:5px">CONTRASEÑA</div><input id="login-pass" class="fi" type="password" placeholder="Tu contraseña"></div>
+  <button onclick="doLogin()" class="btn-modal" style="margin-bottom:10px">ENTRAR</button>
+  <div style="text-align:center;font-size:12px;color:var(--mut)">¿No tienes cuenta? <span style="color:var(--pk);cursor:pointer;font-weight:700" onclick="closeOv('ov-login');openOv('ov-signup')">Regístrate</span></div>
+  <div style="text-align:center;margin-top:8px;font-size:11.5px"><span style="color:var(--dim);cursor:pointer" onclick="forgotPassword()">¿Olvidaste tu contraseña?</span></div>
+</div></div>
+</div>
+
+<!-- SIGNUP OVERLAY -->
+<div class="ov" id="ov-signup" onclick="ovBg(event,'ov-signup')">
+<div class="modal"><button class="m-close" onclick="closeOv('ov-signup')">✕</button>
+<div class="mbox" style="width:460px;max-height:90vh;overflow-y:auto">
+
+  <!-- HEADER -->
+  <div style="text-align:center;margin-bottom:22px">
+    <div style="font-family:'Fraunces',serif;font-size:26px;font-weight:600;font-style:italic;margin-bottom:4px">
+      <span style="color:var(--pk)">Oh</span><span style="color:var(--yw)">Yeah!</span>
+    </div>
+    <div style="font-size:12px;color:var(--mut)">Únete a la mejor comunidad gastronómica · Es gratis 🗝</div>
+  </div>
+
+  <!-- PASO 1: DATOS PERSONALES -->
+  <div style="font-size:9px;font-weight:800;color:var(--yw);letter-spacing:.1em;margin-bottom:12px">PASO 1 · TUS DATOS</div>
+
+  <!-- Nombre + Apellidos -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+    <div>
+      <div style="font-size:9px;font-weight:800;color:var(--mut);letter-spacing:.08em;margin-bottom:4px">NOMBRE *</div>
+      <input class="fi" id="su-name" placeholder="Tu nombre" autocomplete="given-name">
+    </div>
+    <div>
+      <div style="font-size:9px;font-weight:800;color:var(--mut);letter-spacing:.08em;margin-bottom:4px">APELLIDOS *</div>
+      <input class="fi" id="su-last" placeholder="Apellidos" autocomplete="family-name">
+    </div>
+  </div>
+
+  <!-- Correo -->
+  <div style="margin-bottom:10px">
+    <div style="font-size:9px;font-weight:800;color:var(--mut);letter-spacing:.08em;margin-bottom:4px">CORREO *</div>
+    <input class="fi" id="su-email" type="email" placeholder="tu@correo.com" autocomplete="email">
+  </div>
+
+  <!-- Celular con selector de país -->
+  <div style="margin-bottom:10px">
+    <div style="font-size:9px;font-weight:800;color:var(--mut);letter-spacing:.08em;margin-bottom:4px">CELULAR *</div>
+    <div style="display:flex;gap:6px">
+      <div style="position:relative;flex-shrink:0">
+        <select id="su-country-code" class="fi" style="padding-left:10px;padding-right:28px;min-width:100px;cursor:pointer;font-weight:700;background-image:url(&quot;data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236a6675' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E&quot;);background-repeat:no-repeat;background-position:right 8px center;background-size:14px;-webkit-appearance:none" onchange="updateCountryFlag(this)">
+          <option value="+57" data-flag="🇨🇴">🇨🇴 +57 Colombia</option>
+          <option value="+1" data-flag="🇺🇸">🇺🇸 +1 EE.UU.</option>
+          <option value="+52" data-flag="🇲🇽">🇲🇽 +52 México</option>
+          <option value="+34" data-flag="🇪🇸">🇪🇸 +34 España</option>
+          <option value="+54" data-flag="🇦🇷">🇦🇷 +54 Argentina</option>
+          <option value="+55" data-flag="🇧🇷">🇧🇷 +55 Brasil</option>
+          <option value="+56" data-flag="🇨🇱">🇨🇱 +56 Chile</option>
+          <option value="+51" data-flag="🇵🇪">🇵🇪 +51 Perú</option>
+          <option value="+58" data-flag="🇻🇪">🇻🇪 +58 Venezuela</option>
+          <option value="+593" data-flag="🇪🇨">🇪🇨 +593 Ecuador</option>
+          <option value="+502" data-flag="🇬🇹">🇬🇹 +502 Guatemala</option>
+          <option value="+506" data-flag="🇨🇷">🇨🇷 +506 Costa Rica</option>
+          <option value="+507" data-flag="🇵🇦">🇵🇦 +507 Panamá</option>
+          <option value="+503" data-flag="🇸🇻">🇸🇻 +503 El Salvador</option>
+          <option value="+504" data-flag="🇭🇳">🇭🇳 +504 Honduras</option>
+          <option value="+505" data-flag="🇳🇮">🇳🇮 +505 Nicaragua</option>
+          <option value="+509" data-flag="🇭🇹">🇭🇹 +509 Haití</option>
+          <option value="+591" data-flag="🇧🇴">🇧🇴 +591 Bolivia</option>
+          <option value="+595" data-flag="🇵🇾">🇵🇾 +595 Paraguay</option>
+          <option value="+598" data-flag="🇺🇾">🇺🇾 +598 Uruguay</option>
+          <option value="+44" data-flag="🇬🇧">🇬🇧 +44 Reino Unido</option>
+          <option value="+33" data-flag="🇫🇷">🇫🇷 +33 Francia</option>
+          <option value="+49" data-flag="🇩🇪">🇩🇪 +49 Alemania</option>
+          <option value="+39" data-flag="🇮🇹">🇮🇹 +39 Italia</option>
+          <option value="+31" data-flag="🇳🇱">🇳🇱 +31 Países Bajos</option>
+          <option value="+41" data-flag="🇨🇭">🇨🇭 +41 Suiza</option>
+          <option value="+61" data-flag="🇦🇺">🇦🇺 +61 Australia</option>
+          <option value="+81" data-flag="🇯🇵">🇯🇵 +81 Japón</option>
+          <option value="+82" data-flag="🇰🇷">🇰🇷 +82 Corea del Sur</option>
+          <option value="+86" data-flag="🇨🇳">🇨🇳 +86 China</option>
+          <option value="+91" data-flag="🇮🇳">🇮🇳 +91 India</option>
+          <option value="+7" data-flag="🇷🇺">🇷🇺 +7 Rusia</option>
+          <option value="+27" data-flag="🇿🇦">🇿🇦 +27 Sudáfrica</option>
+          <option value="+971" data-flag="🇦🇪">🇦🇪 +971 Emiratos</option>
+          <option value="+966" data-flag="🇸🇦">🇸🇦 +966 Arabia Saudita</option>
+          <option value="+972" data-flag="🇮🇱">🇮🇱 +972 Israel</option>
+          <option value="+20" data-flag="🇪🇬">🇪🇬 +20 Egipto</option>
+          <option value="+234" data-flag="🇳🇬">🇳🇬 +234 Nigeria</option>
+        </select>
+      </div>
+      <input class="fi" id="su-phone" type="tel" placeholder="Número de celular" autocomplete="tel" style="flex:1">
+    </div>
+  </div>
+
+  <!-- Contraseña con validación en tiempo real -->
+  <div style="margin-bottom:6px">
+    <div style="font-size:9px;font-weight:800;color:var(--mut);letter-spacing:.08em;margin-bottom:4px">CONTRASEÑA *</div>
+    <div style="position:relative">
+      <input class="fi" id="su-password" type="password" placeholder="Mínimo 6 caracteres"
+        autocomplete="new-password" oninput="validatePasswords()"
+        style="width:100%;padding-right:40px">
+      <button onclick="togglePass('su-password','eye1')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--dim)" id="eye1">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div style="margin-bottom:6px">
+    <div style="font-size:9px;font-weight:800;color:var(--mut);letter-spacing:.08em;margin-bottom:4px">CONFIRMAR CONTRASEÑA *</div>
+    <div style="position:relative">
+      <input class="fi" id="su-password2" type="password" placeholder="Repite la contraseña"
+        autocomplete="new-password" oninput="validatePasswords()"
+        style="width:100%;padding-right:40px">
+      <button onclick="togglePass('su-password2','eye2')" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--dim)" id="eye2">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </button>
+    </div>
+    <!-- Password match indicator -->
+    <div id="pass-match-indicator" style="height:20px;margin-top:5px;font-size:10.5px;font-weight:700;display:flex;align-items:center;gap:5px"></div>
+  </div>
+
+  <!-- Password strength -->
+  <div style="margin-bottom:16px">
+    <div style="background:rgba(255,255,255,.06);border-radius:3px;height:3px;overflow:hidden;margin-bottom:4px">
+      <div id="pass-strength-bar" style="height:100%;border-radius:3px;width:0%;transition:width .3s,background .3s"></div>
+    </div>
+    <div id="pass-strength-txt" style="font-size:9.5px;color:var(--dim);font-weight:600"></div>
+  </div>
+
+  <!-- Terms checkbox -->
+  <div style="margin-bottom:16px;background:rgba(255,255,255,.03);border:1px solid var(--line);border-radius:12px;padding:12px">
+    <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+      <input type="checkbox" id="su-terms-check" style="margin-top:2px;accent-color:var(--yw);width:15px;height:15px;flex-shrink:0">
+      <span style="font-size:11.5px;color:var(--mut);line-height:1.6">
+        Acepto los
+        <span style="color:var(--yw);font-weight:700;cursor:pointer;text-decoration:underline" onclick="openOv('ov-terms-full')">Términos y Condiciones</span>
+        y la
+        <span style="color:var(--yw);font-weight:700;cursor:pointer;text-decoration:underline" onclick="openOv('ov-terms-full')">Política de Privacidad</span>
+        de Oh Yeah!
+      </span>
+    </label>
+  </div>
+
+  <!-- Submit -->
+  <button onclick="doSignup()" class="btn-modal" style="margin-bottom:10px">CREAR CUENTA 🗝</button>
+  <div style="text-align:center;font-size:11.5px;color:var(--mut)">
+    ¿Ya tienes cuenta?
+    <span style="color:var(--pk);cursor:pointer;font-weight:700" onclick="closeOv('ov-signup');openOv('ov-login')">Inicia sesión</span>
+  </div>
+
+</div></div>
+</div>
+
+<!-- TERMS OVERLAY -->
+<!-- TERMS ACCEPT (simple) -->
+<div class="ov" id="ov-terms" onclick="ovBg(event,'ov-terms')">
+<div class="modal"><button class="m-close" onclick="closeOv('ov-terms')">✕</button>
+<div class="mbox" style="width:440px">
+  <div style="font-size:18px;font-weight:800;margin-bottom:8px">Confirmar registro</div>
+  <div style="font-size:12px;color:var(--mut);line-height:1.7;margin-bottom:20px">
+    Al crear tu cuenta en Oh Yeah! aceptas el uso de tus datos para personalizar tu experiencia gastronómica.
+    Tus datos nunca serán vendidos a terceros.
+    <span style="color:var(--yw);cursor:pointer;font-weight:700" onclick="openOv('ov-terms-full')">Ver términos completos →</span>
+  </div>
+  <button onclick="acceptTerms()" class="btn-modal" style="margin-bottom:8px">ACEPTO Y CONTINÚO</button>
+  <button onclick="closeOv('ov-terms')" class="btn-modal-pink">Cancelar</button>
+</div></div>
+</div>
+
+<!-- FULL TERMS & CONDITIONS OVERLAY -->
+<div class="ov" id="ov-terms-full" onclick="ovBg(event,'ov-terms-full')">
+<div class="modal"><button class="m-close" onclick="closeOv('ov-terms-full')">✕</button>
+<div class="mbox" style="width:560px;max-height:85vh;overflow-y:auto">
+  <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:500;font-style:italic;color:var(--yw);margin-bottom:4px">Términos y Condiciones</div>
+  <div style="font-size:10px;color:var(--dim);font-weight:600;margin-bottom:20px">Última actualización: Mayo 2026</div>
+
+  <div style="font-size:12.5px;color:rgba(240,237,232,.8);line-height:1.8">
+    <div style="font-size:13px;font-weight:800;color:var(--wh);margin-bottom:8px;margin-top:0">1. Uso de la plataforma</div>
+    <p style="margin-bottom:14px">Oh Yeah! es una plataforma de reservas y descubrimiento gastronómico. Al registrarte, aceptas usar el servicio de manera responsable y honesta. Las reservas realizadas generan un compromiso con el restaurante.</p>
+
+    <div style="font-size:13px;font-weight:800;color:var(--wh);margin-bottom:8px">2. Privacidad y datos</div>
+    <p style="margin-bottom:14px">Recopilamos nombre, correo y teléfono para gestionar tus reservas y personalizarte la experiencia. <strong style="color:var(--wh)">Nunca vendemos tus datos a terceros.</strong> Puedes solicitar la eliminación de tu cuenta en cualquier momento escribiéndonos.</p>
+
+    <div style="font-size:13px;font-weight:800;color:var(--wh);margin-bottom:8px">3. Reservas y cancelaciones</div>
+    <p style="margin-bottom:14px">Las reservas son vinculantes. Si necesitas cancelar, hazlo con al menos 2 horas de anticipación. Los no-shows repetidos pueden resultar en restricciones de la cuenta.</p>
+
+    <div style="font-size:13px;font-weight:800;color:var(--wh);margin-bottom:8px">4. Gourmand Society</div>
+    <p style="margin-bottom:14px">El programa de niveles es gratuito. Los beneficios se calculan automáticamente con base en visitas verificadas. Oh Yeah! se reserva el derecho de ajustar los beneficios con previo aviso.</p>
+
+    <div style="font-size:13px;font-weight:800;color:var(--wh);margin-bottom:8px">5. Bonos y cupones</div>
+    <p style="margin-bottom:14px">Los bonos tienen fecha de vencimiento y son de uso personal e intransferible. Un bono válido debe ser mostrado en el restaurante antes de pagar. Oh Yeah! no es responsable de bonos expirados.</p>
+
+    <div style="font-size:13px;font-weight:800;color:var(--wh);margin-bottom:8px">6. Propiedad intelectual</div>
+    <p style="margin-bottom:14px">Todo el contenido de Oh Yeah! (diseño, textos, curación) es propiedad de Oh Yeah! SAS. No puedes reproducirlo sin autorización.</p>
+
+    <div style="font-size:13px;font-weight:800;color:var(--wh);margin-bottom:8px">7. Contacto</div>
+    <p style="margin-bottom:4px">Para dudas o solicitudes: <span style="color:var(--yw)">hola@ohyeah.co</span></p>
+  </div>
+
+  <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line)">
+    <button onclick="closeOv('ov-terms-full')" class="btn-modal">ENTENDIDO</button>
+  </div>
+</div></div>
+</div>
+
+
+
+<!-- WELCOME OVERLAY -->
+<div class="ov" id="ov-welcome" onclick="ovBg(event,'ov-welcome')">
+<div class="modal"><div class="mbox" style="width:420px;text-align:center;padding:36px">
+  <div style="font-family:'Fraunces',serif;font-size:32px;font-weight:600;font-style:italic;margin-bottom:20px"><span style="color:var(--pk)">Oh</span><span style="color:var(--yw)">Yeah!</span></div>
+  <div style="font-size:48px;margin-bottom:16px">📧</div>
+  <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:500;font-style:italic;color:var(--yw);margin-bottom:8px">¡Bienvenido!</div>
+  <div id="welcome-name-msg" style="font-size:14px;font-weight:700;margin-bottom:12px"></div>
+  <div style="background:rgba(255,45,126,.07);border:1px solid rgba(255,45,126,.18);border-radius:14px;padding:16px;margin-bottom:20px;font-size:12.5px;color:rgba(240,237,232,.8);line-height:1.7">Ahora eres parte de la mejor comunidad gastronómica del mundo.<br>Una cultura de amantes al buen comer. 🍽️</div>
+  <div style="font-size:11.5px;color:var(--mut);margin-bottom:18px">Verifica tu correo: <strong id="welcome-email-shown" style="color:var(--yw)"></strong></div>
+  <button onclick="closeOv('ov-welcome');goSec('home')" class="btn-modal">IR AL INICIO 🎉</button>
+</div></div>
+</div>
+
+<!-- CANJE OVERLAY -->
+<div class="ov" id="ov-canje" onclick="ovBg(event,'ov-canje')">
+<div class="modal"><button class="m-close" onclick="closeOv('ov-canje')">✕</button>
+<div class="mbox" style="width:420px">
+  <div style="font-size:18px;font-weight:800;margin-bottom:4px">🎟 Canjear código</div>
+  <div style="font-size:12px;color:var(--mut);margin-bottom:16px">Ingresa tu código para obtener tu beneficio</div>
+  <div style="display:flex;gap:8px;margin-bottom:12px">
+    <input id="canje-input" class="fi" placeholder="Ej: CAFE2024, BONO10..." style="flex:1;text-transform:uppercase;letter-spacing:.1em;font-weight:700" oninput="this.value=this.value.toUpperCase()">
+    <button onclick="canjearCodigo()" style="background:var(--yw);color:#0a0a05;border:none;border-radius:10px;padding:0 18px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap">VALIDAR</button>
+  </div>
+  <div id="canje-result" style="display:none;margin-bottom:12px"></div>
+  <div id="canje-login-prompt" style="display:none;background:rgba(255,45,126,.07);border:1px solid rgba(255,45,126,.18);border-radius:10px;padding:14px;text-align:center;margin-bottom:12px">
+    <div style="font-size:12px;font-weight:700;margin-bottom:8px">Guarda tu bono en tu cuenta</div>
+    <button onclick="closeOv('ov-canje');openOv('ov-login')" class="btn-modal-pink" style="padding:9px 24px;width:auto;border-radius:20px">Iniciar sesión</button>
+  </div>
+  <div style="background:rgba(255,255,255,.04);border-radius:12px;padding:14px">
+    <div style="font-size:9.5px;font-weight:800;color:var(--yw);letter-spacing:.08em;margin-bottom:10px;text-transform:uppercase">¿Cómo gano bonos?</div>
+    <div style="display:flex;flex-direction:column;gap:7px;font-size:11.5px;color:var(--mut)">
+      <div>🍽️ <strong style="color:var(--wh)">Visita restaurantes Oh Yeah!</strong> — cada visita suma</div>
+      <div>⭐ <strong style="color:var(--wh)">Deja una reseña</strong> — bonos verificados</div>
+      <div>🎟 <strong style="color:var(--wh)">Asiste a eventos</strong> — códigos exclusivos</div>
+      <div>👥 <strong style="color:var(--wh)">Refiere amigos</strong> — ambos ganan</div>
+    </div>
+  </div>
+</div></div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<!-- MOOD DROP -->
+<div class="mood-drop" id="mood-drop" onclick="event.stopPropagation()">
+  <div class="mood-item" id="mood-0" onclick="pickMood('Primera Cita','💕',0)"><span class="mood-ico">💕</span><div><h4>Primera Cita</h4><p>Ese lugar donde todo importa. Luz correcta, música correcta.</p></div></div>
+  <div class="mood-item" id="mood-1" onclick="pickMood('Celebrar en Grande','🎉',1)"><span class="mood-ico">🎉</span><div><h4>Celebrar en Grande</h4><p>Cumpleaños, ascensos. DJ, cocteles protagonistas, energía alta.</p></div></div>
+  <div class="mood-item" id="mood-2" onclick="pickMood('Impresionar','⭐',2)"><span class="mood-ico">⭐</span><div><h4>Impresionar</h4><p>Socios, clientes, suegros. Diseño wow. Servicio impecable.</p></div></div>
+  <div class="mood-item" id="mood-3" onclick="pickMood('Romántico','🕯️',3)"><span class="mood-ico">🕯️</span><div><h4>Romántico</h4><p>Íntimo, sensorial, memorable. Para aniversarios o sorpresas.</p></div></div>
+  <div class="mood-item" id="mood-4" onclick="pickMood('Buena Vibra','🔥',4)"><span class="mood-ico">🔥</span><div><h4>Buena Vibra</h4><p>Ambiente animado, risas, barra potente. El plan perfecto.</p></div></div>
+  <div class="mood-item" id="mood-5" onclick="pickMood('Algo Diferente','✨',5)"><span class="mood-ico">✨</span><div><h4>Algo Diferente</h4><p>Rituales únicos, conceptos especiales. Para los que no quieren lo típico.</p></div></div>
+</div>
+
+<!-- DATE DROP -->
+<div class="drop" id="drop-date" onclick="event.stopPropagation()" style="min-width:280px">
+  <div class="cal-nav">
+    <button onclick="calNav(-1)">‹</button>
+    <span id="cal-month-label">Mayo 2026</span>
+    <button onclick="calNav(1)">›</button>
+  </div>
+  <div class="cal-week-labels"><span>Lu</span><span>Ma</span><span>Mi</span><span>Ju</span><span>Vi</span><span>Sa</span><span>Do</span></div>
+  <div class="cal-grid" id="cal-grid"></div>
+</div>
+
+<!-- TIME DROP -->
+<div class="drop" id="drop-time" onclick="event.stopPropagation()" style="min-width:280px">
+  <div class="drop-hd">ELIGE LA HORA</div>
+  <div class="time-grid" id="time-grid"></div>
+</div>
+
+<!-- PAX DROP -->
+<div class="drop" id="drop-pax" onclick="event.stopPropagation()" style="min-width:240px">
+  <div class="drop-hd">¿CUÁNTOS SON?</div>
+  <div class="pax-control">
+    <button class="pax-btn" onclick="setPax(STATE.pax-1)">−</button>
+    <span class="pax-num" id="pax-display">2</span>
+    <button class="pax-btn" onclick="setPax(STATE.pax+1)">+</button>
+    <span style="font-size:12px;color:var(--mut);font-weight:600">personas</span>
+  </div>
+  <div class="pax-presets" id="pax-presets"></div>
+</div>
+
+
+
+<script>
+
+/* ═══════════════════════════════════════════════════
+   OH YEAH! PREMIUM — JAVASCRIPT
+═══════════════════════════════════════════════════ */
+const SUPA_URL='https://kxaxjttvkaeewsjbpert.supabase.co';
+const SUPA_KEY='eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YXhqdHR2a2FlZXdzamJwZXJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkxMTc0MjgsImV4cCI6MjA4NDY5MzQyOH0.fMINxNqrLT6f8lNPrpRZYPpm6IjTlKg6wAH7aAlfz_o';
+const supa=(typeof supabase!=='undefined')?supabase.createClient(SUPA_URL,SUPA_KEY):null;
+const STATE={date:new Date(),time:'8:00 PM',pax:2,mood:null,moodEmoji:null,loggedIn:false,user:null,modifyMode:false,modifyingId:null};
+let USER_VISITS=0;
+const MONTHS_ES=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+const MONTHS_SHORT=['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'];
+const TIMES=['12:00 PM','1:00 PM','2:00 PM','7:00 PM','7:30 PM','8:00 PM','8:30 PM','9:00 PM','9:30 PM','10:00 PM','11:00 PM','12:00 AM'];
+const UNAVAIL=[];
+let _franjaCache={};
+let calViewMain=new Date();
+const GS_LEVELS=[
+  {id:'iniciado',name:'INICIADO',emoji:'🏠',color:'#ff2d7e',visits_needed:0},
+  {id:'consagrado',name:'CONSAGRADO',emoji:'🔥',color:'#ff7a00',visits_needed:3},
+  {id:'lacreme',name:'LA CRÈME',emoji:'🔍',color:'#5aa8ff',visits_needed:6},
+  {id:'supremo',name:'SUPREMO',emoji:'💫',color:'#d6ff3a',visits_needed:9},
+  {id:'grand',name:'GRAN GOURMAND',emoji:'👑',color:'#ecd989',visits_needed:12},
+];
+function getUserLevel(){var lv=GS_LEVELS[0];for(var i=GS_LEVELS.length-1;i>=0;i--){if(USER_VISITS>=GS_LEVELS[i].visits_needed){lv=GS_LEVELS[i];break;}}return lv;}
+
+/* NAV */
+function goSec(id){
+  document.querySelectorAll('section').forEach(function(s){s.classList.remove('on');});
+  var sec=document.getElementById('sec-'+id);if(sec)sec.classList.add('on');
+  document.querySelectorAll('.nav-tab').forEach(function(t){t.classList.toggle('on',t.dataset.sec===id);t.classList.toggle('home',t.dataset.sec===id&&id==='home');});
+  window.scrollTo(0,0);closeAllPopups();closeAllDrops();
+  if(id==='you')setTimeout(updateYouSection,50);
+  if(id==='access')updateAccessSection();
+}
+document.querySelectorAll('.nav-tab').forEach(function(t){t.addEventListener('click',function(){goSec(t.dataset.sec);});});
+document.getElementById('bellBtn').addEventListener('click',function(e){e.stopPropagation();document.getElementById('notif-popup-wrap').classList.toggle('open');});
+function filterClick(el){document.querySelectorAll('.filter-chip').forEach(function(c){c.classList.remove('on');});el.classList.add('on');showToast('Filtrando: '+el.textContent.trim());}
+function selectVibe(el,emoji,label){document.querySelectorAll('.vibe-pill').forEach(function(v){v.classList.remove('on');});el.classList.add('on');STATE.mood=label;STATE.moodEmoji=emoji;var txt=document.getElementById('book-mood-txt');if(txt)txt.textContent=emoji+' '+label;showToast(emoji+' '+label);}
+
+/* TOAST */
+var _tt=null;
+function showToast(msg,dur){var t=document.getElementById('toast');if(!t)return;t.textContent=msg;t.classList.add('show');clearTimeout(_tt);_tt=setTimeout(function(){t.classList.remove('show');},dur||2800);}
+
+/* OVERLAYS */
+function openOv(id){var el=document.getElementById(id);if(el)el.classList.add('open');}
+function closeOv(id){var el=document.getElementById(id);if(el)el.classList.remove('open');}
+function ovBg(e,id){if(e.target===document.getElementById(id))closeOv(id);}
+
+/* POPUPS */
+function toggleProfilePop(){document.getElementById('prof-popup-wrap').classList.toggle('open');}
+function closeAllPopups(){document.querySelectorAll('.popup-wrap').forEach(function(w){w.classList.remove('open');});}
+document.addEventListener('click',function(e){if(!e.target.closest('.popup-wrap')&&!e.target.closest('.nav-bell')&&!e.target.closest('.nav-av')&&!e.target.closest('#navAvatar'))closeAllPopups();});
+
+/* DROPS */
+function closeAllDrops(){document.querySelectorAll('.drop,.mood-drop').forEach(function(d){d.classList.remove('open');});document.querySelectorAll('.sp-pill,.book-pill,.book-mood').forEach(function(p){p.classList.remove('open');});}
+function toggleDrop(dropId,pillId){
+  var drop=document.getElementById(dropId),pill=document.getElementById(pillId);
+  if(!drop)return;
+  var isOpen=drop.classList.contains('open');closeAllDrops();
+  if(!isOpen){drop.classList.add('open');if(pill)pill.classList.add('open');
+    requestAnimationFrame(function(){var ref=pill||drop.parentElement;var rect=ref.getBoundingClientRect();var vw=window.innerWidth,vh=window.innerHeight;var dw=Math.min(drop.offsetWidth||280,vw-16);var top=rect.bottom+8;if(top+(drop.offsetHeight||300)>vh)top=rect.top-(drop.offsetHeight||300)-8;drop.style.top=Math.max(8,top)+'px';drop.style.left=Math.max(8,Math.min(rect.left,vw-dw-8))+'px';drop.style.width=dw+'px';});}
+}
+function toggleMood(){
+  var drop=document.getElementById('mood-drop'),pill=document.getElementById('bp-mood')||document.getElementById('book-mood');
+  if(!drop)return;var isOpen=drop.classList.contains('open');closeAllDrops();
+  if(!isOpen){drop.classList.add('open');if(pill)pill.classList.add('open');
+    requestAnimationFrame(function(){var rect=(pill||drop).getBoundingClientRect();var vw=window.innerWidth;var dw=Math.min(380,vw-16);drop.style.top=(rect.bottom+8)+'px';drop.style.left=Math.max(8,Math.min(rect.left,vw-dw-8))+'px';drop.style.width=dw+'px';});}
+}
+function pickMood(label,emoji,idx){STATE.mood=label;STATE.moodEmoji=emoji;document.querySelectorAll('.mood-item').forEach(function(m){m.classList.remove('sel');});var item=document.getElementById('mood-'+idx);if(item)item.classList.add('sel');var txt=document.getElementById('book-mood-txt');if(txt)txt.textContent=emoji+' '+label;closeAllDrops();showToast(emoji+' '+label);}
+
+/* CALENDAR */
+function buildCal(gridId,viewDate){
+  var grid=document.getElementById(gridId||'cal-grid');if(!grid)return;
+  var y=viewDate.getFullYear(),m=viewDate.getMonth();
+  var first=(new Date(y,m,1).getDay()+6)%7;
+  var days=new Date(y,m+1,0).getDate();
+  grid.innerHTML='';
+  for(var i=0;i<first;i++){grid.appendChild(document.createElement('div'));}
+  var today=new Date();
+  for(var d=1;d<=days;d++){
+    var btn=document.createElement('div');btn.className='cal-day';btn.textContent=d;
+    var date=new Date(y,m,d);
+    if(date<new Date(today.getFullYear(),today.getMonth(),today.getDate())){btn.classList.add('past');}
+    else{if(date.toDateString()===today.toDateString())btn.classList.add('today');if(date.toDateString()===STATE.date.toDateString())btn.classList.add('sel');(function(dd){btn.addEventListener('click',function(){STATE.date=new Date(y,m,dd);buildCal(gridId,viewDate);updateDateDisplay();buildFranjaGrid();closeAllDrops();showToast('📅 '+dd+' de '+MONTHS_ES[m]);});})(d);}
+    grid.appendChild(btn);}
+}
+function calNav(dir){calViewMain.setMonth(calViewMain.getMonth()+dir);var lbl=document.getElementById('cal-month-label');if(lbl)lbl.textContent=MONTHS_ES[calViewMain.getMonth()]+' '+calViewMain.getFullYear();buildCal('cal-grid',calViewMain);}
+function updateDateDisplay(){var d=STATE.date;var label=MONTHS_SHORT[d.getMonth()]+' '+d.getDate();['bp-date-val','ov-date-val'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=label;});syncEventPills&&syncEventPills();}
+
+/* TIME */
+function isPastTime(t){var now=new Date(),sel=STATE.date;if(sel.toDateString()!==now.toDateString())return false;var parts=t.match(/(\d+):(\d+)\s*(AM|PM)/i);if(!parts)return false;var h=parseInt(parts[1]),m=parseInt(parts[2]),ap=parts[3].toUpperCase();if(ap==='PM'&&h!==12)h+=12;if(ap==='AM'&&h===12)h=0;return(h*60+m)<(now.getHours()*60+now.getMinutes()+60);}
+async function cargarFranjasDelDia(dateStr){if(!supa)return;var promises=TIMES.map(async function(t){var key=dateStr+'|'+t;if(_franjaCache[key]!==undefined)return;try{var r=await supa.rpc('franja_disponibilidad',{p_fecha:dateStr,p_hora:t}).catch(function(){return{data:null};});_franjaCache[key]=r.data||{disponible:true,libres:15};}catch(e){_franjaCache[key]={disponible:true,libres:15};}});await Promise.all(promises);}
+function getFranjaInfo(dateStr,t){return _franjaCache[dateStr+'|'+t]||null;}
+function buildTimeGrid(gridId){
+  var grid=document.getElementById(gridId||'ov-time-grid');if(!grid)return;
+  var dateStr=STATE.date.toISOString().split('T')[0];grid.innerHTML='';
+  TIMES.forEach(function(t){var btn=document.createElement('button');var franja=getFranjaInfo(dateStr,t);var llena=franja&&!franja.disponible;var past=isPastTime(t);var ua=UNAVAIL.includes(t)||llena||past;var sel=t===STATE.time;btn.className='time-btn'+(sel?' sel':'')+(ua?' unavail':'');btn.disabled=ua;btn.textContent=t;if(franja&&franja.disponible&&franja.libres<=3&&!ua)btn.style.borderColor='#ecd989';if(!ua)btn.addEventListener('click',function(){STATE.time=t;grid.querySelectorAll('.time-btn').forEach(function(b){b.classList.remove('sel');});btn.classList.add('sel');updateTimeDisplay();showToast('🕐 '+t);});grid.appendChild(btn);});
+}
+async function buildFranjaGrid(){
+  var dateStr=STATE.date.toISOString().split('T')[0];
+  await cargarFranjasDelDia(dateStr);
+  buildTimeGridEnhanced('ov-time-grid', dateStr);
+  buildTimeGrid('time-grid');
+  updateAvailBar();
+  checkAndShowSimilar(dateStr);
+}
+async function updateAvailBar(){var txt=document.getElementById('ov-avail-txt');if(!txt||!supa)return;txt.textContent='Verificando...';try{var dateStr=STATE.date.toISOString().split('T')[0];var r=await supa.rpc('franja_disponibilidad',{p_fecha:dateStr,p_hora:STATE.time});if(r.data){var libre=r.data.libres;txt.textContent=!r.data.disponible?'Sin disponibilidad':libre>5?'Alta disponibilidad':'Solo '+libre+' mesas';txt.style.color=!r.data.disponible?'#ff6b6b':libre>5?'#4ade80':'#ecd989';}}catch(e){txt.textContent='Disponible';txt.style.color='#4ade80';}}
+function updateTimeDisplay(){['ov-time-val','bp-time-val'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=STATE.time;});}
+
+/* PAX */
+function setPax(n){STATE.pax=Math.max(1,Math.min(20,n));var pd=document.getElementById('pax-display');if(pd)pd.textContent=STATE.pax;document.querySelectorAll('.pax-preset').forEach(function(b){b.classList.toggle('sel',parseInt(b.dataset.pax)===STATE.pax);});['ov-pax-val','bp-pax-val'].forEach(function(id){var el=document.getElementById(id);if(el)el.textContent=STATE.pax;});}
+(function(){var cont=document.getElementById('pax-presets');if(!cont)return;[1,2,3,4,5,6,7,8].forEach(function(n){var btn=document.createElement('button');btn.className='pax-preset'+(n===2?' sel':'');btn.dataset.pax=n;btn.textContent=n+' pers.';btn.onclick=function(){setPax(n);closeAllDrops();};cont.appendChild(btn);});})();
+
+/* RESERVE MODAL */
+function openReserveModal(){
+  openOv('ov-reserve');
+  var rn=document.getElementById('ov-rest-name');if(rn)rn.textContent=STATE.restaurantName||'OMM';
+  // Show guest fields if not logged in
+  var gf=document.getElementById('guest-fields');
+  if(gf) gf.style.display=STATE.loggedIn?'none':'block';
+  setTimeout(function(){
+    buildTimeGrid('ov-time-grid');
+    buildFranjaGrid();
+    updateDateDisplay();
+    updateTimeDisplay();
+    var pv=document.getElementById('ov-pax-val');if(pv)pv.textContent=STATE.pax;
+  },50);
+}
+
+/* CONFIRM RES */
+async function confirmRes(){
+  if(STATE.modifyMode&&STATE.modifyingId){await _confirmarModificacion();return;}
+  var btn=document.getElementById('ov-confirm-btn');if(btn){btn.textContent='Verificando...';btn.disabled=true;}
+
+  // ── Validate guest fields if not logged in ──
+  var guestName=null, guestEmail=null, guestPhone=null;
+  if(!STATE.loggedIn){
+    var gn=document.getElementById('guest-name');
+    var ge=document.getElementById('guest-email');
+    var gp=document.getElementById('guest-phone');
+    if(!gn||!gn.value.trim()){showToast('⚠️ Ingresa tu nombre');if(btn){btn.textContent='CONFIRMAR RESERVA';btn.disabled=false;}return;}
+    if(!ge||!ge.value.trim()||!ge.value.includes('@')){showToast('⚠️ Ingresa un correo válido');if(btn){btn.textContent='CONFIRMAR RESERVA';btn.disabled=false;}return;}
+    if(!gp||!gp.value.trim()){showToast('⚠️ Ingresa tu celular');if(btn){btn.textContent='CONFIRMAR RESERVA';btn.disabled=false;}return;}
+    guestName=gn.value.trim();
+    guestEmail=ge.value.trim().toLowerCase();
+    guestPhone=gp.value.trim();
+  }
+
+  var dateStr=STATE.date.toISOString().split('T')[0];
+  if(supa){try{var r=await supa.rpc('franja_disponibilidad',{p_fecha:dateStr,p_hora:STATE.time});if(r.data&&!r.data.disponible){showToast('😔 Esta franja está llena', 3000);
+      if(btn){btn.textContent='CONFIRMAR RESERVA';btn.disabled=false;}
+      await buildFranjaGrid();
+      // Show "choose another time" message
+      var avail = document.getElementById('ov-avail-txt');
+      if (avail) {
+        avail.textContent = 'Lleno — elige otro horario';
+        avail.style.color = '#ff6b6b';
+      }
+      var hint = document.createElement('div');
+      hint.style.cssText = 'background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.2);border-radius:10px;padding:10px 14px;font-size:12px;font-weight:700;color:#ff6b6b;margin-top:-10px;margin-bottom:14px;text-align:center';
+      hint.textContent = '😔 Franja llena — elige otro horario o restaurante similar';
+      var grid = document.getElementById('ov-time-grid');
+      if (grid && !document.getElementById('franja-hint')) { hint.id='franja-hint'; grid.parentNode.insertBefore(hint, grid); }
+      var sim = document.getElementById('similar-section');
+      if (sim) { sim.classList.add('show'); renderSimilarRestaurants(); }
+      return;}}catch(e){}}
+  var occ=document.getElementById('occ-select');
+  var finalName  = STATE.loggedIn ? STATE.user.nombre : guestName;
+  var finalEmail = STATE.loggedIn ? STATE.user.email  : guestEmail;
+  var finalPhone = STATE.loggedIn ? (STATE.user.telefono||'') : guestPhone;
+  var reservation={restaurant_id:(STATE.restaurantName&&STATE.restaurantName.toLowerCase().includes('gallo')?'429b20fa-1d11-4295-8775-907827dcc364':'omm'),restaurant_name:(STATE.restaurantName||'OMM'),date:dateStr,time:STATE.time,pax:STATE.pax,guest_name:finalName,guest_email:finalEmail,guest_phone:finalPhone,gourmand_level:STATE.loggedIn?getUserLevel().name:'INVITADO',is_first_visit:!STATE.loggedIn||USER_VISITS===0,visit_count:STATE.loggedIn?USER_VISITS:0,mood:STATE.mood,occasion:occ?occ.value:null,status:'confirmed',source:STATE.loggedIn?'ohyeah':'ohyeah_guest',nexum_brief:JSON.stringify({instruccion:!STATE.loggedIn?'Invitado — sin cuenta':'Cliente '+(USER_VISITS===0?'nuevo':'recurrente — '+USER_VISITS+' visitas'),nombre:finalName,email:finalEmail,telefono:finalPhone,nivel:STATE.loggedIn?getUserLevel().name:'INVITADO'})};
+  var savedOk=false;
+  if(supa){try{var ins=await supa.from('ohyeah_reservas').insert([reservation]).select();if(!ins.error){savedOk=true;USER_VISITS++;}else if(ins.error.message&&ins.error.message.startsWith('FRANJA_LLENA')){showToast('😔 La franja se llenó. Elige otro horario.',5000);if(btn){btn.textContent='CONFIRMAR RESERVA';btn.disabled=false;}await buildFranjaGrid();return;}}catch(e){}}
+  var m=MONTHS_ES[STATE.date.getMonth()],d=STATE.date.getDate();
+  var emailToShow = STATE.loggedIn ? STATE.user.email : guestEmail;
+  var nameToShow  = STATE.loggedIn ? (STATE.user.nombre||'').split(' ')[0] : guestName.split(' ')[0];
+  var detail=document.getElementById('conf-detail');
+  if(detail)detail.innerHTML=
+    '<div style="text-align:left">'+
+    '<div style="font-size:13px;font-weight:700;color:var(--wh);margin-bottom:12px">Hola, <strong>'+nameToShow+'</strong> 👋</div>'+
+    '<div style="background:rgba(255,255,255,.04);border-radius:12px;padding:14px;margin-bottom:12px;font-size:12px;color:var(--mut);line-height:1.9">'+
+    '🍽️ <strong style="color:var(--wh)">OMM</strong><br>'+
+    '📅 '+d+' de '+m+'<br>'+
+    '🕐 '+STATE.time+'<br>'+
+    '👥 '+STATE.pax+' persona'+(STATE.pax!==1?'s':'')+
+    (STATE.mood?'<br>✨ '+STATE.mood:'')+
+    '</div>'+
+    (emailToShow?'<div style="background:rgba(214,255,58,.06);border:1px solid rgba(214,255,58,.2);border-radius:10px;padding:12px;font-size:11.5px;color:var(--mut)">📧 Confirmación enviada a <strong style="color:var(--yw)">'+emailToShow+'</strong></div>':'')+'</div>';
+  if(btn){btn.textContent='CONFIRMAR RESERVA';btn.disabled=false;}
+  closeOv('ov-reserve');openOv('ov-confirm');showToast('🎉 ¡Reserva confirmada!');
+  // Show guest CTA if not logged in
+  var guestCta = document.getElementById('conf-guest-cta');
+  if (guestCta) guestCta.style.display = STATE.loggedIn ? 'none' : 'block';
+  if(STATE.loggedIn){loadUserProfile(STATE.user);setTimeout(updateYouSection,200);}
+}
+
+/* AUTH */
+async function doLogin(){
+  var email=document.getElementById('login-email'),pass=document.getElementById('login-pass');
+  if(!email.value||!pass.value){showToast('⚠️ Ingresa tu correo y contraseña');return;}
+  showToast('Iniciando sesión...');
+  if(supa){try{var r=await supa.auth.signInWithPassword({email:email.value,password:pass.value});if(r.error){var msg=r.error.message;if(msg.includes('Invalid login credentials'))msg='Correo o contraseña incorrectos';else if(msg.includes('Email not confirmed'))msg='📧 Confirma tu correo primero';showToast('❌ '+msg,4000);return;}var perfil=await supa.from('ohyeah_clientes').select('*').eq('email',email.value).single();STATE.loggedIn=true;STATE.user=perfil.data||{nombre:email.value.split('@')[0],email:email.value,visit_count:0};USER_VISITS=STATE.user.visit_count||0;loadUserProfile(STATE.user);closeOv('ov-login');showToast('¡Bienvenido, '+(STATE.user.nombre||'').split(' ')[0]+'! 🎉',3000);return;}catch(e){console.warn(e);}}
+  STATE.loggedIn=true;STATE.user={nombre:email.value.split('@')[0],email:email.value,visit_count:0};loadUserProfile(STATE.user);closeOv('ov-login');showToast('¡Bienvenido! 🎉',3000);
+}
+async function doSignup(){
+  var name  = document.getElementById('su-name');
+  var email = document.getElementById('su-email');
+  var phone = document.getElementById('su-phone');
+  var pass1 = document.getElementById('su-password');
+  var pass2 = document.getElementById('su-password2');
+  var terms = document.getElementById('su-terms-check');
+
+  if (!name||!name.value.trim())            { showToast('⚠️ Ingresa tu nombre'); name.focus(); return; }
+  if (!email||!email.value.trim()||!email.value.includes('@')) { showToast('⚠️ Correo inválido'); email.focus(); return; }
+  if (!phone||!phone.value.trim())          { showToast('⚠️ Ingresa tu celular'); phone.focus(); return; }
+  if (!pass1||pass1.value.length < 6)       { showToast('⚠️ Contraseña mínimo 6 caracteres'); pass1.focus(); return; }
+  if (!pass2||pass1.value !== pass2.value)  { showToast('⚠️ Las contraseñas no coinciden'); pass2.focus(); return; }
+  if (!terms||!terms.checked)               { showToast('⚠️ Acepta los términos y condiciones'); return; }
+
+  openOv('ov-terms');
+}
+async function acceptTerms(){
+  closeOv('ov-terms');closeOv('ov-signup');
+  var nombre=((document.getElementById('su-name')||{}).value||'')+' '+((document.getElementById('su-last')||{}).value||'');nombre=nombre.trim();
+  var email=(document.getElementById('su-email')||{}).value||'';
+  var password=(document.getElementById('su-password')||{}).value||'';
+  var telefono=getFullPhone();var perfil={nombre:nombre,email:email,telefono:telefono,gourmand_level:'INICIADO',visit_count:0,is_first_visit:true,source:'ohyeah',acepto_terminos:true,registro_at:new Date().toISOString()};
+  if(supa&&password){try{var r=await supa.auth.signUp({email:email,password:password,options:{data:{nombre:nombre}}});if(!r.error||r.error.message.includes('already registered'))await supa.from('ohyeah_clientes').upsert([perfil],{onConflict:'email'});}catch(e){}}
+  else if(supa){try{await supa.from('ohyeah_clientes').upsert([perfil],{onConflict:'email'});}catch(e){}}
+  STATE.loggedIn=true;STATE.user=perfil;USER_VISITS=0;loadUserProfile(STATE.user);
+  var wn=document.getElementById('welcome-name-msg');if(wn)wn.innerHTML='¡Hola, <strong style="color:var(--yw)">'+nombre+'</strong>!';
+  var we=document.getElementById('welcome-email-shown');if(we)we.textContent=email;
+  showToast('¡Bienvenido a Gourmand Society! 🗝',3000);setTimeout(function(){openOv('ov-welcome');},300);
+}
+function doLogout(){if(supa)supa.auth.signOut();STATE.loggedIn=false;STATE.user=null;USER_VISITS=0;closeAllPopups();var ga=document.getElementById('nav-guest-area');if(ga)ga.style.display='';var ua=document.getElementById('nav-user-area');if(ua)ua.style.display='none';var bi=document.getElementById('btn-iniciar');if(bi){bi.textContent='INICIAR SESIÓN';bi.style.background='';bi.onclick=function(){openOv('ov-login');};}goSec('home');showToast('Sesión cerrada',2000);}
+function forgotPassword(){var e=(document.getElementById('login-email')||{value:''}).value;if(!e){showToast('Ingresa tu correo primero');return;}if(supa)supa.auth.resetPasswordForEmail(e).then(function(r){if(!r.error)showToast('📧 Revisa tu correo');});}
+
+/* PROFILE */
+function loadUserProfile(user){
+  if(!user)return;STATE.user=user;USER_VISITS=user.visit_count||0;
+  var nombre=(user.nombre||user.email||'Usuario').trim();
+  var iniciales=nombre.split(' ').filter(function(w){return w.length>0;}).map(function(w){return w[0].toUpperCase();}).join('').substring(0,2)||'?';
+  var lv=getUserLevel();
+  var ga=document.getElementById('nav-guest-area');if(ga)ga.style.display='none';
+  var ua=document.getElementById('nav-user-area');if(ua)ua.style.display='';
+  var av=document.getElementById('navAvatar');if(av){av.textContent=iniciales;av.style.background='linear-gradient(135deg,'+lv.color+',#1a1a1a)';}
+  var ppAv=document.getElementById('pp-av-sm');if(ppAv){ppAv.textContent=iniciales;ppAv.style.background='linear-gradient(135deg,'+lv.color+',#1a1a1a)';}
+  var ppNm=document.getElementById('pp-user-name');if(ppNm)ppNm.textContent=nombre;
+  var ppLv=document.getElementById('pp-user-level');if(ppLv){ppLv.textContent=lv.emoji+' '+lv.name;ppLv.style.color=lv.color;}
+}
+
+/* TÚ SECTION */
+async function updateYouSection(){
+  if(!STATE.loggedIn||!STATE.user){document.getElementById('you-guest').style.display='';document.getElementById('you-loggedin').style.display='none';return;}
+  document.getElementById('you-guest').style.display='none';document.getElementById('you-loggedin').style.display='';
+  var nombre=(STATE.user.nombre||'Usuario').trim();
+  var iniciales=nombre.split(' ').filter(function(w){return w.length>0;}).map(function(w){return w[0].toUpperCase();}).join('').substring(0,2)||'?';
+  var lv=getUserLevel(),lvIdx=GS_LEVELS.findIndex(function(l){return l.id===lv.id;}),next=lvIdx<GS_LEVELS.length-1?GS_LEVELS[lvIdx+1]:null;
+  var profAv=document.getElementById('prof-av-you');if(profAv){profAv.textContent=iniciales;profAv.style.background='linear-gradient(135deg,'+lv.color+',#2a1a2a)';}
+  var profNm=document.getElementById('prof-name-you');if(profNm)profNm.textContent=nombre;
+  var profSince=document.getElementById('prof-since-you');if(profSince){var fecha=STATE.user.registro_at?new Date(STATE.user.registro_at).toLocaleDateString('es-CO',{month:'long',year:'numeric'}):'recientemente';profSince.textContent='Miembro desde '+fecha;}
+  var profBadge=document.getElementById('prof-badge-you');if(profBadge){profBadge.textContent=lv.emoji+' '+lv.name;profBadge.style.color=lv.color;profBadge.style.background='rgba(255,45,126,.08)';profBadge.style.borderColor=lv.color+'44';}
+  if(next){var pct=Math.min(100,Math.round(((USER_VISITS-lv.visits_needed)/(next.visits_needed-lv.visits_needed))*100));var ppL=document.getElementById('pp-left-you');if(ppL)ppL.textContent='Camino a '+next.name;var ppR=document.getElementById('pp-right-you');if(ppR)ppR.textContent=(next.visits_needed-USER_VISITS)+' visitas más';var ppF=document.getElementById('pp-fill-you');if(ppF){ppF.style.width=pct+'%';ppF.style.background='linear-gradient(90deg,'+lv.color+','+next.color+')';}}
+  else{var ppL=document.getElementById('pp-left-you');if(ppL)ppL.textContent='👑 Nivel máximo';var ppF=document.getElementById('pp-fill-you');if(ppF){ppF.style.width='100%';ppF.style.background=lv.color;}}
+  loadYouReservas();
+}
+async function loadYouReservas(){
+  var cont=document.getElementById('you-reservas');if(!cont||!supa||!STATE.user)return;
+  var today=new Date().toISOString().split('T')[0];
+  try{var r=await supa.from('ohyeah_reservas').select('*').eq('guest_email',STATE.user.email).eq('status','confirmed').gte('date',today).order('date',{ascending:true}).limit(3);
+  if(r.data&&r.data.length>0){cont.innerHTML=r.data.map(function(rv){var d=new Date(rv.date).toLocaleDateString('es-CO',{weekday:'short',day:'numeric',month:'short'});var dias=Math.ceil((new Date(rv.date)-new Date())/86400000);var chip=dias===0?'Hoy':dias===1?'Mañana':'En '+dias+' días';return '<div class="resv-card"><div class="resv-img">🍽️</div><div style="flex:1"><div class="resv-name">'+(rv.restaurant_name||'OMM')+'<span class="resv-chip">'+chip+'</span></div><div class="resv-line">📅 '+d+' · 🕐 '+rv.time+' · 👥 '+rv.pax+' pers.</div><div class="resv-btns"><button class="resv-btn resv-btn-mod" onclick="abrirModificar(\''+rv.id+'\',\''+rv.date+'\',\''+rv.time+'\','+rv.pax+')">✏️ Modificar</button><button class="resv-btn resv-btn-cancel" onclick="confirmarCancelar(\''+rv.id+'\')">✕ Cancelar</button></div></div></div>';}).join('');}}catch(e){}
+}
+function updateAccessSection(){
+  var lv=getUserLevel();GS_LEVELS.forEach(function(l){var card=document.getElementById('lc-'+l.id);if(card)card.classList.toggle('active',l.id===lv.id);});
+  if(!STATE.loggedIn)return;
+  var prog=document.getElementById('access-progress');if(prog)prog.style.display='';
+  var lvIdx=GS_LEVELS.findIndex(function(l){return l.id===lv.id;}),next=lvIdx<GS_LEVELS.length-1?GS_LEVELS[lvIdx+1]:null;
+  var lpName=document.getElementById('access-lp-name');if(lpName){lpName.textContent=lv.emoji+' '+lv.name;lpName.style.color=lv.color;}
+  var lpFill=document.getElementById('access-lp-fill'),lpSub=document.getElementById('access-lp-sub'),lpHint=document.getElementById('access-lp-hint');
+  if(lpHint)lpHint.textContent=USER_VISITS+' visitas';
+  if(next){var pct=Math.min(100,Math.round(((USER_VISITS-lv.visits_needed)/(next.visits_needed-lv.visits_needed))*100));if(lpFill){lpFill.style.width=pct+'%';lpFill.style.background='linear-gradient(90deg,'+lv.color+','+next.color+')';}if(lpSub)lpSub.textContent='Te faltan '+(next.visits_needed-USER_VISITS)+' visitas para '+next.emoji+' '+next.name;}
+  else{if(lpFill){lpFill.style.width='100%';lpFill.style.background=lv.color;}if(lpSub)lpSub.textContent='👑 Has alcanzado el nivel máximo';}
+}
+async function confirmarCancelar(id){if(!confirm('¿Cancelar esta reserva?'))return;if(supa&&STATE.user){try{var r=await supa.rpc('cancelar_reserva',{p_id:id,p_email:STATE.user.email});if(r.data&&r.data.ok){showToast('✅ Reserva cancelada');USER_VISITS=Math.max(0,USER_VISITS-1);updateYouSection();loadUserProfile(STATE.user);return;}showToast('⚠️ '+(r.data&&r.data.msg||'Error'),4000);}catch(e){await supa.from('ohyeah_reservas').update({status:'cancelled'}).eq('id',id).eq('guest_email',STATE.user.email);showToast('✅ Reserva cancelada');updateYouSection();}}}
+function abrirModificar(id,fecha,hora,pax){STATE.modifyMode=true;STATE.modifyingId=id;STATE.date=new Date(fecha+'T12:00:00');STATE.time=hora;STATE.pax=pax;openReserveModal();showToast('✏️ Modifica tu reserva',3000);}
+async function _confirmarModificacion(){var btn=document.getElementById('ov-confirm-btn');if(btn){btn.textContent='Modificando...';btn.disabled=true;}var dateStr=STATE.date.toISOString().split('T')[0];if(supa){var r=await supa.rpc('modificar_reserva',{p_id:STATE.modifyingId,p_email:STATE.user.email,p_fecha:dateStr,p_hora:STATE.time,p_pax:STATE.pax}).catch(function(){return{data:null};});if(r.data&&r.data.ok===false){showToast('⚠️ '+r.data.msg,4000);if(btn){btn.textContent='CONFIRMAR RESERVA';btn.disabled=false;}return;}}STATE.modifyMode=false;STATE.modifyingId=null;closeOv('ov-reserve');showToast('✅ Reserva modificada',3000);updateYouSection();if(btn){btn.textContent='CONFIRMAR RESERVA';btn.disabled=false;}}
+async function canjearCodigo(){var codigo=(document.getElementById('canje-input')||{value:''}).value.toUpperCase().trim();var result=document.getElementById('canje-result');if(!codigo){showToast('Ingresa un código');return;}if(result){result.style.display='block';result.innerHTML='<div style="color:var(--mut);font-size:13px;text-align:center;padding:12px">Validando...</div>';}if(supa){try{var r=await supa.from('bonos_regalo').select('*').eq('codigo',codigo).eq('activo',true).eq('usado',false).single();if(r.data){await supa.from('bonos_regalo').update({usado:true,usado_at:new Date().toISOString(),usado_por:'ohyeah'}).eq('id',r.data.id);showBonoValido(r.data,result);return;}}catch(e){}}var DEMO={'CAFE2024':{descripcion:'Café gratis',beneficio:'☕ Un café cortesía'},'VINO2024':{descripcion:'Copa de vino',beneficio:'🍷 Copa de vino'},'POSTRE2024':{descripcion:'Postre gratis',beneficio:'🍮 Postre de temporada'},'BONO10':{descripcion:'10% descuento',beneficio:'🎟 10% en tu cuenta'},'BONO20':{descripcion:'20% descuento',beneficio:'🎟 20% en tu cuenta'},'BONO30':{descripcion:'30% descuento',beneficio:'🎟 30% en tu cuenta'},'SERATTA50':{descripcion:'$50k regalo',beneficio:'💳 $50.000 Seratta'},'OMM100':{descripcion:'$100k regalo',beneficio:'💳 $100.000 OMM'}};if(DEMO[codigo]){showBonoValido(DEMO[codigo],result);}else if(result){result.innerHTML='<div style="background:rgba(255,68,68,.08);border:1px solid rgba(255,68,68,.2);border-radius:10px;padding:14px;color:#ff6b6b;text-align:center;font-weight:700">❌ Código no válido o ya fue usado</div>';}}
+function showBonoValido(bono,result){if(result)result.innerHTML='<div style="background:rgba(214,255,58,.06);border:1.5px solid rgba(214,255,58,.25);border-radius:12px;padding:18px;text-align:center"><div style="font-size:28px;margin-bottom:8px">✅</div><div style="font-size:15px;font-weight:800;color:var(--yw);margin-bottom:4px">'+(bono.descripcion||'Válido')+'</div><div style="font-size:12px;color:var(--mut);">'+(bono.beneficio||'')+'</div><div style="font-size:10px;color:var(--dim);margin-top:10px">Muestra esta pantalla en el restaurante</div></div>';if(!STATE.loggedIn){var lp=document.getElementById('canje-login-prompt');if(lp)lp.style.display='block';}showToast('🎟 ¡Código válido!');}
+
+/* SESSION */
+async function checkSession(){if(!supa)return;try{var s=await supa.auth.getSession();var session=s&&s.data&&s.data.session;if(session&&session.user){var r=await supa.from('ohyeah_clientes').select('*').eq('email',session.user.email).single();STATE.loggedIn=true;STATE.user=r.data||{nombre:session.user.email.split('@')[0],email:session.user.email,visit_count:0};USER_VISITS=STATE.user.visit_count||0;loadUserProfile(STATE.user);}}catch(e){console.warn('Session error:',e);}}
+if(supa){supa.auth.onAuthStateChange(function(event,session){if(event==='SIGNED_IN'&&session){supa.from('ohyeah_clientes').select('*').eq('email',session.user.email).single().then(function(r){STATE.loggedIn=true;STATE.user=r.data||{nombre:session.user.email.split('@')[0],email:session.user.email,visit_count:0};USER_VISITS=STATE.user.visit_count||0;loadUserProfile(STATE.user);});}if(event==='SIGNED_OUT'){doLogout();}});}
+checkSession();
+
+/* INIT */
+buildCal('cal-grid',calViewMain);
+document.getElementById('cal-month-label').textContent=MONTHS_ES[calViewMain.getMonth()]+' '+calViewMain.getFullYear();
+buildTimeGrid('ov-time-grid');buildTimeGrid('time-grid');
+updateDateDisplay();updateTimeDisplay();
+
+/* ══════════════════════════════════════════════
+   ENHANCED AVAILABILITY + SIMILAR RESTAURANTS
+══════════════════════════════════════════════ */
+
+/* Enhanced time grid with visual availability bars */
+function buildTimeGridEnhanced(gridId, dateStr) {
+  var grid = document.getElementById(gridId);
+  if (!grid) return;
+  grid.innerHTML = '';
+  
+  var available = 0, limited = 0, full = 0;
+  
+  TIMES.forEach(function(t) {
+    var btn = document.createElement('button');
+    var franja = getFranjaInfo(dateStr, t);
+    var past = isPastTime(t);
+    var llena = franja && !franja.disponible;
+    var libres = franja ? franja.libres : 15;
+    var ua = UNAVAIL.includes(t) || llena || past;
+    var sel = t === STATE.time;
+
+    // Availability class
+    var availClass = '';
+    if (!past && !UNAVAIL.includes(t)) {
+      if (llena)          { availClass = 'lleno'; full++; }
+      else if (libres <= 3) { availClass = 'poco';  limited++; }
+      else                  { availClass = 'libre'; available++; }
+    }
+
+    btn.className = 'time-btn ' + availClass + (sel ? ' sel' : '') + (ua ? ' unavail' : '');
+    btn.disabled = ua;
+    btn.innerHTML = t + '<span class="avail-bar"></span>';
+    
+    if (!ua) {
+      // Show available count on hover hint
+      if (franja && franja.disponible && libres <= 5) {
+        btn.title = libres + ' ' + (libres===1?'mesa':'mesas') + ' disponible' + (libres!==1?'s':'');
+      }
+      btn.addEventListener('click', function() {
+        STATE.time = t;
+        grid.querySelectorAll('.time-btn').forEach(function(b) {
+          b.classList.remove('sel');
+        });
+        btn.classList.add('sel');
+        updateTimeDisplay();
+        showToast('🕐 ' + t);
+        // Hide similar when user picks a slot
+        var sim = document.getElementById('similar-section');
+        if (sim) sim.classList.remove('show');
+      });
+    }
+    grid.appendChild(btn);
+  });
+
+  // Add legend
+  var legend = document.createElement('div');
+  legend.className = 'avail-legend';
+  legend.innerHTML =
+    '<div class="avail-dot libre">Alta disponibilidad</div>' +
+    '<div class="avail-dot poco">Últimas mesas</div>' +
+    '<div class="avail-dot lleno">Sin disponibilidad</div>';
+  grid.parentNode.insertBefore(legend, grid.nextSibling);
+
+  // Summary bar
+  var total = available + limited + full;
+  var pctLib = total > 0 ? Math.round(((available + limited) / total) * 100) : 100;
+  var summaryEl = document.getElementById('ov-avail-summary');
+  if (!summaryEl) {
+    summaryEl = document.createElement('div');
+    summaryEl.id = 'ov-avail-summary';
+    summaryEl.className = 'avail-summary';
+    grid.parentNode.insertBefore(summaryEl, legend);
+  }
+  var pctClass = pctLib > 60 ? 'alta' : pctLib > 30 ? 'media' : 'baja';
+  var pctMsg   = pctLib > 60 ? 'Alta disponibilidad hoy' : pctLib > 30 ? 'Disponibilidad limitada' : 'Muy pocas mesas disponibles';
+  summaryEl.innerHTML =
+    '<span style="font-size:11px;color:var(--mut);font-weight:600">' + pctMsg + '</span>' +
+    '<span class="avail-pct ' + pctClass + '">' + pctLib + '% disponible</span>';
+}
+
+/* Check if selected time is full → show similar restaurants */
+async function checkAndShowSimilar(dateStr) {
+  var simSection = document.getElementById('similar-section');
+  if (!simSection) return;
+
+  // Check how many slots are full
+  var fullCount = 0;
+  TIMES.forEach(function(t) {
+    var f = getFranjaInfo(dateStr, t);
+    if (f && !f.disponible) fullCount++;
+  });
+
+  // If more than half the slots are full, show similar restaurants
+  if (fullCount >= TIMES.length * 0.5) {
+    simSection.classList.add('show');
+    renderSimilarRestaurants();
+  } else {
+    simSection.classList.remove('show');
+  }
+}
+
+/* Render similar restaurant cards */
+function renderSimilarRestaurants() {
+  var list = document.getElementById('similar-list');
+  if (!list) return;
+
+  // Similar restaurants data (when real data from Supabase is available these come from DB)
+  var similares = [
+    {
+      name: 'OMM',
+      meta: 'Internacional · Rooftop · Bogotá',
+      img: 'https://images.unsplash.com/photo-1551632436-cbf8dd35adfa?w=120&q=80',
+      horarios: ['7:30 PM', '9:00 PM', '10:00 PM'],
+      avail: 'ok',
+      avail_txt: '8 mesas libres',
+      rating: '4.7'
+    },
+    {
+      name: 'OMM',
+      meta: 'Coctelería · Speakeasy · Bogotá',
+      img: 'https://images.unsplash.com/photo-1514362545857-3bc16c4c7d1b?w=120&q=80',
+      horarios: ['8:00 PM', '9:30 PM'],
+      avail: 'poco',
+      avail_txt: 'Últimas 3 mesas',
+      rating: '4.8'
+    },
+    {
+      name: 'OMM',
+      meta: 'Alta cocina · Candelabros · Bogotá',
+      img: 'https://images.unsplash.com/photo-1455853659719-4b521eebc76d?w=120&q=80',
+      horarios: ['7:00 PM', '8:30 PM', '10:00 PM'],
+      avail: 'ok',
+      avail_txt: '12 mesas libres',
+      rating: '4.9'
+    }
+  ];
+
+  // Filter: show ones with horarios close to STATE.time
+  var stateHour = parseHour(STATE.time);
+  similares.sort(function(a, b) {
+    var aBest = Math.min.apply(null, a.horarios.map(function(h){ return Math.abs(parseHour(h) - stateHour); }));
+    var bBest = Math.min.apply(null, b.horarios.map(function(h){ return Math.abs(parseHour(h) - stateHour); }));
+    return aBest - bBest;
+  });
+
+  list.innerHTML = similares.map(function(r) {
+    // Find closest available hour
+    var closestTime = r.horarios.reduce(function(best, t) {
+      return Math.abs(parseHour(t) - stateHour) < Math.abs(parseHour(best) - stateHour) ? t : best;
+    }, r.horarios[0]);
+
+    return '<div class="similar-card" onclick="selectSimilar(' + JSON.stringify(r).replace(/"/g,'&quot;') + ')">' +
+      '<div class="similar-img" style="background-image:url(' + "'" + r.img + "'" + ')"></div>' +
+      '<div class="similar-info">' +
+        '<div class="similar-name">' + r.name + ' <span style="font-size:9.5px;color:var(--yw);font-weight:800">★ ' + r.rating + '</span></div>' +
+        '<div class="similar-meta">' + r.meta + '</div>' +
+        '<div style="display:flex;gap:5px;margin-top:5px;flex-wrap:wrap">' +
+          r.horarios.map(function(t) {
+            return '<span style="background:rgba(255,255,255,.07);border-radius:5px;padding:2px 6px;font-size:9.5px;font-weight:700;' +
+              (t===closestTime?'border:1px solid rgba(74,222,128,.4);color:#4ade80':'color:var(--mut)') + '">' + t + '</span>';
+          }).join('') +
+        '</div>' +
+      '</div>' +
+      '<div class="similar-avail ' + r.avail + '">' + r.avail_txt + '</div>' +
+    '</div>';
+  }).join('');
+}
+
+/* Parse hour from time string */
+function parseHour(t) {
+  if (!t) return 0;
+  var m = t.match(/(\d+):(\d+)\s*(AM|PM)/i);
+  if (!m) return 0;
+  var h = parseInt(m[1]), mn = parseInt(m[2]), ap = m[3].toUpperCase();
+  if (ap==='PM' && h!==12) h+=12;
+  if (ap==='AM' && h===12) h=0;
+  return h * 60 + mn;
+}
+
+/* Select a similar restaurant */
+function selectSimilar(rest) {
+  showToast('✨ ' + rest.name + ' — ' + (rest.horarios[0] || STATE.time));
+  // Set time to the closest available
+  var stateHour = parseHour(STATE.time);
+  var closest = rest.horarios.reduce(function(best, t) {
+    return Math.abs(parseHour(t) - stateHour) < Math.abs(parseHour(best) - stateHour) ? t : best;
+  }, rest.horarios[0]);
+  STATE.time = closest;
+  updateTimeDisplay();
+  // Hide similar section
+  var sim = document.getElementById('similar-section');
+  if (sim) sim.classList.remove('show');
+  // Update confirm button
+  var btn = document.getElementById('ov-confirm-btn');
+  if (btn) btn.textContent = 'RESERVAR EN ' + rest.name.toUpperCase();
+}
+
+/* ══ PASSWORD VALIDATION ══ */
+function validatePasswords() {
+  var p1 = document.getElementById('su-password');
+  var p2 = document.getElementById('su-password2');
+  var ind = document.getElementById('pass-match-indicator');
+  var strengthBar = document.getElementById('pass-strength-bar');
+  var strengthTxt = document.getElementById('pass-strength-txt');
+  if (!p1) return;
+
+  // Strength
+  var val = p1.value;
+  var strength = 0;
+  if (val.length >= 6)  strength++;
+  if (val.length >= 10) strength++;
+  if (/[A-Z]/.test(val)) strength++;
+  if (/[0-9]/.test(val)) strength++;
+  if (/[^A-Za-z0-9]/.test(val)) strength++;
+
+  var colors = ['#ff6b6b','#ff6b6b','#ecd989','#4ade80','#4ade80'];
+  var labels = ['','Débil','Regular','Buena','Muy segura'];
+  if (strengthBar) { strengthBar.style.width = (strength * 20) + '%'; strengthBar.style.background = colors[strength] || '#ff6b6b'; }
+  if (strengthTxt) strengthTxt.textContent = labels[strength] || '';
+
+  // Match
+  if (!p2 || !p2.value) { if (ind) ind.innerHTML = ''; return; }
+  var match = p1.value === p2.value;
+  if (ind) {
+    ind.innerHTML = match
+      ? '<span style="color:#4ade80">✓ Las contraseñas coinciden</span>'
+      : '<span style="color:#ff6b6b">✕ Las contraseñas no coinciden</span>';
+  }
+  if (p2) { p2.style.borderColor = match ? 'rgba(74,222,128,.4)' : 'rgba(255,107,107,.4)'; }
+}
+
+/* ══ TOGGLE PASSWORD VISIBILITY ══ */
+function togglePass(inputId, btnId) {
+  var inp = document.getElementById(inputId);
+  var btn = document.getElementById(btnId);
+  if (!inp) return;
+  var isPass = inp.type === 'password';
+  inp.type = isPass ? 'text' : 'password';
+  if (btn) btn.style.color = isPass ? 'var(--yw)' : 'var(--dim)';
+}
+
+/* ══ COUNTRY CODE HELPER ══ */
+function updateCountryFlag(sel) {
+  // Visual feedback - could update a flag display
+  console.log('País seleccionado:', sel.value);
+}
+
+/* ══ GET FULL PHONE with country code ══ */
+function getFullPhone() {
+  var code = (document.getElementById('su-country-code') || {value: '+57'}).value;
+  var num  = (document.getElementById('su-phone') || {value: ''}).value.trim().replace(/\D/g, '');
+  return num ? code + num : '';
+}
+
+/* ════ OPENTABLE FUNCTIONS ════ */
+function bookSlot(restName, time) {
+  STATE.time = time;
+  STATE.restaurantName = restName;
+  // Update display
+  updateTimeDisplay();
+  // Show reserve modal
+  openReserveModal();
+  // Pre-fill restaurant in modal
+  setTimeout(function() {
+    var title = document.querySelector('#ov-reserve .mbox > div:first-child > div:last-child');
+    if (title) title.textContent = restName;
+    var subt = document.querySelector('#ov-reserve .mbox > div:first-child > div[style*="mut"]');
+    if (subt) { /* keep */ }
+    var btn = document.getElementById('ov-confirm-btn');
+    if (btn) btn.textContent = 'CONFIRMAR EN ' + restName.toUpperCase();
+  }, 60);
+  showToast('🍽️ ' + restName + ' · ' + time);
+}
+
+function searchRestaurants() {
+  var q = (document.getElementById('discover-search')||{value:''}).value.toLowerCase().trim();
+  var dateStr = STATE.date.toISOString().split('T')[0];
+  var d = STATE.date;
+  var label = d.getDate() + ' ' + ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][d.getMonth()];
+  var disp = document.getElementById('ot-date-display');
+  if (disp) disp.textContent = label;
+  // Update ev-date-val and ev-time-val
+  var edv = document.getElementById('ev-date-val');
+  var etv = document.getElementById('ev-time-val');
+  var epv = document.getElementById('ev-pax-val');
+  if (edv) edv.textContent = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'][d.getMonth()] + ' ' + d.getDate();
+  if (etv) etv.textContent = STATE.time;
+  if (epv) epv.textContent = STATE.pax;
+  // Filter restaurants
+  filterRestaurants(q);
+  // Load real availability from Supabase
+  loadRealAvailability(dateStr);
+  showToast('Buscando disponibilidad...', 2000);
+}
+
+function filterRestaurants(q) {
+  var activeFilter = document.querySelector('.filter-chip.on');
+  var type = activeFilter ? activeFilter.dataset.type : 'all';
+  q = q || (document.getElementById('discover-search')||{value:''}).value.toLowerCase().trim();
+  var cards = document.querySelectorAll('.ot-card');
+  var visible = 0;
+  cards.forEach(function(c) {
+    var cardType = c.dataset.type || '';
+    var name = (c.querySelector('.ot-name')||{textContent:''}).textContent.toLowerCase();
+    var matchType = type === 'all' || cardType === type;
+    var matchQ = !q || name.includes(q);
+    var show = matchType && matchQ;
+    c.style.display = show ? '' : 'none';
+    if (show) visible++;
+  });
+  var cnt = document.getElementById('results-count');
+  if (cnt) cnt.textContent = visible;
+}
+
+async function loadRealAvailability(dateStr) {
+  if (!supa) return;
+  var today = dateStr || STATE.date.toISOString().split('T')[0];
+  await cargarFranjasDelDia(today);
+  // Update slots based on real data
+  TIMES.forEach(function(t) {
+    var f = getFranjaInfo(today, t);
+    if (!f) return;
+    // Find all slot buttons with this time
+    document.querySelectorAll('.ot-slot').forEach(function(btn) {
+      if (btn.textContent.includes(t.replace(' 🔥','').replace(' ⚡',''))) {
+        if (!f.disponible) {
+          btn.className = 'ot-slot-full';
+          btn.disabled = true;
+          btn.textContent = t + ' ✕';
+        } else if (f.libres <= 3) {
+          btn.className = 'ot-slot ot-slot-few';
+          btn.textContent = t + ' ⚡';
+        }
+      }
+    });
+  });
+}
+
+// Override filterClick for discover section
+var _origFilterClick = filterClick;
+function filterClick(el) {
+  document.querySelectorAll('.filter-chip').forEach(function(c){ c.classList.remove('on'); });
+  el.classList.add('on');
+  filterRestaurants();
+}
+
+// Sync date/time/pax pills in discover section
+function syncEventPills() {
+  var d = STATE.date;
+  var edv = document.getElementById('ev-date-val');
+  var etv = document.getElementById('ev-time-val');
+  var epv = document.getElementById('ev-pax-val');
+  if (edv) edv.textContent = ['ENE','FEB','MAR','ABR','MAY','JUN','JUL','AGO','SEP','OCT','NOV','DIC'][d.getMonth()] + ' ' + d.getDate();
+  if (etv) etv.textContent = STATE.time;
+  if (epv) epv.textContent = STATE.pax;
+  var disp = document.getElementById('ot-date-display');
+  if (disp) {
+    var label = d.getDate() + ' de ' + ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'][d.getMonth()];
+    disp.textContent = label;
+  }
+}
+
+/* bookSlotDirect — for cards outside the eventos section */
+function bookSlotDirect(restName, time) {
+  STATE.restaurantName = restName;
+  bookSlot(restName, time);
+}
+
+/* ═══ SEARCH FIXES ═══ */
+function updateResultsCount() {
+  var cnt = document.getElementById('results-count');
+  if (!cnt) return;
+  var visible = document.querySelectorAll('.ot-card:not([style*="display: none"]):not([style*="display:none"])').length;
+  cnt.textContent = visible;
+}
+
+// Enhanced search with real-time results
+var _searchTimer = null;
+document.addEventListener('input', function(e) {
+  if (e.target.id === 'discover-search') {
+    clearTimeout(_searchTimer);
+    _searchTimer = setTimeout(function() {
+      filterRestaurants(e.target.value.toLowerCase());
+      updateResultsCount();
+    }, 200);
+  }
+});
+
+/* ═══ EVENTS MODULE ═══ */
+var currentEventTickets = 1;
+
+function showEventosSection() {
+  var sec = document.getElementById('eventos-full-section');
+  var grid = document.getElementById('restaurants-grid');
+  if (sec) sec.style.display = 'block';
+  if (grid) grid.style.display = 'none';
+}
+
+function filterClick(el) {
+  document.querySelectorAll('.filter-chip').forEach(function(c){ c.classList.remove('on'); });
+  el.classList.add('on');
+  var sec = document.getElementById('eventos-full-section');
+  var grid = document.getElementById('restaurants-grid');
+  if (el.dataset.type === 'evento') {
+    if (sec) sec.style.display = 'block';
+    if (grid) grid.style.display = 'none';
+  } else {
+    if (sec) sec.style.display = 'none';
+    if (grid) grid.style.display = 'flex';
+    filterRestaurants();
+    updateResultsCount();
+  }
+}
+
+function buyEventTicket(name, date, time, price) {
+  if (!STATE.loggedIn) {
+    // Pre-fill email from user if logged in
+    var emailField = document.getElementById('ev-guest-email');
+    var nameField  = document.getElementById('ev-guest-name');
+    if (emailField) emailField.value = '';
+    if (nameField)  nameField.value = '';
+    document.getElementById('ev-guest-fields-wrap').style.display = 'block';
+  } else {
+    var emailField = document.getElementById('ev-guest-email');
+    var nameField  = document.getElementById('ev-guest-name');
+    if (emailField) emailField.value = STATE.user.email || '';
+    if (nameField)  nameField.value  = STATE.user.nombre || '';
+  }
+  var nm = document.getElementById('ev-ov-name'); if(nm) nm.textContent = name;
+  var mt = document.getElementById('ev-ov-meta'); if(mt) mt.textContent = date + ' · ' + time;
+  var pr = document.getElementById('ev-ov-price'); if(pr) pr.textContent = price;
+  var btn = document.getElementById('ev-confirm-btn');
+  if (btn) btn.textContent = price === 'Gratis' ? 'OBTENER ENTRADA GRATIS 🎫' : 'COMPRAR ENTRADA ' + price + ' 🎫';
+  STATE._currentEvent = {name, date, time, price};
+  openOv('ov-event');
+}
+
+function selectEvTickets(el, n) {
+  currentEventTickets = n;
+  document.querySelectorAll('#ev-tickets-row .pax-preset').forEach(function(b){ b.classList.remove('sel'); });
+  el.classList.add('sel');
+}
+
+async function confirmEventTicket() {
+  var name  = (document.getElementById('ev-guest-name')||{value:''}).value.trim();
+  var email = (document.getElementById('ev-guest-email')||{value:''}).value.trim();
+  if (!name)  { showToast('⚠️ Ingresa tu nombre'); return; }
+  if (!email || !email.includes('@')) { showToast('⚠️ Ingresa un correo válido'); return; }
+
+  var btn = document.getElementById('ev-confirm-btn');
+  if (btn) { btn.textContent = 'Procesando...'; btn.disabled = true; }
+
+  var ev = STATE._currentEvent || {name:'Evento',date:'',time:'',price:''};
+  var ticketCode = 'OY-' + Math.random().toString(36).substring(2,8).toUpperCase();
+
+  // Save to Supabase as a special reservation
+  if (supa) {
+    try {
+      await supa.from('ohyeah_reservas').insert([{
+        restaurant_id: 'omm',
+        restaurant_name: 'OMM · ' + ev.name,
+        date: new Date().toISOString().split('T')[0],
+        time: ev.time,
+        pax: currentEventTickets,
+        guest_name: name,
+        guest_email: email,
+        status: 'confirmed',
+        occasion: 'evento',
+        mood: 'evento_' + ticketCode,
+        source: 'ohyeah_evento',
+        nexum_brief: JSON.stringify({
+          tipo: 'EVENTO',
+          evento: ev.name,
+          fecha: ev.date,
+          hora: ev.time,
+          entradas: currentEventTickets,
+          codigo_qr: ticketCode,
+          precio: ev.price,
+          guest_email: email
+        })
+      }]);
+    } catch(e) { console.warn('Event save error:', e); }
+  }
+
+  if (btn) { btn.textContent = 'OBTENER ENTRADA GRATIS 🎫'; btn.disabled = false; }
+  closeOv('ov-event');
+
+  // Show confirmed
+  var det = document.getElementById('ev-conf-detail');
+  if (det) det.innerHTML = '<strong>' + ev.name + '</strong><br>' + ev.date + ' · ' + ev.time + '<br>' + currentEventTickets + ' entrada' + (currentEventTickets>1?'s':'') + ' · ' + ev.price + '<br><br>📧 QR enviado a <strong style="color:var(--yw)">' + email + '</strong>';
+  openOv('ov-event-confirmed');
+  showToast('🎫 ¡Entrada confirmada! QR en camino', 3000);
+}
+
+</script>
+</body>
+</html>
