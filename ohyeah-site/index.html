@@ -1327,18 +1327,14 @@ section.on{display:block}
     </div>
   </div>
 
-  <!-- TOP 10 -->
+  <!-- TOP RANKING · DINÁMICO desde ohyeah_restaurantes -->
   <div class="sec">
     <div class="sec-hd">
-      <div><div class="sec-title">Top 10 más reservados</div></div>
-      <div class="sec-link" onclick="goSec('discover')">Ver ranking →</div>
+      <div><div class="sec-title">Los más queridos del grupo</div></div>
+      <div class="sec-link" onclick="goSec('discover')">Ver todos →</div>
     </div>
-    <div class="row">
-      <div class="top10-card" onclick="openReserveModal()"><div class="top10-img" style="background-image:url('https://images.unsplash.com/photo-1565299585323-38d6b0865b47?w=400&q=85')"><div class="top10-n">1</div></div><div class="top10-name">OMM</div><div class="top10-cat">Creativa</div><div class="top10-r">★ 4.9</div></div>
-      <div class="top10-card" onclick="openReserveModal()"><div class="top10-img" style="background-image:url('https://images.unsplash.com/photo-1544148103-0773bf10d330?w=400&q=85')"><div class="top10-n">2</div></div><div class="top10-name">OMM</div><div class="top10-cat">Internacional</div><div class="top10-r">★ 4.8</div></div>
-      <div class="top10-card" onclick="openReserveModal()"><div class="top10-img" style="background-image:url('https://images.unsplash.com/photo-1551024709-8f23befc6f87?w=400&q=85')"><div class="top10-n">3</div></div><div class="top10-name">OMM</div><div class="top10-cat">Colombiana</div><div class="top10-r">★ 4.8</div></div>
-      <div class="top10-card" onclick="openReserveModal()"><div class="top10-img" style="background-image:url('https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&q=85')"><div class="top10-n">4</div></div><div class="top10-name">OMM</div><div class="top10-cat">Japonesa</div><div class="top10-r">★ 4.7</div></div>
-      <div class="top10-card" onclick="openReserveModal()"><div class="top10-img" style="background-image:url('https://images.unsplash.com/photo-1467003909585-2f8a72700288?w=400&q=85')"><div class="top10-n">5</div></div><div class="top10-name">OMM</div><div class="top10-cat">Parrilla</div><div class="top10-r">★ 4.7</div></div>
+    <div class="row" id="top-ranking-row">
+      <div style="padding:14px 16px;color:var(--mut);font-size:12px">Cargando ranking…</div>
     </div>
   </div>
 
@@ -1543,16 +1539,14 @@ section.on{display:block}
     <!-- Search button -->
     <button onclick="searchRestaurants()" style="background:linear-gradient(180deg,var(--yw),#b9e22a);color:#0a0a05;border:none;border-radius:12px;padding:11px 20px;font-size:13px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;flex-shrink:0;box-shadow:0 6px 20px rgba(214,255,58,.2)">BUSCAR</button>
   </div>
-  <!-- Filters -->
+  <!-- Filters por SEDE del Grupo Seratta -->
   <div class="filter-row">
-    <div class="filter-chip on" onclick="filterClick(this)" data-type="all">Todos</div>
-    <div class="filter-chip" onclick="filterClick(this)" data-type="restaurante">🍽️ Restaurantes</div>
-    <div class="filter-chip" onclick="filterClick(this)" data-type="rooftop">🥂 Rooftops</div>
-    <div class="filter-chip" onclick="filterClick(this)" data-type="evento">🎵 Eventos</div>
-    <div class="filter-chip" onclick="filterClick(this)" data-type="chef">👨‍🍳 Chef's Table</div>
-    <div class="filter-chip" onclick="filterClick(this)" data-type="brunch">☀️ Brunch</div>
-    <div class="filter-chip" onclick="filterClick(this)" data-type="speakeasy">🕯️ Speakeasy</div>
-    <div class="filter-chip" onclick="filterClick(this);showEventosSection()" data-type="evento">🎫 Eventos</div>
+    <div class="filter-chip on" onclick="filterClick(this)" data-sede="all">Todas las sedes</div>
+    <div class="filter-chip" onclick="filterClick(this)" data-sede="114">📍 Calle 114</div>
+    <div class="filter-chip" onclick="filterClick(this)" data-sede="Atlantis">📍 Atlantis</div>
+    <div class="filter-chip" onclick="filterClick(this)" data-sede="Campo Dei Fiori">📍 Usaquén</div>
+    <div class="filter-chip" onclick="filterClick(this)" data-sede="Cartagena">📍 Cartagena</div>
+    <div class="filter-chip" onclick="filterClick(this)" data-sede="reservable">⚡ Reservable ya</div>
   </div>
   
   <!-- EVENTOS SECTION (shown when Eventos filter is active) -->
@@ -1634,192 +1628,12 @@ section.on{display:block}
     <div class="live-badge" style="margin:0">● TIEMPO REAL</div>
   </div>
 
-  <!-- RESTAURANT LISTINGS (OpenTable style) -->
+  <!-- RESTAURANT LISTINGS · DINÁMICO desde ohyeah_restaurantes -->
   <div id="restaurants-grid" style="padding:0 var(--px);display:flex;flex-direction:column;gap:14px;margin-bottom:32px">
-
-    <!-- OMM -->
-    <div class="ot-card" id="rest-omm" data-type="restaurante">
-      <div class="ot-img" style="background-image:url('https://images.unsplash.com/photo-1414235077428-338989a2e8c0?w=600&q=85')"></div>
-      <div class="ot-body">
-        <div class="ot-top">
-          <div>
-            <div class="ot-name">OMM <span class="ot-rating">★ 4.9</span></div>
-            <div class="ot-meta">Internacional · Bogotá · $$$ · Abierto ahora</div>
-            <div class="ot-tags">
-              <span class="ot-tag">Fecha especial</span>
-              <span class="ot-tag">Negocios</span>
-              <span class="ot-tag">Vino</span>
-            </div>
-          </div>
-          <div class="ot-booked">
-            <div class="ot-booked-num" id="omm-booked-num">🔥 23</div>
-            <div class="ot-booked-lbl">reservas hoy</div>
-          </div>
-        </div>
-        <!-- Available slots -->
-        <div class="ot-slots-label">Mesas disponibles para <span id="ot-date-display">hoy</span></div>
-        <div class="ot-slots" id="slots-omm">
-          <button class="ot-slot" onclick="bookSlot('OMM','7:00 PM')">7:00 PM</button>
-          <button class="ot-slot" onclick="bookSlot('OMM','7:30 PM')">7:30 PM</button>
-          <button class="ot-slot ot-slot-hot" onclick="bookSlot('OMM','8:00 PM')">8:00 PM 🔥</button>
-          <button class="ot-slot" onclick="bookSlot('OMM','8:30 PM')">8:30 PM</button>
-          <button class="ot-slot" onclick="bookSlot('OMM','9:00 PM')">9:00 PM</button>
-          <button class="ot-slot ot-slot-few" onclick="bookSlot('OMM','9:30 PM')">9:30 PM ⚡</button>
-          <button class="ot-slot" onclick="bookSlot('OMM','10:00 PM')">10:00 PM</button>
-        </div>
-      </div>
+    <div id="rg-loading" style="text-align:center;padding:50px 20px;color:var(--mut)">
+      <div style="font-size:32px;margin-bottom:10px">🍽️</div>
+      <div style="font-size:13px;font-weight:600">Cargando restaurantes del Grupo Seratta…</div>
     </div>
-
-    <!-- OMM ROOFTOP -->
-    <div class="ot-card" id="rest-rooftop" data-type="rooftop">
-      <div class="ot-img" style="background-image:url('https://images.unsplash.com/photo-1551632436-cbf8dd35adfa?w=600&q=85')"></div>
-      <div class="ot-body">
-        <div class="ot-top">
-          <div>
-            <div class="ot-name">OMM Rooftop <span class="ot-rating">★ 4.7</span></div>
-            <div class="ot-meta">Coctelería · Bogotá · $$ · Abierto ahora</div>
-            <div class="ot-tags">
-              <span class="ot-tag">Vistas</span>
-              <span class="ot-tag">Cócteles</span>
-              <span class="ot-tag">Sunset</span>
-            </div>
-          </div>
-          <div class="ot-booked">
-            <div class="ot-booked-num">🔥 18</div>
-            <div class="ot-booked-lbl">reservas hoy</div>
-          </div>
-        </div>
-        <div class="ot-slots-label">Mesas disponibles</div>
-        <div class="ot-slots" id="slots-rooftop">
-          <button class="ot-slot" onclick="bookSlot('OMM Rooftop','6:00 PM')">6:00 PM</button>
-          <button class="ot-slot ot-slot-hot" onclick="bookSlot('OMM Rooftop','7:00 PM')">7:00 PM 🔥</button>
-          <button class="ot-slot ot-slot-few" onclick="bookSlot('OMM Rooftop','7:30 PM')">7:30 PM ⚡</button>
-          <button class="ot-slot-full" disabled>8:00 PM</button>
-          <button class="ot-slot-full" disabled>8:30 PM</button>
-          <button class="ot-slot" onclick="bookSlot('OMM Rooftop','9:00 PM')">9:00 PM</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Chef's Table -->
-    <div class="ot-card" id="rest-chef" data-type="chef">
-      <div class="ot-img" style="background-image:url('https://images.unsplash.com/photo-1611514026316-87aa0e90e9a0?w=600&q=85')">
-        <div style="position:absolute;top:12px;left:12px;background:rgba(236,217,137,.9);color:#0a0a05;font-size:9px;font-weight:900;border-radius:6px;padding:4px 9px;letter-spacing:.06em">EXCLUSIVO</div>
-      </div>
-      <div class="ot-body">
-        <div class="ot-top">
-          <div>
-            <div class="ot-name">OMM Chef's Table <span class="ot-rating" style="color:var(--gold)">★ 5.0</span></div>
-            <div class="ot-meta">Alta cocina · Solo 12 personas · $$$$</div>
-            <div class="ot-tags">
-              <span class="ot-tag" style="border-color:rgba(236,217,137,.35);color:var(--gold)">Experiencia única</span>
-              <span class="ot-tag" style="border-color:rgba(236,217,137,.35);color:var(--gold)">Maridaje incluido</span>
-            </div>
-          </div>
-          <div class="ot-booked">
-            <div class="ot-booked-num">🌟 8</div>
-            <div class="ot-booked-lbl">cupos totales</div>
-          </div>
-        </div>
-        <div class="ot-slots-label">Próximas fechas disponibles</div>
-        <div class="ot-slots" id="slots-chef">
-          <button class="ot-slot ot-slot-few" onclick="bookSlot('OMM Chef\'s Table','9:00 PM')">Hoy 9PM ⚡</button>
-          <button class="ot-slot" onclick="bookSlot('OMM Chef\'s Table','9:00 PM')">Mañana 9PM</button>
-          <button class="ot-slot" onclick="bookSlot('OMM Chef\'s Table','9:00 PM')">Sáb 9PM</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Speakeasy -->
-    <div class="ot-card" id="rest-speak" data-type="speakeasy">
-      <div class="ot-img" style="background-image:url('https://images.unsplash.com/photo-1455853659719-4b521eebc76d?w=600&q=85')"></div>
-      <div class="ot-body">
-        <div class="ot-top">
-          <div>
-            <div class="ot-name">OMM Speakeasy <span class="ot-rating">★ 4.8</span></div>
-            <div class="ot-meta">Bar secreto · Cócteles artesanales · $$</div>
-            <div class="ot-tags">
-              <span class="ot-tag">Jazz en vivo</span>
-              <span class="ot-tag">Cock­tails</span>
-            </div>
-          </div>
-          <div class="ot-booked">
-            <div class="ot-booked-num">🔥 12</div>
-            <div class="ot-booked-lbl">reservas hoy</div>
-          </div>
-        </div>
-        <div class="ot-slots-label">Mesas disponibles esta noche</div>
-        <div class="ot-slots" id="slots-speak">
-          <button class="ot-slot" onclick="bookSlot('OMM Speakeasy','8:00 PM')">8:00 PM</button>
-          <button class="ot-slot ot-slot-hot" onclick="bookSlot('OMM Speakeasy','9:00 PM')">9:00 PM 🔥</button>
-          <button class="ot-slot" onclick="bookSlot('OMM Speakeasy','10:00 PM')">10:00 PM</button>
-          <button class="ot-slot" onclick="bookSlot('OMM Speakeasy','11:00 PM')">11:00 PM</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- GALLO COLORADO -->
-    <div class="ot-card" id="rest-gc" data-type="restaurante" style="border-color:rgba(255,45,126,.2)">
-      <div class="ot-img" style="background-image:url('https://images.unsplash.com/photo-1544025162-d76694265947?w=600&q=85');position:relative">
-        <div style="position:absolute;top:12px;left:12px;background:var(--pk);color:#fff;font-size:9px;font-weight:900;border-radius:6px;padding:4px 9px;letter-spacing:.06em">🐓 NUEVO</div>
-      </div>
-      <div class="ot-body">
-        <div class="ot-top">
-          <div>
-            <div class="ot-name">Gallo Colorado <span class="ot-rating">★ 4.8</span></div>
-            <div class="ot-meta">Cocina mestiza · Bogotá · $$$ · Abierto ahora</div>
-            <div class="ot-tags">
-              <span class="ot-tag">Cocina de autor</span>
-              <span class="ot-tag">Maridaje</span>
-              <span class="ot-tag">Experiencia</span>
-            </div>
-          </div>
-          <div class="ot-booked">
-            <div class="ot-booked-num">🔥 21</div>
-            <div class="ot-booked-lbl">reservas hoy</div>
-          </div>
-        </div>
-        <div class="ot-slots-label">Mesas disponibles</div>
-        <div class="ot-slots" id="slots-gc">
-          <button class="ot-slot" onclick="bookSlot('Gallo Colorado','7:00 PM')">7:00 PM</button>
-          <button class="ot-slot" onclick="bookSlot('Gallo Colorado','7:30 PM')">7:30 PM</button>
-          <button class="ot-slot ot-slot-hot" onclick="bookSlot('Gallo Colorado','8:00 PM')">8:00 PM 🔥</button>
-          <button class="ot-slot" onclick="bookSlot('Gallo Colorado','8:30 PM')">8:30 PM</button>
-          <button class="ot-slot ot-slot-few" onclick="bookSlot('Gallo Colorado','9:00 PM')">9:00 PM ⚡</button>
-          <button class="ot-slot-full" disabled>9:30 PM</button>
-          <button class="ot-slot" onclick="bookSlot('Gallo Colorado','10:00 PM')">10:00 PM</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Brunch -->
-    <div class="ot-card" id="rest-brunch" data-type="brunch">
-      <div class="ot-img" style="background-image:url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=600&q=85')"></div>
-      <div class="ot-body">
-        <div class="ot-top">
-          <div>
-            <div class="ot-name">OMM Brunch <span class="ot-rating">★ 4.6</span></div>
-            <div class="ot-meta">Desayunos · Brunch · $$ · Fines de semana</div>
-            <div class="ot-tags">
-              <span class="ot-tag">DJ set</span>
-              <span class="ot-tag">Mimosas</span>
-            </div>
-          </div>
-          <div class="ot-booked">
-            <div class="ot-booked-num">☀️ 14</div>
-            <div class="ot-booked-lbl">reservas hoy</div>
-          </div>
-        </div>
-        <div class="ot-slots-label">Próximo brunch disponible</div>
-        <div class="ot-slots" id="slots-brunch">
-          <button class="ot-slot" onclick="bookSlot('OMM Brunch','11:00 AM')">11:00 AM</button>
-          <button class="ot-slot" onclick="bookSlot('OMM Brunch','12:00 PM')">12:00 PM</button>
-          <button class="ot-slot ot-slot-hot" onclick="bookSlot('OMM Brunch','1:00 PM')">1:00 PM 🔥</button>
-          <button class="ot-slot" onclick="bookSlot('OMM Brunch','2:00 PM')">2:00 PM</button>
-        </div>
-      </div>
-    </div>
-
   </div>
 
   <footer class="footer"><div class="footer-bottom" style="max-width:none">© 2026 Oh Yeah!</div></footer>
@@ -2583,7 +2397,31 @@ async function confirmRes(){
   var finalName  = STATE.loggedIn ? STATE.user.nombre : guestName;
   var finalEmail = STATE.loggedIn ? STATE.user.email  : guestEmail;
   var finalPhone = STATE.loggedIn ? (STATE.user.telefono||'') : guestPhone;
-  var reservation={restaurant_id:(STATE.restaurantName&&STATE.restaurantName.toLowerCase().includes('gallo')?'429b20fa-1d11-4295-8775-907827dcc364':'omm'),restaurant_name:(STATE.restaurantName||'OMM'),date:dateStr,time:STATE.time,pax:STATE.pax,guest_name:finalName,guest_email:finalEmail,guest_phone:finalPhone,gourmand_level:STATE.loggedIn?getUserLevel().name:'INVITADO',is_first_visit:!STATE.loggedIn||USER_VISITS===0,visit_count:STATE.loggedIn?USER_VISITS:0,mood:STATE.mood,occasion:occ?occ.value:null,status:'confirmed',source:STATE.loggedIn?'ohyeah':'ohyeah_guest',nexum_brief:JSON.stringify({instruccion:!STATE.loggedIn?'Invitado — sin cuenta':'Cliente '+(USER_VISITS===0?'nuevo':'recurrente — '+USER_VISITS+' visitas'),nombre:finalName,email:finalEmail,telefono:finalPhone,nivel:STATE.loggedIn?getUserLevel().name:'INVITADO'})};
+  // restaurant_id ahora es el SLUG del catálogo (omm, gallo-colorado, ...) —
+  // el trigger del backend rellena restaurante_id (integer NEXUM) y el
+  // restaurante_slug a partir de aquí. NEXUM ReserveModule ve la reserva.
+  var slugFinal = STATE.restaurantSlug || (STATE.restaurantName && STATE.restaurantName.toLowerCase().includes('gallo') ? 'gallo-colorado' : 'omm');
+  var nombreFinal = STATE.restaurantName || 'OMM';
+  var reservation={
+    restaurant_id: slugFinal,
+    restaurant_name: nombreFinal,
+    restaurante_id: STATE.restaurantNexumId || null,
+    restaurante_slug: slugFinal,
+    date: dateStr, time: STATE.time, pax: STATE.pax,
+    guest_name: finalName, guest_email: finalEmail, guest_phone: finalPhone,
+    gourmand_level: STATE.loggedIn ? getUserLevel().name : 'INVITADO',
+    is_first_visit: !STATE.loggedIn || USER_VISITS===0,
+    visit_count: STATE.loggedIn ? USER_VISITS : 0,
+    mood: STATE.mood,
+    occasion: occ ? occ.value : null,
+    status: 'confirmed',
+    source: STATE.loggedIn ? 'ohyeah' : 'ohyeah_guest',
+    nexum_brief: JSON.stringify({
+      instruccion: !STATE.loggedIn ? 'Invitado — sin cuenta' : 'Cliente '+(USER_VISITS===0?'nuevo':'recurrente — '+USER_VISITS+' visitas'),
+      nombre: finalName, email: finalEmail, telefono: finalPhone,
+      nivel: STATE.loggedIn ? getUserLevel().name : 'INVITADO'
+    })
+  };
   var savedOk=false;
   if(supa){try{var ins=await supa.from('ohyeah_reservas').insert([reservation]).select();if(!ins.error){savedOk=true;USER_VISITS++;}else if(ins.error.message&&ins.error.message.startsWith('FRANJA_LLENA')){showToast('😔 La franja se llenó. Elige otro horario.',5000);if(btn){btn.textContent='CONFIRMAR RESERVA';btn.disabled=false;}await buildFranjaGrid();return;}}catch(e){}}
   var m=MONTHS_ES[STATE.date.getMonth()],d=STATE.date.getDate();
@@ -2594,7 +2432,7 @@ async function confirmRes(){
     '<div style="text-align:left">'+
     '<div style="font-size:13px;font-weight:700;color:var(--wh);margin-bottom:12px">Hola, <strong>'+nameToShow+'</strong> 👋</div>'+
     '<div style="background:rgba(255,255,255,.04);border-radius:12px;padding:14px;margin-bottom:12px;font-size:12px;color:var(--mut);line-height:1.9">'+
-    '🍽️ <strong style="color:var(--wh)">OMM</strong><br>'+
+    '🍽️ <strong style="color:var(--wh)">'+nombreFinal+'</strong><br>'+
     '📅 '+d+' de '+m+'<br>'+
     '🕐 '+STATE.time+'<br>'+
     '👥 '+STATE.pax+' persona'+(STATE.pax!==1?'s':'')+
@@ -2712,6 +2550,8 @@ buildCal('cal-grid',calViewMain);
 document.getElementById('cal-month-label').textContent=MONTHS_ES[calViewMain.getMonth()]+' '+calViewMain.getFullYear();
 buildTimeGrid('ov-time-grid');buildTimeGrid('time-grid');
 updateDateDisplay();updateTimeDisplay();
+// Cargar el catálogo de restaurantes del Grupo Seratta desde Supabase
+cargarCatalogoSeratta();
 
 /* ══════════════════════════════════════════════
    ENHANCED AVAILABILITY + SIMILAR RESTAURANTS
@@ -2967,23 +2807,176 @@ function getFullPhone() {
   return num ? code + num : '';
 }
 
-/* ════ OPENTABLE FUNCTIONS ════ */
-function bookSlot(restName, time) {
+/* ════ MULTI-RESTAURANTE · Grupo Seratta ════
+   Carga el catálogo desde ohyeah_restaurantes y renderiza tarjetas
+   dinámicas. OMM y Gallo Colorado (reservas_activas=true) muestran
+   slots clicables; los demás muestran badge "Próximamente" pero
+   siguen visibles en la web. */
+var SERATTA_RESTOS = [];     // catálogo cargado de Supabase
+var CURRENT_FILTER_SEDE = 'all';
+
+async function cargarCatalogoSeratta() {
+  var grid = document.getElementById('restaurants-grid');
+  if (!supa) {
+    if (grid) grid.innerHTML = '<div style="text-align:center;padding:50px;color:var(--mut)">⚠ Conecta a internet para ver los restaurantes</div>';
+    return;
+  }
+  try {
+    var r = await supa.from('ohyeah_restaurantes')
+      .select('id,slug,nombre,sede,cocina,descripcion,ciudad,direccion,telefono,rating,tags,mood_tags,imagen_url,logo_url,precio_rango,destacado,reservas_activas,nexum_restaurante_id,hora_apertura,hora_cierre')
+      .eq('activo', true)
+      .order('orden_display', { ascending: true });
+    SERATTA_RESTOS = r.data || [];
+    renderRestaurantesGrid();
+    renderTopRanking();
+  } catch (e) {
+    console.error('Catálogo Seratta:', e);
+    if (grid) grid.innerHTML = '<div style="text-align:center;padding:50px;color:var(--mut)">⚠ No se pudo cargar el catálogo</div>';
+  }
+}
+
+function renderRestaurantesGrid() {
+  var grid = document.getElementById('restaurants-grid');
+  if (!grid) return;
+  // Slots horarios sugeridos según horario del restaurante
+  var SUG_SLOTS_DIA = ['12:00 PM','1:00 PM','2:00 PM'];
+  var SUG_SLOTS_NOCHE = ['7:00 PM','7:30 PM','8:00 PM','8:30 PM','9:00 PM','9:30 PM','10:00 PM'];
+  var SUG_SLOTS_BRUNCH = ['11:00 AM','12:00 PM','1:00 PM','2:00 PM'];
+
+  var html = SERATTA_RESTOS.map(function(r) {
+    var matchSede = (CURRENT_FILTER_SEDE === 'all')
+      || (CURRENT_FILTER_SEDE === 'reservable' && r.reservas_activas)
+      || (CURRENT_FILTER_SEDE === r.sede);
+    if (!matchSede) return '';
+    var q = ((document.getElementById('discover-search')||{}).value||'').toLowerCase().trim();
+    if (q) {
+      var hay = (r.nombre+' '+(r.cocina||'')+' '+(r.sede||'')+' '+((r.tags||[]).join(' '))).toLowerCase();
+      if (hay.indexOf(q) === -1) return '';
+    }
+
+    var precio = r.precio_rango || '$$$';
+    var tags = (r.tags||[]).slice(0,3).map(function(t){
+      return '<span class="ot-tag">'+t.replace(/_/g,' ')+'</span>';
+    }).join('');
+
+    // Slot grid según horario del restaurante
+    var sugs = SUG_SLOTS_NOCHE;
+    var horaAp = parseInt((r.hora_apertura||'19').slice(0,2),10);
+    if (horaAp < 11) sugs = SUG_SLOTS_BRUNCH;
+    else if (horaAp < 17) sugs = SUG_SLOTS_DIA.concat(SUG_SLOTS_NOCHE.slice(0,4));
+
+    var slotsHtml;
+    if (r.reservas_activas) {
+      var hot = sugs[Math.floor(sugs.length/2)];   // marca uno como 🔥
+      slotsHtml =
+        '<div class="ot-slots-label">Mesas disponibles para <span class="rest-date-display">hoy</span></div>'
+        + '<div class="ot-slots">'
+        + sugs.map(function(t){
+            var cls = (t===hot ? 'ot-slot ot-slot-hot' : 'ot-slot');
+            var lbl = (t===hot ? t+' 🔥' : t);
+            return '<button class="'+cls+'" data-slug="'+r.slug+'" data-time="'+t+'" onclick="bookSlotRest(this)">'+lbl+'</button>';
+          }).join('')
+        + '</div>';
+    } else {
+      slotsHtml =
+        '<div class="ot-slots-label">Estado de reservas</div>'
+        + '<div style="display:flex;gap:8px;align-items:center;padding:10px 12px;background:rgba(255,179,71,.06);border:1px solid rgba(255,179,71,.18);border-radius:10px;font-size:11.5px;color:var(--mut);font-weight:600">'
+        + '<span style="font-size:18px">⏳</span><span><strong style="color:var(--yw)">Próximamente</strong> · Reservas por '
+        + (r.telefono ? '<a href="tel:'+r.telefono+'" style="color:var(--yw);text-decoration:none">'+r.telefono+'</a>' : 'teléfono')
+        + '</span></div>';
+    }
+
+    var badges = '';
+    if (r.destacado) badges += '<div style="position:absolute;top:12px;left:12px;background:rgba(214,255,58,.92);color:#0a0a05;font-size:9px;font-weight:900;border-radius:6px;padding:4px 9px;letter-spacing:.06em">DESTACADO</div>';
+    if (r.reservas_activas) badges += '<div style="position:absolute;top:12px;right:12px;background:rgba(34,208,122,.92);color:#0a0a05;font-size:9px;font-weight:900;border-radius:6px;padding:4px 9px;letter-spacing:.06em">⚡ RESERVABLE</div>';
+
+    return '<div class="ot-card" data-slug="'+r.slug+'" data-sede="'+(r.sede||'')+'">'
+      + '<div class="ot-img" style="background-image:url(\''+(r.imagen_url||'')+'\');position:relative">'+badges+'</div>'
+      + '<div class="ot-body">'
+      + '  <div class="ot-top">'
+      + '    <div>'
+      + '      <div class="ot-name">'+r.nombre+' <span class="ot-rating">★ '+(r.rating||'4.7')+'</span></div>'
+      + '      <div class="ot-meta">'+(r.cocina||'Restaurante')+' · 📍 '+(r.sede||r.ciudad||'')+' · '+precio+'</div>'
+      + '      <div class="ot-tags">'+tags+'</div>'
+      + '    </div>'
+      + '    <div class="ot-booked">'
+      + '      <div class="ot-booked-num">'+(r.reservas_activas?'🔥':'✨')+' '+Math.floor((r.rating||4.5)*5)+'</div>'
+      + '      <div class="ot-booked-lbl">'+(r.reservas_activas?'reservas hoy':'guardados')+'</div>'
+      + '    </div>'
+      + '  </div>'
+      + slotsHtml
+      + (r.descripcion ? '<div style="margin-top:10px;padding:10px 12px;background:rgba(255,255,255,.02);border-radius:8px;font-size:11.5px;color:var(--mut);line-height:1.6">'+r.descripcion+'</div>' : '')
+      + '</div>'
+      + '</div>';
+  }).join('');
+
+  grid.innerHTML = html || '<div style="text-align:center;padding:50px 20px;color:var(--mut)"><div style="font-size:32px;margin-bottom:10px">🔍</div><div style="font-size:13px">Sin restaurantes que coincidan</div></div>';
+  var cnt = document.getElementById('results-count');
+  if (cnt) cnt.textContent = grid.querySelectorAll('.ot-card').length;
+}
+
+function renderTopRanking() {
+  var row = document.getElementById('top-ranking-row');
+  if (!row) return;
+  // Top 5 por rating (sólo destacados o reservables)
+  var top = SERATTA_RESTOS.slice().sort(function(a,b){ return (b.rating||0)-(a.rating||0); }).slice(0,5);
+  row.innerHTML = top.map(function(r,i){
+    return '<div class="top10-card" data-slug="'+r.slug+'" onclick="abrirReservaRestSlug(\''+r.slug+'\')">'
+      + '<div class="top10-img" style="background-image:url(\''+r.imagen_url+'\')"><div class="top10-n">'+(i+1)+'</div></div>'
+      + '<div class="top10-name">'+r.nombre+'</div>'
+      + '<div class="top10-cat">'+(r.cocina||r.sede||'')+'</div>'
+      + '<div class="top10-r">★ '+(r.rating||'4.7')+'</div>'
+      + '</div>';
+  }).join('');
+}
+
+function bookSlotRest(btn) {
+  var slug = btn.dataset.slug, time = btn.dataset.time;
+  var r = SERATTA_RESTOS.find(function(x){ return x.slug === slug; });
+  if (!r) return;
   STATE.time = time;
-  STATE.restaurantName = restName;
-  // Update display
+  STATE.restaurantSlug = slug;
+  STATE.restaurantName = r.nombre;
+  STATE.restaurantNexumId = r.nexum_restaurante_id;
   updateTimeDisplay();
-  // Show reserve modal
   openReserveModal();
-  // Pre-fill restaurant in modal
   setTimeout(function() {
-    var title = document.querySelector('#ov-reserve .mbox > div:first-child > div:last-child');
-    if (title) title.textContent = restName;
-    var subt = document.querySelector('#ov-reserve .mbox > div:first-child > div[style*="mut"]');
-    if (subt) { /* keep */ }
-    var btn = document.getElementById('ov-confirm-btn');
-    if (btn) btn.textContent = 'CONFIRMAR EN ' + restName.toUpperCase();
+    var rn = document.getElementById('ov-rest-name');
+    if (rn) rn.textContent = r.nombre + ' · ' + (r.sede||'');
+    var btn2 = document.getElementById('ov-confirm-btn');
+    if (btn2) btn2.textContent = 'RESERVAR EN ' + r.nombre.toUpperCase();
   }, 60);
+  showToast('🍽️ ' + r.nombre + ' · ' + time);
+}
+
+function abrirReservaRestSlug(slug) {
+  var r = SERATTA_RESTOS.find(function(x){ return x.slug === slug; });
+  if (!r) { openReserveModal(); return; }
+  if (!r.reservas_activas) {
+    showToast('⏳ ' + r.nombre + ' próximamente · Llama: ' + (r.telefono||''), 4000);
+    return;
+  }
+  STATE.restaurantSlug = slug;
+  STATE.restaurantName = r.nombre;
+  STATE.restaurantNexumId = r.nexum_restaurante_id;
+  openReserveModal();
+  setTimeout(function(){
+    var rn = document.getElementById('ov-rest-name');
+    if (rn) rn.textContent = r.nombre;
+  }, 60);
+}
+
+// Compat: la firma vieja seguía siendo usada por algunos onclick antiguos
+function bookSlot(restName, time) {
+  var r = SERATTA_RESTOS.find(function(x){ return x.nombre === restName; });
+  if (r) {
+    STATE.restaurantSlug = r.slug;
+    STATE.restaurantNexumId = r.nexum_restaurante_id;
+  }
+  STATE.restaurantName = restName;
+  STATE.time = time;
+  updateTimeDisplay();
+  openReserveModal();
   showToast('🍽️ ' + restName + ' · ' + time);
 }
 
@@ -3009,22 +3002,8 @@ function searchRestaurants() {
 }
 
 function filterRestaurants(q) {
-  var activeFilter = document.querySelector('.filter-chip.on');
-  var type = activeFilter ? activeFilter.dataset.type : 'all';
-  q = q || (document.getElementById('discover-search')||{value:''}).value.toLowerCase().trim();
-  var cards = document.querySelectorAll('.ot-card');
-  var visible = 0;
-  cards.forEach(function(c) {
-    var cardType = c.dataset.type || '';
-    var name = (c.querySelector('.ot-name')||{textContent:''}).textContent.toLowerCase();
-    var matchType = type === 'all' || cardType === type;
-    var matchQ = !q || name.includes(q);
-    var show = matchType && matchQ;
-    c.style.display = show ? '' : 'none';
-    if (show) visible++;
-  });
-  var cnt = document.getElementById('results-count');
-  if (cnt) cnt.textContent = visible;
+  // Re-render desde el catálogo aplicando el filtro vigente (sede + query)
+  renderRestaurantesGrid();
 }
 
 async function loadRealAvailability(dateStr) {
@@ -3114,14 +3093,14 @@ function showEventosSection() {
 function filterClick(el) {
   document.querySelectorAll('.filter-chip').forEach(function(c){ c.classList.remove('on'); });
   el.classList.add('on');
+  CURRENT_FILTER_SEDE = el.dataset.sede || 'all';
   var sec = document.getElementById('eventos-full-section');
   var grid = document.getElementById('restaurants-grid');
-  if (el.dataset.type === 'evento') {
-    if (sec) sec.style.display = 'block';
-    if (grid) grid.style.display = 'none';
-  } else {
-    if (sec) sec.style.display = 'none';
-    if (grid) grid.style.display = 'flex';
+  if (sec) sec.style.display = 'none';
+  if (grid) grid.style.display = 'flex';
+  renderRestaurantesGrid();
+  return;
+  if (false) {
     filterRestaurants();
     updateResultsCount();
   }
