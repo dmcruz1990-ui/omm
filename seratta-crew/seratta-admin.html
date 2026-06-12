@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Seratta Admin</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0D0F14; --surface:#161922; --surface2:#1E2330; --border:#2A3044;
+    --accent:#FF5C35; --accent2:#FFB347; --green:#22D07A; --blue:#4A9EFF;
+    --purple:#9B72FF; --text:#F0F2F8; --muted:#8892A4; --danger:#FF4560;
+  }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  body { background:#070910; color:var(--text); font-family:'DM Sans',sans-serif; min-height:100vh; }
+  .hidden { display:none !important; }
+  /* LOGIN */
+  #login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:20px; }
+  .login-box { width:100%; max-width:400px; background:var(--surface); border:1px solid var(--border); border-radius:22px; padding:36px 30px; text-align:center; }
+  .logo { font-family:'Syne',sans-serif; font-size:30px; font-weight:800; }
+  .logo span { color:var(--accent2); }
+  /* APP */
+  #app-wrap { display:none; min-height:100vh; }
+  header { display:flex; align-items:center; gap:14px; padding:16px 26px; border-bottom:1px solid var(--border); background:var(--surface); position:sticky; top:0; z-index:50; flex-wrap:wrap; }
+  .tabs { display:flex; gap:6px; margin-left:auto; flex-wrap:wrap; }
+  .tab { padding:9px 18px; border-radius:50px; font-size:13px; font-weight:700; color:var(--muted); cursor:pointer; border:1px solid transparent; }
+  .tab.active { color:var(--accent2); background:rgba(255,179,71,.1); border-color:rgba(255,179,71,.35); }
+  main { max-width:980px; margin:0 auto; padding:26px 20px 80px; }
+  .panel { display:none; }
+  .panel.active { display:block; }
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:20px; margin-bottom:14px; }
+  .form-label { display:block; font-size:11px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.08em; margin:14px 0 6px; }
+  .form-input, select.form-input, textarea.form-input {
+    width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:10px;
+    padding:11px 14px; color:var(--text); font-size:14px; outline:none; font-family:'DM Sans',sans-serif;
+  }
+  .btn { border:none; border-radius:11px; padding:12px 22px; font-size:14px; font-weight:800; cursor:pointer; font-family:'DM Sans',sans-serif; }
+  .btn-primary { background:linear-gradient(135deg,var(--accent2),#d4943a); color:#000; }
+  .btn-green { background:linear-gradient(135deg,var(--green),#149450); color:#000; }
+  .btn-outline { background:transparent; border:1px solid var(--border); color:var(--muted); }
+  .btn-danger { background:rgba(255,69,96,.12); border:1px solid rgba(255,69,96,.4); color:var(--danger); }
+  .btn-full { width:100%; }
+  .badge { display:inline-block; padding:3px 12px; border-radius:50px; font-size:11px; font-weight:800; }
+  .b-green { background:rgba(34,208,122,.12); color:var(--green); }
+  .b-orange { background:rgba(255,179,71,.12); color:var(--accent2); }
+  .b-red { background:rgba(255,69,96,.12); color:var(--danger); }
+  .b-blue { background:rgba(74,158,255,.12); color:var(--blue); }
+  .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+  .grow { flex:1; min-width:0; }
+  h2 { font-family:'Syne',sans-serif; font-size:20px; margin-bottom:4px; }
+  .sub { font-size:12px; color:var(--muted); margin-bottom:18px; }
+  #toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%); background:var(--surface); border:1px solid var(--green); color:var(--text); padding:13px 26px; border-radius:50px; font-size:13px; font-weight:700; z-index:9999; opacity:0; transition:opacity .3s; pointer-events:none; max-width:90%; text-align:center; }
+  .pool-row { display:grid; grid-template-columns:1fr 150px 36px; gap:8px; margin-bottom:8px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted); padding:8px 10px; border-bottom:1px solid var(--border); }
+  td { padding:10px; border-bottom:1px solid var(--border); vertical-align:middle; }
+</style>
+</head>
+<body>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="login-wrap">
+  <div class="login-box">
+    <div style="font-size:48px;margin-bottom:10px;">🛡️</div>
+    <div class="logo">Seratta<span>Admin</span></div>
+    <div style="font-size:12px;color:var(--muted);margin:8px 0 20px;">Panel de gerencia · Propinas · Comunicados · Denuncias</div>
+    <input class="form-input" id="adm-user" placeholder="admin@seratta.com" style="margin-bottom:10px;">
+    <input class="form-input" id="adm-pass" type="password" placeholder="Contraseña" style="margin-bottom:14px;">
+    <div id="adm-error" style="display:none;background:rgba(255,69,96,.1);border:1px solid rgba(255,69,96,.3);border-radius:10px;padding:10px;font-size:12px;color:var(--danger);margin-bottom:12px;"></div>
+    <button class="btn btn-primary btn-full" id="adm-btn" onclick="adminLogin()">Ingresar →</button>
+  </div>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div id="app-wrap">
+  <header>
+    <div style="font-family:'Syne',sans-serif;font-size:18px;font-weight:800;">🛡️ Seratta<span style="color:var(--accent2);">Admin</span></div>
+    <div style="font-size:11px;color:var(--muted);" id="adm-quien"></div>
+    <div class="tabs">
+      <div class="tab active" data-p="propinas" onclick="goPanel(this)">💸 Enviar propinas</div>
+      <div class="tab" data-p="anticipos" onclick="goPanel(this)">📨 Anticipos <span id="ant-count" class="badge b-orange" style="display:none;">0</span></div>
+      <div class="tab" data-p="comunicados" onclick="goPanel(this)">📣 Comunicados</div>
+      <div class="tab" data-p="denuncias" onclick="goPanel(this)">🚨 Denuncias</div>
+      <div class="tab" data-p="academia" onclick="goPanel(this)">🎓 Academia</div>
+      <div class="tab" onclick="adminLogout()" style="color:var(--danger);">Salir</div>
+    </div>
+  </header>
+  <main>
+
+    <!-- ═══ PANEL · ENVIAR PROPINAS ═══ -->
+    <div class="panel active" id="panel-propinas">
+      <h2>💸 Enviar propinas a un empleado</h2>
+      <div class="sub">Se inserta en <b>crew_propinas</b> · el empleado la ve EN VIVO en su app Seratta Crew (websocket).</div>
+      <div class="card">
+        <label class="form-label">Empleado</label>
+        <select class="form-input" id="pr-empleado"><option value="">Cargando empleados…</option></select>
+        <div class="row">
+          <div class="grow">
+            <label class="form-label">Período desde</label>
+            <input type="date" class="form-input" id="pr-desde">
+          </div>
+          <div class="grow">
+            <label class="form-label">Período hasta</label>
+            <input type="date" class="form-input" id="pr-hasta">
+          </div>
+          <div class="grow">
+            <label class="form-label"># Cuentas atendidas</label>
+            <input type="number" class="form-input" id="pr-eventos" value="1" min="1">
+          </div>
+        </div>
+        <label class="form-label">Desglose por pools</label>
+        <div id="pr-pools"></div>
+        <button class="btn btn-outline" style="font-size:12px;padding:8px 14px;" onclick="addPoolRow()">+ Agregar pool</button>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-top:18px;padding-top:14px;border-top:1px solid var(--border);">
+          <div>
+            <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em;">Total a enviar</div>
+            <div style="font-family:'Syne',sans-serif;font-size:32px;font-weight:800;color:var(--green);" id="pr-total">$0</div>
+          </div>
+          <button class="btn btn-green" onclick="enviarPropina()" id="pr-btn">💸 Enviar propinas →</button>
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:12px;">📋 Últimos envíos</div>
+        <div id="pr-historial" style="font-size:13px;color:var(--muted);">Cargando…</div>
+      </div>
+    </div>
+
+    <!-- ═══ PANEL · ANTICIPOS ═══ -->
+    <div class="panel" id="panel-anticipos">
+      <h2>📨 Solicitudes de anticipo</h2>
+      <div class="sub">Solicitudes que los empleados envían desde su app · aprueba, rechaza o marca como pagada.</div>
+      <div class="card" style="padding:0;overflow-x:auto;">
+        <table>
+          <thead><tr><th>Empleado</th><th>Monto</th><th>Método</th><th>Motivo</th><th>Fecha</th><th>Estado</th><th>Acción</th></tr></thead>
+          <tbody id="ant-tbody"><tr><td colspan="7" style="text-align:center;color:var(--muted);padding:26px;">Cargando…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ═══ PANEL · COMUNICADOS ═══ -->
+    <div class="panel" id="panel-comunicados">
+      <h2>📣 Publicar comunicado</h2>
+      <div class="sub">El crew lo ve en su app (tabla <b>crew_comunicados</b>).</div>
+      <div class="card">
+        <label class="form-label">Título</label>
+        <input class="form-input" id="com-titulo" placeholder="Ej: Reunión de equipo el lunes">
+        <label class="form-label">Mensaje</label>
+        <textarea class="form-input" id="com-mensaje" rows="4" placeholder="Escribe el comunicado…"></textarea>
+        <div class="row">
+          <div class="grow">
+            <label class="form-label">Prioridad</label>
+            <select class="form-input" id="com-prioridad">
+              <option value="normal">Normal</option>
+              <option value="alta">🔥 Alta</option>
+              <option value="urgente">🚨 Urgente</option>
+            </select>
+          </div>
+          <div style="align-self:flex-end;">
+            <button class="btn btn-primary" onclick="publicarComunicado()">📣 Publicar →</button>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div style="font-weight:700;margin-bottom:12px;">🗞️ Publicados</div>
+        <div id="com-lista" style="font-size:13px;color:var(--muted);">Cargando…</div>
+      </div>
+    </div>
+
+    <!-- ═══ PANEL · DENUNCIAS ═══ -->
+    <div class="panel" id="panel-denuncias">
+      <h2>🚨 Denuncias y reportes</h2>
+      <div class="sub">Reportes confidenciales del crew (tabla <b>crew_denuncias</b>). Numeración SR-YYYY-NNN.</div>
+      <div id="den-lista"><div class="card" style="text-align:center;color:var(--muted);">Cargando…</div></div>
+    </div>
+
+    <!-- ═══ PANEL · ACADEMIA ═══ -->
+    <div class="panel" id="panel-academia">
+      <h2>🎓 Academia · catálogo</h2>
+      <div class="sub">Los cursos se crean en <b>NEXUM → Seratta Crew Admin → Academia</b> y aparecen aquí y en la app del crew automáticamente.</div>
+      <div id="aca-lista"><div class="card" style="text-align:center;color:var(--muted);">Cargando…</div></div>
+    </div>
+
+  </main>
+</div>
+<div id="toast"></div>
+
+<script>
+// ═══ CONFIG ═══
+const SUPA_URL = 'https://kxaxjttvkaeewsjbpert.supabase.co';
+const SUPA_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imt4YXhqdHR2a2FlZXdzamJwZXJ0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjkxMTc0MjgsImV4cCI6MjA4NDY5MzQyOH0.fMINxNqrLT6f8lNPrpRZYPpm6IjTlKg6wAH7aAlfz_o';
+const REST_ID = 6;
+let _token = null;
+let _adminNombre = 'Admin Seratta';
+
+const POOLS = {
+  'SALES_ACCELERATOR':'🚀 Sales Accelerator','SERVICE':'⭐ Servicio','FOOD_RUNNER':'🍽️ Food Runner',
+  'SUPPORT':'🤝 Soporte','BAR':'🍸 Barra','HOST':'🎩 Host','KITCHEN':'👨‍🍳 Cocina',
+  'MANAGEMENT':'👔 Management','GENERAL':'💼 General','BASE':'💰 Base','EXTRA':'✨ Extra',
+  'BONIFICACION':'🎁 Bonificación','PROPINA_DIRECTA':'💳 Propina directa',
+};
+
+// ═══ REST helpers ═══
+const H = () => ({ 'apikey':SUPA_KEY, 'Authorization':'Bearer '+(_token||SUPA_KEY), 'Content-Type':'application/json' });
+async function q(table, filters) {
+  try {
+    const r = await fetch(SUPA_URL+'/rest/v1/'+table+'?'+filters+(filters.includes('select=')?'':'&select=*'), { headers:H() });
+    return r.ok ? r.json() : [];
+  } catch(e) { return []; }
+}
+async function ins(table, data) {
+  try {
+    const r = await fetch(SUPA_URL+'/rest/v1/'+table, { method:'POST', headers:{...H(),'Prefer':'return=minimal'}, body:JSON.stringify(data) });
+    return r.ok;
+  } catch(e) { return false; }
+}
+async function upd(table, filters, data) {
+  try {
+    const r = await fetch(SUPA_URL+'/rest/v1/'+table+'?'+filters, { method:'PATCH', headers:{...H(),'Prefer':'return=minimal'}, body:JSON.stringify(data) });
+    return r.ok;
+  } catch(e) { return false; }
+}
+function toast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.opacity = '1';
+  clearTimeout(t._tm); t._tm = setTimeout(()=>t.style.opacity='0', 3200);
+}
+const peso = n => '$' + Number(n||0).toLocaleString('es-CO');
+
+// ═══ LOGIN ═══
+async function adminLogin() {
+  const user = document.getElementById('adm-user').value.trim();
+  const pass = document.getElementById('adm-pass').value;
+  const err = document.getElementById('adm-error');
+  err.style.display = 'none';
+
+  // Demo local
+  if ((user === 'demo' && pass === '1234') || (user === 'admin@seratta.com' && pass === 'Seratta2025#Admin')) {
+    _adminNombre = user === 'demo' ? 'Demo Admin' : 'Diego Cruz';
+    iniciarApp();
+    return;
+  }
+  // Auth real Supabase
+  try {
+    const r = await fetch(SUPA_URL+'/auth/v1/token?grant_type=password', {
+      method:'POST', headers:{'Content-Type':'application/json','apikey':SUPA_KEY},
+      body: JSON.stringify({ email:user, password:pass })
+    });
+    const data = await r.json();
+    if (data.access_token) {
+      _token = data.access_token;
+      _adminNombre = (data.user?.email||'admin').split('@')[0];
+      iniciarApp();
+      return;
+    }
+  } catch(e) {}
+  err.textContent = 'Usuario o contraseña incorrectos';
+  err.style.display = 'block';
+}
+function adminLogout() { location.reload(); }
+
+function iniciarApp() {
+  document.getElementById('login-wrap').style.display = 'none';
+  document.getElementById('app-wrap').style.display = 'block';
+  document.getElementById('adm-quien').textContent = '👤 ' + _adminNombre + ' · OMM';
+  // fechas default: quincena actual
+  const hoy = new Date();
+  const d15 = new Date(hoy); d15.setDate(hoy.getDate()-14);
+  document.getElementById('pr-desde').value = d15.toISOString().split('T')[0];
+  document.getElementById('pr-hasta').value = hoy.toISOString().split('T')[0];
+  addPoolRow('SERVICE');
+  cargarEmpleados();
+  cargarHistorialEnvios();
+  cargarAnticipos();
+  cargarComunicados();
+  cargarDenuncias();
+  cargarAcademia();
+  setInterval(cargarAnticipos, 30000); // refresco solicitudes cada 30s
+}
+
+function goPanel(el) {
+  if (!el.dataset.p) return;
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+el.dataset.p).classList.add('active');
+}
+
+// ═══ EMPLEADOS ═══
+async function cargarEmpleados() {
+  let data = await q('empleados', 'restaurante_id=eq.'+REST_ID+'&activo=eq.true&order=nombre_completo.asc&select=id,nombre_completo,cargo_display,rol');
+  if (!data.length) data = await q('staff_nexum', 'restaurante_id=eq.'+REST_ID+'&order=nombre.asc&select=id,nombre,rol');
+  const sel = document.getElementById('pr-empleado');
+  sel.innerHTML = '<option value="">— Elige un empleado —</option>' + data.map(e => {
+    const nombre = e.nombre_completo || e.nombre;
+    return '<option value="'+nombre.replace(/"/g,'&quot;')+'">'+nombre+' · '+(e.cargo_display||e.rol||'')+'</option>';
+  }).join('');
+}
+
+// ═══ POOLS dinámicos ═══
+function addPoolRow(defaultPool) {
+  const wrap = document.getElementById('pr-pools');
+  const row = document.createElement('div');
+  row.className = 'pool-row';
+  row.innerHTML =
+    '<select class="form-input pool-sel">' + Object.entries(POOLS).map(([k,v]) =>
+      '<option value="'+k+'"'+(k===(defaultPool||'GENERAL')?' selected':'')+'>'+v+'</option>').join('') + '</select>'
+    + '<input type="number" class="form-input pool-monto" placeholder="Monto" min="0" oninput="calcTotal()">'
+    + '<button class="btn btn-danger" style="padding:8px;" onclick="this.parentElement.remove();calcTotal()">✕</button>';
+  wrap.appendChild(row);
+}
+function calcTotal() {
+  let total = 0;
+  document.querySelectorAll('.pool-monto').forEach(i => total += Number(i.value||0));
+  document.getElementById('pr-total').textContent = peso(total);
+  return total;
+}
+
+// ═══ ENVIAR PROPINA ═══
+async function enviarPropina() {
+  const empleado = document.getElementById('pr-empleado').value;
+  const desde = document.getElementById('pr-desde').value;
+  const hasta = document.getElementById('pr-hasta').value;
+  const eventos = Number(document.getElementById('pr-eventos').value||1);
+  if (!empleado) { toast('⚠ Elige un empleado'); return; }
+  if (!desde || !hasta) { toast('⚠ Define el período'); return; }
+  const desglose = {};
+  document.querySelectorAll('.pool-row').forEach(r => {
+    const pool = r.querySelector('.pool-sel').value;
+    const monto = Number(r.querySelector('.pool-monto').value||0);
+    if (monto > 0) desglose[pool] = (desglose[pool]||0) + monto;
+  });
+  const total = calcTotal();
+  if (total <= 0) { toast('⚠ Ingresa al menos un monto'); return; }
+
+  const btn = document.getElementById('pr-btn');
+  btn.disabled = true; btn.textContent = 'Enviando…';
+  const ok = await ins('crew_propinas', {
+    restaurante_id: REST_ID,
+    empleado_nombre: empleado,
+    periodo_inicio: desde,
+    periodo_fin: hasta,
+    propina_total: total,
+    desglose_pools: desglose,
+    eventos,
+    estado: 'enviado',
+    enviado_por: _adminNombre + ' (Seratta Admin)',
+    enviado_at: new Date().toISOString(),
+  });
+  btn.disabled = false; btn.textContent = '💸 Enviar propinas →';
+  if (!ok) { toast('✗ Error al enviar — revisa los datos'); return; }
+  toast('✅ ' + peso(total) + ' enviados a ' + empleado.split(' ')[0] + ' — le llega EN VIVO a su app');
+  document.querySelectorAll('.pool-monto').forEach(i => i.value = '');
+  calcTotal();
+  cargarHistorialEnvios();
+}
+
+async function cargarHistorialEnvios() {
+  const data = await q('crew_propinas', 'restaurante_id=eq.'+REST_ID+'&order=enviado_at.desc&limit=12');
+  const el = document.getElementById('pr-historial');
+  if (!data.length) { el.textContent = 'Aún sin envíos.'; return; }
+  el.innerHTML = data.map(p =>
+    '<div style="display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);">'
+    + '<div><b style="color:var(--text);">'+p.empleado_nombre+'</b><br><span style="font-size:11px;">'
+    + p.periodo_inicio+' → '+p.periodo_fin+' · '+(p.eventos||0)+' cuentas · por '+(p.enviado_por||'—')+'</span></div>'
+    + '<div style="font-family:Syne,sans-serif;font-size:17px;font-weight:800;color:var(--green);">'+peso(p.propina_total)+'</div></div>'
+  ).join('');
+}
+
+// ═══ ANTICIPOS ═══
+async function cargarAnticipos() {
+  const data = await q('propinas_solicitudes_cobro', 'restaurante_id=eq.'+REST_ID+'&order=solicitada_en.desc&limit=40');
+  const tbody = document.getElementById('ant-tbody');
+  const pendientes = data.filter(s => s.estado === 'pendiente').length;
+  const cnt = document.getElementById('ant-count');
+  cnt.style.display = pendientes > 0 ? 'inline-block' : 'none';
+  cnt.textContent = pendientes;
+  if (!data.length) { tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:26px;">Sin solicitudes aún. Los empleados las envían desde su app.</td></tr>'; return; }
+  const EST = { pendiente:'b-orange', aprobada:'b-blue', pagada:'b-green', rechazada:'b-red' };
+  tbody.innerHTML = data.map(s => {
+    const fecha = s.solicitada_en ? new Date(s.solicitada_en).toLocaleDateString('es-CO',{day:'numeric',month:'short'}) : '—';
+    let acciones = '—';
+    if (s.estado === 'pendiente') {
+      acciones = '<button class="btn btn-green" style="padding:6px 12px;font-size:11px;" onclick="resolverAnticipo('+s.id+',\'aprobada\')">✓ Aprobar</button> '
+        + '<button class="btn btn-danger" style="padding:6px 12px;font-size:11px;" onclick="resolverAnticipo('+s.id+',\'rechazada\')">✗</button>';
+    } else if (s.estado === 'aprobada') {
+      acciones = '<button class="btn btn-primary" style="padding:6px 12px;font-size:11px;" onclick="resolverAnticipo('+s.id+',\'pagada\')">💸 Marcar pagada</button>';
+    }
+    return '<tr><td><b>'+s.mesero_nombre+'</b></td><td style="font-weight:800;color:var(--green);">'+peso(s.monto)+'</td>'
+      + '<td>'+(s.metodo_pago||'—')+(s.cuenta_destino?'<br><span style="font-size:11px;color:var(--muted);">'+s.cuenta_destino+'</span>':'')+'</td>'
+      + '<td style="max-width:180px;font-size:12px;color:var(--muted);">'+(s.motivo||'—')+'</td><td>'+fecha+'</td>'
+      + '<td><span class="badge '+(EST[s.estado]||'b-orange')+'">'+s.estado+'</span></td><td>'+acciones+'</td></tr>';
+  }).join('');
+}
+async function resolverAnticipo(id, estado) {
+  if (estado === 'rechazada' && !confirm('¿Rechazar esta solicitud?')) return;
+  const patch = { estado };
+  if (estado === 'aprobada') { patch.aprobada_por = _adminNombre; patch.aprobada_en = new Date().toISOString(); }
+  if (estado === 'pagada') patch.pagada_en = new Date().toISOString();
+  if (estado === 'rechazada') patch.motivo_rechazo = prompt('Motivo del rechazo (lo verá el empleado):') || 'No aprobado';
+  const ok = await upd('propinas_solicitudes_cobro', 'id=eq.'+id, patch);
+  toast(ok ? '✓ Solicitud ' + estado : '✗ Error');
+  cargarAnticipos();
+}
+
+// ═══ COMUNICADOS ═══
+async function publicarComunicado() {
+  const titulo = document.getElementById('com-titulo').value.trim();
+  const mensaje = document.getElementById('com-mensaje').value.trim();
+  const prioridad = document.getElementById('com-prioridad').value;
+  if (!titulo || !mensaje) { toast('⚠ Título y mensaje requeridos'); return; }
+  const ok = await ins('crew_comunicados', {
+    restaurante_id: REST_ID, titulo, mensaje, prioridad,
+    publicado: true, publicado_por: _adminNombre, publicado_en: new Date().toISOString(),
+  });
+  if (!ok) { toast('✗ Error al publicar'); return; }
+  toast('📣 Comunicado publicado — el crew lo ve en su app');
+  document.getElementById('com-titulo').value = '';
+  document.getElementById('com-mensaje').value = '';
+  cargarComunicados();
+}
+async function cargarComunicados() {
+  const data = await q('crew_comunicados', 'restaurante_id=eq.'+REST_ID+'&order=created_at.desc&limit=15');
+  const el = document.getElementById('com-lista');
+  if (!data.length) { el.textContent = 'Sin comunicados aún.'; return; }
+  const PC = { normal:'b-blue', alta:'b-orange', urgente:'b-red' };
+  el.innerHTML = data.map(c =>
+    '<div style="padding:10px 0;border-bottom:1px solid var(--border);">'
+    + '<div style="display:flex;justify-content:space-between;gap:10px;align-items:center;">'
+    + '<b style="color:var(--text);">'+c.titulo+'</b><span class="badge '+(PC[c.prioridad]||'b-blue')+'">'+(c.prioridad||'normal')+'</span></div>'
+    + '<div style="font-size:12px;margin-top:4px;">'+c.mensaje+'</div>'
+    + '<div style="font-size:11px;color:var(--muted);margin-top:4px;">'+(c.publicado_por||'')+' · '+(c.publicado_en?new Date(c.publicado_en).toLocaleDateString('es-CO',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'')+'</div></div>'
+  ).join('');
+}
+
+// ═══ DENUNCIAS ═══
+async function cargarDenuncias() {
+  const data = await q('crew_denuncias', 'restaurante_id=eq.'+REST_ID+'&order=created_at.desc&limit=30');
+  const el = document.getElementById('den-lista');
+  if (!data.length) { el.innerHTML = '<div class="card" style="text-align:center;color:var(--muted);">✅ Sin denuncias pendientes.</div>'; return; }
+  const EC = { nueva:'b-red', en_revision:'b-orange', resuelta:'b-green' };
+  el.innerHTML = data.map(d =>
+    '<div class="card"><div class="row" style="justify-content:space-between;">'
+    + '<div><b>'+(d.numero_reporte||('SR-'+d.id))+'</b> · '+(d.tipo||'reporte')
+    + (d.anonima ? ' · <span class="badge b-blue">🕶️ Anónima</span>' : (d.empleado_nombre?' · '+d.empleado_nombre:''))
+    + '</div><span class="badge '+(EC[d.estado]||'b-orange')+'">'+(d.estado||'nueva')+'</span></div>'
+    + '<div style="font-weight:700;margin:8px 0 4px;">'+d.asunto+'</div>'
+    + '<div style="font-size:13px;color:var(--muted);">'+(d.descripcion||'')+'</div>'
+    + (d.resolucion ? '<div style="font-size:12px;color:var(--green);margin-top:8px;">✓ Resolución: '+d.resolucion+'</div>' : '')
+    + '<div class="row" style="margin-top:12px;">'
+    + (d.estado !== 'resuelta'
+      ? '<button class="btn btn-outline" style="font-size:11px;padding:7px 12px;" onclick="estadoDenuncia('+d.id+',\'en_revision\')">👁️ En revisión</button>'
+        + '<button class="btn btn-green" style="font-size:11px;padding:7px 12px;" onclick="resolverDenuncia('+d.id+')">✓ Resolver</button>'
+      : '')
+    + '</div></div>'
+  ).join('');
+}
+async function estadoDenuncia(id, estado) {
+  await upd('crew_denuncias', 'id=eq.'+id, { estado, revisado_por: _adminNombre });
+  toast('✓ Marcada en revisión'); cargarDenuncias();
+}
+async function resolverDenuncia(id) {
+  const res = prompt('Describe la resolución:');
+  if (!res) return;
+  await upd('crew_denuncias', 'id=eq.'+id, { estado:'resuelta', resolucion:res, revisado_por:_adminNombre, fecha_resolucion: new Date().toISOString() });
+  toast('✅ Denuncia resuelta'); cargarDenuncias();
+}
+
+// ═══ ACADEMIA (lectura) ═══
+async function cargarAcademia() {
+  const [cursos, progreso] = await Promise.all([
+    q('academia_cursos', 'restaurante_id=eq.'+REST_ID+'&order=created_at.desc'),
+    q('progreso_academia', 'completado=eq.true&select=curso_id'),
+  ]);
+  const el = document.getElementById('aca-lista');
+  if (!cursos.length) { el.innerHTML = '<div class="card" style="text-align:center;color:var(--muted);">🎓 Catálogo vacío — crea cursos en NEXUM → Seratta Crew Admin → Academia.</div>'; return; }
+  const compl = {};
+  (progreso||[]).forEach(p => { compl[p.curso_id] = (compl[p.curso_id]||0)+1; });
+  el.innerHTML = cursos.map(c =>
+    '<div class="card"><div class="row" style="justify-content:space-between;">'
+    + '<div><span style="font-size:22px;margin-right:8px;">'+(c.emoji||'🎓')+'</span><b>'+c.titulo+'</b>'
+    + ' <span class="badge '+(c.activo?'b-green':'b-red')+'">'+(c.activo?'Activo en la app':'Inactivo')+'</span>'
+    + (c.obligatorio?' <span class="badge b-orange">Obligatorio</span>':'')
+    + '</div><div style="font-size:12px;color:var(--muted);">'+(compl['db-'+c.id]||0)+' completados · +'+(c.puntos||50)+' pts</div></div>'
+    + '<div style="font-size:12px;color:var(--muted);margin-top:6px;">'+(c.descripcion||'')+' · '+(c.categoria||'')+' · '+(c.nivel||'')+'</div></div>'
+  ).join('');
+}
+
+// Enter para login
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter' && document.getElementById('login-wrap').style.display !== 'none') adminLogin();
+});
+</script>
+</body>
+</html>
